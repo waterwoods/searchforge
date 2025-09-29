@@ -1,0 +1,7 @@
+{
+  "duration_seconds": 120,
+  "stress": {
+    "load": { "step_qps": [2,4] },
+    "chaos": { "latency_ms": 200, "latency_duration_s": 30, "latency_windows": [30, 60] }
+  }
+}

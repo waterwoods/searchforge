@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: rag-api
+    static_configs: [{ targets: ["rag-api:8080"] }]
+  - job_name: probe-cron
+    static_configs: [{ targets: ["probe-cron:8001"] }]
+  - job_name: auto-tuner
+    static_configs: [{ targets: ["auto-tuner:8085"] }]
+  - job_name: shadow-proxy
+    static_configs: [{ targets: ["shadow-proxy:8083"] }]
