@@ -27,18 +27,21 @@ class VectorSearch:
     
     def __init__(
         self, 
-        host: str = "localhost", 
-        port: int = 6333,
+        host: str = None, 
+        port: int = None,
         embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     ):
         """
         Initialize the vector search service.
         
         Args:
-            host: Qdrant server host
-            port: Qdrant server port
+            host: Qdrant server host (defaults to QDRANT_HOST env var or localhost)
+            port: Qdrant server port (defaults to QDRANT_PORT env var or 6333)
             embedding_model_name: Name of the SentenceTransformer model to use
         """
+        import os
+        host = host or os.environ.get("QDRANT_HOST", "localhost")
+        port = port or int(os.environ.get("QDRANT_PORT", "6333"))
         self.client = QdrantClient(host=host, port=port)
         self.embedding_model = SentenceTransformer(embedding_model_name)
         
@@ -47,6 +50,8 @@ class VectorSearch:
         query: str, 
         collection_name: str, 
         top_n: int = 5,
+        nprobe: Optional[int] = None,
+        ef_search: Optional[int] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
         debug_mode: bool = False
     ) -> Any:
@@ -58,6 +63,8 @@ class VectorSearch:
             query: The search query string
             collection_name: Name of the Qdrant collection to search
             top_n: Number of top results to return
+            nprobe: Number of clusters to search (for IVF index). Higher values increase recall but latency.
+            ef_search: Size of dynamic candidate list (for HNSW index). Higher values increase recall but latency.
             metadata_filter: Optional metadata filter for the search
             debug_mode: If True, returns debug information
             
@@ -87,6 +94,27 @@ class VectorSearch:
                 "limit": search_limit,
                 "with_payload": True
             }
+            
+            # Add AutoTuner parameters if provided
+            # Note: Use HNSW parameters - both nprobe and ef_search map to hnsw_ef
+            from qdrant_client.http.models import SearchParams
+            
+            search_params_obj = None
+            if nprobe is not None or ef_search is not None:
+                search_params_obj = SearchParams()
+                
+                # Map both nprobe and ef_search to hnsw_ef (HNSW search parameter)
+                if ef_search is not None:
+                    search_params_obj.hnsw_ef = ef_search
+                elif nprobe is not None:
+                    search_params_obj.hnsw_ef = nprobe
+                
+                # Add exact search parameter (False = approximate, True = exact)
+                # For AutoTuner, we typically want approximate search for performance
+                search_params_obj.exact = False
+            
+            if search_params_obj:
+                search_params["search_params"] = search_params_obj
             
             # Add metadata filter if provided
             if metadata_filter:
@@ -120,9 +148,11 @@ class VectorSearch:
                 
                 # Create ScoredDocument
                 scored_doc = ScoredDocument(
-                    document=document,
+                    content=document,
                     score=result.score,
-                    explanation=f"Vector similarity score: {result.score:.4f}"
+                    # metadata=f"Vector similarity score: {result.score:.4f}"
+                    metadata = {"explanation": f"Vector similarity score: {result.score:.4f}"}
+
                 )
                 scored_documents.append(scored_doc)
             

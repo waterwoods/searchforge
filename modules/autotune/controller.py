@@ -15,21 +15,20 @@ class AutoTuner:
     """SLA-aware autotuner with closed-loop control."""
     
     def __init__(self, engine: str, policy: str = "Balanced",
-                 nprobe_range: tuple = (4, 128), ef_range: tuple = (32, 256),
-                 rerank_range: tuple = (100, 1200), ema_alpha: float = 0.2,
-                 target_p95_ms: float = 30, target_recall: float = 0.95,
+                 hnsw_ef_range: tuple = (4, 256), rerank_range: tuple = (100, 1200), 
+                 ema_alpha: float = 0.2, target_p95_ms: float = 30, target_recall: float = 0.95,
                  latency_hi: float = 1.2, latency_lo: float = 0.9, 
                  recall_margin: float = 0.02, min_batches: int = 160,
                  guard_recall_margin: float = 0.01, guard_recall_batches: int = 8,
-                 cooldown_decrease_batches: int = 10):
+                 cooldown_decrease_batches: int = 10,
+                 step_up: int = 32, step_down: int = 16):
         """
         Initialize autotuner.
         
         Args:
-            engine: Search engine type ('ivf' or 'hnsw')
+            engine: Search engine type ('hnsw' - HNSW is the primary supported type)
             policy: Tuning policy ('LatencyFirst', 'RecallFirst', 'Balanced')
-            nprobe_range: Valid range for nprobe parameter
-            ef_range: Valid range for efSearch parameter
+            hnsw_ef_range: Valid range for HNSW ef parameter (equivalent to ef_search)
             rerank_range: Valid range for rerank_k parameter
             ema_alpha: Exponential moving average alpha
             target_p95_ms: Target p95 latency in milliseconds
@@ -41,16 +40,22 @@ class AutoTuner:
             guard_recall_margin: Margin above target for decrease guard
             guard_recall_batches: Number of batches to check for guard
             cooldown_decrease_batches: Cooldown before allowing decreases
+            step_up: Step size for increasing hnsw_ef parameter
+            step_down: Step size for decreasing hnsw_ef parameter
         """
         self.engine = engine.lower()
         
         # Engine-aware default policy
-        if policy == "Balanced" and engine.lower() == "ivf":
+        if policy == "Balanced" and engine.lower() == "hnsw":
             policy = "RecallFirst"
         
         self.policy = get_policy(policy)
         self.target_p95_ms = target_p95_ms
         self.target_recall = target_recall
+        
+        # Step sizes for parameter adjustment
+        self.step_up = step_up
+        self.step_down = step_down
         
         # Hysteresis thresholds
         self.latency_hi = latency_hi
@@ -67,20 +72,17 @@ class AutoTuner:
         
         # Initialize state
         self.state = TuningState(
-            nprobe_range=nprobe_range,
-            ef_range=ef_range,
+            hnsw_ef_range=hnsw_ef_range,
             rerank_range=rerank_range,
             ema_alpha=ema_alpha
         )
         
         # Set initial parameters based on engine
-        if self.engine == "ivf":
-            self.state.nprobe = max(56, 24)  # Enforce quality floor; was 48
-            # Increase search ceiling for better recall
-            if self.state.nprobe_range[1] < 64:
-                self.state.nprobe_range = (self.state.nprobe_range[0], 64)
-        elif self.engine == "hnsw":
-            self.state.ef_search = 156   # Stabilize tail batches; was 144
+        if self.engine == "hnsw":
+            self.state.ef_search = max(128, 64)  # Enforce quality floor for HNSW
+            # Ensure search ceiling for better recall
+            if self.state.hnsw_ef_range[1] < 256:
+                self.state.hnsw_ef_range = (self.state.hnsw_ef_range[0], 256)
         else:
             raise ValueError(f"Unsupported engine: {engine}")
         
@@ -94,9 +96,9 @@ class AutoTuner:
         self.state.batches_since_decrease = 0
         self.state.recent_recall_queue = collections.deque(maxlen=self.guard_recall_batches)
         
-        # IVF rescue mechanism for recall dips
+        # HNSW rescue mechanism for recall dips
         self.rescue_window = 3
-        self.rescue_nprobe = 8
+        self.rescue_ef = 16  # HNSW equivalent of rescue_nprobe
         self.rescue_rerank = 200
         
         logger.info(f"Initialized {self.engine.upper()} autotuner with {policy} policy")
@@ -152,14 +154,14 @@ class AutoTuner:
         recent_dip = (len(self.state.recent_recalls) == self.rescue_window and 
                       min(self.state.recent_recalls) < self.target_recall)
 
-        if recent_dip and self.engine == "ivf":
+        if recent_dip and self.engine == "hnsw":
             cp = self.state.get_current_params()
             rescue = {
-              "nprobe":   min(cp["nprobe"] + self.rescue_nprobe, self.state.nprobe_range[1]),
+              "ef_search": min(cp["ef_search"] + self.rescue_ef, self.state.hnsw_ef_range[1]),
               "rerank_k": min(cp["rerank_k"] + self.rescue_rerank, self.state.rerank_range[1])
             }
             self.state.update_params(**rescue)
-            logger.info(f"IVF rescue bump applied: {rescue}")
+            logger.info(f"HNSW rescue bump applied: {rescue}")
             # Skip normal decreases this batch; continue with rest logic
         
         # Calculate step sizes based on policy
@@ -183,7 +185,6 @@ class AutoTuner:
             "p95_ms": self.state.p95_ms,
             "recall_at_10": self.state.recall_at_10,
             "coverage": self.state.coverage,
-            "nprobe": self.state.nprobe,
             "ef_search": self.state.ef_search,
             "rerank_k": self.state.rerank_k
         })
@@ -212,31 +213,19 @@ class AutoTuner:
         current_recall = metrics["recall_at_10"]
         
         # Determine adjustment direction and magnitude
-        if self.engine == "ivf":
-            # Adjust nprobe based on recall vs latency trade-off
-            if current_recall < target_recall - self.recall_margin:
-                # Recall too low - increase nprobe
-                nprobe_step = self._step(current_params["nprobe"], step_sizes["nprobe"])
-                new_params["nprobe"] = min(128, current_params["nprobe"] + nprobe_step)
-            elif current_p95 > target_p95 * self.latency_hi:
-                # Latency too high - decrease nprobe
-                nprobe_step = self._step(current_params["nprobe"], step_sizes["nprobe"])
-                new_params["nprobe"] = max(4, current_params["nprobe"] - nprobe_step)
-            else:
-                new_params["nprobe"] = current_params["nprobe"]
-        
-        elif self.engine == "hnsw":
-            # Adjust ef_search based on recall vs latency trade-off
+        if self.engine == "hnsw":
+            # Adjust ef_search based on recall vs latency trade-off using fixed step sizes
             if current_recall < target_recall - self.recall_margin:
                 # Recall too low - increase ef_search
-                ef_step = self._step(current_params["ef_search"], step_sizes["ef_search"])
-                new_params["ef_search"] = min(256, current_params["ef_search"] + ef_step)
+                new_params["ef_search"] = min(self.state.hnsw_ef_range[1], 
+                                            current_params["ef_search"] + self.step_up)
             elif current_p95 > target_p95 * self.latency_hi:
                 # Latency too high - decrease ef_search
-                ef_step = self._step(current_params["ef_search"], step_sizes["ef_search"])
-                new_params["ef_search"] = max(32, current_params["ef_search"] - ef_step)
+                new_params["ef_search"] = max(self.state.hnsw_ef_range[0], 
+                                            current_params["ef_search"] - self.step_down)
             else:
                 new_params["ef_search"] = current_params["ef_search"]
+        
         
         # Adjust rerank_k based on latency
         if current_p95 > target_p95:
@@ -257,10 +246,7 @@ class AutoTuner:
         # Check if any parameters are being decreased
         decreases_detected = False
         
-        if self.engine == "ivf" and "nprobe" in new_params:
-            if new_params["nprobe"] < current_params["nprobe"]:
-                decreases_detected = True
-        elif self.engine == "hnsw" and "ef_search" in new_params:
+        if self.engine == "hnsw" and "ef_search" in new_params:
             if new_params["ef_search"] < current_params["ef_search"]:
                 decreases_detected = True
         
@@ -281,9 +267,7 @@ class AutoTuner:
                           f"min_recall={min(self.state.recent_recall_queue) if self.state.recent_recall_queue else 'N/A'}, "
                           f"batches_since_decrease={self.state.batches_since_decrease}")
                 
-                if self.engine == "ivf" and "nprobe" in new_params:
-                    new_params["nprobe"] = current_params["nprobe"]
-                elif self.engine == "hnsw" and "ef_search" in new_params:
+                if self.engine == "hnsw" and "ef_search" in new_params:
                     new_params["ef_search"] = current_params["ef_search"]
                 
                 if "rerank_k" in new_params:
@@ -308,9 +292,7 @@ class AutoTuner:
         
         new_params = {}
         
-        if self.engine == "ivf":
-            new_params["nprobe"] = int(current_params["nprobe"] * emergency_adjustments["nprobe"])
-        elif self.engine == "hnsw":
+        if self.engine == "hnsw":
             new_params["ef_search"] = int(current_params["ef_search"] * emergency_adjustments["ef_search"])
         
         new_params["rerank_k"] = int(current_params["rerank_k"] * emergency_adjustments["rerank_k"])
@@ -344,16 +326,13 @@ class AutoTuner:
     def reset(self):
         """Reset autotuner state."""
         self.state = TuningState(
-            nprobe_range=self.state.nprobe_range,
-            ef_range=self.state.ef_range,
+            hnsw_ef_range=self.state.hnsw_ef_range,
             rerank_range=self.state.rerank_range,
             ema_alpha=self.state.ema_alpha
         )
         
         # Reset to initial parameters
-        if self.engine == "ivf":
-            self.state.nprobe = max(56, 24)  # Enforce quality floor; was 48
-        elif self.engine == "hnsw":
+        if self.engine == "hnsw":
             self.state.ef_search = 156   # Stabilize tail batches; was 144
         
         self.state.rerank_k = max(1000, 400)  # Enforce quality floor; was 900

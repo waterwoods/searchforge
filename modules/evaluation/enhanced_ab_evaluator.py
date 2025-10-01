@@ -31,7 +31,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from modules.search.search_pipeline import search_with_explain
+# from modules.search.search_pipeline import search_with_explain  # Using HTTP calls instead
 from modules.autotune.controller import AutoTuner
 from modules.autotune.state import TuningState
 
@@ -295,11 +295,39 @@ class EnhancedABEvaluator:
         self.timeline_data: List[TimelineMetrics] = []
         self.active_recovery_events: List[RecoveryEvent] = []
         
+        # AutoTuner trigger control
+        self.last_tuner_update = 0.0
+        self.last_tuner_action = 0.0
+        self.tuner_sample_interval = 5.0
+        self.tuner_cooldown = 15.0
+        
     def setup_autotuner(self, config: Dict[str, Any]):
         """Setup autotuner for the evaluation."""
         if not config.get("auto_tuner_v1", False):
             return
         
+        # Load tuner configuration from common config
+        common_config = self.full_config.get("common", {})
+        self.tuner_sample_interval = common_config.get("tuner_sample_interval", 5.0)
+        self.tuner_cooldown = common_config.get("tuner_cooldown_sec", 15.0)
+        
+        # Try to get global AutoTuner instance from RAG API
+        try:
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'services', 'rag_api'))
+            from app import get_global_autotuner
+            
+            global_autotuner, global_autotuner_state = get_global_autotuner()
+            if global_autotuner and global_autotuner_state:
+                self.autotuner = global_autotuner
+                self.autotuner_state = global_autotuner_state
+                logger.info("✅ Using global AutoTuner instance")
+                return
+        except Exception as e:
+            logger.warning(f"⚠️ Could not get global AutoTuner: {e}")
+        
+        # Fallback to creating local instance
         self.autotuner_state = TuningState()
         self.autotuner = AutoTuner(
             engine="ivf",
@@ -332,21 +360,36 @@ class EnhancedABEvaluator:
         if random.random() < (loss_rate / 100.0):
             return False, 0.0, {"error": "packet_loss"}
         
-        # Execute the actual query
+        # Execute the actual query via HTTP
         start_time = time.time()
         try:
-            # Get collection name from common config
-            collection_name = self.full_config.get("common", {}).get("collection_name", "smartsearchx")
+            # Build RAG API URL from environment variable, config, or default
+            base_url = os.environ.get("RAG_API_URL")
+            if not base_url:
+                base_url = config.get("rag_api", {}).get("base_url", "http://localhost:8000")
+            rag_api_url = f"{base_url}/search"
             
-            results = search_with_explain(
-                query=query,
-                collection_name=collection_name,
-                reranker_name=config.get("reranker_type", "llm"),
-                explainer_name=config.get("explainer_type", "simple"),
-                top_n=config.get("rag_api", {}).get("initial_topk", 50)
-            )
+            payload = {
+                "query": query,
+                "top_k": config.get("rag_api", {}).get("initial_topk", 50),
+                "algorithm": config.get("reranker_type", "llm"),
+                "enable_bm25": False,
+                "ab_test_mode": True
+            }
+            
+            print(f"[Evaluator] Query: {query}, top_k: {payload['top_k']}")
+            
+            response = requests.post(rag_api_url, json=payload, timeout=10)
+            response.raise_for_status()
+            
+            result_data = response.json()
+            results = result_data.get("results", [])
             
             latency = (time.time() - start_time) * 1000.0  # Convert to ms
+            
+            # Check if response is valid but has no results
+            if not results:
+                return False, 0.0, {"error": "no_results"}
             
             # Update autotuner if enabled
             tuner_actions = 0
@@ -359,13 +402,25 @@ class EnhancedABEvaluator:
             return True, latency, {"results": results, "tuner_actions": tuner_actions}
             
         except Exception as e:
-            latency = (time.time() - start_time) * 1000.0
-            return False, latency, {"error": str(e)}
+            return False, 0.0, {"error": f"http_failed: {type(e).__name__}"}
     
     def _update_autotuner(self, query: str, results: List[Dict], latency: float) -> int:
         """Update autotuner with query results and return action count."""
         if not self.autotuner or not results:
             return 0
+        
+        now = time.time()
+        
+        # 1. Check sampling interval - only evaluate every N seconds
+        if now - self.last_tuner_update < self.tuner_sample_interval:
+            return 0  # Not time to sample yet, just collect metrics
+        
+        # 3. Check cooldown period - prevent rapid parameter changes
+        if now - self.last_tuner_action < self.tuner_cooldown:
+            return 0  # Still in cooldown, don't adjust parameters
+        
+        # Update sampling timestamp
+        self.last_tuner_update = now
         
         # Calculate recall@10 (simplified)
         recall_at_10 = min(1.0, len(results) / 10.0)
@@ -386,6 +441,8 @@ class EnhancedABEvaluator:
                     "timestamp": time.time(),
                     "params": new_params
                 })
+                # Update action timestamp for cooldown
+                self.last_tuner_action = now
                 return 1
         except Exception as e:
             logger.warning(f"Autotuner error: {e}")
@@ -483,6 +540,15 @@ class EnhancedABEvaluator:
         last_sample_time = start_time + warmup_seconds
         baseline_p95 = None
         
+        # Initialize timeline data structure
+        timeline = {
+            "time_min": [],
+            "p95_ms": [],
+            "p99_ms": [],
+            "ef_search": [],
+            "recall_at_10": []
+        }
+        
         while time.time() < end_time:
             current_time = time.time()
             elapsed_time = current_time - start_time
@@ -525,8 +591,26 @@ class EnhancedABEvaluator:
             # Sample metrics periodically
             if current_time - last_sample_time >= sample_interval:
                 current_p95 = np.percentile(self.latency_samples, 95) if self.latency_samples else 0.0
+                current_p99 = np.percentile(self.latency_samples, 99) if self.latency_samples else 0.0
                 if baseline_p95 is None and len(self.latency_samples) > 10:
                     baseline_p95 = current_p95
+                
+                # Get current ef_search from AutoTuner
+                current_ef = None
+                if self.autotuner and self.autotuner_state:
+                    try:
+                        current_params = self.autotuner_state.get_current_params()
+                        current_ef = current_params.get("ef_search") if current_params else None
+                    except Exception as e:
+                        logger.warning(f"Failed to get current ef_search: {e}")
+                        current_ef = None
+                
+                # Collect timeline data
+                timeline["time_min"].append(round(elapsed_time / 60.0, 2))
+                timeline["p95_ms"].append(round(current_p95, 2))
+                timeline["p99_ms"].append(round(current_p99, 2))
+                timeline["ef_search"].append(current_ef)
+                timeline["recall_at_10"].append(None)  # Optional: could be filled if available
                 
                 # Record timeline metrics
                 timeline_metric = TimelineMetrics(
@@ -610,6 +694,7 @@ class EnhancedABEvaluator:
                     "current_qps": tm.current_qps
                 } for tm in self.timeline_data
             ],
+            "timeline": timeline,  # Add timeline data for A/B/C plotting
             "latency_samples": self.latency_samples[:1000],  # Limit samples for storage
             "shadow_results": self.shadow_results[:100]  # Limit shadow results
         }

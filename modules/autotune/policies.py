@@ -41,8 +41,7 @@ class LatencyFirstPolicy(TuningPolicy):
         
         # Base step sizes
         step_sizes = {
-            "nprobe": 0.1,      # Conservative nprobe changes
-            "ef_search": 0.15,   # Moderate ef_search changes
+            "ef_search": 0.15,   # Moderate ef_search changes (HNSW parameter)
             "rerank_k": 0.25     # Aggressive rerank_k changes
         }
         
@@ -50,12 +49,10 @@ class LatencyFirstPolicy(TuningPolicy):
         if current_p95 > target_p95 * 1.2:  # 20% over target
             # Aggressive latency reduction
             step_sizes["rerank_k"] *= 2.0
-            step_sizes["nprobe"] *= 1.5
             step_sizes["ef_search"] *= 1.5
         elif current_p95 < target_p95 * 0.8:  # 20% under target
             # Can afford to improve recall
             if current_recall < target_recall - 0.05:
-                step_sizes["nprobe"] *= 0.8
                 step_sizes["ef_search"] *= 0.8
                 step_sizes["rerank_k"] *= 1.2
         
@@ -64,7 +61,6 @@ class LatencyFirstPolicy(TuningPolicy):
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Emergency adjustments for latency-first policy."""
         return {
-            "nprobe": 0.7,      # Reduce nprobe by 30%
             "ef_search": 0.7,    # Reduce ef_search by 30%
             "rerank_k": 0.5      # Reduce rerank_k by 50%
         }
@@ -87,21 +83,18 @@ class RecallFirstPolicy(TuningPolicy):
         
         # Base step sizes
         step_sizes = {
-            "nprobe": 0.2,      # Aggressive nprobe changes
-            "ef_search": 0.25,   # Aggressive ef_search changes
+            "ef_search": 0.25,   # Aggressive ef_search changes (HNSW parameter)
             "rerank_k": 0.15     # Conservative rerank_k changes
         }
         
         # Adjust based on current performance
         if current_recall < target_recall - 0.05:  # 5% under target
             # Aggressive recall improvement
-            step_sizes["nprobe"] *= 1.5
             step_sizes["ef_search"] *= 1.5
             step_sizes["rerank_k"] *= 1.2
         elif current_p95 > target_p95 * 1.5:  # 50% over target
             # Must reduce latency
             step_sizes["rerank_k"] *= 1.5
-            step_sizes["nprobe"] *= 0.8
             step_sizes["ef_search"] *= 0.8
         
         return step_sizes
@@ -109,7 +102,6 @@ class RecallFirstPolicy(TuningPolicy):
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Emergency adjustments for recall-first policy."""
         return {
-            "nprobe": 0.8,      # Reduce nprobe by 20%
             "ef_search": 0.8,    # Reduce ef_search by 20%
             "rerank_k": 0.6      # Reduce rerank_k by 40%
         }
@@ -132,8 +124,7 @@ class BalancedPolicy(TuningPolicy):
         
         # Base step sizes
         step_sizes = {
-            "nprobe": 0.15,     # Moderate nprobe changes
-            "ef_search": 0.2,    # Moderate ef_search changes
+            "ef_search": 0.2,    # Moderate ef_search changes (HNSW parameter)
             "rerank_k": 0.2      # Moderate rerank_k changes
         }
         
@@ -145,10 +136,9 @@ class BalancedPolicy(TuningPolicy):
         if p95_distance > recall_distance * 1.5:
             # Latency is the bigger problem
             step_sizes["rerank_k"] *= 1.3
-            step_sizes["nprobe"] *= 1.2
+            step_sizes["ef_search"] *= 1.2
         elif recall_distance > p95_distance * 1.5:
             # Recall is the bigger problem
-            step_sizes["nprobe"] *= 1.3
             step_sizes["ef_search"] *= 1.3
             step_sizes["rerank_k"] *= 1.1
         
@@ -157,7 +147,6 @@ class BalancedPolicy(TuningPolicy):
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Emergency adjustments for balanced policy."""
         return {
-            "nprobe": 0.75,     # Reduce nprobe by 25%
             "ef_search": 0.75,   # Reduce ef_search by 25%
             "rerank_k": 0.55     # Reduce rerank_k by 45%
         }
