@@ -1,3 +1,4 @@
+# NOTE: Standardized on Document.text.
 """
 Vector Search Module for SmartSearchX
 
@@ -9,10 +10,9 @@ import logging
 from typing import List, Dict, Any, Optional
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
-from langchain_core.documents import Document
 import numpy as np
 
-from modules.rerankers.base import ScoredDocument
+from modules.types import Document, ScoredDocument
 
 logger = logging.getLogger(__name__)
 
@@ -138,9 +138,9 @@ class VectorSearch:
                 
                 # Create Document object
                 document = Document(
-                    page_content=content,
+                    id=str(result.id),
+                    text=content,
                     metadata={
-                        "id": result.id,
                         "score": result.score,
                         **payload
                     }
@@ -148,11 +148,9 @@ class VectorSearch:
                 
                 # Create ScoredDocument
                 scored_doc = ScoredDocument(
-                    content=document,
+                    document=document,
                     score=result.score,
-                    # metadata=f"Vector similarity score: {result.score:.4f}"
-                    metadata = {"explanation": f"Vector similarity score: {result.score:.4f}"}
-
+                    explanation=f"Vector similarity score: {result.score:.4f}"
                 )
                 scored_documents.append(scored_doc)
             

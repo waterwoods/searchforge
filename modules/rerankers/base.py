@@ -1,26 +1,18 @@
-"""
-Base classes for document reranking.
-"""
+# modules/rerankers/base.py
+from __future__ import annotations
+from typing import List, Protocol
+from modules.types import Document, ScoredDocument
 
-from typing import List, Dict, Any
-from dataclasses import dataclass
+class AbstractReranker(Protocol):
+    """
+    Minimal, stable interface for all rerankers.
+    """
+    name: str
 
-
-@dataclass
-class ScoredDocument:
-    """A document with a relevance score."""
-    content: str
-    score: float
-    metadata: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
-
-
-class BaseReranker:
-    """Base class for document rerankers."""
-    
-    def rerank(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
-        """Rerank documents based on query relevance."""
-        raise NotImplementedError
+    def rerank(self, query: str, docs: List[Document], top_k: int = 50) -> List[ScoredDocument]:
+        """
+        Given a query and candidate documents, return top_k ScoredDocument.
+        Implementations must be pure (no side effects) and stable under errors
+        (raise or return original order handled by caller/factory).
+        """
+        ...
