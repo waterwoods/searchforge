@@ -2598,11 +2598,14 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
     first_ts = min(response_timestamps)
     last_ts = max(response_timestamps)
     
-    # Calculate duration: subtract warmup, then round up to bucket_sec boundary
+    # Calculate duration: use last bucket end as duration_sec
     total_seconds = last_ts - first_ts
-    duration_after_warmup = total_seconds - warmup_sec
-    # Round up to bucket_sec boundary to avoid off-by-one errors
-    num_buckets = int((duration_after_warmup + bucket_sec - 1) // bucket_sec) + 1
+    # Round up to bucket_sec boundary to get last bucket end
+    last_bucket_end = int((total_seconds + bucket_sec - 1) // bucket_sec) * bucket_sec
+    num_buckets = int(last_bucket_end // bucket_sec)
+    
+    # Update duration_sec to match the last bucket end
+    duration_sec = last_bucket_end
     
     # Initialize time buckets
     time_buckets = {}
@@ -2725,12 +2728,11 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         if hit_at_10 is not None:
             bucket["recall_values"].append(hit_at_10)
         
-        # Add unique query
+        # Count all RESPONSE events, but only add to unique queries if query_id exists
+        bucket["response_count"] += 1
         query_id = event.get("query_id")
         if query_id:
             bucket["query_ids"].add(query_id)
-        
-        bucket["response_count"] += 1
         
         # Update parameters from current params
         params = event.get("_current_params", {})
@@ -2760,15 +2762,21 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         # Calculate unique queries
         bucket["unique_queries"] = len(bucket["query_ids"])
         
-        # Calculate P95 latency
-        if bucket["latencies"]:
+        # Calculate P95 latency and recall@10 with consistent guard logic
+        if bucket["is_filtered"]:
+            # If bucket is filtered, both metrics show guard
+            bucket["p95_ms"] = "— (guard)"
+            bucket["recall_at10"] = "— (guard)"
+        elif bucket["latencies"] and bucket["recall_values"]:
+            # Only calculate if both have data and not filtered
             p95 = np.percentile(bucket["latencies"], 95)
-            bucket["p95_ms"] = f"{p95:.1f}ms"
-        
-        # Calculate recall@10
-        if bucket["recall_values"]:
+            bucket["p95_ms"] = f"{p95:.2f}"
             recall = np.mean(bucket["recall_values"])
             bucket["recall_at10"] = f"{recall:.3f}"
+        else:
+            # No data case
+            bucket["p95_ms"] = "— (no data)"
+            bucket["recall_at10"] = "— (no data)"
     
     # ===== TOTAL CONSISTENCY CHECK =====
     total_responses = len(response_events)
@@ -2791,33 +2799,20 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
     for i in range(num_buckets):
         bucket = time_buckets[i]
         
-        # Determine display values
-        p95_display = bucket["p95_ms"]
-        recall_display = bucket["recall_at10"]
-        
-        if bucket["is_filtered"]:
-            if bucket["p95_ms"] == "—":
-                p95_display = "— (guard)"
-            if bucket["recall_at10"] == "—":
-                recall_display = "— (guard)"
-        elif not bucket["has_data"]:
-            if bucket["p95_ms"] == "—":
-                p95_display = "— (no data)"
-            if bucket["recall_at10"] == "—":
-                recall_display = "— (no data)"
-        
-        table_rows.append({
-            "time_bucket": bucket["timestamp"],
-            "phase": bucket["phase"],
-            "path": bucket["path"],
-            "ef": bucket["ef"],
-            "Ncand_max": bucket["Ncand_max"],
-            "candidate_k": bucket["candidate_k"],
-            "response_count": bucket["response_count"],
-            "unique_queries": bucket["unique_queries"],
-            "p95_ms": p95_display,
-            "recall_at10": recall_display
-        })
+        # Serialize all values to ensure proper rendering
+        row = {
+            "time_bucket": f"T+{i * bucket_sec}s",
+            "phase": serialize_values(bucket.get("phase", "—")),
+            "path": serialize_values(bucket.get("path", "—")),
+            "ef": serialize_values(bucket.get("ef", "—")),
+            "ncand_max": serialize_values(bucket.get("Ncand_max", "—")),
+            "candidate_k": serialize_values(bucket.get("candidate_k", "—")),
+            "response_count": serialize_values(bucket.get("response_count", 0)),
+            "unique_queries": serialize_values(bucket.get("unique_queries", 0)),
+            "p95_ms": serialize_values(bucket.get("p95_ms", "—")),
+            "recall_at10": serialize_values(bucket.get("recall_at10", "—"))
+        }
+        table_rows.append(row)
     
     # ===== SERIALIZE VALUES =====
     table_rows = serialize_values(table_rows)
@@ -2829,6 +2824,16 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
     candidate_k_set = serialize_values(sorted(list(candidate_k_set)))
     ncand_max_set = serialize_values(sorted(list(ncand_max_set)))
     rerank_mult_set = serialize_values(sorted(list(rerank_mult_set)))
+    
+    # Serialize bucket statistics
+    non_empty_ratio = serialize_values(non_empty_ratio)
+    non_empty_buckets = serialize_values(non_empty_buckets)
+    total_buckets = serialize_values(total_buckets)
+    guard_buckets = serialize_values(guard_buckets)
+    no_data_buckets = serialize_values(no_data_buckets)
+    bucketed_responses = serialize_values(bucketed_responses)
+    expected_responses = serialize_values(expected_responses)
+    diff = serialize_values(diff)
     
     # Calculate recall statistics
     recall_events = [e for e in response_events if e.get("hit_at10") is not None]
@@ -2956,7 +2961,7 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         
         <div class="summary">
             <h3>时间桶统计</h3>
-            <p><strong>Non-empty bucket ratio:</strong> {non_empty_ratio:.2f} ({non_empty_buckets}/{total_buckets})</p>
+            <p><strong>Non-empty bucket ratio:</strong> {non_empty_ratio} ({non_empty_buckets}/{total_buckets})</p>
             <p><strong>Guard buckets:</strong> {guard_buckets} | <strong>No-data buckets:</strong> {no_data_buckets}</p>
         </div>
         
@@ -2993,7 +2998,7 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         
         <div class="badge-info" style="background-color: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px;">
             <strong>📊 统计概览:</strong> 
-            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio:.2f}</span> | 
+            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio}</span> | 
             Guard buckets: <span style="color: #f57c00;">{guard_buckets}</span> | 
             No-data buckets: <span style="color: #d32f2f;">{no_data_buckets}</span>
         </div>
@@ -3024,7 +3029,7 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
                     <td>{row["phase"]}</td>
                     <td>{row["path"]}</td>
                     <td>{row["ef"]}</td>
-                    <td>{row["Ncand_max"]}</td>
+                    <td>{row["ncand_max"]}</td>
                     <td>{row["candidate_k"]}</td>
                     <td>{row["response_count"]}</td>
                     <td>{row["unique_queries"]}</td>
@@ -3033,13 +3038,13 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
                 </tr>
 """
     
-    html_content += """
+    html_content += f"""
             </tbody>
         </table>
         
         <div class="badge-info" style="background-color: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px;">
             <strong>📊 统计概览:</strong> 
-            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio:.2f}</span> | 
+            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio}</span> | 
             Guard buckets: <span style="color: #f57c00;">{guard_buckets}</span> | 
             No-data buckets: <span style="color: #d32f2f;">{no_data_buckets}</span>
         </div>
