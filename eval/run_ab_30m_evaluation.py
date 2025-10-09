@@ -22,7 +22,7 @@ from datetime import datetime
 import time
 
 # Add project root to path
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
@@ -222,6 +222,13 @@ async def main():
     parser.add_argument("--force-full-run", action="store_true", help="Force full evaluation run (both baseline and stress)")
     
     args = parser.parse_args()
+    # Quick check for duration
+    with open(args.config, "r") as f:
+        cfg = json.load(f)
+    duration = cfg.get("duration_seconds")
+    print(f"⏱ duration_seconds from config = {duration}")
+    assert duration is not None, f"duration_seconds must be specified in config"
+    print(f"✅ Using duration: {duration} seconds")
     
     # Setup logging
     logger = setup_logging()

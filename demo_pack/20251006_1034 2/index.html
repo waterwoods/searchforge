@@ -1,0 +1,416 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoTuner Demo Pack - 2025-10-06 10:34</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; }
+        .header h1 { margin: 0; font-size: 2.5em; font-weight: 300; }
+        .header p { margin: 10px 0 0 0; opacity: 0.9; }
+        .content { padding: 30px; }
+        .scenario-tabs { display: flex; gap: 8px; margin-bottom: 30px; flex-wrap: wrap; }
+        .tab { padding: 12px 24px; background: #f8f9fa; border: 2px solid transparent; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.3s; outline: none; }
+        .tab:hover { background: #e9ecef; }
+        .tab:focus { border-color: #007bff; }
+        .tab.active { background: #007bff; color: white; border-color: #0056b3; }
+        .tab.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+        .tab-content { display: block; }
+        .tab-content.hidden { display: none; }
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .metric-card { background: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .metric-card h3 { margin: 0 0 15px 0; color: #333; font-size: 1.2em; }
+        .metric-value { font-size: 2em; font-weight: bold; margin: 10px 0; }
+        .metric-label { color: #666; font-size: 0.9em; }
+        .pass { color: #28a745; }
+        .fail { color: #dc3545; }
+        .warning { color: #ffc107; }
+        .links { margin-top: 20px; }
+        .links a { display: inline-block; margin-right: 15px; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; }
+        .links a:hover { background: #0056b3; }
+        .global-comparison { background: #f8f9fa; padding: 25px; border-radius: 10px; margin: 30px 0; }
+        .criteria-list { list-style: none; padding: 0; }
+        .criteria-list li { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .criteria-list li:last-child { border-bottom: none; }
+        .no-data { text-align: center; padding: 40px; color: #666; font-style: italic; }
+        .chart-container { margin: 20px 0; padding: 20px; background: white; border-radius: 8px; }
+    </style>
+    <script type="application/json" id="data-scenario-a">{"scenario": "A", "preset": "High-Latency, Low-Recall", "mode": "sim", "duration_sec": 600, "bucket_sec": 10, "qps": 12, "init_params": {"ef_search": 256, "candidate_k": 2000, "rerank_k": 100, "threshold_T": 0.8}, "single_knob": {"metrics": {"delta_p95_ms": 11.5, "delta_recall": 0.032, "p_value": 0.011226038684659179, "safety_rate": 0.992, "apply_rate": 0.956, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 706}}, "experiment_dir": "demo_pack/20251006_1034/scenario_A/single_knob"}, "multi_knob": {"metrics": {"delta_p95_ms": 11.5, "delta_recall": 0.032, "p_value": 0.011226038684659179, "safety_rate": 0.992, "apply_rate": 0.956, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 706}}, "experiment_dir": "demo_pack/20251006_1034/scenario_A/multi_knob"}, "comparison": {"delta_p95_ms": 11.5, "delta_recall": 0.032, "p_value": 0.011226038684659179, "safety_rate": 0.992, "apply_rate": 0.956, "seed": 706, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 706}}}</script><script type="application/json" id="data-scenario-b">{"scenario": "B", "preset": "High-Recall, High-Latency", "mode": "sim", "duration_sec": 600, "bucket_sec": 10, "qps": 12, "init_params": {"ef_search": 512, "candidate_k": 3000, "rerank_k": 150, "threshold_T": 0.3}, "single_knob": {"metrics": {"delta_p95_ms": 7.2, "delta_recall": 0.033, "p_value": 0.01793047845466397, "safety_rate": 0.995, "apply_rate": 0.956, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 1018}}, "experiment_dir": "demo_pack/20251006_1034/scenario_B/single_knob"}, "multi_knob": {"metrics": {"delta_p95_ms": 7.2, "delta_recall": 0.033, "p_value": 0.01793047845466397, "safety_rate": 0.995, "apply_rate": 0.956, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 1018}}, "experiment_dir": "demo_pack/20251006_1034/scenario_B/multi_knob"}, "comparison": {"delta_p95_ms": 7.2, "delta_recall": 0.033, "p_value": 0.01793047845466397, "safety_rate": 0.995, "apply_rate": 0.956, "seed": 1018, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 1018}}}</script><script type="application/json" id="data-scenario-c">{"scenario": "C", "preset": "Low-Latency, Low-Recall", "mode": "sim", "duration_sec": 600, "bucket_sec": 10, "qps": 12, "init_params": {"ef_search": 64, "candidate_k": 500, "rerank_k": 20, "threshold_T": 0.9}, "single_knob": {"metrics": {"delta_p95_ms": 8.8, "delta_recall": 0.029, "p_value": 0.014670391462906881, "safety_rate": 0.992, "apply_rate": 0.956, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 154}}, "experiment_dir": "demo_pack/20251006_1034/scenario_C/single_knob"}, "multi_knob": {"metrics": {"delta_p95_ms": 8.8, "delta_recall": 0.029, "p_value": 0.014670391462906881, "safety_rate": 0.992, "apply_rate": 0.956, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 154}}, "experiment_dir": "demo_pack/20251006_1034/scenario_C/multi_knob"}, "comparison": {"delta_p95_ms": 8.8, "delta_recall": 0.029, "p_value": 0.014670391462906881, "safety_rate": 0.992, "apply_rate": 0.956, "seed": 154, "run_params": {"duration_sec": 900, "bucket_sec": 10, "qps": 15, "buckets_per_side": 90, "noise_pct": 0.03, "perm_trials": 5000, "seed": 154}}}</script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 AutoTuner Demo Pack</h1>
+            <p><strong>Generated:</strong> 2025-10-06 10:34:21</p>
+            <p><strong>Git SHA:</strong> unknown</p>
+            <p><strong>Notes:</strong> No notes provided</p>
+            <p><strong>Scenarios Run:</strong> A, B, C</p>
+        </div>
+        
+        <div class="content">
+            <div class="scenario-tabs" role="tablist" aria-label="Demo Pack Scenarios">
+                <button class="tab" data-tab="tab-scenario-a" onclick="showTab('tab-scenario-a')" role="tab" aria-selected="false" tabindex="0">Scenario A</button><button class="tab" data-tab="tab-scenario-b" onclick="showTab('tab-scenario-b')" role="tab" aria-selected="false" tabindex="0">Scenario B</button><button class="tab" data-tab="tab-scenario-c" onclick="showTab('tab-scenario-c')" role="tab" aria-selected="false" tabindex="0">Scenario C</button><button class="tab" data-tab="tab-global" onclick="showTab('tab-global')" role="tab" aria-selected="false" tabindex="0">Global Comparison</button>
+            </div>
+            
+            <section id="tab-scenario-a" class="tab-content hidden" role="tabpanel" aria-hidden="true">
+    <div id="A" class="scenario-content">
+        <h2>Scenario A</h2>
+        
+        <div class="metric-grid">
+            <div class="metric-card">
+                <h3>Hero KPIs</h3>
+                <div class="metric-value pass">PASS</div>
+                <div class="metric-label">Overall Result</div>
+        <div class="scenario-charts" style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+            <h3 style="margin-bottom: 15px; color: #333;">📈 Time Series Charts</h3>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+
+                <figure style="flex: 1; min-width: 300px; margin: 0; text-align: center;">
+                    <img src="plots/scenario_a_p95.png" alt="Scenario A P95 Latency" 
+                         style="width: 100%; max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    <figcaption style="font-size: 12px; color: #666; margin-top: 5px;">
+                        P95 Latency (ms) vs Time
+                    </figcaption>
+                </figure>
+
+                <figure style="flex: 1; min-width: 300px; margin: 0; text-align: center;">
+                    <img src="plots/scenario_a_recall.png" alt="Scenario A Recall@10" 
+                         style="width: 100%; max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    <figcaption style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Recall@10 vs Time
+                    </figcaption>
+                </figure>
+
+            </div>
+            <p style="font-size: 12px; color: #888; margin-top: 10px; font-style: italic; text-align: center;">
+                Single-knob (dashed gray) vs Multi-knob (solid blue) with EWMA smoothing
+            </p>
+        </div>
+                
+                <p><strong>ΔP95:</strong> 11.50 ms</p>
+                <p><strong>P-value:</strong> 0.011</p>
+                <p><strong>ΔRecall:</strong> 0.032</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Pass/Fail Criteria</h3>
+                <ul class="criteria-list">
+                    <li>ΔP95 > 0: <span class="pass">✓</span></li>
+                    <li>P-value < 0.05: <span class="pass">✓</span></li>
+                    <li>ΔRecall ≥ -0.01: <span class="pass">✓</span></li>
+                    <li>Safety: <span class="pass">0.99</span> (≥0.99)</li>
+                    <li>Apply Rate: <span class="pass">0.96</span> (≥0.95)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <h3>Detailed Reports</h3>
+            <div class="links">
+                <a href="scenario_A/one_pager.html" target="_blank">📊 Full Report</a>
+                <a href="scenario_A/one_pager.json" target="_blank">📄 JSON Data</a>
+                <a href="scenario_A/one_pager.csv" target="_blank">📈 CSV Data</a>
+            </div>
+        </div>
+    </div>
+    </section><section id="tab-scenario-b" class="tab-content hidden" role="tabpanel" aria-hidden="true">
+    <div id="B" class="scenario-content">
+        <h2>Scenario B</h2>
+        
+        <div class="metric-grid">
+            <div class="metric-card">
+                <h3>Hero KPIs</h3>
+                <div class="metric-value pass">PASS</div>
+                <div class="metric-label">Overall Result</div>
+        <div class="scenario-charts" style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+            <h3 style="margin-bottom: 15px; color: #333;">📈 Time Series Charts</h3>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+
+                <figure style="flex: 1; min-width: 300px; margin: 0; text-align: center;">
+                    <img src="plots/scenario_b_p95.png" alt="Scenario B P95 Latency" 
+                         style="width: 100%; max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    <figcaption style="font-size: 12px; color: #666; margin-top: 5px;">
+                        P95 Latency (ms) vs Time
+                    </figcaption>
+                </figure>
+
+                <figure style="flex: 1; min-width: 300px; margin: 0; text-align: center;">
+                    <img src="plots/scenario_b_recall.png" alt="Scenario B Recall@10" 
+                         style="width: 100%; max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    <figcaption style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Recall@10 vs Time
+                    </figcaption>
+                </figure>
+
+            </div>
+            <p style="font-size: 12px; color: #888; margin-top: 10px; font-style: italic; text-align: center;">
+                Single-knob (dashed gray) vs Multi-knob (solid blue) with EWMA smoothing
+            </p>
+        </div>
+                
+                <p><strong>ΔP95:</strong> 7.20 ms</p>
+                <p><strong>P-value:</strong> 0.018</p>
+                <p><strong>ΔRecall:</strong> 0.033</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Pass/Fail Criteria</h3>
+                <ul class="criteria-list">
+                    <li>ΔP95 > 0: <span class="pass">✓</span></li>
+                    <li>P-value < 0.05: <span class="pass">✓</span></li>
+                    <li>ΔRecall ≥ -0.01: <span class="pass">✓</span></li>
+                    <li>Safety: <span class="pass">0.99</span> (≥0.99)</li>
+                    <li>Apply Rate: <span class="pass">0.96</span> (≥0.95)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <h3>Detailed Reports</h3>
+            <div class="links">
+                <a href="scenario_B/one_pager.html" target="_blank">📊 Full Report</a>
+                <a href="scenario_B/one_pager.json" target="_blank">📄 JSON Data</a>
+                <a href="scenario_B/one_pager.csv" target="_blank">📈 CSV Data</a>
+            </div>
+        </div>
+    </div>
+    </section><section id="tab-scenario-c" class="tab-content hidden" role="tabpanel" aria-hidden="true">
+    <div id="C" class="scenario-content">
+        <h2>Scenario C</h2>
+        
+        <div class="metric-grid">
+            <div class="metric-card">
+                <h3>Hero KPIs</h3>
+                <div class="metric-value pass">PASS</div>
+                <div class="metric-label">Overall Result</div>
+        <div class="scenario-charts" style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+            <h3 style="margin-bottom: 15px; color: #333;">📈 Time Series Charts</h3>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+
+                <figure style="flex: 1; min-width: 300px; margin: 0; text-align: center;">
+                    <img src="plots/scenario_c_p95.png" alt="Scenario C P95 Latency" 
+                         style="width: 100%; max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    <figcaption style="font-size: 12px; color: #666; margin-top: 5px;">
+                        P95 Latency (ms) vs Time
+                    </figcaption>
+                </figure>
+
+                <figure style="flex: 1; min-width: 300px; margin: 0; text-align: center;">
+                    <img src="plots/scenario_c_recall.png" alt="Scenario C Recall@10" 
+                         style="width: 100%; max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    <figcaption style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Recall@10 vs Time
+                    </figcaption>
+                </figure>
+
+            </div>
+            <p style="font-size: 12px; color: #888; margin-top: 10px; font-style: italic; text-align: center;">
+                Single-knob (dashed gray) vs Multi-knob (solid blue) with EWMA smoothing
+            </p>
+        </div>
+                
+                <p><strong>ΔP95:</strong> 8.80 ms</p>
+                <p><strong>P-value:</strong> 0.015</p>
+                <p><strong>ΔRecall:</strong> 0.029</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Pass/Fail Criteria</h3>
+                <ul class="criteria-list">
+                    <li>ΔP95 > 0: <span class="pass">✓</span></li>
+                    <li>P-value < 0.05: <span class="pass">✓</span></li>
+                    <li>ΔRecall ≥ -0.01: <span class="pass">✓</span></li>
+                    <li>Safety: <span class="pass">0.99</span> (≥0.99)</li>
+                    <li>Apply Rate: <span class="pass">0.96</span> (≥0.95)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <h3>Detailed Reports</h3>
+            <div class="links">
+                <a href="scenario_C/one_pager.html" target="_blank">📊 Full Report</a>
+                <a href="scenario_C/one_pager.json" target="_blank">📄 JSON Data</a>
+                <a href="scenario_C/one_pager.csv" target="_blank">📈 CSV Data</a>
+            </div>
+        </div>
+    </div>
+    </section>
+            <section id="tab-global" class="tab-content hidden" role="tabpanel" aria-hidden="true">
+        <h2>Global Comparison</h2>
+        <div class="global-comparison">
+            <h3>Overall Summary</h3>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <h3>Scenario Pass Rate</h3>
+                    <div class="metric-value fail">
+                        0/0
+                    </div>
+                    <div class="metric-label">0.0% Success Rate</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Enhanced Parameters</h3>
+                    <p><strong>Duration per side:</strong> 900s</p>
+                    <p><strong>Buckets per side:</strong> 90</p>
+                    <p><strong>Permutation trials:</strong> 5000</p>
+                </div>
+            </div>
+            <div id="global-chart-container">
+                <!-- Chart will be rendered by JavaScript -->
+            </div>
+        </div>
+    </section>
+        </div>
+    </div>
+    
+    <script>
+        function showTab(tabId) {
+            // Hide all content and remove active states
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.add('hidden');
+                el.setAttribute('aria-hidden', 'true');
+            });
+            document.querySelectorAll('.tab').forEach(el => {
+                el.classList.remove('active');
+                el.setAttribute('aria-selected', 'false');
+            });
+            
+            // Show selected content
+            const targetContent = document.getElementById(tabId);
+            const targetTab = document.querySelector(`[data-tab="${tabId}"]`);
+            
+            if (targetContent && targetTab) {
+                targetContent.classList.remove('hidden');
+                targetContent.setAttribute('aria-hidden', 'false');
+                targetTab.classList.add('active');
+                targetTab.setAttribute('aria-selected', 'true');
+                
+                // Update URL hash for deep linking
+                window.location.hash = tabId;
+            }
+        }
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            const tabs = Array.from(document.querySelectorAll('.tab:not(.disabled)'));
+            const activeTab = document.querySelector('.tab.active');
+            const activeIndex = tabs.indexOf(activeTab);
+            
+            if (e.key === 'ArrowLeft' && activeIndex > 0) {
+                e.preventDefault();
+                tabs[activeIndex - 1].click();
+            } else if (e.key === 'ArrowRight' && activeIndex < tabs.length - 1) {
+                e.preventDefault();
+                tabs[activeIndex + 1].click();
+            }
+        });
+        
+        // Handle URL hash on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const hash = window.location.hash.substring(1);
+            if (hash && document.getElementById(hash)) {
+                showTab(hash);
+            } else {
+                // Show first available tab
+                const firstTab = document.querySelector('.tab:not(.disabled)');
+                if (firstTab) {
+                    const tabId = firstTab.getAttribute('data-tab');
+                    showTab(tabId);
+                }
+            }
+        });
+        
+        // Fallback: ensure first tab is shown if DOMContentLoaded doesn't work
+        window.addEventListener('load', function() {
+            const activeTab = document.querySelector('.tab.active');
+            if (!activeTab) {
+                const firstTab = document.querySelector('.tab:not(.disabled)');
+                if (firstTab) {
+                    const tabId = firstTab.getAttribute('data-tab');
+                    showTab(tabId);
+                }
+            }
+        });
+        
+        // Function to get scenario data
+        function getScenarioData(scenarioName) {
+            const script = document.getElementById(`data-scenario-${scenarioName}`);
+            return script ? JSON.parse(script.textContent) : null;
+        }
+        
+        // Function to render global comparison
+        function renderGlobalComparison() {
+            const scenarios = ['a', 'b', 'c'];
+            const data = scenarios.map(name => ({
+                name: name.toUpperCase(),
+                data: getScenarioData(name)
+            })).filter(item => item.data);
+            
+            if (data.length === 0) {
+                return '<div class="no-data">无数据 - No global comparison data available</div>';
+            }
+            
+            // Generate comparison chart data
+            const comparisonData = data.map(item => {
+                const comparison = item.data.comparison || {};
+                return {
+                    scenario: item.name,
+                    deltaP95: comparison.delta_p95_ms || 0,
+                    pValue: comparison.p_value || 1.0,
+                    deltaRecall: comparison.delta_recall || 0,
+                    safetyRate: comparison.safety_rate || 0.99,
+                    applyRate: comparison.apply_rate || 0.95
+                };
+            });
+            
+            return `
+                <div class="global-comparison">
+                    <h3>Single vs Multi-Knob Performance Comparison</h3>
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <h3>ΔP95 Performance</h3>
+                            ${comparisonData.map(item => `
+                                <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                                    <span>Scenario ${item.scenario}:</span>
+                                    <span class="${item.deltaP95 > 0 ? 'pass' : 'fail'}">${item.deltaP95.toFixed(2)} ms</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="metric-card">
+                            <h3>Statistical Significance</h3>
+                            ${comparisonData.map(item => `
+                                <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                                    <span>Scenario ${item.scenario}:</span>
+                                    <span class="${item.pValue < 0.05 ? 'pass' : 'fail'}">${item.pValue.toFixed(3)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="metric-card">
+                            <h3>Safety & Apply Rates</h3>
+                            ${comparisonData.map(item => `
+                                <div style="margin: 8px 0;">
+                                    <div>Scenario ${item.scenario}:</div>
+                                    <div>Safety: <span class="${item.safetyRate >= 0.99 ? 'pass' : 'fail'}">${(item.safetyRate * 100).toFixed(1)}%</span></div>
+                                    <div>Apply: <span class="${item.applyRate >= 0.95 ? 'pass' : 'fail'}">${(item.applyRate * 100).toFixed(1)}%</span></div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Render global comparison when tab is shown
+        document.addEventListener('DOMContentLoaded', function() {
+            const globalTab = document.getElementById('tab-global');
+            if (globalTab) {
+                globalTab.innerHTML = renderGlobalComparison();
+            }
+        });
+    </script>
+</body>
+</html>
+    

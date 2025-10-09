@@ -1,0 +1,9 @@
+{
+  "created_at": "2025-10-06T09:10:33.682138",
+  "notes": "Quick test",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A"
+  ],
+  "total_duration_sec": 240
+}

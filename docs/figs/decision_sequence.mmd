@@ -1,0 +1,168 @@
+%% AutoTuner Decision Sequence - 决策时序图
+%% 展示完整的决策流程，从输入到参数更新
+
+sequenceDiagram
+    participant User as 用户请求
+    participant SP as SearchPipeline
+    participant State as AutoTuner State
+    participant Mem as Memory System
+    participant Brain as Brain Decider
+    participant Apply as Apply Engine
+    participant Cons as Constraints
+
+    Note over User,Cons: ===== Tick N: 新请求到达 =====
+    
+    User->>SP: search(query, top_k=10)
+    activate SP
+    
+    SP->>SP: 执行检索<br/>(vector/hybrid search)
+    SP->>SP: 记录指标<br/>(p95_ms, recall_at10)
+    
+    SP->>State: update_metrics(p95, recall)
+    activate State
+    State->>State: 计算 EWMA<br/>(平滑指标噪声)
+    State-->>SP: metrics_updated
+    deactivate State
+    
+    Note over SP,Brain: ===== 每 5-10 秒触发一次调优 =====
+    
+    SP->>Brain: decide_tuning_action(TuningInput)
+    activate Brain
+    
+    Note over Brain: Layer 0: Memory Hook
+    Brain->>Mem: query(bucket_id)
+    activate Mem
+    
+    alt Sweet Spot 存在且未过期
+        Mem-->>Brain: sweet_spot_params
+        Brain-->>SP: Action(kind="memory_jump")
+        Note right of Brain: 直接跳转，跳过后续层
+    else 无缓存或已过期
+        Mem-->>Brain: None
+        deactivate Mem
+        
+        Note over Brain: Layer 1: Cooldown Guard
+        alt 冷却期激活
+            Brain-->>SP: Action(kind="noop", reason="cooldown")
+        else 冷却期结束
+            Note over Brain: Layer 2: Hysteresis Band
+            alt 在滞回带内
+                Brain-->>SP: Action(kind="noop", reason="within_hysteresis")
+            else 超出滞回带
+                Note over Brain: Layer 4: Decision Core
+                
+                alt 高延迟 + 召回冗余
+                    Brain->>Brain: 计算动作<br/>action_kind="drop_ef"<br/>base_step=-32
+                else 低召回 + 延迟有余
+                    Brain->>Brain: 计算动作<br/>action_kind="bump_ef"<br/>base_step=+32
+                else 临界区优化
+                    Brain->>Brain: 计算动作<br/>action_kind="bump_T"<br/>base_step=+100
+                end
+                
+                Note over Brain: Layer 3: Anti-Oscillation
+                Brain->>Brain: 检查冷却时间<br/>(last_action.age < 10s?)
+                
+                alt 同动作冷却中
+                    Brain-->>SP: Action(kind="noop", reason="cooldown_active")
+                else 冷却期已过
+                    Brain->>Brain: 自适应步长<br/>(adjustment_count >= 2 → step *= 0.5)
+                    Brain-->>SP: Action(kind, step, reason)
+                end
+            end
+        end
+    end
+    deactivate Brain
+    
+    Note over SP,Cons: ===== 应用动作 =====
+    
+    SP->>Apply: apply_action(params, action)
+    activate Apply
+    
+    alt 单参数动作
+        Apply->>Apply: 计算新参数<br/>params[key] += step
+        
+        Note over Apply: Layer 5: Individual Clipping
+        Apply->>Cons: clip_params(new_params)
+        activate Cons
+        Cons->>Cons: 检查边界<br/>ef ∈ [64,256]<br/>T ∈ [200,1200]
+        Cons-->>Apply: clipped_params
+        deactivate Cons
+        
+        Note over Apply: Layer 6: Joint Constraints
+        Apply->>Cons: clip_joint(clipped_params)
+        activate Cons
+        Cons->>Cons: 检查联合约束<br/>ef ≤ 4×candidate_k<br/>rerank_k ≤ candidate_k
+        
+        alt 违反约束
+            Cons->>Cons: 修正参数
+            Note right of Cons: was_clipped=True
+        end
+        
+        Cons-->>Apply: final_params, was_clipped, reason
+        deactivate Cons
+        
+        Apply-->>SP: new_params
+        
+    else 多参数动作 (Sequential)
+        Apply->>Apply: 预检查可行性<br/>(feasibility projection)
+        
+        loop 每个参数更新
+            Apply->>Cons: 检查约束
+            activate Cons
+            
+            alt 参数合法
+                Cons-->>Apply: valid
+                Apply->>Apply: 应用更新
+            else 参数违反约束
+                Cons-->>Apply: invalid
+                Apply->>Apply: 跳过此参数
+            end
+            deactivate Cons
+        end
+        
+        Apply->>Cons: clip_joint(merged_params)
+        activate Cons
+        Cons-->>Apply: final_params
+        deactivate Cons
+        
+        Apply-->>SP: MultiKnobResult(status="applied")
+        
+    else 多参数动作 (Atomic)
+        Apply->>Apply: 创建快照<br/>snapshot = params.copy()
+        Apply->>Apply: 应用所有更新<br/>params[key] += delta
+        
+        Apply->>Cons: clip_joint(new_params)
+        activate Cons
+        
+        alt 违反约束
+            Cons-->>Apply: was_clipped=True
+            Apply->>Apply: 回滚到快照<br/>params = snapshot
+            Apply-->>SP: MultiKnobResult(status="rolled_back")
+        else 所有约束满足
+            Cons-->>Apply: final_params
+            deactivate Cons
+            Apply-->>SP: MultiKnobResult(status="applied")
+        end
+    end
+    deactivate Apply
+    
+    Note over SP,Mem: ===== 更新记忆系统 =====
+    
+    alt 参数更新成功 且 性能达标
+        SP->>Mem: record_sweet_spot(params, bucket_id)
+        activate Mem
+        Mem->>Mem: 缓存参数<br/>设置 TTL=300s
+        Mem-->>SP: recorded
+        deactivate Mem
+    end
+    
+    SP->>State: apply_params(new_params)
+    activate State
+    State->>State: 更新参数状态<br/>记录 last_action
+    State-->>SP: params_applied
+    deactivate State
+    
+    SP-->>User: search_results
+    deactivate SP
+    
+    Note over User,Cons: ===== Tick N+1: 下一轮决策 (5-10秒后) =====

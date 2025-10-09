@@ -1,0 +1,41 @@
+# Last Good Configuration Preset
+# This represents the last known stable configuration
+metadata:
+  name: "last_good"
+  description: "Last known stable configuration"
+  created_at: "2024-01-01T00:00:00Z"
+  version: "1.0.0"
+  tags: ["stable", "production"]
+
+# Macro knobs
+macro_knobs:
+  latency_guard: 0.5
+  recall_bias: 0.5
+
+# Derived parameters snapshot
+derived_params:
+  T: 700
+  Ncand_max: 1000
+  batch_size: 128
+  ef: 128
+  rerank_multiplier: 3
+
+# Search pipeline configuration
+retriever:
+  type: hybrid
+  alpha: 0.6
+  vector_top_k: 200
+  bm25_top_k: 200
+  top_k: 50
+
+reranker:
+  type: cross_encoder
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_k: 50
+
+# SLO targets
+slo:
+  p95_ms: 1200
+  recall_at_10: 0.30
+
+

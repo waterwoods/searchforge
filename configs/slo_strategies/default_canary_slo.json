@@ -1,0 +1,40 @@
+{
+    "name": "default_canary_slo",
+    "description": "Default SLO strategy for canary deployments with p95 latency and recall@10 monitoring",
+    "rules": [
+        {
+            "name": "p95_latency",
+            "metric": "p95_ms",
+            "operator": "le",
+            "threshold": 1200.0,
+            "consecutive_buckets": 2,
+            "description": "P95 latency must be <= 1200ms for 2 consecutive buckets"
+        },
+        {
+            "name": "recall_at_10",
+            "metric": "recall_at_10",
+            "operator": "ge",
+            "threshold": 0.30,
+            "consecutive_buckets": 2,
+            "description": "Recall@10 must be >= 0.30 for 2 consecutive buckets"
+        }
+    ],
+    "alert_config": {
+        "enabled": true,
+        "console_alerts": true,
+        "file_alerts": true,
+        "violations_file": "reports/canary/violations.json",
+        "console_red_text": true,
+        "alert_threshold": 1,
+        "description": "Send alerts to console and file for SLO violations"
+    },
+    "rollback_config": {
+        "consecutive_buckets": 2,
+        "auto_rollback": true,
+        "rollback_delay_seconds": 0,
+        "max_rollbacks_per_hour": 5,
+        "description": "Automatically rollback after 2 consecutive SLO violations, max 5 rollbacks per hour"
+    },
+    "enabled": true
+}
+

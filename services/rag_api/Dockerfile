@@ -8,6 +8,7 @@ RUN if [ -s /app/requirements.txt ]; then \
     pip install --no-cache-dir --no-compile -r /app/requirements.txt -c ${CONSTRAINTS_FILE}; \
     fi
 COPY services/rag_api/ /app/
+COPY modules/ /app/modules/
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1

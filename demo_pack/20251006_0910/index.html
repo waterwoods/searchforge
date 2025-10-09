@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoTuner Demo Pack - 2025-10-06 09:10</title>
+    <link rel="stylesheet" href="assets/demo/demo-pack.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 AutoTuner Demo Pack</h1>
+            <p><strong>Generated:</strong> 2025-10-06 09:10:33</p>
+            <p><strong>Git SHA:</strong> f9120364</p>
+            <p><strong>Notes:</strong> Quick test</p>
+            <p><strong>Scenarios Run:</strong> A</p>
+        </div>
+        
+        <div class="content">
+            <div class="scenario-tabs">
+                <button class="tab" onclick="showScenario('A')">Scenario A</button>
+                <button class="tab" onclick="showGlobal()">Global Comparison</button>
+            </div>
+            
+            
+    <div id="A" class="scenario-content">
+        <h2>Scenario A: Starts with high-latency, low-recall initial parameters</h2>
+        
+        <div class="metric-grid metric-grid-3">
+            <div class="metric-card">
+                <h3>Hero KPIs</h3>
+                <div class="metric-value fail">
+                    <span class="status-badge status-fail">FAIL</span>
+                </div>
+                <div class="metric-label">Overall Result</div>
+                
+                <p><strong>ΔP95:</strong> 11.20 ms</p>
+                <p><strong>P-value:</strong> 0.080</p>
+                <p><strong>ΔRecall:</strong> 0.036</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Pass/Fail Criteria</h3>
+                <ul class="criteria-list">
+                    <li>ΔP95 > 0: <span class="pass">✓</span></li>
+                    <li>P-value < 0.05: <span class="fail">✗</span></li>
+                    <li>ΔRecall ≥ -0.01: <span class="pass">✓</span></li>
+                    <li>Safety ≥ 0.99: <span class="pass">✓</span></li>
+                    <li>Apply Rate ≥ 0.95: <span class="pass">✓</span></li>
+                </ul>
+            </div>
+            
+            <div class="metric-card">
+                <h3>📊 Detailed Reports</h3>
+                <div class="links">
+                    <a href="scenario_A/one_pager.html" target="_blank">📊 Full Report</a>
+                    <a href="scenario_A/one_pager.json" target="_blank">📄 JSON Data</a>
+                    <a href="scenario_A/one_pager.csv" target="_blank">📈 CSV Data</a>
+                </div>
+            </div>
+        </div>
+        
+        
+        
+            <div class="metric-card">
+                <h3>💡 Recommendations</h3>
+                <ul class="criteria-list">
+                    <li>Results are not statistically significant. Increase experiment duration or QPS for better power.</li>
+                </ul>
+            </div>
+            
+    </div>
+        
+            
+            <div id="global" class="scenario-content">
+                <h2>Global Comparison</h2>
+                <div class="global-comparison">
+                    <h3>Single vs Multi-Knob Performance</h3>
+                    <div class="metric-card">
+                        <p><strong>Average ΔP95:</strong> 11.20 ms</p>
+                        <p><strong>Average ΔRecall:</strong> 0.036</p>
+                        <p><strong>Average Apply Rate:</strong> 0.95</p>
+                        <p><strong>Average Safety Rate:</strong> 0.99</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function showScenario(scenario) {
+            document.querySelectorAll('.scenario-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(scenario).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        function showGlobal() {
+            document.querySelectorAll('.scenario-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('global').classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstTab = document.querySelector('.tab');
+            if (firstTab) firstTab.click();
+        });
+    </script>
+</body>
+</html>

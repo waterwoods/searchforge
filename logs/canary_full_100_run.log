@@ -1,0 +1,90 @@
+================================================================================
+🚀 Full 100% Rollout Validation
+================================================================================
+
+================================================================================
+🔥 Phase 1: Cache Warmup (120s)
+================================================================================
+  Warmup: 50 queries, cache_size=30, 10s elapsed
+  Warmup: 100 queries, cache_size=30, 19s elapsed
+  Warmup: 150 queries, cache_size=30, 29s elapsed
+  Warmup: 200 queries, cache_size=30, 39s elapsed
+  Warmup: 250 queries, cache_size=30, 48s elapsed
+  Warmup: 300 queries, cache_size=30, 57s elapsed
+  Warmup: 350 queries, cache_size=30, 67s elapsed
+  Warmup: 400 queries, cache_size=30, 76s elapsed
+  Warmup: 450 queries, cache_size=30, 85s elapsed
+  Warmup: 500 queries, cache_size=30, 95s elapsed
+  Warmup: 550 queries, cache_size=30, 105s elapsed
+  Warmup: 600 queries, cache_size=30, 115s elapsed
+✅ Warmup complete: 629 queries, cache_size=30, 120.1s
+
+================================================================================
+🚀 Phase 2: Full 100% ON Test (600s)
+================================================================================
+  Progress: 100 queries, 20s elapsed, 580s remaining
+  Progress: 200 queries, 39s elapsed, 561s remaining
+  Progress: 300 queries, 58s elapsed, 542s remaining
+  Progress: 400 queries, 77s elapsed, 523s remaining
+  Progress: 500 queries, 96s elapsed, 504s remaining
+  Progress: 600 queries, 115s elapsed, 485s remaining
+  Progress: 700 queries, 134s elapsed, 466s remaining
+  Progress: 800 queries, 154s elapsed, 446s remaining
+  Progress: 900 queries, 173s elapsed, 427s remaining
+  Progress: 1000 queries, 192s elapsed, 408s remaining
+  Progress: 1100 queries, 211s elapsed, 389s remaining
+  Progress: 1200 queries, 231s elapsed, 369s remaining
+  Progress: 1300 queries, 250s elapsed, 350s remaining
+  Progress: 1400 queries, 268s elapsed, 332s remaining
+  Progress: 1500 queries, 287s elapsed, 313s remaining
+  Progress: 1600 queries, 307s elapsed, 293s remaining
+  Progress: 1700 queries, 325s elapsed, 275s remaining
+  Progress: 1800 queries, 344s elapsed, 256s remaining
+  Progress: 1900 queries, 363s elapsed, 237s remaining
+  Progress: 2000 queries, 382s elapsed, 218s remaining
+  Progress: 2100 queries, 402s elapsed, 198s remaining
+  Progress: 2200 queries, 421s elapsed, 179s remaining
+  Progress: 2300 queries, 440s elapsed, 160s remaining
+  Progress: 2400 queries, 458s elapsed, 142s remaining
+  Progress: 2500 queries, 477s elapsed, 123s remaining
+  Progress: 2600 queries, 497s elapsed, 103s remaining
+  Progress: 2700 queries, 516s elapsed, 84s remaining
+  Progress: 2800 queries, 535s elapsed, 65s remaining
+  Progress: 2900 queries, 554s elapsed, 46s remaining
+  Progress: 3000 queries, 573s elapsed, 27s remaining
+  Progress: 3100 queries, 592s elapsed, 8s remaining
+✅ Test complete: 3144 queries, 600.1s
+
+================================================================================
+📊 Phase 3: Baseline Sample (60s, rewrite=OFF)
+================================================================================
+✅ Baseline complete: 318 queries, 60.0s
+
+================================================================================
+📊 Statistical Analysis
+================================================================================
+
+📊 Generating monitoring artifacts...
+  ✓ Dashboards saved: dashboards/recall_p95_cache.json, dashboards/cost_failure.json
+  ✓ Charts saved: docs/plots/{recall,p95,cache}_timeline.png
+  ✓ HTML report updated with embedded charts
+
+================================================================================
+🚦 Production Gate Check
+================================================================================
+  ✓ ΔRecall≥5% (0.1462)
+  ✓ p<0.05 (0.0000)
+  ✓ ΔP95≤5ms (2.3ms)
+  ✓ 失败率<1% (0.00%)
+  ✓ 成本≤$0.00005 ($0.000050)
+  ✓ 缓存命中率≥90% (100.0%)
+  ✓ 分桶数≥10 (60)
+
+================================================================================
+✅ PASS - 全部门禁通过，100% 上线成功
+   ΔRecall=+0.1462 (+47.4%)
+   ΔP95=+2.3ms, p=0.0000
+   cost=$0.000050, fail=0.00%
+   cache_hit=100.0%, async_hit=0.0%
+   buckets_used=60
+================================================================================

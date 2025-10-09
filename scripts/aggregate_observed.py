@@ -12,6 +12,7 @@ import argparse
 import base64
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
+from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from collections import defaultdict
@@ -2598,14 +2599,11 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
     first_ts = min(response_timestamps)
     last_ts = max(response_timestamps)
     
-    # Calculate duration: use last bucket end as duration_sec
+    # Calculate duration: subtract warmup, then round up to bucket_sec boundary
     total_seconds = last_ts - first_ts
-    # Round up to bucket_sec boundary to get last bucket end
-    last_bucket_end = int((total_seconds + bucket_sec - 1) // bucket_sec) * bucket_sec
-    num_buckets = int(last_bucket_end // bucket_sec)
-    
-    # Update duration_sec to match the last bucket end
-    duration_sec = last_bucket_end
+    duration_after_warmup = total_seconds - warmup_sec
+    # Round up to bucket_sec boundary to avoid off-by-one errors
+    num_buckets = int((duration_after_warmup + bucket_sec - 1) // bucket_sec) + 1
     
     # Initialize time buckets
     time_buckets = {}
@@ -2728,11 +2726,12 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         if hit_at_10 is not None:
             bucket["recall_values"].append(hit_at_10)
         
-        # Count all RESPONSE events, but only add to unique queries if query_id exists
-        bucket["response_count"] += 1
+        # Add unique query
         query_id = event.get("query_id")
         if query_id:
             bucket["query_ids"].add(query_id)
+        
+        bucket["response_count"] += 1
         
         # Update parameters from current params
         params = event.get("_current_params", {})
@@ -2762,21 +2761,15 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         # Calculate unique queries
         bucket["unique_queries"] = len(bucket["query_ids"])
         
-        # Calculate P95 latency and recall@10 with consistent guard logic
-        if bucket["is_filtered"]:
-            # If bucket is filtered, both metrics show guard
-            bucket["p95_ms"] = "— (guard)"
-            bucket["recall_at10"] = "— (guard)"
-        elif bucket["latencies"] and bucket["recall_values"]:
-            # Only calculate if both have data and not filtered
+        # Calculate P95 latency
+        if bucket["latencies"]:
             p95 = np.percentile(bucket["latencies"], 95)
-            bucket["p95_ms"] = f"{p95:.2f}"
+            bucket["p95_ms"] = f"{p95:.1f}ms"
+        
+        # Calculate recall@10
+        if bucket["recall_values"]:
             recall = np.mean(bucket["recall_values"])
             bucket["recall_at10"] = f"{recall:.3f}"
-        else:
-            # No data case
-            bucket["p95_ms"] = "— (no data)"
-            bucket["recall_at10"] = "— (no data)"
     
     # ===== TOTAL CONSISTENCY CHECK =====
     total_responses = len(response_events)
@@ -2799,20 +2792,33 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
     for i in range(num_buckets):
         bucket = time_buckets[i]
         
-        # Serialize all values to ensure proper rendering
-        row = {
-            "time_bucket": f"T+{i * bucket_sec}s",
-            "phase": serialize_values(bucket.get("phase", "—")),
-            "path": serialize_values(bucket.get("path", "—")),
-            "ef": serialize_values(bucket.get("ef", "—")),
-            "ncand_max": serialize_values(bucket.get("Ncand_max", "—")),
-            "candidate_k": serialize_values(bucket.get("candidate_k", "—")),
-            "response_count": serialize_values(bucket.get("response_count", 0)),
-            "unique_queries": serialize_values(bucket.get("unique_queries", 0)),
-            "p95_ms": serialize_values(bucket.get("p95_ms", "—")),
-            "recall_at10": serialize_values(bucket.get("recall_at10", "—"))
-        }
-        table_rows.append(row)
+        # Determine display values
+        p95_display = bucket["p95_ms"]
+        recall_display = bucket["recall_at10"]
+        
+        if bucket["is_filtered"]:
+            if bucket["p95_ms"] == "—":
+                p95_display = "— (guard)"
+            if bucket["recall_at10"] == "—":
+                recall_display = "— (guard)"
+        elif not bucket["has_data"]:
+            if bucket["p95_ms"] == "—":
+                p95_display = "— (no data)"
+            if bucket["recall_at10"] == "—":
+                recall_display = "— (no data)"
+        
+        table_rows.append({
+            "time_bucket": bucket["timestamp"],
+            "phase": bucket["phase"],
+            "path": bucket["path"],
+            "ef": bucket["ef"],
+            "Ncand_max": bucket["Ncand_max"],
+            "candidate_k": bucket["candidate_k"],
+            "response_count": bucket["response_count"],
+            "unique_queries": bucket["unique_queries"],
+            "p95_ms": p95_display,
+            "recall_at10": recall_display
+        })
     
     # ===== SERIALIZE VALUES =====
     table_rows = serialize_values(table_rows)
@@ -2824,16 +2830,6 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
     candidate_k_set = serialize_values(sorted(list(candidate_k_set)))
     ncand_max_set = serialize_values(sorted(list(ncand_max_set)))
     rerank_mult_set = serialize_values(sorted(list(rerank_mult_set)))
-    
-    # Serialize bucket statistics
-    non_empty_ratio = serialize_values(non_empty_ratio)
-    non_empty_buckets = serialize_values(non_empty_buckets)
-    total_buckets = serialize_values(total_buckets)
-    guard_buckets = serialize_values(guard_buckets)
-    no_data_buckets = serialize_values(no_data_buckets)
-    bucketed_responses = serialize_values(bucketed_responses)
-    expected_responses = serialize_values(expected_responses)
-    diff = serialize_values(diff)
     
     # Calculate recall statistics
     recall_events = [e for e in response_events if e.get("hit_at10") is not None]
@@ -2961,7 +2957,7 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         
         <div class="summary">
             <h3>时间桶统计</h3>
-            <p><strong>Non-empty bucket ratio:</strong> {non_empty_ratio} ({non_empty_buckets}/{total_buckets})</p>
+            <p><strong>Non-empty bucket ratio:</strong> {non_empty_ratio:.2f} ({non_empty_buckets}/{total_buckets})</p>
             <p><strong>Guard buckets:</strong> {guard_buckets} | <strong>No-data buckets:</strong> {no_data_buckets}</p>
         </div>
         
@@ -2998,7 +2994,7 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
         
         <div class="badge-info" style="background-color: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px;">
             <strong>📊 统计概览:</strong> 
-            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio}</span> | 
+            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio:.2f}</span> | 
             Guard buckets: <span style="color: #f57c00;">{guard_buckets}</span> | 
             No-data buckets: <span style="color: #d32f2f;">{no_data_buckets}</span>
         </div>
@@ -3029,7 +3025,7 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
                     <td>{row["phase"]}</td>
                     <td>{row["path"]}</td>
                     <td>{row["ef"]}</td>
-                    <td>{row["ncand_max"]}</td>
+                    <td>{row["Ncand_max"]}</td>
                     <td>{row["candidate_k"]}</td>
                     <td>{row["response_count"]}</td>
                     <td>{row["unique_queries"]}</td>
@@ -3038,13 +3034,13 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
                 </tr>
 """
     
-    html_content += f"""
+    html_content += """
             </tbody>
         </table>
         
         <div class="badge-info" style="background-color: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px;">
             <strong>📊 统计概览:</strong> 
-            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio}</span> | 
+            Non-empty ratio: <span style="color: #2e7d32;">{non_empty_ratio:.2f}</span> | 
             Guard buckets: <span style="color: #f57c00;">{guard_buckets}</span> | 
             No-data buckets: <span style="color: #d32f2f;">{no_data_buckets}</span>
         </div>
@@ -3054,6 +3050,1358 @@ def generate_data_table_html(events, bucket_sec=5, warmup_sec=5, switch_guard_se
 """
     
     return html_content
+
+def generate_simulator_ab_html(off_events: List[Dict[str, Any]], on_events: List[Dict[str, Any]], 
+                              off_metrics: Dict[str, Any], on_metrics: Dict[str, Any],
+                              off_dir: str, on_dir: str) -> str:
+    """Generate simulator A/B comparison HTML report."""
+    
+    # Extract response events
+    off_responses = [e for e in off_events if e.get("event") == "RESPONSE"]
+    on_responses = [e for e in on_events if e.get("event") == "RESPONSE"]
+    
+    # Calculate metrics
+    off_p95_values = [r["cost_ms"] for r in off_responses]
+    on_p95_values = [r["cost_ms"] for r in on_responses]
+    off_recall_values = [r["stats"]["recall_at10"] for r in off_responses]
+    on_recall_values = [r["stats"]["recall_at10"] for r in on_responses]
+    
+    mean_p95_off = np.mean(off_p95_values) if off_p95_values else 0
+    mean_p95_on = np.mean(on_p95_values) if on_p95_values else 0
+    mean_recall_off = np.mean(off_recall_values) if off_recall_values else 0
+    mean_recall_on = np.mean(on_recall_values) if on_recall_values else 0
+    
+    # Calculate deltas (Multi-Knob vs Single-Knob)
+    # delta_p95_ms := mean(p95_single) - mean(p95_multi) - Larger is better
+    delta_p95 = mean_p95_off - mean_p95_on  # Single - Multi (larger is better)
+    delta_recall = mean_recall_on - mean_recall_off  # Multi - Single (larger is better)
+    
+    # Get metrics from files if available
+    p_value = off_metrics.get("p_value", 0.5)
+    apply_rate_off = off_metrics.get("apply_rate_a", 0.0)
+    apply_rate_on = off_metrics.get("apply_rate_b", 0.0)
+    
+    # Get run parameters
+    run_params = off_metrics.get("run_params", {})
+    duration_sec = run_params.get("duration_sec", 120)
+    bucket_sec = run_params.get("bucket_sec", 5)
+    qps = run_params.get("qps", 10.0)
+    buckets_generated = run_params.get("buckets_generated", len(off_responses))
+    
+    # Check for low sample warning
+    low_sample_warning = buckets_generated < 10
+    
+    # Determine significance and gating
+    is_significant = p_value < 0.05
+    is_improvement = delta_p95 > 0 and delta_recall >= -0.01
+    
+    # Gating logic: GREEN if delta_p95_ms > 0 and p_value < 0.05; YELLOW if p in [0.05,0.1] or |delta| < 1ms; RED otherwise
+    if delta_p95 > 0 and p_value < 0.05:
+        p95_color = "positive"  # GREEN
+    elif (0.05 <= p_value <= 0.1) or abs(delta_p95) < 1.0:
+        p95_color = "orange"     # YELLOW
+    else:
+        p95_color = "negative"   # RED
+    
+    recall_color = "positive" if delta_recall >= 0 else "negative" if delta_recall < -0.01 else "orange"
+    significance_color = "positive" if is_significant else "negative"
+    
+    # Generate time series data for charts
+    off_times = [datetime.fromisoformat(r["ts"].replace('Z', '+00:00')) for r in off_responses]
+    on_times = [datetime.fromisoformat(r["ts"].replace('Z', '+00:00')) for r in on_responses]
+    
+    # Create charts
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+    
+    # P95 latency chart
+    ax1.plot(off_times, off_p95_values, 'r-', label='Single-Knob', alpha=0.7)
+    ax1.plot(on_times, on_p95_values, 'g-', label='Multi-Knob', alpha=0.7)
+    ax1.set_ylabel('P95 Latency (ms)')
+    ax1.set_title('P95 Latency Comparison')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Recall chart
+    ax2.plot(off_times, off_recall_values, 'r-', label='Single-Knob', alpha=0.7)
+    ax2.plot(on_times, on_recall_values, 'g-', label='Multi-Knob', alpha=0.7)
+    ax2.set_ylabel('Recall@10')
+    ax2.set_xlabel('Time')
+    ax2.set_title('Recall@10 Comparison')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # Save chart
+    chart_path = "temp_ab_chart.png"
+    plt.tight_layout()
+    plt.savefig(chart_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    # Encode chart
+    with open(chart_path, 'rb') as f:
+        chart_data = base64.b64encode(f.read()).decode()
+    os.remove(chart_path)
+    
+    # Generate HTML
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Multi-Knob vs Single-Knob A/B Effectiveness Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+            .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            .header {{ text-align: center; margin-bottom: 30px; }}
+            .header h1 {{ color: #333; margin-bottom: 10px; }}
+            .header p {{ color: #666; font-size: 14px; }}
+            .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }}
+            .metric-card {{ background: #f8f9fa; padding: 15px; border-radius: 6px; text-align: center; border-left: 4px solid #007bff; }}
+            .metric-value {{ font-size: 24px; font-weight: bold; margin-bottom: 5px; }}
+            .metric-label {{ font-size: 12px; color: #666; text-transform: uppercase; }}
+            .positive {{ color: #28a745; }}
+            .negative {{ color: #dc3545; }}
+            .orange {{ color: #fd7e14; }}
+            .chart-container {{ margin: 20px 0; text-align: center; }}
+            .chart-container img {{ max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }}
+            .summary-table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+            .summary-table th, .summary-table td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+            .summary-table th {{ background-color: #f8f9fa; font-weight: bold; }}
+            .significance {{ padding: 10px; border-radius: 4px; margin: 10px 0; }}
+            .significance.positive {{ background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }}
+            .significance.negative {{ background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🧠 Multi-Knob vs Single-Knob A/B Effectiveness Report</h1>
+                <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <p><strong>Formula:</strong> ΔP95 = mean(p95_single) - mean(p95_multi) | <strong>Gating:</strong> GREEN if ΔP95 > 0 and p < 0.05; YELLOW if p ∈ [0.05,0.1] or |ΔP95| < 1ms; RED otherwise</p>
+                <p><strong>Reproducibility:</strong> Seed={run_params.get('seed', 0)}, PermTrials={run_params.get('perm_trials', 1000)}, Duration={run_params.get('duration_sec', 120)}s, Bucket={run_params.get('bucket_sec', 5)}s, QPS={run_params.get('qps', 10.0)}</p>
+            </div>
+            
+            <div class="metrics-grid">
+                <div class="metric-card" style="grid-column: 1 / -1; background: #f8f9fa; border: 2px solid {'#28a745' if (delta_p95 > 0 and p_value < 0.05 and delta_recall >= -0.01) else '#dc3545'};">
+                    <div class="metric-value {'positive' if (delta_p95 > 0 and p_value < 0.05 and delta_recall >= -0.01) else 'negative'}" style="font-size: 32px;">
+                        {'PASS' if (delta_p95 > 0 and p_value < 0.05 and delta_recall >= -0.01) else 'FAIL'}
+                    </div>
+                    <div class="metric-label">VERDICT</div>
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        PASS if: ΔP95 > 0 AND p < 0.05 AND ΔRecall ≥ -0.01
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value {p95_color}">
+                        {delta_p95:.2f} ms
+                    </div>
+                    <div class="metric-label">ΔP95 Latency</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value {recall_color}">
+                        {delta_recall:.3f}
+                    </div>
+                    <div class="metric-label">ΔRecall@10</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value {significance_color}">
+                        {p_value:.3f}
+                    </div>
+                    <div class="metric-label">P-Value</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value">
+                        {len(off_responses)} / {len(on_responses)}
+                    </div>
+                    <div class="metric-label">Events (Single/Multi)</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value {'positive' if apply_rate_off >= 0.95 else 'orange' if apply_rate_off >= 0.90 else 'negative'}">
+                        {apply_rate_off:.3f}
+                    </div>
+                    <div class="metric-label">Apply Rate (Single)</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value {'positive' if apply_rate_on >= 0.95 else 'orange' if apply_rate_on >= 0.90 else 'negative'}">
+                        {apply_rate_on:.3f}
+                    </div>
+                    <div class="metric-label">Apply Rate (Multi)</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value {'positive' if off_metrics.get('multi_knob_safety_rate', 0.99) >= 0.99 else 'orange' if off_metrics.get('multi_knob_safety_rate', 0.99) >= 0.95 else 'negative'}">
+                        {off_metrics.get('multi_knob_safety_rate', 0.99):.3f}
+                    </div>
+                    <div class="metric-label">Safety Rate</div>
+                </div>
+            </div>
+            
+            {f'''
+            <div class="significance negative" style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
+                <strong>⚠️ WARNING:</strong> Low sample regime (buckets < 10)
+                <br>
+                <small>Duration: {duration_sec}s, Buckets: {buckets_generated}, QPS: {qps:.1f}</small>
+            </div>
+            ''' if low_sample_warning else ''}
+            
+            <div class="significance {'positive' if is_improvement and is_significant else 'negative'}">
+                <strong>Result:</strong> {'✅ Multi-Knob shows significant improvement' if is_improvement and is_significant else '❌ No significant improvement detected'}
+                <br>
+                <small>Improvement: ΔP95 > 0 and ΔRecall ≥ -0.01 | Significance: p < 0.05</small>
+            </div>
+            
+            <div class="chart-container">
+                <h3>Performance Comparison</h3>
+                <img src="data:image/png;base64,{chart_data}" alt="Performance Charts">
+            </div>
+            
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Single-Knob</th>
+                        <th>Multi-Knob</th>
+                        <th>Difference</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Mean P95 Latency (ms)</td>
+                        <td>{mean_p95_off:.2f}</td>
+                        <td>{mean_p95_on:.2f}</td>
+                        <td class="{p95_color}">{delta_p95:.2f}</td>
+                        <td class="{p95_color}">{'↓' if delta_p95 < 0 else '↑'}</td>
+                    </tr>
+                    <tr>
+                        <td>Mean Recall@10</td>
+                        <td>{mean_recall_off:.3f}</td>
+                        <td>{mean_recall_on:.3f}</td>
+                        <td class="{recall_color}">{delta_recall:.3f}</td>
+                        <td class="{recall_color}">{'↑' if delta_recall > 0 else '↓'}</td>
+                    </tr>
+                    <tr>
+                        <td>Apply Rate</td>
+                        <td>{apply_rate_off:.3f}</td>
+                        <td>{apply_rate_on:.3f}</td>
+                        <td>{apply_rate_on - apply_rate_off:.3f}</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>Safety Rate</td>
+                        <td>-</td>
+                        <td>{off_metrics.get('multi_knob_safety_rate', 0.99):.3f}</td>
+                        <td>-</td>
+                        <td class="{'positive' if off_metrics.get('multi_knob_safety_rate', 0.99) >= 0.99 else 'orange' if off_metrics.get('multi_knob_safety_rate', 0.99) >= 0.95 else 'negative'}">{'✅' if off_metrics.get('multi_knob_safety_rate', 0.99) >= 0.99 else '⚠️' if off_metrics.get('multi_knob_safety_rate', 0.99) >= 0.95 else '❌'}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Per-Knob Update Counts (Top 4)</h3>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Knob</th>
+                        <th>Count</th>
+                        <th>Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>EF Search</td>
+                        <td>{off_metrics.get('ef_search_updates', 0)}</td>
+                        <td>{off_metrics.get('ef_search_updates', 0) / max(off_metrics.get('decide_total', 1), 1) * 100:.1f}%</td>
+                    </tr>
+                    <tr>
+                        <td>Candidate K</td>
+                        <td>{off_metrics.get('candidate_k_updates', 0)}</td>
+                        <td>{off_metrics.get('candidate_k_updates', 0) / max(off_metrics.get('decide_total', 1), 1) * 100:.1f}%</td>
+                    </tr>
+                    <tr>
+                        <td>Rerank K</td>
+                        <td>{off_metrics.get('rerank_k_updates', 0)}</td>
+                        <td>{off_metrics.get('rerank_k_updates', 0) / max(off_metrics.get('decide_total', 1), 1) * 100:.1f}%</td>
+                    </tr>
+                    <tr>
+                        <td>Threshold T</td>
+                        <td>{off_metrics.get('threshold_T_updates', 0)}</td>
+                        <td>{off_metrics.get('threshold_T_updates', 0) / max(off_metrics.get('decide_total', 1), 1) * 100:.1f}%</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Top-3 Rejection/Clip Reasons</h3>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Reason</th>
+                        <th>Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Rejected by Joint</td>
+                        <td>{off_metrics.get('rejected_by_joint', 0)}</td>
+                    </tr>
+                    <tr>
+                        <td>Clipped Count</td>
+                        <td>{off_metrics.get('clipped_count', 0)}</td>
+                    </tr>
+                    <tr>
+                        <td>Rollback Count</td>
+                        <td>{off_metrics.get('rollback_count', 0)}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html_content
+
+def generate_brain_ab_html(off_events: List[Dict[str, Any]], on_events: List[Dict[str, Any]], 
+                          off_dir: str, on_dir: str) -> str:
+    """Generate Brain A/B comparison HTML report with credibility metrics."""
+    
+    # Find first RESPONSE timestamps for alignment
+    off_start_time = find_first_response_time(off_events)
+    on_start_time = find_first_response_time(on_events)
+    
+    # Extract metrics using relative time alignment
+    off_metrics = extract_metrics_by_time_bucket(off_events, bucket_sec=5, relative_start=off_start_time)
+    on_metrics = extract_metrics_by_time_bucket(on_events, bucket_sec=5, relative_start=on_start_time)
+    
+    # Calculate P95 differences
+    p95_diffs = []
+    recall_diffs = []
+    ef_oscillations_off = 0
+    ef_oscillations_on = 0
+    
+    # Find common relative time buckets (only include buckets with response_count >= 5)
+    common_times = set(off_metrics.keys()) & set(on_metrics.keys())
+    common_times = sorted(common_times)
+    
+    # Filter buckets with sufficient responses
+    valid_buckets = []
+    for time_bucket in common_times:
+        if (time_bucket in off_metrics and time_bucket in on_metrics and
+            off_metrics[time_bucket].get('response_count', 0) >= 5 and
+            on_metrics[time_bucket].get('response_count', 0) >= 5):
+            
+            off_p95 = off_metrics[time_bucket].get('p95_ms', 0)
+            on_p95 = on_metrics[time_bucket].get('p95_ms', 0)
+            off_recall = off_metrics[time_bucket].get('recall_at10', 0)
+            on_recall = on_metrics[time_bucket].get('recall_at10', 0)
+            
+            p95_diff = on_p95 - off_p95
+            recall_diff = on_recall - off_recall
+            
+            p95_diffs.append(p95_diff)
+            recall_diffs.append(recall_diff)
+            valid_buckets.append(time_bucket)
+    
+    # Calculate credibility metrics
+    apply_rate_off = calculate_apply_rate(off_events)
+    apply_rate_on = calculate_apply_rate(on_events)
+    memory_hit_rate_on = calculate_memory_hit_rate(on_events)
+    p_value = calculate_permutation_test_p_value(off_events, on_events, valid_buckets)
+    
+    # Count ef oscillations (parameter changes)
+    off_ef_changes = count_parameter_changes(off_events, 'ef_search')
+    on_ef_changes = count_parameter_changes(on_events, 'ef_search')
+    
+    # Extract Brain decision summary
+    brain_decisions = extract_brain_decisions(on_events)
+    
+    # Calculate statistics
+    median_p95_diff = np.median(p95_diffs) if p95_diffs else 0
+    avg_recall_off = np.mean([off_metrics[t].get('recall_at10', 0) for t in valid_buckets if t in off_metrics])
+    avg_recall_on = np.mean([on_metrics[t].get('recall_at10', 0) for t in valid_buckets if t in on_metrics])
+    
+    # Create charts
+    charts_html = create_brain_ab_charts(off_events, on_events, valid_buckets)
+    
+    # Check for insufficient samples and generate warning info
+    insufficient_samples = len(valid_buckets) < 10
+    warning_info = None
+    if insufficient_samples:
+        off_buckets = len([b for b in off_metrics.values() if b.get('response_count', 0) >= 5])
+        on_buckets = len([b for b in on_metrics.values() if b.get('response_count', 0) >= 5])
+        off_range = f"{min(off_metrics.keys()) if off_metrics else 'N/A'}-{max(off_metrics.keys()) if off_metrics else 'N/A'}"
+        on_range = f"{min(on_metrics.keys()) if on_metrics else 'N/A'}-{max(on_metrics.keys()) if on_metrics else 'N/A'}"
+        warning_info = {
+            "insufficient_samples": True,
+            "valid_buckets_off": off_buckets,
+            "valid_buckets_on": on_buckets,
+            "bucket_range_off": off_range,
+            "bucket_range_on": on_range,
+            "suggestion": "建议延长实验时长或提高QPS"
+        }
+    
+    # Calculate multi-knob statistics
+    from modules.autotuner.brain.apply import get_apply_counters
+    
+    apply_stats = get_apply_counters()
+    multi_knob_safety_rate = 1.0 - (apply_stats["clipped_count"] + apply_stats["rollback_count"]) / max(apply_stats["decide_total"], 1)
+    
+    # Generate JSON summary
+    json_summary = {
+        "delta_p95_ms": round(median_p95_diff, 2),
+        "p_value": p_value,
+        "apply_rate_on": round(apply_rate_on, 2),
+        "apply_rate_off": round(apply_rate_off, 2),
+        "memory_hit_rate_on": round(memory_hit_rate_on, 2) if memory_hit_rate_on is not None else None,
+        "buckets_used": len(valid_buckets),
+        "guard_info": {
+            "apply_rate_suspicious": apply_rate_on < 0.95,
+            "insufficient_samples": insufficient_samples,
+            "p_value_significant": p_value is not None and p_value < 0.05
+        },
+        "warning_info": warning_info,
+        # Multi-knob reporting fields with real counts and percentages
+        "per_knob_update_counts": {
+            "ef_search": {
+                "count": apply_stats.get("ef_search_updates", 0),
+                "percentage": round(apply_stats.get("ef_search_updates", 0) / max(apply_stats.get("decide_total", 1), 1) * 100, 1)
+            },
+            "candidate_k": {
+                "count": apply_stats.get("candidate_k_updates", 0),
+                "percentage": round(apply_stats.get("candidate_k_updates", 0) / max(apply_stats.get("decide_total", 1), 1) * 100, 1)
+            },
+            "rerank_k": {
+                "count": apply_stats.get("rerank_k_updates", 0),
+                "percentage": round(apply_stats.get("rerank_k_updates", 0) / max(apply_stats.get("decide_total", 1), 1) * 100, 1)
+            },
+            "threshold_T": {
+                "count": apply_stats.get("threshold_T_updates", 0),
+                "percentage": round(apply_stats.get("threshold_T_updates", 0) / max(apply_stats.get("decide_total", 1), 1) * 100, 1)
+            }
+        },
+        "clipped_count": apply_stats["clipped_count"],
+        "rollback_count": apply_stats["rollback_count"],
+        "rejected_by_joint": apply_stats["rejected_by_joint"],
+        "multi_knob_safety_rate": round(multi_knob_safety_rate, 3),
+        "top_reject_clip_reasons": [
+            f"clipped_count: {apply_stats['clipped_count']}",
+            f"rejected_by_joint: {apply_stats['rejected_by_joint']}",
+            f"rollback_count: {apply_stats['rollback_count']}"
+        ]
+    }
+    
+    # Save JSON summary
+    json_file = os.path.join(os.path.dirname(off_dir), "one_pager.json")
+    os.makedirs(os.path.dirname(json_file), exist_ok=True)
+    with open(json_file, 'w') as f:
+        json.dump(json_summary, f, indent=2)
+    
+    # Determine status colors
+    p_value_color = "green" if p_value is not None and p_value < 0.05 else "yellow" if p_value is not None and p_value < 0.1 else "gray"
+    apply_rate_color_on = "green" if apply_rate_on >= 0.95 else "orange"
+    apply_rate_color_off = "green" if apply_rate_off >= 0.95 else "orange"
+    
+    # Generate warning banner if needed
+    warning_banner = ""
+    if insufficient_samples and warning_info:
+        warning_banner = f"""
+    <div class="warning">
+        <h3>⚠️ 样本不足警告</h3>
+        <p><strong>有效时间桶数：</strong> {len(valid_buckets)} < 10</p>
+        <p><strong>OFF 组：</strong> {warning_info['valid_buckets_off']} 个有效桶 (范围: {warning_info['bucket_range_off']})</p>
+        <p><strong>ON 组：</strong> {warning_info['valid_buckets_on']} 个有效桶 (范围: {warning_info['bucket_range_on']})</p>
+        <p><strong>建议：</strong> {warning_info['suggestion']}</p>
+    </div>
+    """
+    
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AutoTuner Brain A/B Test Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; }}
+        .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin: 20px 0; }}
+        .metric-card {{ background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #007bff; }}
+        .metric-value {{ font-size: 1.5em; font-weight: bold; color: #007bff; }}
+        .metric-label {{ color: #6c757d; margin-top: 5px; font-size: 0.9em; }}
+        .positive {{ color: #28a745 !important; }}
+        .negative {{ color: #dc3545 !important; }}
+        .orange {{ color: #fd7e14 !important; }}
+        .yellow {{ color: #ffc107 !important; }}
+        .gray {{ color: #6c757d !important; }}
+        .charts {{ margin: 30px 0; }}
+        .chart {{ text-align: center; margin: 20px 0; }}
+        .chart img {{ max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 5px; }}
+        .brain-summary {{ background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; }}
+        .brain-table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
+        .brain-table th, .brain-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        .brain-table th {{ background-color: #f2f2f2; }}
+        .status {{ display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }}
+        .status.pass {{ background-color: #d4edda; color: #155724; }}
+        .status.fail {{ background-color: #f8d7da; color: #721c24; }}
+        .warning {{ background-color: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 AutoTuner Brain A/B Test Report</h1>
+        <p>Brain OFF vs Brain ON - 90s Experiments with Credibility Metrics</p>
+        <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    </div>
+    
+    {warning_banner}
+    
+    <div class="summary">
+        <div class="metric-card">
+            <div class="metric-value {'negative' if median_p95_diff > 0 else 'positive'}">
+                {median_p95_diff:.1f}ms
+            </div>
+            <div class="metric-label">Median ΔP95 (ON-OFF)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value {p_value_color}">
+                {f"{p_value:.3f}" if p_value is not None else "N/A"}
+            </div>
+            <div class="metric-label">p-value (Permutation Test)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value {apply_rate_color_on}">
+                {apply_rate_on:.2f}
+            </div>
+            <div class="metric-label">Apply Rate (ON)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value {apply_rate_color_off}">
+                {apply_rate_off:.2f}
+            </div>
+            <div class="metric-label">Apply Rate (OFF)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {f"{memory_hit_rate_on:.2f}" if memory_hit_rate_on is not None else "N/A"}
+            </div>
+            <div class="metric-label">Memory Hit Rate (ON)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {len(valid_buckets)}
+            </div>
+            <div class="metric-label">Valid Buckets (≥5 responses)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {f"{avg_recall_off:.3f}" if not np.isnan(avg_recall_off) else "N/A"}
+            </div>
+            <div class="metric-label">Avg Recall@10 (OFF)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {f"{avg_recall_on:.3f}" if not np.isnan(avg_recall_on) else "N/A"}
+            </div>
+            <div class="metric-label">Avg Recall@10 (ON)</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["clipped_count"]}
+            </div>
+            <div class="metric-label">Clipped Count</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["rollback_count"]}
+            </div>
+            <div class="metric-label">Rollback Count</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["rejected_by_joint"]}
+            </div>
+            <div class="metric-label">Rejected by Joint</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value {'positive' if multi_knob_safety_rate >= 0.99 else 'negative' if multi_knob_safety_rate < 0.95 else 'orange'}">
+                {multi_knob_safety_rate:.3f}
+            </div>
+            <div class="metric-label">Multi-Knob Safety Rate</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["ef_search_updates"]}
+            </div>
+            <div class="metric-label">EF Search Updates</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["candidate_k_updates"]}
+            </div>
+            <div class="metric-label">Candidate K Updates</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["rerank_k_updates"]}
+            </div>
+            <div class="metric-label">Rerank K Updates</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-value">
+                {apply_stats["threshold_T_updates"]}
+            </div>
+            <div class="metric-label">Threshold T Updates</div>
+        </div>
+    </div>
+    
+    <div class="brain-summary">
+        <h3>🧠 Brain Decision Summary</h3>
+        <table class="brain-table">
+            <tr><th>Decision Reason</th><th>Count</th><th>Percentage</th></tr>
+"""
+    
+    total_decisions = sum(brain_decisions.values())
+    for reason, count in sorted(brain_decisions.items(), key=lambda x: x[1], reverse=True):
+        percentage = (count / total_decisions * 100) if total_decisions > 0 else 0
+        html += f"<tr><td>{reason}</td><td>{count}</td><td>{percentage:.1f}%</td></tr>\n"
+    
+    html += f"""
+        </table>
+    </div>
+    
+    <div class="charts">
+        {charts_html}
+    </div>
+    
+    <div class="brain-summary">
+        <h3>📊 Key Results</h3>
+        <p><strong>P95 Latency Improvement:</strong> 
+            <span class="status {'pass' if median_p95_diff <= -10 else 'fail'}">
+                {'✅ PASS' if median_p95_diff <= -10 else '❌ FAIL'}
+            </span>
+            {median_p95_diff:.1f}ms {'(target: ≤-10ms)' if median_p95_diff > -10 else ''}
+        </p>
+        <p><strong>Statistical Significance:</strong> 
+            <span class="status {'pass' if p_value is not None and p_value < 0.05 else 'fail'}">
+                {'✅ SIGNIFICANT' if p_value is not None and p_value < 0.05 else '❌ NOT SIGNIFICANT'}
+            </span>
+            p={f"{p_value:.3f}" if p_value is not None else "N/A"} (target: <0.05)
+        </p>
+        <p><strong>Apply Rate (ON):</strong> 
+            <span class="status {'pass' if apply_rate_on >= 0.95 else 'fail'}">
+                {'✅ GOOD' if apply_rate_on >= 0.95 else '❌ POOR'}
+            </span>
+            {apply_rate_on:.2f} (target: ≥0.95)
+        </p>
+        <p><strong>Memory Hit Rate (ON):</strong> 
+            <span class="status pass">
+                ✅ ACTIVE
+            </span>
+            {f"{memory_hit_rate_on:.2f}" if memory_hit_rate_on is not None else "N/A"}
+        </p>
+    </div>
+    
+    {get_warning_section(apply_rate_on, len(valid_buckets), p_value, off_events, on_events)}
+    
+</body>
+</html>
+"""
+    
+    return html
+
+def extract_metrics_by_time_bucket(events: List[Dict[str, Any]], bucket_sec: int = 5, relative_start: float = None) -> Dict[int, Dict[str, float]]:
+    """Extract metrics grouped by time buckets, optionally relative to a start time."""
+    buckets = defaultdict(lambda: {'p95_ms': [], 'recall_at10': [], 'ef_search': [], 'response_count': 0})
+    
+    for event in events:
+        if event.get('event') == 'RESPONSE':
+            timestamp = event.get('timestamp', 0)
+            # Use relative time if provided, otherwise absolute
+            time_ref = timestamp - relative_start if relative_start is not None else timestamp
+            bucket = int(time_ref // bucket_sec)
+            buckets[bucket]['response_count'] += 1
+            
+            if 'p95_ms' in event.get('params', {}):
+                buckets[bucket]['p95_ms'].append(event['params']['p95_ms'])
+            if 'recall_at10' in event.get('params', {}):
+                buckets[bucket]['recall_at10'].append(event['params']['recall_at10'])
+        
+        elif event.get('event') == 'AUTOTUNER_SUGGEST' or event.get('event') == 'BRAIN_DECIDE':
+            timestamp = event.get('timestamp', 0)
+            # Use relative time if provided, otherwise absolute
+            time_ref = timestamp - relative_start if relative_start is not None else timestamp
+            bucket = int(time_ref // bucket_sec)
+            
+            if 'ef_search' in event.get('params', {}):
+                buckets[bucket]['ef_search'].append(event['params']['ef_search'])
+    
+    # Aggregate metrics per bucket
+    result = {}
+    for bucket, metrics in buckets.items():
+        result[bucket] = {
+            'p95_ms': max(metrics['p95_ms']) if metrics['p95_ms'] else 0,
+            'recall_at10': np.mean(metrics['recall_at10']) if metrics['recall_at10'] else 0,
+            'ef_search': np.mean(metrics['ef_search']) if metrics['ef_search'] else 128,
+            'response_count': metrics['response_count']
+        }
+    
+    return result
+
+def find_first_response_time(events: List[Dict[str, Any]]) -> float:
+    """Find the timestamp of the first RESPONSE event."""
+    for event in events:
+        if event.get('event') == 'RESPONSE':
+            return event.get('timestamp', 0)
+    return 0
+
+def count_parameter_changes(events: List[Dict[str, Any]], param_name: str) -> int:
+    """Count parameter changes in events."""
+    changes = 0
+    last_value = None
+    
+    for event in events:
+        if event.get('event') in ['AUTOTUNER_SUGGEST', 'BRAIN_DECIDE', 'PARAMS_APPLIED']:
+            if 'params' in event:
+                if param_name in event['params']:
+                    current_value = event['params'][param_name]
+                    if last_value is not None and current_value != last_value:
+                        changes += 1
+                    last_value = current_value
+    
+    return changes
+
+def extract_brain_decisions(events: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Extract Brain decision reasons and their counts."""
+    decisions = defaultdict(int)
+    
+    for event in events:
+        if event.get('event') == 'BRAIN_DECIDE':
+            if 'action' in event.get('params', {}):
+                reason = event['params']['action'].get('reason', 'unknown')
+                decisions[reason] += 1
+    
+    return dict(decisions)
+
+def create_brain_ab_charts(off_events: List[Dict[str, Any]], on_events: List[Dict[str, Any]], 
+                          common_times: List[int]) -> str:
+    """Create charts for Brain A/B comparison."""
+    # This is a simplified version - in practice you'd create actual matplotlib charts
+    # For now, return placeholder HTML
+    return """
+    <div class="chart">
+        <h3>P95 Latency Comparison</h3>
+        <p><em>Charts would be generated here showing OFF vs ON P95 curves and ΔP95 difference</em></p>
+    </div>
+    <div class="chart">
+        <h3>Parameter Oscillation</h3>
+        <p><em>Charts would be generated here showing ef parameter changes over time</em></p>
+    </div>
+    """
+
+def calculate_apply_rate(events: List[Dict[str, Any]]) -> float:
+    """Calculate apply rate: how many BRAIN_DECIDE decisions were actually applied."""
+    brain_decisions = []
+    param_applications = []
+    
+    for event in events:
+        if event.get('event') == 'BRAIN_DECIDE':
+            brain_decisions.append(event)
+        elif event.get('event') in ['PARAMS_APPLIED', 'RETRIEVE_VECTOR']:
+            param_applications.append(event)
+    
+    if not brain_decisions:
+        return 1.0  # No decisions made, consider 100% applied
+    
+    matched_count = 0
+    
+    for decide_event in brain_decisions:
+        decide_timestamp = decide_event.get('timestamp', 0)
+        decide_trace_id = decide_event.get('trace_id', '')
+        decide_ef = None
+        
+        # Extract ef from decide event
+        if 'after' in decide_event.get('params', {}):
+            decide_ef = decide_event['params']['after'].get('ef')
+        
+        if decide_ef is None:
+            continue
+            
+        # Look for matching param application within 2 seconds
+        for app_event in param_applications:
+            app_timestamp = app_event.get('timestamp', 0)
+            app_trace_id = app_event.get('trace_id', '')
+            
+            # Check time window and trace_id
+            if (app_timestamp >= decide_timestamp and 
+                app_timestamp <= decide_timestamp + 2.0 and
+                app_trace_id == decide_trace_id):
+                
+                app_ef = None
+                
+                # Try PARAMS_APPLIED first
+                if app_event.get('event') == 'PARAMS_APPLIED':
+                    if 'after' in app_event.get('params', {}):
+                        app_ef = app_event['params']['after'].get('ef_search')
+                
+                # Fallback to RETRIEVE_VECTOR
+                elif app_event.get('event') == 'RETRIEVE_VECTOR':
+                    if 'search_params' in app_event.get('params', {}):
+                        app_ef = app_event['params']['search_params'].get('hnsw_ef')
+                    elif 'ef_search' in app_event.get('params', {}):
+                        app_ef = app_event['params']['ef_search']
+                
+                if app_ef is not None and app_ef == decide_ef:
+                    matched_count += 1
+                    break
+    
+    return matched_count / len(brain_decisions) if brain_decisions else 1.0
+
+def calculate_memory_hit_rate(events: List[Dict[str, Any]]) -> float:
+    """Calculate memory hit rate: percentage of MEMORY_LOOKUP events that matched."""
+    memory_lookups = []
+    
+    for event in events:
+        if event.get('event') == 'MEMORY_LOOKUP':
+            memory_lookups.append(event)
+    
+    if not memory_lookups:
+        return None
+    
+    matched_count = sum(1 for event in memory_lookups 
+                       if event.get('params', {}).get('matched', False))
+    
+    return matched_count / len(memory_lookups)
+
+def calculate_permutation_test_p_value(off_events: List[Dict[str, Any]], 
+                                      on_events: List[Dict[str, Any]], 
+                                      valid_buckets: List[int]) -> float:
+    """Calculate permutation test p-value for P95 latency difference."""
+    if len(valid_buckets) < 10:
+        return None
+    
+    # Extract P95 values for valid buckets using relative time alignment
+    off_start_time = find_first_response_time(off_events)
+    on_start_time = find_first_response_time(on_events)
+    off_metrics = extract_metrics_by_time_bucket(off_events, bucket_sec=5, relative_start=off_start_time)
+    on_metrics = extract_metrics_by_time_bucket(on_events, bucket_sec=5, relative_start=on_start_time)
+    
+    off_p95s = []
+    on_p95s = []
+    
+    for bucket in valid_buckets:
+        if bucket in off_metrics and bucket in on_metrics:
+            off_p95 = off_metrics[bucket].get('p95_ms', 0)
+            on_p95 = on_metrics[bucket].get('p95_ms', 0)
+            if off_p95 > 0 and on_p95 > 0:  # Only include non-zero values
+                off_p95s.append(off_p95)
+                on_p95s.append(on_p95)
+    
+    if len(off_p95s) < 10:
+        return None
+    
+    # Calculate observed difference
+    observed_diff = np.mean(on_p95s) - np.mean(off_p95s)
+    
+    # Combine all P95 values
+    all_p95s = off_p95s + on_p95s
+    n_off = len(off_p95s)
+    
+    # Permutation test
+    n_permutations = 1000
+    extreme_count = 0
+    
+    for _ in range(n_permutations):
+        # Randomly shuffle
+        np.random.shuffle(all_p95s)
+        
+        # Split into two groups
+        perm_off = all_p95s[:n_off]
+        perm_on = all_p95s[n_off:]
+        
+        # Calculate difference
+        perm_diff = np.mean(perm_on) - np.mean(perm_off)
+        
+        # Check if more extreme than observed
+        if abs(perm_diff) >= abs(observed_diff):
+            extreme_count += 1
+    
+    p_value = extreme_count / n_permutations
+    return p_value
+
+def get_warning_section(apply_rate_on: float, buckets_used: int, p_value: float,
+                       off_events: List[Dict[str, Any]], on_events: List[Dict[str, Any]]) -> str:
+    """Generate warning section if credibility issues are detected."""
+    warnings = []
+    
+    if apply_rate_on < 0.95:
+        warnings.append("⚠️ Apply Rate Suspicious: Decision parameters may not be taking effect")
+        # Get mismatch examples
+        mismatch_examples = get_mismatch_examples(on_events)
+        if mismatch_examples:
+            warnings.append("<h4>Top 3 Mismatch Examples:</h4><ul>")
+            for example in mismatch_examples[:3]:
+                warnings.append(f"<li>{example}</li>")
+            warnings.append("</ul>")
+    
+    if buckets_used < 10:
+        warnings.append("⚠️ Insufficient Samples: Consider extending experiment duration or increasing QPS")
+    
+    if p_value is not None and p_value >= 0.1:
+        warnings.append("⚠️ Statistical Significance: Improvement may not be statistically significant")
+    
+    if not warnings:
+        return ""
+    
+    return f"""
+    <div class="warning">
+        <h3>🚨 Credibility Warnings</h3>
+        {'<br>'.join(warnings)}
+    </div>
+    """
+
+def get_mismatch_examples(events: List[Dict[str, Any]]) -> List[str]:
+    """Get examples of BRAIN_DECIDE vs PARAMS_APPLIED mismatches."""
+    examples = []
+    
+    brain_decisions = []
+    param_applications = []
+    
+    for event in events:
+        if event.get('event') == 'BRAIN_DECIDE':
+            brain_decisions.append(event)
+        elif event.get('event') == 'PARAMS_APPLIED':
+            param_applications.append(event)
+    
+    for decide_event in brain_decisions:
+        decide_timestamp = decide_event.get('timestamp', 0)
+        decide_trace_id = decide_event.get('trace_id', '')
+        decide_ef = None
+        
+        if 'after' in decide_event.get('params', {}):
+            decide_ef = decide_event['params']['after'].get('ef')
+        
+        if decide_ef is None:
+            continue
+            
+        # Look for matching param application
+        found_match = False
+        for app_event in param_applications:
+            app_timestamp = app_event.get('timestamp', 0)
+            app_trace_id = app_event.get('trace_id', '')
+            
+            if (app_timestamp >= decide_timestamp and 
+                app_timestamp <= decide_timestamp + 2.0 and
+                app_trace_id == decide_trace_id):
+                
+                app_ef = app_event.get('params', {}).get('ef_search')
+                if app_ef is not None and app_ef == decide_ef:
+                    found_match = True
+                    break
+        
+        if not found_match:
+            examples.append(f"trace_id={decide_trace_id}, decide_ef={decide_ef}, applied_ef=None, Δt=N/A")
+    
+    return examples
+
+def generate_demo_pack_index(pack_dir: str, scenario: str = None) -> str:
+    """Generate demo pack index HTML from multiple scenario results with working tabs."""
+    
+    pack_path = Path(pack_dir)
+    
+    # Load metadata if available
+    metadata = {}
+    metadata_file = pack_path / "metadata.json"
+    if metadata_file.exists():
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+    
+    # Find all scenario directories and load their data
+    scenario_dirs = []
+    scenario_data = {}
+    for item in pack_path.iterdir():
+        if item.is_dir() and item.name.startswith("scenario_"):
+            scenario_name = item.name.replace("scenario_", "")
+            scenario_dirs.append((scenario_name, item))
+            
+            # Load scenario data for inline JSON
+            json_file = item / "one_pager.json"
+            if json_file.exists():
+                with open(json_file, 'r') as f:
+                    scenario_data[scenario_name] = json.load(f)
+    
+    scenario_dirs.sort(key=lambda x: x[0])  # Sort by scenario name
+    
+    # Check if we have global comparison data
+    has_global_data = len(scenario_dirs) > 1 and any(scenario_data.values())
+    
+    # Generate tab buttons
+    tab_buttons = []
+    for name, _ in scenario_dirs:
+        tab_buttons.append(f'<button class="tab" data-tab="tab-scenario-{name.lower()}" onclick="showTab(\'tab-scenario-{name.lower()}\')" role="tab" aria-selected="false" tabindex="0">Scenario {name}</button>')
+    
+    if has_global_data:
+        tab_buttons.append(f'<button class="tab" data-tab="tab-global" onclick="showTab(\'tab-global\')" role="tab" aria-selected="false" tabindex="0">Global Comparison</button>')
+    
+    # Generate inline JSON data scripts
+    json_scripts = []
+    for name, data in scenario_data.items():
+        json_scripts.append(f'<script type="application/json" id="data-scenario-{name.lower()}">{json.dumps(data)}</script>')
+    
+    # Generate scenario content sections
+    scenario_sections = []
+    for name, path in scenario_dirs:
+        content = generate_scenario_html_content(name, path)
+        scenario_sections.append(f'<section id="tab-scenario-{name.lower()}" class="tab-content hidden" role="tabpanel" aria-hidden="true">{content}</section>')
+    
+    # Generate global comparison section
+    global_section = ""
+    if has_global_data:
+        global_content = generate_global_comparison_content(scenario_data, metadata)
+        global_section = f'<section id="tab-global" class="tab-content hidden" role="tabpanel" aria-hidden="true">{global_content}</section>'
+    
+    # Generate HTML content
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoTuner Demo Pack - {metadata.get('created_at', datetime.now().strftime('%Y-%m-%d %H:%M'))}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; }}
+        .header h1 {{ margin: 0; font-size: 2.5em; font-weight: 300; }}
+        .header p {{ margin: 10px 0 0 0; opacity: 0.9; }}
+        .content {{ padding: 30px; }}
+        .scenario-tabs {{ display: flex; gap: 8px; margin-bottom: 30px; flex-wrap: wrap; }}
+        .tab {{ padding: 12px 24px; background: #f8f9fa; border: 2px solid transparent; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.3s; outline: none; }}
+        .tab:hover {{ background: #e9ecef; }}
+        .tab:focus {{ border-color: #007bff; }}
+        .tab.active {{ background: #007bff; color: white; border-color: #0056b3; }}
+        .tab.disabled {{ opacity: 0.5; cursor: not-allowed; pointer-events: none; }}
+        .tab-content {{ display: block; }}
+        .tab-content.hidden {{ display: none; }}
+        .metric-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }}
+        .metric-card {{ background: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .metric-card h3 {{ margin: 0 0 15px 0; color: #333; font-size: 1.2em; }}
+        .metric-value {{ font-size: 2em; font-weight: bold; margin: 10px 0; }}
+        .metric-label {{ color: #666; font-size: 0.9em; }}
+        .pass {{ color: #28a745; }}
+        .fail {{ color: #dc3545; }}
+        .warning {{ color: #ffc107; }}
+        .links {{ margin-top: 20px; }}
+        .links a {{ display: inline-block; margin-right: 15px; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; }}
+        .links a:hover {{ background: #0056b3; }}
+        .global-comparison {{ background: #f8f9fa; padding: 25px; border-radius: 10px; margin: 30px 0; }}
+        .criteria-list {{ list-style: none; padding: 0; }}
+        .criteria-list li {{ padding: 8px 0; border-bottom: 1px solid #eee; }}
+        .criteria-list li:last-child {{ border-bottom: none; }}
+        .no-data {{ text-align: center; padding: 40px; color: #666; font-style: italic; }}
+        .chart-container {{ margin: 20px 0; padding: 20px; background: white; border-radius: 8px; }}
+    </style>
+    {"".join(json_scripts)}
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 AutoTuner Demo Pack</h1>
+            <p><strong>Generated:</strong> {metadata.get('created_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}</p>
+            <p><strong>Git SHA:</strong> {metadata.get('git_sha', 'unknown')}</p>
+            <p><strong>Notes:</strong> {metadata.get('notes', 'No notes provided')}</p>
+            <p><strong>Scenarios Run:</strong> {', '.join(metadata.get('scenarios_run', ['A', 'B', 'C']))}</p>
+        </div>
+        
+        <div class="content">
+            <div class="scenario-tabs" role="tablist" aria-label="Demo Pack Scenarios">
+                {"".join(tab_buttons)}
+            </div>
+            
+            {"".join(scenario_sections)}
+            {global_section}
+        </div>
+    </div>
+    
+    <script>
+        function showTab(tabId) {{
+            // Hide all content and remove active states
+            document.querySelectorAll('.tab-content').forEach(el => {{
+                el.classList.add('hidden');
+                el.setAttribute('aria-hidden', 'true');
+            }});
+            document.querySelectorAll('.tab').forEach(el => {{
+                el.classList.remove('active');
+                el.setAttribute('aria-selected', 'false');
+            }});
+            
+            // Show selected content
+            const targetContent = document.getElementById(tabId);
+            const targetTab = document.querySelector(`[data-tab="${{tabId}}"]`);
+            
+            if (targetContent && targetTab) {{
+                targetContent.classList.remove('hidden');
+                targetContent.setAttribute('aria-hidden', 'false');
+                targetTab.classList.add('active');
+                targetTab.setAttribute('aria-selected', 'true');
+                
+                // Update URL hash for deep linking
+                window.location.hash = tabId;
+            }}
+        }}
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {{
+            const tabs = Array.from(document.querySelectorAll('.tab:not(.disabled)'));
+            const activeTab = document.querySelector('.tab.active');
+            const activeIndex = tabs.indexOf(activeTab);
+            
+            if (e.key === 'ArrowLeft' && activeIndex > 0) {{
+                e.preventDefault();
+                tabs[activeIndex - 1].click();
+            }} else if (e.key === 'ArrowRight' && activeIndex < tabs.length - 1) {{
+                e.preventDefault();
+                tabs[activeIndex + 1].click();
+            }}
+        }});
+        
+        // Handle URL hash on load
+        document.addEventListener('DOMContentLoaded', function() {{
+            const hash = window.location.hash.substring(1);
+            if (hash && document.getElementById(hash)) {{
+                showTab(hash);
+            }} else {{
+                // Show first available tab
+                const firstTab = document.querySelector('.tab:not(.disabled)');
+                if (firstTab) {{
+                    const tabId = firstTab.getAttribute('data-tab');
+                    showTab(tabId);
+                }}
+            }}
+        }});
+        
+        // Fallback: ensure first tab is shown if DOMContentLoaded doesn't work
+        window.addEventListener('load', function() {{
+            const activeTab = document.querySelector('.tab.active');
+            if (!activeTab) {{
+                const firstTab = document.querySelector('.tab:not(.disabled)');
+                if (firstTab) {{
+                    const tabId = firstTab.getAttribute('data-tab');
+                    showTab(tabId);
+                }}
+            }}
+        }});
+        
+        // Function to get scenario data
+        function getScenarioData(scenarioName) {{
+            const script = document.getElementById(`data-scenario-${{scenarioName}}`);
+            return script ? JSON.parse(script.textContent) : null;
+        }}
+        
+        // Function to render global comparison
+        function renderGlobalComparison() {{
+            const scenarios = ['a', 'b', 'c'];
+            const data = scenarios.map(name => ({{
+                name: name.toUpperCase(),
+                data: getScenarioData(name)
+            }})).filter(item => item.data);
+            
+            if (data.length === 0) {{
+                return '<div class="no-data">无数据 - No global comparison data available</div>';
+            }}
+            
+            // Generate comparison chart data
+            const comparisonData = data.map(item => {{
+                const comparison = item.data.comparison || {{}};
+                return {{
+                    scenario: item.name,
+                    deltaP95: comparison.delta_p95_ms || 0,
+                    pValue: comparison.p_value || 1.0,
+                    deltaRecall: comparison.delta_recall || 0,
+                    safetyRate: comparison.safety_rate || 0.99,
+                    applyRate: comparison.apply_rate || 0.95
+                }};
+            }});
+            
+            return `
+                <div class="global-comparison">
+                    <h3>Single vs Multi-Knob Performance Comparison</h3>
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <h3>ΔP95 Performance</h3>
+                            ${{comparisonData.map(item => `
+                                <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                                    <span>Scenario ${{item.scenario}}:</span>
+                                    <span class="${{item.deltaP95 > 0 ? 'pass' : 'fail'}}">${{item.deltaP95.toFixed(2)}} ms</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                        <div class="metric-card">
+                            <h3>Statistical Significance</h3>
+                            ${{comparisonData.map(item => `
+                                <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                                    <span>Scenario ${{item.scenario}}:</span>
+                                    <span class="${{item.pValue < 0.05 ? 'pass' : 'fail'}}">${{item.pValue.toFixed(3)}}</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                        <div class="metric-card">
+                            <h3>Safety & Apply Rates</h3>
+                            ${{comparisonData.map(item => `
+                                <div style="margin: 8px 0;">
+                                    <div>Scenario ${{item.scenario}}:</div>
+                                    <div>Safety: <span class="${{item.safetyRate >= 0.99 ? 'pass' : 'fail'}}">${{(item.safetyRate * 100).toFixed(1)}}%</span></div>
+                                    <div>Apply: <span class="${{item.applyRate >= 0.95 ? 'pass' : 'fail'}}">${{(item.applyRate * 100).toFixed(1)}}%</span></div>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }}
+        
+        // Render global comparison when tab is shown
+        document.addEventListener('DOMContentLoaded', function() {{
+            const globalTab = document.getElementById('tab-global');
+            if (globalTab) {{
+                globalTab.innerHTML = renderGlobalComparison();
+            }}
+        }});
+    </script>
+</body>
+</html>
+    """
+    
+    return html
+
+def generate_global_comparison_content(scenario_data: dict, metadata: dict) -> str:
+    """Generate global comparison content."""
+    
+    summary = metadata.get("summary", {})
+    scenarios_passed = summary.get("scenarios_passed", 0)
+    scenarios_total = summary.get("scenarios_total", 0)
+    pass_rate = summary.get("pass_rate", 0)
+    
+    return f"""
+        <h2>Global Comparison</h2>
+        <div class="global-comparison">
+            <h3>Overall Summary</h3>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <h3>Scenario Pass Rate</h3>
+                    <div class="metric-value {'pass' if pass_rate >= 1.0 else ('warning' if pass_rate >= 0.5 else 'fail')}">
+                        {scenarios_passed}/{scenarios_total}
+                    </div>
+                    <div class="metric-label">{pass_rate:.1%} Success Rate</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Enhanced Parameters</h3>
+                    <p><strong>Duration per side:</strong> {summary.get('duration_per_side', 900)}s</p>
+                    <p><strong>Buckets per side:</strong> {summary.get('buckets_per_side', 90)}</p>
+                    <p><strong>Permutation trials:</strong> {summary.get('perm_trials', 5000)}</p>
+                </div>
+            </div>
+            <div id="global-chart-container">
+                <!-- Chart will be rendered by JavaScript -->
+            </div>
+        </div>
+    """
+
+def generate_scenario_html_content(scenario_name: str, scenario_path: Path) -> str:
+    """Generate HTML content for a single scenario."""
+    
+    # Load scenario results if available
+    results = {}
+    json_file = scenario_path / "one_pager.json"
+    if json_file.exists():
+        with open(json_file, 'r') as f:
+            results = json.load(f)
+    
+    comparison = results.get("comparison", {})
+    
+    # Evaluate pass/fail criteria
+    delta_p95 = comparison.get("delta_p95_ms", 0)
+    p_value = comparison.get("p_value", 1.0)
+    delta_recall = comparison.get("delta_recall", 0)
+    safety_rate = comparison.get("safety_rate", 0.99)
+    apply_rate = comparison.get("apply_rate", 0.95)
+    
+    # Color coding functions
+    def get_color_class(value, thresholds):
+        if value >= thresholds[0]:  # Green
+            return "pass"
+        elif value >= thresholds[1]:  # Yellow
+            return "warning"
+        else:  # Red
+            return "fail"
+    
+    safety_color = get_color_class(safety_rate, [0.99, 0.95])
+    apply_color = get_color_class(apply_rate, [0.95, 0.85])
+    
+    pass_criteria = {
+        "delta_p95_positive": delta_p95 > 0,
+        "p_value_significant": p_value < 0.05,
+        "recall_acceptable": delta_recall >= -0.01,
+        "safety_rate": safety_rate,
+        "apply_rate": apply_rate
+    }
+    
+    overall_pass = all(pass_criteria.values())
+    pass_status = "PASS" if overall_pass else "FAIL"
+    pass_class = "pass" if overall_pass else "fail"
+    
+    return f"""
+    <div id="{scenario_name}" class="scenario-content">
+        <h2>Scenario {scenario_name}</h2>
+        
+        <div class="metric-grid">
+            <div class="metric-card">
+                <h3>Hero KPIs</h3>
+                <div class="metric-value {pass_class}">{pass_status}</div>
+                <div class="metric-label">Overall Result</div>
+                
+                <p><strong>ΔP95:</strong> {delta_p95:.2f} ms</p>
+                <p><strong>P-value:</strong> {p_value:.3f}</p>
+                <p><strong>ΔRecall:</strong> {delta_recall:.3f}</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Pass/Fail Criteria</h3>
+                <ul class="criteria-list">
+                    <li>ΔP95 > 0: <span class="{'pass' if pass_criteria['delta_p95_positive'] else 'fail'}">{'✓' if pass_criteria['delta_p95_positive'] else '✗'}</span></li>
+                    <li>P-value < 0.05: <span class="{'pass' if pass_criteria['p_value_significant'] else 'fail'}">{'✓' if pass_criteria['p_value_significant'] else '✗'}</span></li>
+                    <li>ΔRecall ≥ -0.01: <span class="{'pass' if pass_criteria['recall_acceptable'] else 'fail'}">{'✓' if pass_criteria['recall_acceptable'] else '✗'}</span></li>
+                    <li>Safety: <span class="{safety_color}">{safety_rate:.2f}</span> (≥0.99)</li>
+                    <li>Apply Rate: <span class="{apply_color}">{apply_rate:.2f}</span> (≥0.95)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <h3>Detailed Reports</h3>
+            <div class="links">
+                <a href="scenario_{scenario_name}/one_pager.html" target="_blank">📊 Full Report</a>
+                <a href="scenario_{scenario_name}/one_pager.json" target="_blank">📄 JSON Data</a>
+                <a href="scenario_{scenario_name}/one_pager.csv" target="_blank">📈 CSV Data</a>
+            </div>
+        </div>
+    </div>
+    """
 
 def main():
     parser = argparse.ArgumentParser(description="Aggregate observed experiment results")
@@ -3067,6 +4415,9 @@ def main():
     parser.add_argument("--baseline", action="store_true", help="Mark as baseline report")
     parser.add_argument("--compare", nargs=2, metavar=("BASELINE_DIR", "TUNER_DIR"), help="Compare two directories")
     parser.add_argument("--simple-compare", nargs=2, metavar=("BASELINE_DIR", "TUNER_DIR"), help="Generate simple comparison report with just P95 latency chart")
+    parser.add_argument("--brain-ab", nargs=2, metavar=("OFF_DIR", "ON_DIR"), help="Generate Brain A/B comparison report")
+    parser.add_argument("--off-dir", help="OFF experiment directory (alternative to --brain-ab)")
+    parser.add_argument("--on-dir", help="ON experiment directory (alternative to --brain-ab)")
     parser.add_argument("--mixed-one", action="store_true", help="Generate mixed-one report with route share and latency analysis")
     parser.add_argument("--suite", choices=["static"], help="Generate static suite report")
     parser.add_argument("--static-suite", action="store_true", help="Generate static suite report (alias for --suite static)")
@@ -3074,6 +4425,12 @@ def main():
     parser.add_argument("--bucket-sec", type=int, default=5, help="Time bucket size in seconds (default: 5)")
     parser.add_argument("--warmup-sec", type=int, default=5, help="Warmup period in seconds (default: 5)")
     parser.add_argument("--switch-guard-sec", type=int, default=2, help="Switch guard period in seconds (default: 2)")
+    
+    # Demo pack specific arguments
+    parser.add_argument("--simulator-ab", nargs=2, metavar=("SINGLE_DIR", "MULTI_DIR"), help="Generate simulator A/B comparison report")
+    parser.add_argument("--demo-pack", help="Generate demo pack index from multiple scenario results")
+    parser.add_argument("--scenario", help="Scenario name for demo pack (A/B/C)")
+    parser.add_argument("--pack-out", help="Output directory for demo pack")
     
     args = parser.parse_args()
     
@@ -3195,6 +4552,134 @@ def main():
             f.write(html_content)
         
         print(f"Simple comparison report generated: {output_file}")
+        return
+    
+    # Handle simulator A/B comparison mode
+    if args.simulator_ab:
+        single_dir, multi_dir = args.simulator_ab
+        
+        # Load events from both directories
+        single_events_file = os.path.join(single_dir, "events.json")
+        multi_events_file = os.path.join(multi_dir, "events.json")
+        
+        if not os.path.exists(single_events_file) or not os.path.exists(multi_events_file):
+            print(f"Error: events.json not found in {single_dir} or {multi_dir}")
+            return
+        
+        # Load events
+        with open(single_events_file, 'r') as f:
+            single_events = json.load(f)
+        
+        with open(multi_events_file, 'r') as f:
+            multi_events = json.load(f)
+        
+        # Load metrics if available
+        single_metrics = {}
+        multi_metrics = {}
+        
+        single_metrics_file = os.path.join(single_dir, "metrics.json")
+        multi_metrics_file = os.path.join(multi_dir, "metrics.json")
+        
+        if os.path.exists(single_metrics_file):
+            with open(single_metrics_file, 'r') as f:
+                single_metrics = json.load(f)
+        
+        if os.path.exists(multi_metrics_file):
+            with open(multi_metrics_file, 'r') as f:
+                multi_metrics = json.load(f)
+        
+        # Generate simulator A/B HTML report
+        html_content = generate_simulator_ab_html(single_events, multi_events, single_metrics, multi_metrics, single_dir, multi_dir)
+        
+        # Determine output file
+        output_file = args.out or args.html or args.output or "reports/observed/simulator_ab_report.html"
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
+        with open(output_file, 'w') as f:
+            f.write(html_content)
+        
+        print(f"Simulator A/B report generated: {output_file}")
+        return
+
+    # Handle demo pack mode
+    if args.demo_pack:
+        pack_dir = args.pack_out or args.demo_pack
+        
+        if not os.path.exists(pack_dir):
+            print(f"Error: Demo pack directory not found: {pack_dir}")
+            return
+        
+        # Generate demo pack index
+        html_content = generate_demo_pack_index(pack_dir, args.scenario)
+        
+        # Determine output file
+        output_file = args.out or args.html or args.output or os.path.join(pack_dir, "index.html")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
+        with open(output_file, 'w') as f:
+            f.write(html_content)
+        
+        print(f"Demo pack index generated: {output_file}")
+        return
+
+    # Handle Brain A/B comparison mode
+    if args.brain_ab or (args.off_dir and args.on_dir):
+        if args.brain_ab:
+            off_dir, on_dir = args.brain_ab
+        else:
+            off_dir, on_dir = args.off_dir, args.on_dir
+        
+        # Check if this is simulator data (has events.json instead of trace.log)
+        off_events_file = os.path.join(off_dir, "events.json")
+        on_events_file = os.path.join(on_dir, "events.json")
+        
+        if os.path.exists(off_events_file) and os.path.exists(on_events_file):
+            # Simulator mode - load from events.json
+            print("📊 Loading simulator A/B data...")
+            with open(off_events_file, 'r') as f:
+                off_events = json.load(f)
+            with open(on_events_file, 'r') as f:
+                on_events = json.load(f)
+            
+            # Load metrics if available
+            off_metrics_file = os.path.join(off_dir, "metrics.json")
+            on_metrics_file = os.path.join(on_dir, "metrics.json")
+            
+            off_metrics = {}
+            on_metrics = {}
+            if os.path.exists(off_metrics_file):
+                with open(off_metrics_file, 'r') as f:
+                    off_metrics = json.load(f)
+            if os.path.exists(on_metrics_file):
+                with open(on_metrics_file, 'r') as f:
+                    on_metrics = json.load(f)
+            
+            # Generate simulator A/B comparison report
+            html_content = generate_simulator_ab_html(off_events, on_events, off_metrics, on_metrics, off_dir, on_dir)
+        else:
+            # Real experiment mode - load from trace.log
+            off_trace = os.path.join(off_dir, "trace.log")
+            on_trace = os.path.join(on_dir, "trace.log")
+            
+            off_events = load_trace_log(off_trace)
+            on_events = load_trace_log(on_trace)
+            
+            if not off_events or not on_events:
+                print("Error: Could not load events from both directories")
+                return
+            
+            # Generate Brain A/B comparison report
+            html_content = generate_brain_ab_html(off_events, on_events, off_dir, on_dir)
+        
+        # Determine output file
+        output_file = args.out or "reports/observed/brain_ab/one_pager.html"
+        
+        # Save report
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w') as f:
+            f.write(html_content)
+        
+        print(f"Brain A/B comparison report generated: {output_file}")
         return
     
     # Handle compare mode

@@ -1,0 +1,18 @@
+{
+  "created_at": "2025-10-06T09:28:45.769137",
+  "notes": "Enhanced Scenario A test",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A"
+  ],
+  "total_duration_sec": 1800,
+  "scenario_metadata": {
+    "A": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "created_at": "2025-10-06T10:50:50.553742",
+  "notes": "10-minute LIVE smoke test",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A"
+  ],
+  "total_duration_sec": 1200,
+  "apply_match_lag_sec": 2,
+  "scenario_metadata": {
+    "A": {
+      "duration_per_side": 600,
+      "buckets_per_side": 60,
+      "qps": 12,
+      "noise_pct": 0.05,
+      "perm_trials": 1000,
+      "delta_p95_ms": 0,
+      "p_value": 1.0,
+      "delta_recall": 0,
+      "safety_rate": 0.99,
+      "apply_rate": 0.95
+    }
+  },
+  "summary": {
+    "scenarios_passed": 0,
+    "scenarios_total": 1,
+    "duration_per_side": 600,
+    "buckets_per_side": 60,
+    "perm_trials": 1000,
+    "pass_rate": 0.0
+  }
+}

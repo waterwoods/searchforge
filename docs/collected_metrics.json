@@ -1,0 +1,54 @@
+{
+  "timestamp": "2025-10-08T19:31:59.319156",
+  "source_dir": "/Users/nanxinli/Downloads/autotuner_runs",
+  "scenarios": {
+    "A": {
+      "scenario": "A",
+      "preset": "High-Latency, Low-Recall",
+      "mode": "live",
+      "duration_sec": 3600,
+      "buckets": 360,
+      "delta_recall": 0.028,
+      "delta_p95_ms": 15.2,
+      "p_value": 0.023,
+      "safety_rate": 0.995,
+      "apply_rate": 0.967,
+      "cost_per_query": 3.81738425925926e-05,
+      "qps": 12,
+      "timestamp": "20251008_2120",
+      "path": "/Users/nanxinli/Downloads/autotuner_runs/20251008_2120/LOCAL_20251008_2120/scenario_A/one_pager.json"
+    },
+    "B": {
+      "scenario": "B",
+      "preset": "High-Recall, High-Latency",
+      "mode": "live",
+      "duration_sec": 600,
+      "buckets": 60,
+      "delta_recall": 0.028,
+      "delta_p95_ms": 15.2,
+      "p_value": 0.023,
+      "safety_rate": 0.995,
+      "apply_rate": 0.967,
+      "cost_per_query": 3.7618055555555556e-05,
+      "qps": 12,
+      "timestamp": "20251008_1432",
+      "path": "/Users/nanxinli/Downloads/autotuner_runs/20251008_1432/B_single/LOCAL_20251008_2332/scenario_B/one_pager.json"
+    },
+    "C": {
+      "scenario": "C",
+      "preset": "Low-Latency, Low-Recall",
+      "mode": "live",
+      "duration_sec": 600,
+      "buckets": 60,
+      "delta_recall": 0.028,
+      "delta_p95_ms": 15.2,
+      "p_value": 0.023,
+      "safety_rate": 0.995,
+      "apply_rate": 0.967,
+      "cost_per_query": 3.756388888888889e-05,
+      "qps": 12,
+      "timestamp": "20251008_1432",
+      "path": "/Users/nanxinli/Downloads/autotuner_runs/20251008_1432/C_single/LOCAL_20251008_2332/scenario_C/one_pager.json"
+    }
+  }
+}

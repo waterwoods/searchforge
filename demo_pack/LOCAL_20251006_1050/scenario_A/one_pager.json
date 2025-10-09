@@ -1,0 +1,28 @@
+{
+  "scenario": "A",
+  "preset": "High-Latency, Low-Recall",
+  "mode": "live",
+  "duration_sec": 600,
+  "bucket_sec": 10,
+  "qps": 12,
+  "init_params": {
+    "ef_search": 256,
+    "candidate_k": 2000,
+    "rerank_k": 100,
+    "threshold_T": 0.8
+  },
+  "single_knob": {
+    "metrics": {},
+    "experiment_dir": ""
+  },
+  "multi_knob": {
+    "metrics": {},
+    "experiment_dir": ""
+  },
+  "comparison": {
+    "delta_p95_ms": 0,
+    "delta_recall": 0,
+    "p_value": 1.0,
+    "error": "Health check failed"
+  }
+}

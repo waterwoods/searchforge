@@ -1,0 +1,31 @@
+{
+  "created_at": "2025-10-06T09:44:13.076890",
+  "notes": "Final verification test",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A"
+  ],
+  "total_duration_sec": 1800,
+  "scenario_metadata": {
+    "A": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 11.5,
+      "p_value": 0.011226038684659179,
+      "delta_recall": 0.032,
+      "safety_rate": 0.993,
+      "apply_rate": 0.959
+    }
+  },
+  "summary": {
+    "scenarios_passed": 1,
+    "scenarios_total": 1,
+    "duration_per_side": 900,
+    "buckets_per_side": 90,
+    "perm_trials": 5000,
+    "pass_rate": 1.0
+  }
+}

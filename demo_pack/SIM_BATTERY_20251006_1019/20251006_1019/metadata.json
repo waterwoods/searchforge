@@ -1,0 +1,57 @@
+{
+  "created_at": "2025-10-06T10:19:56.869044",
+  "notes": "Final sim battery",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A",
+    "B",
+    "C"
+  ],
+  "total_duration_sec": 5400,
+  "scenario_metadata": {
+    "A": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 10.5,
+      "p_value": 0.012295185226055293,
+      "delta_recall": 0.031,
+      "safety_rate": 0.995,
+      "apply_rate": 0.956
+    },
+    "B": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 7.2,
+      "p_value": 0.01793047845466397,
+      "delta_recall": 0.033,
+      "safety_rate": 0.995,
+      "apply_rate": 0.956
+    },
+    "C": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 8.8,
+      "p_value": 0.014670391462906881,
+      "delta_recall": 0.032,
+      "safety_rate": 0.995,
+      "apply_rate": 0.959
+    }
+  },
+  "summary": {
+    "scenarios_passed": 3,
+    "scenarios_total": 3,
+    "duration_per_side": 900,
+    "buckets_per_side": 90,
+    "perm_trials": 5000,
+    "pass_rate": 1.0
+  }
+}

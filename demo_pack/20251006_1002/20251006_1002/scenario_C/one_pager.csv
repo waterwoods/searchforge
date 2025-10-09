@@ -1,0 +1,4 @@
+t_start,p95_single,p95_multi,recall_single,recall_multi,delta_p95,delta_recall
+0,120.5,118.2,0.75,0.78,2.3,0.03
+10,119.8,117.1,0.76,0.79,2.7,0.03
+20,118.9,116.5,0.77,0.80,2.4,0.03

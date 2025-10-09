@@ -1,0 +1,34 @@
+# AutoTuner Closed-Loop Validation Experiment Configuration
+# Collection: beir_fiqa_full_ta (57k documents)
+# Policy: Balanced
+# SLA Targets: p95 ≤ 2500ms, Recall@10 ≥ 0.25
+
+retriever:
+  type: vector
+  top_k: 200
+
+reranker:
+  type: simple_ce
+
+rerank_k: 50
+
+# AutoTuner settings
+autotuner:
+  engine: hnsw
+  policy: Balanced
+  target_p95_ms: 2500.0
+  target_recall: 0.25
+  ef_search_range: [4, 256]
+  rerank_range: [100, 1200]
+  ema_alpha: 0.2
+  step_up: 32
+  step_down: 16
+
+# Experiment settings
+experiment:
+  collection_name: beir_fiqa_full_ta
+  queries_per_iteration: 50
+  total_iterations: 3
+  output_dir: reports/autotuner
+
+

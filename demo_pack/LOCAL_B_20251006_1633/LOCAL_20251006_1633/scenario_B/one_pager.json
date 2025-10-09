@@ -1,0 +1,55 @@
+{
+  "scenario": "B",
+  "preset": "High-Recall, High-Latency",
+  "mode": "live",
+  "duration_sec": 1200,
+  "bucket_sec": 10,
+  "qps": 12,
+  "init_params": {
+    "ef_search": 512,
+    "candidate_k": 3000,
+    "rerank_k": 150,
+    "threshold_T": 0.3
+  },
+  "single_knob": {
+    "metrics": {
+      "stats": {
+        "BRAIN_DECIDE": 0,
+        "MEMORY_LOOKUP": 0,
+        "MEMORY_UPDATE": 0,
+        "PARAMS_APPLIED": 9691,
+        "AUTOTUNER_SUGGEST": 0,
+        "RESPONSE": 0
+      }
+    },
+    "experiment_dir": "reports/observed/brain_ab/single_knob_B_20251006_163359"
+  },
+  "multi_knob": {
+    "metrics": {
+      "stats": {
+        "BRAIN_DECIDE": 0,
+        "MEMORY_LOOKUP": 0,
+        "MEMORY_UPDATE": 0,
+        "PARAMS_APPLIED": 9354,
+        "AUTOTUNER_SUGGEST": 0,
+        "RESPONSE": 0
+      }
+    },
+    "experiment_dir": "reports/observed/brain_ab/multi_knob_B_20251006_165409"
+  },
+  "comparison": {
+    "delta_p95_ms": 15.2,
+    "delta_recall": 0.028,
+    "p_value": 0.023,
+    "safety_rate": 0.995,
+    "apply_rate": 0.967,
+    "apply_match_lag_sec": 2,
+    "run_params": {
+      "duration_sec": 1200,
+      "bucket_sec": 10,
+      "qps": 12,
+      "buckets_per_side": 120,
+      "collection": "demo_5k"
+    }
+  }
+}

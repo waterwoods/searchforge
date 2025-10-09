@@ -1,0 +1,63 @@
+{
+  "dashboard": {
+    "title": "RAG QueryRewriter - Recall, P95 & Cache",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Recall@10 Timeline",
+        "type": "graph",
+        "datasource": "prometheus",
+        "targets": [
+          {
+            "expr": "rag_recall_at_10",
+            "legendFormat": "Recall@10"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "P95 Latency Timeline",
+        "type": "graph",
+        "datasource": "prometheus",
+        "targets": [
+          {
+            "expr": "rag_p95_latency_ms",
+            "legendFormat": "P95 Latency"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ms"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Cache Hit Rate Timeline",
+        "type": "graph",
+        "datasource": "prometheus",
+        "targets": [
+          {
+            "expr": "rag_cache_hit_rate",
+            "legendFormat": "Cache Hit Rate"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "created_at": "2025-10-06T09:43:41.966245",
+  "notes": "Final polished demo pack",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A",
+    "B",
+    "C"
+  ],
+  "total_duration_sec": 5400,
+  "scenario_metadata": {
+    "A": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 12.5,
+      "p_value": 0.010327955589886443,
+      "delta_recall": 0.03,
+      "safety_rate": 0.99,
+      "apply_rate": 0.95
+    },
+    "B": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 10.2,
+      "p_value": 0.012656808320939272,
+      "delta_recall": 0.036,
+      "safety_rate": 0.99,
+      "apply_rate": 0.95
+    },
+    "C": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "delta_p95_ms": 10.8,
+      "p_value": 0.011953652303109312,
+      "delta_recall": 0.031,
+      "safety_rate": 0.99,
+      "apply_rate": 0.95
+    }
+  },
+  "summary": {
+    "scenarios_passed": 3,
+    "scenarios_total": 3,
+    "duration_per_side": 900,
+    "buckets_per_side": 90,
+    "perm_trials": 5000,
+    "pass_rate": 1.0
+  }
+}

@@ -18,6 +18,24 @@ from .hybrid import fuse
 from modules.retrievers.bm25 import BM25Retriever
 from modules.rerankers.factory import create_reranker
 from modules.types import Document, ScoredDocument
+
+# Import CAG cache
+try:
+    from modules.rag.contracts import CacheConfig
+    from modules.rag.cache import CAGCache
+    CAG_AVAILABLE = True
+except ImportError:
+    CAG_AVAILABLE = False
+
+# Import Brain modules
+try:
+    from modules.autotuner.brain.contracts import TuningInput, SLO, Guards, MemorySample
+    from modules.autotuner.brain.decider import decide_tuning_action
+    from modules.autotuner.brain.apply import apply_action
+    from modules.autotuner.brain.memory import get_memory
+    BRAIN_AVAILABLE = True
+except ImportError:
+    BRAIN_AVAILABLE = False
 from modules.autotune.macros import get_macro_config, derive_params
 
 logger = logging.getLogger(__name__)
@@ -36,7 +54,7 @@ def _log_event(event: str, trace_id: str, cost_ms: float = 0.0,
     should_log_full = (_obs_counter % _obs_full_freq == 0) or (_obs_slo_violations > 0)
     
     # Always log important events
-    important_events = ["RESPONSE", "RUN_INFO", "AUTOTUNER_SUGGEST", "PARAMS_APPLIED", "FETCH_QUERY", "RETRIEVE_VECTOR"]
+    important_events = ["RESPONSE", "RUN_INFO", "AUTOTUNER_SUGGEST", "PARAMS_APPLIED", "FETCH_QUERY", "RETRIEVE_VECTOR", "ROUTE_CHOICE", "PATH_USED", "CYCLE_STEP", "CAND_AFTER_LIMIT"]
     if event in important_events:
         should_log_full = True
     
@@ -78,7 +96,15 @@ def _get_env_config():
         "tuner_sample_sec": int(os.getenv("TUNER_SAMPLE_SEC", "5")),
         "tuner_cooldown_sec": int(os.getenv("TUNER_COOLDOWN_SEC", "10")),
         "slo_p95_ms": float(os.getenv("SLO_P95_MS", "1200")),
-        "slo_recall_at10": float(os.getenv("SLO_RECALL_AT10", "0.30"))
+        "slo_recall_at10": float(os.getenv("SLO_RECALL_AT10", "0.30")),
+        "brain_enabled": os.getenv("BRAIN_ENABLED", "0") == "1",
+        "memory_enabled": os.getenv("MEMORY_ENABLED", "1") == "1",
+        # CAG cache configuration
+        "use_cache": os.getenv("USE_CACHE", "0") == "1",
+        "cache_policy": os.getenv("CACHE_POLICY", "exact"),
+        "cache_ttl_sec": int(os.getenv("CACHE_TTL_SEC", "600")),
+        "cache_capacity": int(os.getenv("CACHE_CAPACITY", "10000")),
+        "cache_fuzzy_threshold": float(os.getenv("CACHE_FUZZY_THRESHOLD", "0.85"))
     }
 
 # Global AutoTuner state
@@ -87,8 +113,12 @@ _autotuner_state = {
     "last_suggest_time": 0,
     "cooldown_until": 0,
     "current_ef_search": 128,
+    "current_T": 500,
+    "current_Ncand_max": 1000,
+    "current_rerank_mult": 3,
     "suggestions_made": 0,
-    "suggestions_applied": 0
+    "suggestions_applied": 0,
+    "last_bucket_time": 0
 }
 
 def _reset_autotuner_state():
@@ -127,18 +157,26 @@ def _update_autotuner_metrics(trace_id: str, total_cost_ms: float, recall_at_10:
         if m["timestamp"] >= cutoff_time
     ]
     
-    # Check if we should make a suggestion
-    if (current_time - _autotuner_state["last_suggest_time"] >= env_config["tuner_sample_sec"] and
-        len(_autotuner_state["metrics_window"]) >= 3):
+    # Check if we should make a suggestion (5s buckets)
+    bucket_interval = 5  # 5-second buckets
+    current_bucket = int(current_time // bucket_interval)
+    last_bucket = int(_autotuner_state["last_bucket_time"] // bucket_interval)
+    
+    if (current_bucket > last_bucket and len(_autotuner_state["metrics_window"]) >= 3):
         
-        # Calculate window metrics
+        # Calculate window metrics for this bucket
         window_p95 = max(m["p95_ms"] for m in _autotuner_state["metrics_window"])
         window_recall = sum(m["recall_at_10"] for m in _autotuner_state["metrics_window"]) / len(_autotuner_state["metrics_window"])
+        window_qps = len(_autotuner_state["metrics_window"]) / bucket_interval  # Approximate QPS
         
-        # 6. AUTOTUNER_SUGGEST event
-        suggestion = _make_autotuner_suggestion(window_p95, window_recall, env_config)
+        # Use Brain suggestion if enabled, otherwise fallback to original
+        if env_config["brain_enabled"]:
+            suggestion = _make_brain_suggestion(window_p95, window_recall, window_qps, env_config)
+        else:
+            suggestion = _make_autotuner_suggestion(window_p95, window_recall, env_config)
+        
         _autotuner_state["suggestions_made"] += 1
-        _autotuner_state["last_suggest_time"] = current_time
+        _autotuner_state["last_bucket_time"] = current_time
         
         _log_event("AUTOTUNER_SUGGEST", trace_id, 0.0,
                   params={
@@ -156,6 +194,83 @@ def _update_autotuner_metrics(trace_id: str, total_cost_ms: float, recall_at_10:
         _log_event("PARAMS_APPLIED", trace_id, 0.0,
                   applied=applied,
                   note="AutoTuner suggestion applied" if applied["applied"] else "AutoTuner suggestion rejected (cooldown)")
+
+def _make_brain_suggestion(window_p95: float, window_recall: float, window_qps: float, env_config: dict) -> dict:
+    """Make Brain-based suggestion using TuningInput and Memory."""
+    if not BRAIN_AVAILABLE or not env_config["brain_enabled"]:
+        return _make_autotuner_suggestion(window_p95, window_recall, env_config)
+    
+    global _autotuner_state
+    
+    # Create TuningInput
+    tuning_input = TuningInput(
+        p95_ms=window_p95,
+        recall_at10=window_recall,
+        qps=window_qps,
+        params={
+            'ef': _autotuner_state["current_ef_search"],
+            'T': _autotuner_state["current_T"],
+            'Ncand_max': _autotuner_state["current_Ncand_max"],
+            'rerank_mult': _autotuner_state["current_rerank_mult"]
+        },
+        slo=SLO(
+            p95_ms=env_config["slo_p95_ms"],
+            recall_at10=env_config["slo_recall_at10"]
+        ),
+        guards=Guards(
+            cooldown=time.time() < _autotuner_state["cooldown_until"],
+            stable=True  # Assume stable for now
+        ),
+        near_T=False,  # Could be calculated based on current params
+        last_action=None,  # Could track last action
+        adjustment_count=0  # Could track adjustment history
+    )
+    
+    # Get Brain decision
+    action = decide_tuning_action(tuning_input)
+    
+    # Apply action to get new parameters
+    new_params = apply_action(tuning_input.params, action)
+    
+    # Log BRAIN_DECIDE event
+    _log_event("BRAIN_DECIDE", "", 0.0, params={
+        "p95_ms": window_p95,
+        "recall_at10": window_recall,
+        "qps": window_qps,
+        "before": tuning_input.params,
+        "action": {
+            "kind": action.kind,
+            "step": action.step,
+            "reason": action.reason
+        },
+        "after": new_params
+    })
+    
+    # Log PARAMS_APPLIED event
+    _log_event("PARAMS_APPLIED", "", 0.0, params=new_params)
+    
+    # Update memory if enabled
+    if env_config["memory_enabled"]:
+        memory = get_memory()
+        bucket_id = memory.default_bucket_of(tuning_input)
+        sample = MemorySample(
+            bucket_id=bucket_id,
+            ef=tuning_input.params['ef'],
+            T=tuning_input.params['T'],
+            Ncand_max=tuning_input.params['Ncand_max'],
+            p95_ms=window_p95,
+            recall_at10=window_recall,
+            ts=time.time()
+        )
+        memory.observe(sample)
+    
+    return {
+        "ef_search": new_params['ef'],
+        "T": new_params['T'],
+        "Ncand_max": new_params['Ncand_max'],
+        "rerank_mult": new_params['rerank_mult'],
+        "reason": action.reason
+    }
 
 def _make_autotuner_suggestion(window_p95: float, window_recall: float, env_config: dict) -> dict:
     """Make AutoTuner suggestion based on Balanced policy."""
@@ -196,8 +311,21 @@ def _apply_autotuner_suggestion(suggestion: dict, current_time: float, env_confi
     old_ef = _autotuner_state["current_ef_search"]
     new_ef = suggestion["ef_search"]
     
-    if new_ef != old_ef:
+    # Handle Brain suggestions with multiple parameters
+    if "T" in suggestion:
+        old_T = _autotuner_state["current_T"]
+        old_Ncand_max = _autotuner_state["current_Ncand_max"]
+        old_rerank_mult = _autotuner_state["current_rerank_mult"]
+        
+        new_T = suggestion.get("T", old_T)
+        new_Ncand_max = suggestion.get("Ncand_max", old_Ncand_max)
+        new_rerank_mult = suggestion.get("rerank_mult", old_rerank_mult)
+        
+        # Update all parameters
         _autotuner_state["current_ef_search"] = new_ef
+        _autotuner_state["current_T"] = new_T
+        _autotuner_state["current_Ncand_max"] = new_Ncand_max
+        _autotuner_state["current_rerank_mult"] = new_rerank_mult
         _autotuner_state["suggestions_applied"] += 1
         _autotuner_state["cooldown_until"] = current_time + env_config["tuner_cooldown_sec"]
         
@@ -205,15 +333,34 @@ def _apply_autotuner_suggestion(suggestion: dict, current_time: float, env_confi
             "applied": True,
             "old_ef_search": old_ef,
             "new_ef_search": new_ef,
+            "old_T": old_T,
+            "new_T": new_T,
+            "old_Ncand_max": old_Ncand_max,
+            "new_Ncand_max": new_Ncand_max,
+            "old_rerank_mult": old_rerank_mult,
+            "new_rerank_mult": new_rerank_mult,
             "reason": suggestion["reason"]
         }
     else:
-        return {
-            "applied": True,
-            "old_ef_search": old_ef,
-            "new_ef_search": new_ef,
-            "reason": "no_change"
-        }
+        # Original AutoTuner logic (ef only)
+        if new_ef != old_ef:
+            _autotuner_state["current_ef_search"] = new_ef
+            _autotuner_state["suggestions_applied"] += 1
+            _autotuner_state["cooldown_until"] = current_time + env_config["tuner_cooldown_sec"]
+            
+            return {
+                "applied": True,
+                "old_ef_search": old_ef,
+                "new_ef_search": new_ef,
+                "reason": suggestion["reason"]
+            }
+        else:
+            return {
+                "applied": True,
+                "old_ef_search": old_ef,
+                "new_ef_search": new_ef,
+                "reason": "no_change"
+            }
 
 
 class SearchPipeline:
@@ -238,6 +385,25 @@ class SearchPipeline:
         # Initialize reranker from config
         reranker_cfg = config.get("reranker", None)
         self.reranker = create_reranker(reranker_cfg) if reranker_cfg else None
+        
+        # Initialize CAG cache if enabled
+        self.cache = None
+        if CAG_AVAILABLE:
+            cache_cfg = config.get("cache", {})
+            if cache_cfg.get("enabled", False):
+                try:
+                    cache_config = CacheConfig(
+                        policy=cache_cfg.get("policy", "exact"),
+                        ttl_sec=cache_cfg.get("ttl_sec", 600),
+                        capacity=cache_cfg.get("capacity", 10_000),
+                        fuzzy_threshold=cache_cfg.get("fuzzy_threshold", 0.85),
+                        normalize=cache_cfg.get("normalize", True),
+                        embedder=cache_cfg.get("embedder", None)
+                    )
+                    self.cache = CAGCache(cache_config)
+                    logger.info(f"CAG cache initialized: policy={cache_config.policy}, ttl={cache_config.ttl_sec}s")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize CAG cache: {e}")
         
         logger.info(f"SearchPipeline initialized with reranker: {type(self.reranker).__name__ if self.reranker else 'None'}")
     
@@ -438,6 +604,34 @@ class SearchPipeline:
                   params={"query": query[:80], "collection": collection_name},
                   stats={"candidate_k": candidate_k})
         
+        # Pre-retrieval cache check
+        cached_result = None
+        if self.cache and env_config["use_cache"]:
+            cached_result = self.cache.get(query)
+            if cached_result:
+                # Cache hit - short-circuit retrieval
+                _log_event("CACHE_HIT", trace_id, 0.0, 
+                          params={"query": query[:80]},
+                          stats={"reason": "fresh"})
+                
+                # Estimate saved latency (retrieval + rerank)
+                saved_latency = 120.0  # Typical retrieval + rerank time
+                self.cache.stats.saved_latency_ms += saved_latency
+                
+                # Return cached results
+                total_cost = (time.perf_counter() - start_time) * 1000.0
+                cached_answer = cached_result["answer"]
+                
+                _log_event("RESPONSE", trace_id, total_cost,
+                          stats={"total_results": len(cached_answer) if isinstance(cached_answer, list) else 1, "from_cache": True})
+                
+                return cached_answer
+            else:
+                # Cache miss
+                _log_event("CACHE_MISS", trace_id, 0.0,
+                          params={"query": query[:80]},
+                          stats={"reason": "not_found"})
+        
         # Log PARAMS_APPLIED event with macro and derived parameters
         _log_event("PARAMS_APPLIED", trace_id, 0.0,
                   params={
@@ -488,7 +682,28 @@ class SearchPipeline:
             top_k = retriever_cfg.get("top_k", 20)
             
             # Apply macro knob logic: choose path based on candidate count vs threshold
+            # ROUTE_CHOICE event: log path selection decision
             if top_k <= derived_params["T"]:
+                path_choice = "mem"
+            else:
+                path_choice = "hnsw"
+            
+            _log_event("ROUTE_CHOICE", trace_id, 0.0,
+                      params={
+                          "N": top_k,
+                          "T": derived_params["T"],
+                          "path": path_choice,
+                          "trace_id": trace_id
+                      })
+            
+            if top_k <= derived_params["T"]:
+                # PATH_USED event: log MEM path usage
+                _log_event("PATH_USED", trace_id, 0.0,
+                          params={
+                              "path": "mem",
+                              "trace_id": trace_id
+                          })
+                
                 # Exact/CPU path: use batch_size and Ncand_max
                 vec_start = time.perf_counter()
                 results = self.vector_search.vector_search(
@@ -510,6 +725,13 @@ class SearchPipeline:
                           },
                           stats={"candidates_returned": len(results)})
             else:
+                # PATH_USED event: log HNSW path usage
+                _log_event("PATH_USED", trace_id, 0.0,
+                          params={
+                              "path": "hnsw",
+                              "trace_id": trace_id
+                          })
+                
                 # HNSW path: use derived ef parameter
                 vec_start = time.perf_counter()
                 results = self.vector_search.vector_search(
@@ -563,7 +785,17 @@ class SearchPipeline:
             logger.info(f"Applying reranking to {len(docs)} documents")
             base_rerank_k = env_config["rerank_k"] if env_config["force_ce_on"] else self.config.get("rerank_k", 50)
             # Apply macro knob rerank multiplier, capped by Ncand_max
-            rerank_k = min(derived_params["rerank_multiplier"] * base_rerank_k, derived_params["Ncand_max"])
+            rerank_k_before = derived_params["rerank_multiplier"] * base_rerank_k
+            rerank_k = min(rerank_k_before, derived_params["Ncand_max"])
+            
+            # CAND_AFTER_LIMIT event: log truncation effects
+            _log_event("CAND_AFTER_LIMIT", trace_id, 0.0,
+                      params={
+                          "before": rerank_k_before,
+                          "after": rerank_k,
+                          "Ncand_max": derived_params["Ncand_max"],
+                          "rerank_pool": rerank_k
+                      })
             
             # 5. RERANK_CE event
             rerank_start = time.perf_counter()
@@ -623,6 +855,18 @@ class SearchPipeline:
                       stats={"total_results": len(reranked_results), "top1_id": top1_id},
                       params={"slo_violated": slo_violated, "slo_p95_ms": env_config["slo_p95_ms"]})
             
+            # Post-generation cache write-back
+            if self.cache and env_config["use_cache"]:
+                cache_meta = {
+                    "ts_ms": time.time() * 1000,
+                    "source": "pipeline",
+                    "cost_ms": total_cost
+                }
+                self.cache.put(query, reranked_results, cache_meta)
+                _log_event("CACHE_PUT", trace_id, 0.0,
+                          params={"query": query[:80]},
+                          stats={"reason": "generated"})
+            
             return reranked_results
         else:
             # Return original results without reranking
@@ -667,6 +911,18 @@ class SearchPipeline:
             _log_event("RESPONSE", trace_id, total_cost,
                       stats={"total_results": len(scored_results), "top1_id": top1_id},
                       params={"slo_violated": slo_violated, "slo_p95_ms": env_config["slo_p95_ms"]})
+            
+            # Post-generation cache write-back (no reranker case)
+            if self.cache and env_config["use_cache"]:
+                cache_meta = {
+                    "ts_ms": time.time() * 1000,
+                    "source": "pipeline_no_rerank",
+                    "cost_ms": total_cost
+                }
+                self.cache.put(query, scored_results, cache_meta)
+                _log_event("CACHE_PUT", trace_id, 0.0,
+                          params={"query": query[:80]},
+                          stats={"reason": "generated"})
             
             return scored_results
 

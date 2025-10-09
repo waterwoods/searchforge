@@ -1,0 +1,7 @@
+{
+  "active_config": "candidate_high_recall",
+  "last_good_config": "last_good",
+  "candidate_config": null,
+  "canary_start_time": null,
+  "canary_status": "rolled_back"
+}

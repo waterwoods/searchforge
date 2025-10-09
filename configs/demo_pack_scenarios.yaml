@@ -1,0 +1,106 @@
+# Demo Pack Scenario Presets
+# These define the initial parameters and configurations for different demo scenarios
+
+scenarios:
+  A:
+    name: "High-Latency, Low-Recall"
+    description: "Starts with high-latency, low-recall initial parameters - good for showing latency optimization"
+    init_params:
+      ef_search: 256
+      candidate_k: 2000
+      rerank_k: 100
+      threshold_T: 0.8
+    slo:
+      p95_ms: 150
+      recall_at10: 0.80
+    timing:
+      short_duration: 600    # 10 minutes for quick demos
+      long_duration: 3600    # 1 hour for comprehensive demos
+      bucket_sec: 10
+      qps: 12
+    expected_behavior:
+      - "Should show significant latency reduction with multi-knob tuning"
+      - "Recall may decrease slightly but should stay above SLO"
+      - "Good for demonstrating latency optimization capabilities"
+
+  B:
+    name: "High-Recall, High-Latency"
+    description: "Starts with high-recall, high-latency initial parameters - good for showing recall optimization"
+    init_params:
+      ef_search: 512
+      candidate_k: 3000
+      rerank_k: 150
+      threshold_T: 0.3
+    slo:
+      p95_ms: 200
+      recall_at10: 0.85
+    timing:
+      short_duration: 600    # 10 minutes for quick demos
+      long_duration: 7200    # 2 hours for comprehensive demos
+      bucket_sec: 10
+      qps: 12
+    expected_behavior:
+      - "Should maintain high recall while optimizing latency"
+      - "May show balanced improvements in both metrics"
+      - "Good for demonstrating multi-objective optimization"
+
+  C:
+    name: "Low-Latency, Low-Recall"
+    description: "Starts with low-latency, low-recall initial parameters - good for showing recall improvement"
+    init_params:
+      ef_search: 64
+      candidate_k: 500
+      rerank_k: 20
+      threshold_T: 0.9
+    slo:
+      p95_ms: 100
+      recall_at10: 0.75
+    timing:
+      short_duration: 600    # 10 minutes for quick demos
+      long_duration: 3600    # 1 hour for comprehensive demos
+      bucket_sec: 10
+      qps: 12
+    expected_behavior:
+      - "Should show significant recall improvement with multi-knob tuning"
+      - "Latency may increase slightly but should stay within SLO"
+      - "Good for demonstrating recall optimization capabilities"
+
+# Global demo pack configuration
+demo_pack:
+  default_qps: 12
+  default_bucket_sec: 10
+  default_seed: 42
+  default_perm_trials: 1000
+  
+  # Guardrails and pass/fail criteria
+  guardrails:
+    pass_criteria:
+      delta_p95_positive: true      # ΔP95 > 0 (multi-knob better)
+      p_value_significant: 0.05     # p < 0.05 (statistically significant)
+      recall_acceptable: -0.01      # ΔRecall ≥ -0.01 (recall doesn't drop too much)
+      safety_rate_min: 0.99         # safety ≥ 0.99
+      apply_rate_min: 0.95          # apply_rate ≥ 0.95
+    
+    warnings:
+      insufficient_buckets: 10      # Warn if buckets < 10
+      insufficient_duration: 300    # Warn if duration < 300s
+  
+  # Reproducibility settings
+  reproducibility:
+    save_git_sha: true
+    save_timestamp: true
+    save_run_params: true
+    save_seed: true
+
+# Simulation-specific settings
+simulation:
+  noise_pct: 0.05           # 5% noise in simulation
+  deterministic: true       # Use deterministic simulation
+  mock_time: false          # Use real time progression
+  
+# Live experiment settings  
+live:
+  dataset: "beir_fiqa_full_ta"
+  warmup_sec: 5
+  switch_guard_sec: 2
+  cooldown_sec: 10

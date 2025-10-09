@@ -1,0 +1,5 @@
+retriever:
+  type: qdrant
+  top_k: 20
+
+# 没有reranker配置 = 关闭reranker

@@ -1,0 +1,69 @@
+{
+  "scenario": "C",
+  "preset": "Low-Latency, Low-Recall",
+  "mode": "sim",
+  "duration_sec": 600,
+  "bucket_sec": 10,
+  "qps": 12,
+  "init_params": {
+    "ef_search": 64,
+    "candidate_k": 500,
+    "rerank_k": 20,
+    "threshold_T": 0.9
+  },
+  "single_knob": {
+    "metrics": {
+      "delta_p95_ms": 8.8,
+      "delta_recall": 0.029,
+      "p_value": 0.014670391462906881,
+      "safety_rate": 0.992,
+      "apply_rate": 0.956,
+      "run_params": {
+        "duration_sec": 900,
+        "bucket_sec": 10,
+        "qps": 15,
+        "buckets_per_side": 90,
+        "noise_pct": 0.03,
+        "perm_trials": 5000,
+        "seed": 154
+      }
+    },
+    "experiment_dir": "demo_pack/20251006_1034/scenario_C/single_knob"
+  },
+  "multi_knob": {
+    "metrics": {
+      "delta_p95_ms": 8.8,
+      "delta_recall": 0.029,
+      "p_value": 0.014670391462906881,
+      "safety_rate": 0.992,
+      "apply_rate": 0.956,
+      "run_params": {
+        "duration_sec": 900,
+        "bucket_sec": 10,
+        "qps": 15,
+        "buckets_per_side": 90,
+        "noise_pct": 0.03,
+        "perm_trials": 5000,
+        "seed": 154
+      }
+    },
+    "experiment_dir": "demo_pack/20251006_1034/scenario_C/multi_knob"
+  },
+  "comparison": {
+    "delta_p95_ms": 8.8,
+    "delta_recall": 0.029,
+    "p_value": 0.014670391462906881,
+    "safety_rate": 0.992,
+    "apply_rate": 0.956,
+    "seed": 154,
+    "run_params": {
+      "duration_sec": 900,
+      "bucket_sec": 10,
+      "qps": 15,
+      "buckets_per_side": 90,
+      "noise_pct": 0.03,
+      "perm_trials": 5000,
+      "seed": 154
+    }
+  }
+}

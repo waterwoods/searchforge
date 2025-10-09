@@ -1,0 +1,40 @@
+{
+    "name": "lenient_slo",
+    "description": "Lenient SLO strategy for testing with relaxed thresholds",
+    "rules": [
+        {
+            "name": "p95_latency",
+            "metric": "p95_ms",
+            "operator": "le",
+            "threshold": 2000.0,
+            "consecutive_buckets": 3,
+            "description": "P95 latency must be <= 2000ms for 3 consecutive buckets"
+        },
+        {
+            "name": "recall_at_10",
+            "metric": "recall_at_10",
+            "operator": "ge",
+            "threshold": 0.20,
+            "consecutive_buckets": 3,
+            "description": "Recall@10 must be >= 0.20 for 3 consecutive buckets"
+        }
+    ],
+    "alert_config": {
+        "enabled": true,
+        "console_alerts": true,
+        "file_alerts": true,
+        "violations_file": "reports/canary/violations.json",
+        "console_red_text": true,
+        "alert_threshold": 1,
+        "description": "Send alerts to console and file for SLO violations"
+    },
+    "rollback_config": {
+        "consecutive_buckets": 3,
+        "auto_rollback": true,
+        "rollback_delay_seconds": 5,
+        "max_rollbacks_per_hour": 10,
+        "description": "Automatically rollback after 3 consecutive SLO violations, max 10 rollbacks per hour"
+    },
+    "enabled": true
+}
+

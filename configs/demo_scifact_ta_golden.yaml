@@ -1,0 +1,10 @@
+retriever:
+  type: vector
+  top_k: 100
+  collection: beir_scifact_full_ta
+reranker:
+  type: cross_encoder
+  model: cross-encoder/ms-marco-MiniLM-L-2-v2
+  top_k: 50
+  batch_size: 32
+  cache_size: 2000

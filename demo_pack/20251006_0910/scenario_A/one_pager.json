@@ -1,0 +1,46 @@
+{
+  "scenario": "A",
+  "preset": "High-Latency, Low-Recall",
+  "mode": "sim",
+  "duration_sec": 120,
+  "bucket_sec": 10,
+  "qps": 12,
+  "init_params": {
+    "ef_search": 256,
+    "candidate_k": 2000,
+    "rerank_k": 100,
+    "threshold_T": 0.8
+  },
+  "single_knob": {
+    "metrics": {
+      "delta_p95_ms": 11.2,
+      "delta_recall": 0.036,
+      "p_value": 0.08,
+      "run_params": {
+        "duration_sec": 120,
+        "bucket_sec": 10,
+        "seed": 438
+      }
+    },
+    "experiment_dir": "demo_pack/20251006_0910/scenario_A/single_knob/experiment"
+  },
+  "multi_knob": {
+    "metrics": {
+      "delta_p95_ms": 11.2,
+      "delta_recall": 0.036,
+      "p_value": 0.08,
+      "run_params": {
+        "duration_sec": 120,
+        "bucket_sec": 10,
+        "seed": 438
+      }
+    },
+    "experiment_dir": "demo_pack/20251006_0910/scenario_A/multi_knob/experiment"
+  },
+  "comparison": {
+    "delta_p95_ms": 11.2,
+    "delta_recall": 0.036,
+    "p_value": 0.08,
+    "seed": 438
+  }
+}

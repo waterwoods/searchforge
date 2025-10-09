@@ -1,0 +1,20 @@
+{
+  "A": {
+    "recall_plot": "/Users/nanxinli/Documents/dev/searchforge/docs/plots/scenario_A_recall.png",
+    "p95_plot": "/Users/nanxinli/Documents/dev/searchforge/docs/plots/scenario_A_p95.png",
+    "buckets": 360,
+    "duration": 3600
+  },
+  "B": {
+    "recall_plot": "/Users/nanxinli/Documents/dev/searchforge/docs/plots/scenario_B_recall.png",
+    "p95_plot": "/Users/nanxinli/Documents/dev/searchforge/docs/plots/scenario_B_p95.png",
+    "buckets": 60,
+    "duration": 600
+  },
+  "C": {
+    "recall_plot": "/Users/nanxinli/Documents/dev/searchforge/docs/plots/scenario_C_recall.png",
+    "p95_plot": "/Users/nanxinli/Documents/dev/searchforge/docs/plots/scenario_C_p95.png",
+    "buckets": 60,
+    "duration": 600
+  }
+}

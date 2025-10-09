@@ -1,0 +1,95 @@
+# Observed Experiment Configuration
+# This configuration file defines the parameters for the AutoTuner observability experiment
+
+# Experiment settings
+experiment:
+  name: "autotuner_observability"
+  description: "AutoTuner closed-loop observability experiment with stress testing"
+  duration_minutes: 3
+  qps: 5
+  collection: "beir_fiqa_full_ta"
+  queries_file: "data/fiqa_queries.txt"
+
+# Candidate K progression (stages)
+candidate_k_steps:
+  - 100
+  - 200
+  - 400
+
+# Environment variables for the experiment
+environment:
+  # Chaos and stress testing
+  CHAOS_LAT_MS: 200
+  CHAOS_BURST_EVERY: 40
+  
+  # CE reranker settings
+  CE_CACHE_SIZE: 0
+  FORCE_CE_ON: 1
+  RERANK_K: 50
+  
+  # Hybrid search settings
+  FORCE_HYBRID_ON: 1
+  
+  # AutoTuner settings
+  TUNER_ENABLED: 1
+  TUNER_SAMPLE_SEC: 5
+  TUNER_COOLDOWN_SEC: 10
+  
+  # SLO targets
+  SLO_P95_MS: 1200
+  SLO_RECALL_AT10: 0.30
+  
+  # Observability settings
+  OBS_FULL_FREQ: 10
+
+# Baseline experiment (Tuner OFF)
+baseline:
+  TUNER_ENABLED: 0
+  # All other settings remain the same
+
+# Expected outcomes
+expectations:
+  # With AutoTuner ON
+  with_tuner:
+    p95_latency_ms:
+      stage_1: "< 800"  # Lower candidate_k should be faster
+      stage_2: "< 1000" # Medium candidate_k
+      stage_3: "< 1200" # Higher candidate_k, closer to SLO
+    slo_violation_rate:
+      stage_1: "< 5%"
+      stage_2: "< 10%"
+      stage_3: "< 15%"
+    autotuner_activity:
+      suggestions_made: "> 5"
+      suggestions_applied: "> 3"
+      ef_search_range: "64-256"
+  
+  # With AutoTuner OFF (baseline)
+  without_tuner:
+    p95_latency_ms:
+      stage_1: "< 800"
+      stage_2: "< 1200"
+      stage_3: "> 1200"  # Should exceed SLO
+    slo_violation_rate:
+      stage_1: "< 5%"
+      stage_2: "< 15%"
+      stage_3: "> 20%"   # Should have more violations
+
+# Report generation
+reporting:
+  output_dir: "reports/observed"
+  trace_log: "trace.log"
+  summary_json: "summary.json"
+  html_report: "observed_report.html"
+  baseline_report: "observed_report_baseline.html"
+  
+  # Chart settings
+  charts:
+    timeline:
+      width: 12
+      height: 10
+      dpi: 150
+    metrics_table:
+      include_stages: true
+      include_aggregates: true
+      include_autotuner_stats: true

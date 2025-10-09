@@ -1,0 +1,34 @@
+{
+  "created_at": "2025-10-06T09:29:03.651314",
+  "notes": "Enhanced demo pack with improved Scenario A",
+  "git_sha": "f9120364",
+  "scenarios_run": [
+    "A",
+    "B",
+    "C"
+  ],
+  "total_duration_sec": 4200,
+  "scenario_metadata": {
+    "A": {
+      "duration_per_side": 900,
+      "buckets_per_side": 90,
+      "qps": 15,
+      "noise_pct": 0.03,
+      "perm_trials": 5000
+    },
+    "B": {
+      "duration_per_side": 600,
+      "buckets_per_side": 60,
+      "qps": 12,
+      "noise_pct": 0.05,
+      "perm_trials": 1000
+    },
+    "C": {
+      "duration_per_side": 600,
+      "buckets_per_side": 60,
+      "qps": 12,
+      "noise_pct": 0.05,
+      "perm_trials": 1000
+    }
+  }
+}

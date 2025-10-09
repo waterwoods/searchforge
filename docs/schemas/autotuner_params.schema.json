@@ -1,0 +1,114 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://searchforge.dev/schemas/autotuner_params.json",
+    "title": "AutoTuner Parameters",
+    "description": "AutoTuner 搜索参数的数据结构定义，包含边界约束和联合约束",
+    "type": "object",
+    "required": [
+        "ef",
+        "T",
+        "Ncand_max",
+        "rerank_mult"
+    ],
+    "properties": {
+        "ef": {
+            "type": "integer",
+            "description": "HNSW 搜索深度参数（ef_search）",
+            "minimum": 64,
+            "maximum": 256,
+            "default": 128,
+            "examples": [
+                64,
+                96,
+                128,
+                160,
+                192,
+                224,
+                256
+            ]
+        },
+        "T": {
+            "type": "integer",
+            "description": "相似度阈值（threshold_T），范围 [200, 1200]",
+            "minimum": 200,
+            "maximum": 1200,
+            "default": 500,
+            "examples": [
+                200,
+                350,
+                500,
+                650,
+                800,
+                1000,
+                1200
+            ]
+        },
+        "Ncand_max": {
+            "type": "integer",
+            "description": "候选数上限（candidate_k），范围 [500, 2000]",
+            "minimum": 500,
+            "maximum": 2000,
+            "default": 1000,
+            "examples": [
+                500,
+                750,
+                1000,
+                1250,
+                1500,
+                1750,
+                2000
+            ]
+        },
+        "rerank_mult": {
+            "type": "integer",
+            "description": "重排序倍数（rerank_k），范围 [2, 6]",
+            "minimum": 2,
+            "maximum": 6,
+            "default": 3,
+            "examples": [
+                2,
+                3,
+                4,
+                5,
+                6
+            ]
+        }
+    },
+    "additionalProperties": false,
+    "x-constraints": {
+        "joint": [
+            {
+                "description": "rerank_mult 不应超过 Ncand_max 的 10%",
+                "formula": "rerank_mult <= Ncand_max * 0.1"
+            },
+            {
+                "description": "ef 不应超过 Ncand_max 的 4 倍",
+                "formula": "ef <= 4 * Ncand_max"
+            },
+            {
+                "description": "归一化后的 T 应在 [0, 1] 范围内",
+                "formula": "0 <= T/1000 <= 1"
+            }
+        ]
+    },
+    "examples": [
+        {
+            "ef": 128,
+            "T": 500,
+            "Ncand_max": 1000,
+            "rerank_mult": 3
+        },
+        {
+            "ef": 96,
+            "T": 600,
+            "Ncand_max": 800,
+            "rerank_mult": 2
+        },
+        {
+            "ef": 160,
+            "T": 450,
+            "Ncand_max": 1200,
+            "rerank_mult": 4
+        }
+    ]
+}

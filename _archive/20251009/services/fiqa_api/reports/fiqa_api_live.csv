@@ -1,0 +1,217 @@
+timestamp,query,latency_ms,cache_hit,num_results
+1759981651.427765,How do I calculate compound interest?,143.47,True,5
+1759981651.67405,What is the difference between a Roth IRA and Trad,134.58,False,5
+1759981651.842255,How can I improve my credit score?,59.63,True,5
+1759981652.050984,What are the best investment strategies for beginn,98.15,True,5
+1759981652.276457,How do I file taxes for freelance income?,112.77,True,5
+1759981652.508704,What is diversification in investment?,122.13,True,5
+1759981652.760073,Should I pay off debt or invest?,144.46,False,5
+1759981653.0106921,How do index funds work?,138.97,False,5
+1759981653.183601,What is the best way to save for retirement?,59.39,False,5
+1759981653.379492,How do I create a budget?,81.39,False,5
+1759983659.088526,How do I calculate compound interest?,100.30,True,3
+1759983753.3090649,How to invest in stocks?,116.15,False,5
+1759983815.778213,How to invest in stocks?,138.73,True,5
+1759983822.266516,Test query 1,71.09,False,3
+1759983822.378934,Test query 2,99.19,False,3
+1759983822.463733,Test query 3,73.06,True,3
+1759983822.625665,Test query 4,150.20,False,3
+1759983822.7531688,Test query 5,114.36,False,3
+1759983850.9389381,How to invest in stocks?,130.16,True,5
+1759983863.839221,How to invest in stocks?,137.31,False,5
+1759984282.383007,rate limit test,77.00,False,3
+1759984282.459579,rate limit test,64.31,True,3
+1759984282.562891,rate limit test,85.13,True,3
+1759984289.0789819,invest stocks,71.01,True,5
+1759984289.139276,invest stocks,132.96,True,5
+1759984289.157344,invest stocks,149.30,False,5
+1759984304.8559968,invest stocks,95.32,True,5
+1759984304.888546,invest stocks,128.17,False,5
+1759984304.9044778,invest stocks,144.25,False,5
+1759984329.029757,invest stocks,107.24,False,5
+1759984329.119481,credit score tips,83.32,False,5
+1759984329.244103,credit score tips,119.12,True,5
+1759984330.406539,retirement planning,146.55,False,5
+1759984330.5575528,retirement planning,140.99,False,5
+1759984330.640695,retirement planning,74.05,True,5
+1759984331.747463,tax filing,90.18,False,5
+1759984331.8707762,tax filing,114.46,True,5
+1759984331.9633942,tax filing,84.37,True,5
+1759984333.1085582,invest stocks,129.32,False,5
+1759984333.189208,credit score tips,72.08,False,5
+1759984333.2556758,credit score tips,56.61,False,5
+1759984334.3705049,retirement planning,97.75,False,5
+1759984334.489874,retirement planning,109.73,True,5
+1759984334.621779,retirement planning,122.92,False,5
+1759984335.781587,tax filing,144.99,True,5
+1759984335.939448,tax filing,150.14,True,5
+1759984336.007345,tax filing,58.43,False,5
+1759984337.130552,credit score tips,109.00,False,5
+1759984337.232964,credit score tips,91.99,False,5
+1759984337.301981,credit score tips,62.24,True,5
+1759984338.456525,retirement planning,140.50,True,5
+1759984338.613805,retirement planning,149.05,True,5
+1759984338.738564,retirement planning,117.76,False,5
+1759984339.832669,tax filing,77.24,False,5
+1759984339.982235,tax filing,139.99,True,5
+1759984340.0722182,tax filing,82.26,True,5
+1759984341.238105,credit score tips,152.59,True,5
+1759984341.350214,credit score tips,102.50,False,5
+1759984341.444035,credit score tips,86.61,True,5
+1759984342.5365498,retirement planning,77.09,False,5
+1759984342.623339,retirement planning,76.61,False,5
+1759984342.6917849,retirement planning,58.49,False,5
+1759984343.759756,tax filing,54.59,False,5
+1759984343.9069529,tax filing,138.42,True,5
+1759984343.98114,tax filing,65.05,True,5
+1759984345.1261618,invest stocks,127.91,False,5
+1759984345.272794,credit score tips,136.55,True,5
+1759984345.3492181,credit score tips,66.67,True,5
+1759984346.426294,retirement planning,61.23,False,5
+1759984346.542507,retirement planning,106.45,True,5
+1759984346.6468852,retirement planning,96.62,True,5
+1759984347.741505,tax filing,83.03,False,5
+1759984347.8175418,tax filing,67.03,True,5
+1759984347.961004,tax filing,134.08,True,5
+1759984349.046567,invest stocks,71.91,True,5
+1759984349.198832,credit score tips,143.64,True,5
+1759984349.27008,credit score tips,60.63,False,5
+1759984350.4282198,retirement planning,143.77,False,5
+1759984350.537524,retirement planning,98.40,True,5
+1759984350.6585448,retirement planning,111.41,True,5
+1759984351.793333,tax filing,120.59,True,5
+1759984351.914752,tax filing,112.21,False,5
+1759984352.0747461,tax filing,150.70,True,5
+1759984353.2340622,credit score tips,140.95,False,5
+1759984353.323413,credit score tips,79.38,False,5
+1759984353.4640262,credit score tips,130.49,False,5
+1759984354.604525,retirement planning,122.42,False,5
+1759984354.696894,retirement planning,83.00,False,5
+1759984354.855476,retirement planning,148.52,False,5
+1759984479.51685,test,91.22,True,3
+1759984479.65297,test,122.38,False,3
+1759984479.800969,test,130.90,False,3
+1759984481.1942132,credit score tips,119.32,True,5
+1759984481.290602,credit score tips,88.81,True,5
+1759984481.4155169,credit score tips,110.93,True,5
+1759984482.575969,retirement planning,144.90,False,5
+1759984482.717933,retirement planning,135.88,False,5
+1759984482.843405,retirement planning,119.74,False,5
+1759984483.9840078,tax filing,128.40,False,5
+1759984484.090806,tax filing,99.53,True,5
+1759984484.1763809,invest stocks,78.41,False,5
+1759984485.2740748,credit score tips,88.09,True,5
+1759984485.4278321,credit score tips,146.59,True,5
+1759984485.533063,credit score tips,86.55,True,5
+1759984486.690943,retirement planning,143.03,True,5
+1759984486.7795572,retirement planning,80.58,False,5
+1759984486.852214,retirement planning,67.46,True,5
+1759984487.954137,tax filing,79.70,True,5
+1759984488.029715,tax filing,67.69,True,5
+1759984488.126645,invest stocks,90.16,False,5
+1759984489.198314,credit score tips,62.16,True,5
+1759984489.268994,credit score tips,64.41,True,5
+1759984489.351327,credit score tips,75.91,True,5
+1759984490.426614,retirement planning,65.39,True,5
+1759984490.579679,retirement planning,147.13,True,5
+1759984490.72841,retirement planning,142.62,False,5
+1759984491.791591,tax filing,53.74,False,5
+1759984491.9075022,tax filing,109.21,True,5
+1759984492.035972,tax filing,122.96,False,5
+1759984493.101284,credit score tips,52.80,False,5
+1759984493.191919,credit score tips,83.96,False,5
+1759984493.269181,credit score tips,70.28,False,5
+1759984494.3886678,retirement planning,105.37,True,5
+1759984494.4969878,retirement planning,99.45,False,5
+1759984494.596117,retirement planning,93.55,False,5
+1759984495.6999948,tax filing,90.16,False,5
+1759984495.814862,tax filing,108.73,False,5
+1759984495.9309492,tax filing,110.62,True,5
+1759984497.084934,invest stocks,142.18,True,5
+1759984497.196148,credit score tips,104.94,True,5
+1759984497.33152,credit score tips,130.23,True,5
+1759984498.449124,retirement planning,106.52,True,5
+1759984498.6053498,retirement planning,149.54,False,5
+1759984498.7033558,retirement planning,90.50,True,5
+1759984499.854552,tax filing,139.73,False,5
+1759984499.947924,tax filing,86.75,False,5
+1759984500.0120618,tax filing,57.64,True,5
+1759984501.107936,credit score tips,84.49,False,5
+1759984501.25453,credit score tips,138.61,False,5
+1759984501.369542,credit score tips,108.05,False,5
+1759984502.5270221,retirement planning,144.89,False,5
+1759984502.6501591,retirement planning,115.38,True,5
+1759984502.798133,retirement planning,143.11,False,5
+1759984503.873409,tax filing,64.23,False,5
+1759984504.01631,tax filing,134.86,True,5
+1759984504.130511,invest stocks,108.49,False,5
+1759984505.2051148,credit score tips,61.16,True,5
+1759984505.34597,credit score tips,131.95,False,5
+1759984505.430915,credit score tips,79.34,True,5
+1759985161.972481,test,144.13,False,3
+1759985168.4698958,test,133.14,False,3
+1759985168.544244,test,59.31,False,3
+1759985168.734414,test,150.36,False,3
+1759985177.184625,rate test,141.29,True,3
+1759985177.324379,rate test,123.30,False,3
+1759985177.468417,rate test,126.07,True,3
+1759985192.1207502,tax filing,151.14,True,5
+1759985192.1925719,invest stocks,66.89,False,5
+1759985192.2718458,invest stocks,74.78,True,5
+1759985193.400612,credit score tips,117.12,True,5
+1759985193.5382771,credit score tips,131.40,True,5
+1759985193.62171,credit score tips,76.61,False,5
+1759985194.736971,retirement planning,104.23,False,5
+1759985194.869645,retirement planning,126.07,False,5
+1759985194.946684,retirement planning,72.28,True,5
+1759985196.091258,tax filing,132.06,False,5
+1759985196.159254,invest stocks,60.10,False,5
+1759985196.25914,invest stocks,94.63,False,5
+1759985197.358782,credit score tips,92.16,False,5
+1759985197.514493,credit score tips,149.31,False,5
+1759985197.645977,credit score tips,127.28,False,5
+1759985198.773783,retirement planning,117.83,True,5
+1759985198.860571,retirement planning,80.01,False,5
+1759985198.958632,retirement planning,91.95,False,5
+1759985200.108864,tax filing,137.10,True,5
+1759985200.242857,invest stocks,128.61,True,5
+1759985200.352701,invest stocks,103.01,False,5
+1759985201.429239,credit score tips,65.25,True,5
+1759985201.5524879,credit score tips,118.48,False,5
+1759985201.665038,credit score tips,107.58,False,5
+1759985202.773639,retirement planning,98.04,True,5
+1759985202.84765,retirement planning,66.09,False,5
+1759985202.993531,retirement planning,140.92,True,5
+1759985204.128414,invest stocks,124.01,False,5
+1759985204.2170172,invest stocks,76.70,True,5
+1759985204.290716,invest stocks,68.90,True,5
+1759985205.3844218,credit score tips,84.15,False,5
+1759985205.503455,credit score tips,113.15,False,5
+1759985205.656167,credit score tips,146.95,True,5
+1759985206.7915788,retirement planning,124.50,True,5
+1759985206.944821,retirement planning,146.53,False,5
+1759985207.02223,retirement planning,72.63,True,5
+1759985208.101086,invest stocks,70.48,False,5
+1759985208.210002,invest stocks,103.46,False,5
+1759985208.318958,invest stocks,103.76,False,5
+1759985209.481844,credit score tips,153.46,False,5
+1759985209.618798,credit score tips,131.26,True,5
+1759985209.684203,credit score tips,59.04,False,5
+1759985210.8410828,retirement planning,145.43,False,5
+1759985210.9854012,retirement planning,138.20,False,5
+1759985211.1392,retirement planning,148.01,False,5
+1759985212.249509,invest stocks,99.68,True,5
+1759985212.382143,invest stocks,126.80,False,5
+1759985212.487638,invest stocks,100.99,True,5
+1759985213.617766,credit score tips,118.38,True,5
+1759985213.6859572,credit score tips,62.69,False,5
+1759985213.8225012,credit score tips,130.89,False,5
+1759985214.9729762,retirement planning,138.14,False,5
+1759985215.077867,retirement planning,98.06,False,5
+1759985215.1359591,tax filing,52.94,False,5
+1759985216.2424362,invest stocks,94.51,True,5
+1759985216.342082,invest stocks,93.65,True,5
+1759985216.456476,invest stocks,109.34,False,5
+1759985217.584812,credit score tips,118.54,True,5
+1759985217.6973069,credit score tips,106.41,True,5
+1759985217.7725172,credit score tips,70.75,True,5

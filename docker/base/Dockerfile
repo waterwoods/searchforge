@@ -9,7 +9,7 @@ RUN python -m venv /opt/venv && \
     pip install --no-cache-dir --no-compile --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --no-compile --index-url https://download.pytorch.org/whl/cpu \
     torch==2.1.0 && \
-    pip install --no-cache-dir --no-compile -c ${CONSTRAINTS_FILE} \
+    pip install --no-cache-dir --no-compile -c /opt/constraints.txt \
     "numpy<2" transformers==4.33.3 sentence-transformers==2.2.2 \
     qdrant-client==1.7.3 uvicorn==0.23.2 fastapi==0.103.2 \
     prometheus-client==0.20.0
