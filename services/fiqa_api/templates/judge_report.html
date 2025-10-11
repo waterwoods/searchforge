@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Judger 详细报告</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      font-family: -apple-system, sans-serif;
+      background: #f5f5f5;
+      padding: 20px
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px
+    }
+
+    .verdict {
+      text-align: center;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px
+    }
+
+    .pass {
+      background: #e8f5e9;
+      color: #2e7d32
+    }
+
+    .warn {
+      background: #fff3e0;
+      color: #e65100
+    }
+
+    .fail {
+      background: #ffebee;
+      color: #c62828
+    }
+
+    .verdict h1 {
+      font-size: 3em;
+      margin-bottom: 10px
+    }
+
+    .metrics {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 15px
+    }
+
+    .metric {
+      text-align: center
+    }
+
+    .metric-val {
+      font-size: 1.8em;
+      font-weight: bold
+    }
+
+    .metric-lbl {
+      font-size: 0.9em;
+      color: #666
+    }
+
+    .charts {
+      display: flex;
+      gap: 20px;
+      margin: 30px 0
+    }
+
+    .chart {
+      flex: 1;
+      text-align: center
+    }
+
+    canvas {
+      border: 1px solid #ddd;
+      border-radius: 5px
+    }
+
+    .samples {
+      margin-top: 30px
+    }
+
+    .sample {
+      border: 1px solid #ddd;
+      margin: 10px 0;
+      border-radius: 5px
+    }
+
+    .sample-hdr {
+      padding: 15px;
+      cursor: pointer;
+      background: #fafafa;
+      display: flex;
+      justify-content: space-between;
+      align-items: center
+    }
+
+    .sample-hdr:hover {
+      background: #f0f0f0
+    }
+
+    .sample-body {
+      display: none;
+      padding: 15px;
+      border-top: 1px solid #ddd
+    }
+
+    .expanded .sample-body {
+      display: block
+    }
+
+    .compare {
+      display: flex;
+      gap: 15px
+    }
+
+    .col {
+      flex: 1;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 5px
+    }
+
+    .col h4 {
+      margin-bottom: 10px;
+      color: #666
+    }
+
+    .result-item {
+      padding: 8px;
+      margin: 5px 0;
+      background: #f9f9f9;
+      font-size: 0.9em;
+      line-height: 1.5
+    }
+
+    .reason {
+      background: #fff9e6;
+      padding: 10px;
+      margin-top: 10px;
+      border-left: 3px solid #ffb300;
+      font-style: italic
+    }
+
+    .rank-bar {
+      margin: 10px 0;
+      padding: 10px;
+      background: #f5f5f5;
+      border-radius: 5px
+    }
+
+    .rank-vis {
+      height: 20px;
+      background: linear-gradient(90deg, #f44336, #fff, #4caf50);
+      border-radius: 3px;
+      position: relative;
+      margin: 5px 0
+    }
+
+    .rank-marker {
+      position: absolute;
+      width: 3px;
+      height: 100%;
+      background: #000;
+      top: 0
+    }
+
+    .trigger-reason {
+      display: inline-block;
+      padding: 3px 8px;
+      background: #e3f2fd;
+      border-radius: 3px;
+      font-size: 0.85em;
+      margin: 2px
+    }
+
+    .actions {
+      margin-top: 30px;
+      text-align: center;
+      display: flex;
+      gap: 10px;
+      justify-content: center
+    }
+
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px
+    }
+
+    .btn-primary {
+      background: #2196f3;
+      color: #fff
+    }
+
+    .btn-secondary {
+      background: #666;
+      color: #fff
+    }
+
+    button:hover {
+      opacity: 0.9
+    }
+
+    .notice {
+      background: #e3f2fd;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container" id="app">
+    <div class="notice" id="loading">⏳ 加载中...</div>
+  </div>
+  <script>
+    const API = window.location.origin;
+    let reportData = null;
+    async function loadReport() {
+      try {
+        const r = await fetch(`${API}/judge/report.json`);
+        reportData = await r.json();
+        if (reportData.error) { document.getElementById('app').innerHTML = `<div class="notice">⚠️ ${reportData.error}<br><br>请先运行：<br>1. python scripts/judger_sample.py --n 20<br>2. 访问 /judge 完成标注</div>`; return }
+        render();
+      } catch (e) { document.getElementById('app').innerHTML = `<div class="notice">❌ 加载失败: ${e.message}</div>` }
+    }
+    function render() {
+      const s = reportData.summary;
+      const verdictClass = s.verdict === 'PASS' ? 'pass' : s.verdict === 'WARN' ? 'warn' : 'fail';
+      const verdictIcon = s.verdict === 'PASS' ? '✅' : s.verdict === 'WARN' ? '⚠️' : '❌';
+      document.getElementById('app').innerHTML = `
+    <div class="verdict ${verdictClass}">
+      <h1>${verdictIcon} ${s.verdict}</h1>
+      <div style="font-size:1.2em;margin:10px 0">ON版本胜率: ${(s.better_rate * 100).toFixed(1)}%</div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-val">${s.total}</div><div class="metric-lbl">总样本</div></div>
+        <div class="metric"><div class="metric-val">${s.better_on}</div><div class="metric-lbl">ON更好</div></div>
+        <div class="metric"><div class="metric-val">${s.same}</div><div class="metric-lbl">相当</div></div>
+        <div class="metric"><div class="metric-val">${s.better_off}</div><div class="metric-lbl">OFF更好</div></div>
+        <div class="metric"><div class="metric-val">${(s.threshold * 100).toFixed(0)}%</div><div class="metric-lbl">通过阈值</div></div>
+      </div>
+    </div>
+    <div class="charts">
+      <div class="chart"><canvas id="dist" width="450" height="80"></canvas><div style="margin-top:5px;font-size:0.9em;color:#666">投票分布</div></div>
+      <div class="chart"><canvas id="topic" width="450" height="80"></canvas><div style="margin-top:5px;font-size:0.9em;color:#666">主题分桶</div></div>
+    </div>
+    <div class="samples"><h3 style="margin-bottom:15px">📋 样例详情 (点击展开)</h3><div id="sample-list"></div></div>
+    <div class="actions">
+      <button class="btn-primary" onclick="downloadJSON()">📥 下载 JSON</button>
+      <button class="btn-secondary" onclick="downloadCSV()">📥 下载 CSV</button>
+      <button class="btn-primary" onclick="copyTalkingPoints()">📋 复制话术</button>
+    </div>
+  `;
+      drawCharts();
+      renderSamples();
+    }
+    function drawCharts() {
+      const s = reportData.summary;
+      const c1 = document.getElementById('dist').getContext('2d');
+      const w = 450, h = 80, barH = 40;
+      const total = s.total;
+      c1.fillStyle = '#4caf50'; c1.fillRect(10, 20, w * (s.better_on / total) - 10, barH);
+      c1.fillStyle = '#ff9800'; c1.fillRect(w * (s.better_on / total), 20, w * (s.same / total), barH);
+      c1.fillStyle = '#f44336'; c1.fillRect(w * (s.better_on / total) + w * (s.same / total), 20, w * (s.better_off / total), barH);
+      c1.fillStyle = '#000'; c1.font = '14px sans-serif';
+      c1.fillText(`ON: ${s.better_on}`, 15, 45); c1.fillText(`相当: ${s.same}`, w * (s.better_on / total) + 5, 45); c1.fillText(`OFF: ${s.better_off}`, w * (s.better_on / total) + w * (s.same / total) + 5, 45);
+      const c2 = document.getElementById('topic').getContext('2d');
+      const topics = Object.keys(reportData.topic_stats);
+      const barW = w / topics.length - 5;
+      topics.forEach((t, i) => {
+        const d = reportData.topic_stats[t];
+        const total = d.on + d.same + d.off;
+        const x = i * (barW + 5) + 10;
+        c2.fillStyle = '#4caf50'; c2.fillRect(x, 60 - (d.on / total * 50), barW, d.on / total * 50);
+        c2.fillStyle = '#ff9800'; c2.fillRect(x, 60 - (d.on + d.same) / total * 50, barW, d.same / total * 50);
+        c2.fillStyle = '#f44336'; c2.fillRect(x, 10, barW, (d.off / total) * 50);
+        c2.fillStyle = '#000'; c2.font = '10px sans-serif'; c2.fillText(t.substring(0, 8), x, 75);
+      });
+    }
+    function renderResultDetail(result, index) {
+      if (typeof result === 'string') return `<div class="result-item">${index}. ${result.substring(0, 120)}...</div>`;
+      const title = result.title || 'Unknown Title';
+      const text = result.text || 'No content';
+      const source = result.source || 'Unknown';
+      const score = result.score || 0;
+      const rerank = result.rerank_hit ? '✅' : '❌';
+      return `<div class="result-item">
+    <div style="font-weight:bold;margin-bottom:4px">${index}. ${title}</div>
+    <div style="font-size:0.9em;line-height:1.4;margin-bottom:4px">${text.substring(0, 120)}...</div>
+    <div style="font-size:0.8em;color:#666">📍 ${source} | 📊 ${score.toFixed(3)} | ${rerank}</div>
+  </div>`;
+    }
+    function renderSamples() {
+      const html = reportData.samples.map((item, idx) => {
+        const vIcon = item.pick === 'on' ? '✅' : item.pick === 'same' ? '➖' : '❌';
+        const meta = item.topic || item.metadata || {};
+        const rankDelta = meta.rank_delta || 0;
+        const firstDiff = meta.first_diff || false;
+        const topic = typeof meta === 'string' ? meta : (meta.topic || 'general');
+        const rankBarHtml = rankDelta !== 0 ? `<div class="rank-bar"><strong>📊 排名变化:</strong> ${renderRankDeltaBar(rankDelta)} <span style="color:${rankDelta > 0 ? '#f44336' : '#4caf50'};font-weight:bold">${rankDelta > 0 ? '+' : '}${rankDelta}</span> ${firstDiff?' < span style = "color:#ff5722" >⚡ 首位变化</span> ':''}</div>`:'';
+        const triggerReasonHtml = item.trigger_reason ? `<div style="margin:10px 0"><strong>🎯 触发原因:</strong> ${item.trigger_reason.split('|').map(r => `<span class="trigger-reason">${r}</span>`).join('')}</div>` : '';
+        return `<div class="sample"><div class="sample-hdr" onclick="toggleSample(${idx})"><div><strong>Q${idx + 1}:</strong> ${item.query.substring(0, 80)}... <span style="color:#999;font-size:0.85em">[${topic}]</span></div><div>${vIcon} ${item.pick.toUpperCase()}</div></div><div class="sample-body" id="sample-${idx}">${rankBarHtml}${triggerReasonHtml}<div class="compare"><div class="col"><h4>🟢 ON 结果</h4>${item.on_results.map((r, i) => renderResultDetail(r, i + 1)).join('')}</div><div class="col"><h4>🔴 OFF 结果</h4>${item.off_results.map((r, i) => renderResultDetail(r, i + 1)).join('')}</div></div>${item.reason ? `<div class="reason">💬 理由: ${item.reason}</div>` : ''}</div></div>`
+      }).join('');
+      document.getElementById('sample-list').innerHTML = html;
+    }
+    function renderRankDeltaBar(delta) {
+      const maxDelta = 10;
+      const normalized = Math.max(-maxDelta, Math.min(maxDelta, delta));
+      const pct = (normalized / maxDelta * 50) + 50;
+      return `<div class="rank-vis"><div class="rank-marker" style="left:${pct}%"></div></div>`;
+    }
+    function toggleSample(idx) {
+      const el = document.getElementById(`sample-${idx}`).parentElement;
+      el.classList.toggle('expanded');
+    }
+    function downloadJSON() {
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'judge_report.json'; a.click();
+    }
+    function downloadCSV() {
+      const rows = [['QID', 'Query', 'Pick', 'Reason', 'Topic']];
+      reportData.samples.forEach(s => rows.push([s.qid, s.query, s.pick, s.reason, s.topic]));
+      const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'judge_report.csv'; a.click();
+    }
+    function copyTalkingPoints() {
+      const s = reportData.summary;
+      const text = `【人工评测结果】\n判定: ${s.verdict} ${s.verdict === 'PASS' ? '✅' : '⚠️'}\nON版本胜率: ${(s.better_rate * 100).toFixed(1)}%\n样本数: ${s.total}\n分布: ON更好 ${s.better_on} | 相当 ${s.same} | OFF更好 ${s.better_off}\n阈值: ${(s.threshold * 100).toFixed(0)}%\n\n结论: ${s.verdict === 'PASS' ? 'ON版本显著更好，建议上线' : '需要进一步优化'}\n批次: ${s.batch_id}\n时间: ${s.ts_iso}`;
+      navigator.clipboard.writeText(text).then(() => alert('✅ 已复制到剪贴板'));
+    }
+    loadReport();
+  </script>
+</body>
+
+</html>

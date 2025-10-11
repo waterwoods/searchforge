@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Demo Dashboard - Live Metrics</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+            padding-right: 320px;
+        }
+
+        /* Right sidebar panels */
+        .sla-panel,
+        .auto-panel {
+            position: fixed;
+            right: 20px;
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            width: 280px;
+            z-index: 100;
+        }
+
+        .sla-panel {
+            top: 20px;
+        }
+
+        .auto-panel {
+            top: 200px;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .sla-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .sla-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+        }
+
+        .sla-actual {
+            margin-top: 12px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        .auto-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .status-dot.active {
+            background: #28a745;
+        }
+
+        .auto-meta {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .auto-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .auto-btn {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            background: white;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .auto-btn:hover {
+            background: #e7f3ff;
+        }
+
+        .auto-btn.stop {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
+        /* Main content */
+        h1 {
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        /* 6 KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .kpi-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .kpi-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .kpi-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .kpi-value.green {
+            color: #28a745;
+        }
+
+        .kpi-value.red {
+            color: #dc3545;
+        }
+
+        .kpi-value.orange {
+            color: #fd7e14;
+        }
+
+        .kpi-value.gray {
+            color: #6c757d;
+        }
+
+        .kpi-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+
+        .kpi-tooltip .tooltiptext {
+            visibility: hidden;
+            width: 280px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -140px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .kpi-tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
+        }
+
+        .kpi-tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* 4 Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .chart-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .chart-toggle {
+            padding: 4px 10px;
+            font-size: 11px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .chart-toggle.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        canvas {
+            width: 100%;
+            height: 180px;
+        }
+
+        /* Events Lane */
+        .events-lane {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .events-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .events-timeline {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 8px 0;
+        }
+
+        .event-dot {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 80px;
+        }
+
+        .event-circle {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-bottom: 4px;
+        }
+
+        .event-circle.profile {
+            background: #007bff;
+        }
+
+        .event-circle.sla {
+            background: #fd7e14;
+        }
+
+        .event-circle.auto {
+            background: #28a745;
+        }
+
+        .event-label {
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+        }
+
+        /* Mock mode banner */
+        .mock-banner {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        /* Collecting message */
+        .collecting-msg {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            padding: 60px 20px;
+        }
+
+        /* Profile Tabs */
+        .profile-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .profile-tab {
+            padding: 6px 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .profile-tab.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .profile-tab:hover:not(.active) {
+            background: #f8f9fa;
+        }
+
+        /* Auto Traffic Inputs */
+        .auto-inputs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .auto-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .auto-input-label {
+            font-size: 9px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .auto-input {
+            width: 100%;
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Right Sidebar Panels -->
+    <div class="sla-panel">
+        <div class="panel-title" id="slaLabel">🎯 Target P95: 300 ms</div>
+        <input type="range" min="100" max="800" step="10" value="300" class="sla-slider" id="slaSlider">
+        <div class="sla-actual" id="slaActual">📊 Actual: <span id="actualP95">—</span></div>
+        <div style="margin-top: 8px; font-size: 11px;">
+            <div style="font-weight: 600; margin-bottom: 4px; font-size: 10px; color: #666;">Profile Parameters</div>
+            <div id="paramsStatus" style="
+                display: flex;
+                gap: 6px;
+                align-items: center;
+                flex-wrap: wrap;
+                white-space: normal;
+                line-height: 1.3;
+                max-width: 260px;
+            ">—</div>
+        </div>
+    </div>
+
+    <div class="auto-panel">
+        <div class="auto-header">
+            <span class="status-dot" id="autoDot"></span>
+            <span class="panel-title">Auto Traffic</span>
+            <span id="autoCycle" style="
+                margin-left: 8px;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 600;
+                background: #f3f4f6;
+                color: #64748b;
+                border: 1px solid #cbd5e1;
+            ">Cycle —/—</span>
+        </div>
+        <div class="auto-inputs">
+            <div class="auto-input-group">
+                <label class="auto-input-label">QPS</label>
+                <input type="number" class="auto-input" id="inputQps" min="1" max="50" step="1" value="6">
+            </div>
+            <div class="auto-input-group">
+                <label class="auto-input-label">Duration(s)</label>
+                <input type="number" class="auto-input" id="inputDuration" min="10" max="300" step="5" value="45">
+            </div>
+            <div class="auto-input-group">
+                <label class="auto-input-label">Cycle(s)</label>
+                <input type="number" class="auto-input" id="inputCycle" min="5" max="120" step="5" value="20">
+            </div>
+        </div>
+        <div class="auto-meta">Last: <span id="autoLast">—</span></div>
+        <div class="auto-buttons">
+            <button class="auto-btn" onclick="autoStart()">▶ Start</button>
+            <button class="auto-btn stop" onclick="autoStop()">■ Stop</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <h1>🔍 Demo Dashboard - Live Metrics</h1>
+
+    <!-- Profile Tabs -->
+    <div class="profile-tabs">
+        <button class="profile-tab" data-profile="fast">⚡ Fast</button>
+        <button class="profile-tab" data-profile="balanced">⚖️ Balanced</button>
+        <button class="profile-tab" data-profile="quality">💎 Quality</button>
+    </div>
+
+    <div id="mockBanner" class="mock-banner" style="display:none;">
+        ⚠️ <span id="mockBannerText">Mock mode (no vector DB)</span>
+    </div>
+
+    <div id="warmupBanner" class="mock-banner"
+        style="display:none; background:#fff3cd; border-color:#ffeaa7; color:#856404;">
+        ⏳ <span id="warmupBannerText">Warming up traffic... 30–60s needed</span>
+    </div>
+
+    <!-- 6 KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-label">ΔRecall</div>
+            <div class="kpi-value" id="kpiRecall">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">ΔP95 (ms)</div>
+            <div class="kpi-value" id="kpiP95">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">p-value</div>
+            <div class="kpi-value" id="kpiPValue">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Human Better</div>
+            <div class="kpi-value" id="kpiHuman">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">TPS</div>
+            <div class="kpi-value" id="kpiTPS">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Cache Hit %</div>
+            <div class="kpi-value" id="kpiCache">—</div>
+        </div>
+    </div>
+
+    <!-- 4 Charts Grid -->
+    <div class="charts-grid">
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">P95 Latency (ms)</span>
+                <button class="chart-toggle" id="axisLock" onclick="toggleAxisLock()">🔓 Auto</button>
+            </div>
+            <canvas id="chartP95"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">Recall@10</span>
+            </div>
+            <canvas id="chartRecall"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">Throughput (req/s)</span>
+            </div>
+            <canvas id="chartTPS"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">Rerank & Cache Hit</span>
+            </div>
+            <canvas id="chartRerankCache"></canvas>
+        </div>
+    </div>
+
+    <!-- Events Lane -->
+    <div class="events-lane">
+        <div class="events-title">📍 Events Timeline</div>
+        <div class="events-timeline" id="eventsTimeline">
+            <div class="event-dot">
+                <div class="event-circle" style="background:#ddd;"></div>
+                <div class="event-label">No events yet</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let axisLocked = false;
+        let maxP95Seen = 0;
+        let lastDataHash = '';
+
+        // Helpers
+        const $ = id => document.getElementById(id);
+
+        // SLA Panel
+        function initSLA() {
+            const slider = $('slaSlider');
+            slider.oninput = e => {
+                const val = parseInt(e.target.value);
+                updateSLALabel(val);
+                fetch(`/demo/sla?target_p95=${val}`).catch(console.warn);
+            };
+            fetch('/demo/sla').then(r => r.json()).then(d => {
+                slider.value = d.target_p95 || 300;
+                updateSLALabel(d.target_p95);
+            }).catch(console.warn);
+        }
+
+        function updateSLALabel(val) {
+            let color = val >= 500 ? '#dc3545' : val >= 300 ? '#fd7e14' : '#28a745';
+            $('slaLabel').innerHTML = `🎯 Target P95: <span style="color:${color}">${val} ms</span>`;
+        }
+
+        // Profile Tabs
+        function initProfileTabs() {
+            const params = new URLSearchParams(location.search);
+            const currentProfile = params.get('profile') || 'balanced';
+
+            document.querySelectorAll('.profile-tab').forEach(btn => {
+                const profile = btn.dataset.profile;
+                btn.className = 'profile-tab' + (profile === currentProfile ? ' active' : '');
+                btn.onclick = () => {
+                    console.log(`[UI] profile -> ${profile}`);
+                    params.set('profile', profile);
+                    location.search = params.toString();
+                };
+            });
+        }
+
+        // Auto Traffic
+        function autoStart() {
+            const qps = parseFloat($('inputQps').value) || 6;
+            const duration = parseInt($('inputDuration').value) || 45;
+            const cycle = parseInt($('inputCycle').value) || 20;
+
+            console.log(`[UI] auto.start qps=${qps}, dur=${duration}, cycle=${cycle}`);
+
+            fetch(`/auto/start?qps=${qps}&duration=${duration}&cycle=${cycle}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(result => {
+                    console.log('[UI] auto.start result:', result);
+                    pollAuto();
+                })
+                .catch(console.error);
+        }
+
+        function autoStop() {
+            fetch('/auto/stop', { method: 'POST' })
+                .then(() => pollAuto()).catch(console.error);
+        }
+
+        function pollAuto() {
+            fetch(`/auto/status?ts=${Date.now()}`).then(r => r.json()).then(d => {
+                console.log('[UI] auto.status', d);
+
+                const dot = $('autoDot');
+                dot.className = 'status-dot' + (d.running ? ' active' : '');
+
+                // Sync inputs with server values
+                if (d.qps !== undefined) $('inputQps').value = d.qps;
+                if (d.duration !== undefined) $('inputDuration').value = d.duration;
+                if (d.cycle_sec !== undefined) $('inputCycle').value = d.cycle_sec;
+
+                // Update status text
+                const lastText = d.running ? '🟢 Running...' :
+                    (d.last_run ? new Date(d.last_run).toLocaleTimeString() : '—');
+                $('autoLast').textContent = lastText;
+
+                // Update cycle badge with ∞ mode support
+                const cycleEl = $('autoCycle');
+                const cc = Number(d.completed_cycles ?? 0);
+                const tcRaw = d.total_cycles;
+                const hasTotal = tcRaw !== null && tcRaw !== undefined;
+                const tc = hasTotal ? Number(tcRaw) : null;
+
+                // Generate text: "Cycle N/M" or "Cycle N/∞"
+                const text = hasTotal ? `Cycle ${Math.min(cc, tc)}/${tc}` : `Cycle ${cc}/∞`;
+                cycleEl.textContent = text;
+                cycleEl.title = hasTotal ? `cycles: ${cc}/${tc}` : `cycles: ${cc}/infinite`;
+
+                // Color by progress ratio (clamped)
+                if (!hasTotal) {
+                    // Infinite mode: gray
+                    cycleEl.style.background = '#f3f4f6';
+                    cycleEl.style.color = '#64748b';
+                    cycleEl.style.borderColor = '#cbd5e1';
+                } else if (tc > 0) {
+                    const ratio = Math.min(cc / tc, 1.0);
+                    if (ratio >= 0.75) {
+                        // 75-100%: Green
+                        cycleEl.style.background = '#dcfce7';
+                        cycleEl.style.color = '#166534';
+                        cycleEl.style.borderColor = '#86efac';
+                    } else if (ratio >= 0.5) {
+                        // 50-75%: Yellow
+                        cycleEl.style.background = '#fef9c3';
+                        cycleEl.style.color = '#854d0e';
+                        cycleEl.style.borderColor = '#fde047';
+                    } else {
+                        // 0-50%: Blue
+                        cycleEl.style.background = '#dbeafe';
+                        cycleEl.style.color = '#1e40af';
+                        cycleEl.style.borderColor = '#93c5fd';
+                    }
+                } else {
+                    // Edge case: total is 0
+                    cycleEl.style.background = '#f3f4f6';
+                    cycleEl.style.color = '#64748b';
+                    cycleEl.style.borderColor = '#cbd5e1';
+                }
+            }).catch(console.warn);
+        }
+
+        // Axis Lock Toggle
+        function toggleAxisLock() {
+            axisLocked = !axisLocked;
+            const btn = $('axisLock');
+            btn.textContent = axisLocked ? '🔒 Locked' : '🔓 Auto';
+            btn.className = 'chart-toggle' + (axisLocked ? ' active' : '');
+            render();  // Re-render charts
+        }
+
+        // Render KPIs
+        function renderKPIs(cards) {
+            const fmt = (val, decimals) => val == null ? '—' : val.toFixed(decimals);
+
+            const tooltipMsg = "Need paired ON/OFF data (per 5s bucket: P95≥10, Recall≥5)";
+
+            // ΔRecall with tooltip if missing
+            const recall = cards.delta_recall;
+            if (recall === null || cards.delta_recall_missing) {
+                $('kpiRecall').innerHTML = `<span class="kpi-tooltip">—<span class="tooltiptext">${tooltipMsg}</span></span>`;
+                $('kpiRecall').className = 'kpi-value gray';
+            } else {
+                $('kpiRecall').textContent = fmt(recall, 3);
+                $('kpiRecall').className = 'kpi-value ' + (recall > 0.01 ? 'green' : recall < -0.01 ? 'red' : 'gray');
+            }
+
+            // ΔP95 with tooltip if missing
+            const p95 = cards.delta_p95_ms;
+            if (p95 === null || cards.delta_p95_missing) {
+                $('kpiP95').innerHTML = `<span class="kpi-tooltip">—<span class="tooltiptext">${tooltipMsg}</span></span>`;
+                $('kpiP95').className = 'kpi-value gray';
+            } else {
+                $('kpiP95').textContent = fmt(p95, 1);
+                $('kpiP95').className = 'kpi-value ' + (p95 < -10 ? 'green' : p95 > 10 ? 'red' : 'gray');
+            }
+
+            const pval = cards.p_value;
+            $('kpiPValue').textContent = fmt(pval, 3);
+            $('kpiPValue').className = 'kpi-value ' + (pval < 0.05 ? 'green' : 'gray');
+
+            const human = cards.human_better || 0;
+            $('kpiHuman').textContent = fmt(human, 2);
+            $('kpiHuman').className = 'kpi-value ' + (human > 0.6 ? 'green' : human < 0.4 ? 'red' : 'orange');
+
+            const tps = cards.tps || 0;
+            $('kpiTPS').textContent = fmt(tps, 1);
+            $('kpiTPS').className = 'kpi-value gray';
+
+            const cache = cards.cache_hit || 0;
+            $('kpiCache').textContent = fmt(cache * 100, 0) + (cache > 0 ? '%' : '');
+            $('kpiCache').className = 'kpi-value ' + (cache > 0.2 ? 'green' : 'gray');
+        }
+
+        // Chart: P95 Latency with Target Line
+        function renderP95(series, targetP95, slaData) {
+            const canvas = $('chartP95');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;  // Retina
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            const p95On = series.p95_on || [];
+            const p95Off = series.p95_off || [];
+
+            if (p95On.length === 0 && p95Off.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Collecting data...', dw / 2, dh / 2);
+                return;
+            }
+
+            // Calculate Y range
+            const allVals = [...p95On.map(p => p[1]), ...p95Off.map(p => p[1])];
+            maxP95Seen = Math.max(maxP95Seen, ...allVals);
+            const yMax = axisLocked ? maxP95Seen * 1.2 : Math.max(...allVals, targetP95) * 1.1;
+            // Added padding to Y-axis to prevent the blue line from touching chart bottom
+            const yMin = Math.max(0, Math.min(...allVals) * 0.9);
+
+            const drawLine = (data, color, width = 2) => {
+                if (!data || data.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    const x = (i / Math.max(data.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            };
+
+            // Target line (dashed red)
+            const targetY = dh - 20 - ((targetP95 - yMin) / (yMax - yMin)) * (dh - 40);
+            ctx.strokeStyle = '#dc3545';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(30, targetY);
+            ctx.lineTo(dw - 10, targetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Lines
+            drawLine(p95On, '#007bff', 2);
+            drawLine(p95Off, '#6c757d', 2);
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(`${Math.round(yMax)}`, 25, 15);
+            ctx.fillText('0', 25, dh - 15);
+
+            // Actual P95 indicator with debug info
+            if (slaData && slaData.current_p95 > 0) {
+                const actual = slaData.current_p95;
+                $('actualP95').textContent = Math.round(actual) + ' ms';
+                const ratio = actual / targetP95;
+                let color = ratio > 1.1 ? '#dc3545' : ratio > 0.9 ? '#fd7e14' : '#28a745';
+                $('actualP95').style.color = color;
+            } else {
+                // Show collecting state with reason
+                const debug = slaData?.debug || {};
+                const samples = debug.p95_samples || 0;
+                const reason = debug.reason || 'unknown';
+
+                // Friendly reason text
+                let reasonText = reason;
+                if (reason === 'no_recent_samples') reasonText = 'no traffic';
+                else if (reason === 'insufficient_samples') reasonText = 'low samples';
+                else if (reason === 'csv_missing') reasonText = 'no data';
+
+                $('actualP95').textContent = `Collecting… (${samples}, ${reasonText})`;
+                $('actualP95').style.color = '#fd7e14';
+                $('actualP95').style.fontSize = '11px';
+            }
+        }
+
+        // Chart: Recall@10
+        function renderRecall(series) {
+            const canvas = $('chartRecall');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            const recallOn = series.recall_on || [];
+            const recallOff = series.recall_off || [];
+
+            if (recallOn.length < 5 && recallOff.length < 5) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                const n = recallOn.length + recallOff.length;
+                ctx.fillText(`Collecting... (${n} points)`, dw / 2, dh / 2);
+                return;
+            }
+
+            const allVals = [...recallOn.map(p => p[1]), ...recallOff.map(p => p[1])];
+            const yMax = Math.max(...allVals) * 1.1 || 1;
+            const yMin = Math.min(...allVals) * 0.9 || 0;
+
+            const drawLine = (data, color) => {
+                if (!data || data.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    const x = (i / Math.max(data.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            };
+
+            drawLine(recallOn, '#007bff');
+            drawLine(recallOff, '#6c757d');
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(yMax.toFixed(2), 25, 15);
+            ctx.fillText(yMin.toFixed(2), 25, dh - 15);
+        }
+
+        // Chart: Throughput (Bar)
+        function renderTPS(series) {
+            const canvas = $('chartTPS');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            const tps = series.tps || [];
+            if (tps.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data', dw / 2, dh / 2);
+                return;
+            }
+
+            const yMax = Math.max(...tps.map(p => p[1])) * 1.2 || 10;
+            const barWidth = Math.max(2, (dw - 40) / tps.length);
+
+            ctx.fillStyle = '#007bff';
+            tps.forEach((pt, i) => {
+                const x = 30 + i * barWidth;
+                const barHeight = (pt[1] / yMax) * (dh - 40);
+                const y = dh - 20 - barHeight;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(Math.round(yMax), 25, 15);
+        }
+
+        // Chart: Rerank Rate & Cache Hit (Dual Axis)
+        function renderRerankCache(series) {
+            const canvas = $('chartRerankCache');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            const rerank = series.rerank_rate || [];
+            const cache = series.cache_hit || [];
+
+            if (rerank.length === 0 && cache.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data', dw / 2, dh / 2);
+                return;
+            }
+
+            const drawLine = (data, color) => {
+                if (!data || data.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    const x = (i / Math.max(data.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - pt[1] * (dh - 40);  // 0-1 range
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            };
+
+            drawLine(rerank, '#fd7e14');
+            drawLine(cache, '#28a745');
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText('1.0', 25, 15);
+            ctx.fillText('0', 25, dh - 15);
+
+            // Legend
+            ctx.fillStyle = '#fd7e14';
+            ctx.fillRect(dw - 120, 10, 10, 10);
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('Rerank', dw - 105, 18);
+
+            ctx.fillStyle = '#28a745';
+            ctx.fillRect(dw - 60, 10, 10, 10);
+            ctx.fillText('Cache', dw - 45, 18);
+        }
+
+        // Events Lane with deduplication
+        function renderEvents(events, globalProfile) {
+            const container = $('eventsTimeline');
+            if (!events || events.length === 0) {
+                container.innerHTML = '<div class="event-dot"><div class="event-circle" style="background:#ddd;"></div><div class="event-label">No events</div></div>';
+                return;
+            }
+
+            // Deduplicate consecutive events by type+profile+minute
+            const seen = new Set();
+            const deduped = [];
+
+            for (const e of events.slice().reverse()) {  // Process newest first
+                const pf = e.meta?.profile ?? globalProfile ?? 'balanced';
+                const roundedMinute = Math.floor(e.ts / 60000);
+                const key = `${e.type}|${pf}|${roundedMinute}`;
+
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    deduped.push(e);
+                }
+            }
+
+            // Render last 10 events (already newest first from reverse)
+            container.innerHTML = deduped.slice(0, 10).map(e => {
+                // Use event's own profile, fallback to global
+                const pf = e.meta?.profile ?? globalProfile ?? 'balanced';
+
+                // Color map (matching profile tab colors)
+                const color = pf === 'fast' ? '#2563eb' : (pf === 'quality' ? '#7c3aed' : '#6b7280');
+
+                // Label based on event type
+                let label = '';
+                if (e.type === 'profile') {
+                    label = `→ ${e.meta?.to || pf}`;
+                } else if (e.type === 'sla') {
+                    label = `SLA ${e.meta?.to || e.meta?.target_p95}ms`;
+                } else if (e.type === 'auto') {
+                    label = `Auto ${e.meta?.action || 'event'}`;
+                } else {
+                    label = 'Event';
+                }
+
+                // Local time display (HH:MM:SS)
+                const dt = new Date(e.ts);
+                const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                return `<div class="event-dot">
+                <div class="event-circle" style="background:${color};"></div>
+                <div class="event-label">${label}<br>${time}</div>
+            </div>`;
+            }).join('');
+        }
+
+        // Update Profile Parameters Status Bar with wrapping badges
+        function updateParamsStatus(params) {
+            const el = $('paramsStatus');
+            if (!params) {
+                el.innerHTML = '—';
+                return;
+            }
+
+            const p = params || {};
+
+            // Define badge items
+            const items = [
+                {
+                    label: 'Reranker',
+                    value: p.reranker_on ? 'ON' : 'OFF',
+                    color: p.reranker_on ? '#f59e0b' : '#9ca3af'
+                },
+                {
+                    label: 'K',
+                    value: String(p.candidate_k ?? 128),
+                    color: '#334155'
+                },
+                {
+                    label: 'Cache',
+                    value: (p.cache_policy || 'standard')
+                        .replace('prefer_hit', 'PreferHit')
+                        .replace('bypass', 'Bypass')
+                        .replace('standard', 'Standard'),
+                    color: '#10b981'
+                }
+            ];
+
+            // Clear and create badge elements
+            el.innerHTML = '';
+            items.forEach(it => {
+                const badge = document.createElement('span');
+                badge.textContent = `${it.label}: ${it.value}`;
+                badge.style.cssText = `
+                    padding: 2px 6px;
+                    border-radius: 8px;
+                    background: #f3f4f6;
+                    color: ${it.color};
+                    border: 1px solid #e5e7eb;
+                    font-size: 10px;
+                    font-weight: 500;
+                    white-space: nowrap;
+                `;
+                el.appendChild(badge);
+            });
+        }
+
+        // Poll warmup status
+        function pollWarmupStatus() {
+            fetch('/admin/warmup/status')
+                .then(r => r.json())
+                .then(status => {
+                    const warmupBanner = $('warmupBanner');
+                    const now = Date.now() / 1000;
+
+                    // Show warmup banner if recently warmed up (within 60s)
+                    if (status.did_warmup && (now - status.last_warmup_ts) < 60) {
+                        warmupBanner.style.display = 'block';
+                    } else {
+                        warmupBanner.style.display = 'none';
+                    }
+                })
+                .catch(() => { });  // Silent fail
+        }
+
+        // Main render function
+        function render() {
+            const profile = new URLSearchParams(location.search).get('profile') || 'balanced';
+            fetch(`/dashboard.json?profile=${profile}&ts=${Date.now()}`)
+                .then(r => r.json())
+                .then(data => {
+                    // Check data hash to avoid unnecessary redraws
+                    const hash = JSON.stringify(data.series);
+                    if (hash === lastDataHash && !axisLocked) return;
+                    lastDataHash = hash;
+
+                    // Update banner based on mode
+                    const banner = $('mockBanner');
+                    const bannerText = $('mockBannerText');
+
+                    if (data.mock_mode) {
+                        banner.style.display = 'block';
+                        bannerText.textContent = 'Mock mode (no vector DB)';
+                    } else if (data.meta && data.meta.collection) {
+                        banner.style.display = 'block';
+                        banner.style.background = '#d1ecf1';
+                        banner.style.borderColor = '#bee5eb';
+                        banner.style.color = '#0c5460';
+                        bannerText.textContent = `Qdrant: ${data.meta.collection}`;
+                    } else {
+                        banner.style.display = 'none';
+                    }
+
+                    // Show warmup banner if in collecting state
+                    const warmupBanner = $('warmupBanner');
+                    if (data.meta && data.meta.note === 'collecting') {
+                        warmupBanner.style.display = 'block';
+                    }
+
+                    // Render all components
+                    renderKPIs(data.cards);
+                    renderP95(data.series, data.sla?.target_p95 || 300, data.sla);
+                    renderRecall(data.series);
+                    renderTPS(data.series);
+                    renderRerankCache(data.series);
+                    renderEvents(data.events, data.meta?.profile || profile);
+
+                    // Update profile parameters status bar
+                    updateParamsStatus(data.meta?.params);
+
+                    console.log(`[DEMO] Updated | p95=${data.series.p95_on?.length || 0}/${data.series.p95_off?.length || 0} | recall=${data.series.recall_on?.length || 0}/${data.series.recall_off?.length || 0}`);
+                })
+                .catch(err => {
+                    console.error('[DEMO] Fetch failed:', err);
+                });
+        }
+
+        // Initialize
+        initProfileTabs();
+        initSLA();
+        pollAuto();
+        pollWarmupStatus();
+        render();
+
+        // Auto-refresh
+        setInterval(render, 3000);
+        setInterval(pollAuto, 3000);
+        setInterval(pollWarmupStatus, 3000);
+    </script>
+</body>
+
+</html>
