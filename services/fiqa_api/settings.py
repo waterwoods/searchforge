@@ -49,12 +49,12 @@ JUDGE_PASS_RATE = float(os.getenv("JUDGE_PASS_RATE", "0.7"))
 JUDGE_DEFAULT_N = int(os.getenv("JUDGE_DEFAULT_N", "20"))
 
 # Reranker v2 - Selective Triggering with Budget & Fallback
-RR_MIN_QUERY_LEN = int(os.getenv("RR_MIN_QUERY_LEN", "9"))  # Fine-tuned for 15-25% hit rate
-RR_KEYWORDS = os.getenv("RR_KEYWORDS", "etf,yield,roi,apr,401k,bond,inflation,tax,credit,mortgage,invest,retire,fund,stock,portfolio,debt,saving").lower().split(",")
-RR_MIN_DISPERSION = float(os.getenv("RR_MIN_DISPERSION", "0.07"))  # Balanced for 15-25% target
+RR_MIN_QUERY_LEN = int(os.getenv("RR_MIN_QUERY_LEN", "3"))  # 进一步降低要求
+RR_KEYWORDS = os.getenv("RR_KEYWORDS", "etf,yield,roi,apr,401k,bond,inflation,tax,credit,mortgage,invest,retire,fund,stock,portfolio,debt,saving,如何,什么,计算,投资,基金").lower().split(",")
+RR_MIN_DISPERSION = float(os.getenv("RR_MIN_DISPERSION", "0.01"))  # 大幅降低分散度要求
 RR_MAX_LATENCY_MS = int(os.getenv("RR_MAX_LATENCY_MS", "1800"))  # Conservative upper limit
 RR_MAX_HIT_RATE = float(os.getenv("RR_MAX_HIT_RATE", "0.30"))  # Budget brake maintained
-RR_WARMUP_REQS = int(os.getenv("RR_WARMUP_REQS", "10"))
+RR_WARMUP_REQS = int(os.getenv("RR_WARMUP_REQS", "1"))  # 降低预热要求
 RR_COOLDOWN_SEC = int(os.getenv("RR_COOLDOWN_SEC", "10"))
 RR_ENABLE_FALLBACK = os.getenv("RR_ENABLE_FALLBACK", "True").lower() == "true"
 
