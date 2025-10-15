@@ -2,9 +2,18 @@
 Configuration for FIQA API - Environment-driven settings
 """
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
 
 # Rate Limiting (environment-configurable)
-RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "3"))
+# ⚙️ Raised rate limit to 1000 QPS for Black Swan test (temporary)
+# Previous value: 3 QPS (caused 429 errors during high-load tests)
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "1000"))
 RATE_LIMIT_WINDOW = float(os.getenv("RATE_LIMIT_WINDOW_SEC", "1.0"))
 RATE_LIMIT_WINDOW_SEC = RATE_LIMIT_WINDOW  # Alias for clarity
 
@@ -72,4 +81,32 @@ if DEMO_TUNING:
 # Demo Compare Mode - 对比模式强制差异
 DEMO_FORCE_DIFF = os.getenv("DEMO_FORCE_DIFF", "false").lower() == "true"
 DEMO_QUERIES_PATH = os.getenv("DEMO_QUERIES_PATH", "reports/demo_queries.json")
+
+# Black Swan Modes - Configurable Duration and Parameters
+# Mode A: High QPS Burst (600 QPS → 300 QPS hold)
+PLAY_A_DURATION_SEC = int(os.getenv("PLAY_A_DURATION_SEC", "15"))  # Mode A burst duration (default 15s)
+PLAY_A_RECOVERY_SEC = int(os.getenv("PLAY_A_RECOVERY_SEC", "45"))  # Mode A recovery duration (default 45s)
+
+# Mode B: Heavy Request (sustained load with heavy params)
+PLAY_B_DURATION_SEC = int(os.getenv("PLAY_B_DURATION_SEC", "180"))  # Mode B test duration (default 180s for Auto Tuner reaction)
+HEAVY_NUM_CANDIDATES = int(os.getenv("HEAVY_NUM_CANDIDATES", "1500"))  # Fetch more candidates
+HEAVY_RERANK_TOPK = int(os.getenv("HEAVY_RERANK_TOPK", "300"))  # Rerank more results
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder")  # cross-encoder or fallback
+RERANK_DELAY_MS = int(os.getenv("RERANK_DELAY_MS", "0"))  # Artificial delay (ms) for testing
+HEAVY_QUERY_BANK = os.getenv("HEAVY_QUERY_BANK", "data/fiqa_queries.txt")  # Long query source
+
+# Mode C: Network Delay (artificial latency simulation)
+PLAY_C_DURATION_SEC = int(os.getenv("PLAY_C_DURATION_SEC", "60"))  # Mode C test duration (default 60s)
+MODE_C_DELAY_MS = int(os.getenv("MODE_C_DELAY_MS", "250"))  # Mode C network delay (default 250ms)
+
+# Real Query Mode for Black Swan
+USE_REAL_QUERIES = os.getenv("USE_REAL_QUERIES", "false").lower() == "true"
+FIQA_QUERY_BANK = os.getenv("FIQA_QUERY_BANK", "data/fiqa_queries.txt")
+BS_BYPASS_CACHE = os.getenv("BS_BYPASS_CACHE", "true").lower() == "true"
+BS_UNIQUE_QUERIES = os.getenv("BS_UNIQUE_QUERIES", "true").lower() == "true"
+
+# Mode B QPS and parameters
+PLAY_B_QPS = int(os.getenv("PLAY_B_QPS", "120"))
+PLAY_B_NUM_CANDIDATES = int(os.getenv("PLAY_B_NUM_CANDIDATES", str(HEAVY_NUM_CANDIDATES)))
+PLAY_B_RERANK_TOPK = int(os.getenv("PLAY_B_RERANK_TOPK", str(HEAVY_RERANK_TOPK)))
 

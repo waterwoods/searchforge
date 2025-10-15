@@ -377,6 +377,197 @@
             color: #fd7e14;
         }
 
+        .ops-kpi-value.greyed {
+            color: #adb5bd;
+            opacity: 0.6;
+        }
+
+        .ops-kpi-compare-card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .ops-kpi-compare-label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .ops-kpi-compare-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .ops-kpi-compare-value.greyed {
+            color: #adb5bd;
+            opacity: 0.6;
+        }
+
+        .ops-kpi-compare-subtitle {
+            font-size: 10px;
+            color: #6c757d;
+            margin-top: 4px;
+            font-family: 'SF Mono', monospace;
+        }
+
+        .ops-kpi-arrow {
+            display: inline-block;
+            margin: 0 4px;
+            color: #0d6efd;
+        }
+
+        .ops-btn {
+            background: #2563eb;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .ops-status {
+            margin-top: 6px;
+            font-size: 0.9em;
+            color: #333;
+        }
+
+        /* Tap Console Styles */
+        .tap-console {
+            margin-top: 16px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            overflow: hidden;
+            max-height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tap-console-header {
+            background: #2d2d2d;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #404040;
+        }
+
+        .tap-console-title {
+            color: #00d9ff;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .tap-toggle-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tap-toggle-btn:hover {
+            color: #fff;
+        }
+
+        .tap-console-body {
+            padding: 12px;
+            overflow-y: auto;
+            max-height: 350px;
+            background: #1e1e1e;
+        }
+
+        .tap-console-stats {
+            padding: 8px;
+            background: #252525;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+            color: #999;
+        }
+
+        .tap-console-timeline {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .tap-event {
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            border-left: 3px solid #404040;
+            background: #252525;
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .tap-event-header {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .tap-event-ts {
+            color: #666;
+            font-size: 10px;
+        }
+
+        .tap-event-source {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .tap-event-source.backend {
+            background: #1e40af;
+            color: #bfdbfe;
+        }
+
+        .tap-event-source.event {
+            background: #047857;
+            color: #d1fae5;
+        }
+
+        .tap-event-type {
+            color: #00d9ff;
+            font-weight: 600;
+        }
+
+        .tap-event-details {
+            color: #aaa;
+            font-size: 10px;
+            padding-left: 8px;
+        }
+
+        .tap-event-error {
+            border-left-color: #ef4444;
+        }
+
+        .tap-event-error .tap-event-type {
+            color: #fca5a5;
+        }
+
+        .tap-loading {
+            color: #666;
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+        }
+
         /* 6 KPI Cards */
         .kpi-grid {
             display: grid;
@@ -887,6 +1078,54 @@
             <div class="ops-section">
                 <div class="ops-section-title">Auto Traffic</div>
                 <div class="ops-meta-line"><strong>Effective TPS:</strong> <span id="opsAutoTPS">—</span></div>
+            </div>
+
+            <!-- KPI Compare Panel (SLA Recovery) -->
+            <div class="ops-section">
+                <div class="ops-section-title">📊 SLA Recovery KPIs</div>
+
+                <!-- Cost per 1k requests -->
+                <div class="ops-kpi-compare-card">
+                    <div class="ops-kpi-compare-label">Cost per 1k Requests</div>
+                    <div class="ops-kpi-compare-value" id="opsCostPer1k">—</div>
+                </div>
+
+                <!-- Recall@10 -->
+                <div class="ops-kpi-compare-card">
+                    <div class="ops-kpi-compare-label">Recall@10</div>
+                    <div class="ops-kpi-compare-value" id="opsRecallCompare">—</div>
+                    <div class="ops-kpi-compare-subtitle" id="opsRecallSubtitle">—</div>
+                </div>
+
+                <!-- Recovery Time -->
+                <div class="ops-kpi-compare-card">
+                    <div class="ops-kpi-compare-label">Recovery Time</div>
+                    <div class="ops-kpi-compare-value" id="opsRecoveryTime">—</div>
+                    <div class="ops-kpi-compare-subtitle">Guardrail after 10 min</div>
+                </div>
+            </div>
+
+            <!-- Black Swan Demo Section -->
+            <div class="ops-section">
+                <h3>🦢 Black Swan Demo</h3>
+                <button id="runBlackSwanBtn" class="ops-btn">Run Black Swan Test</button>
+                <div id="blackSwanStatus" class="ops-status"></div>
+
+                <!-- Tap Console Drawer (only visible in dev mode with TAP_ENABLED) -->
+                <div id="tapConsole" class="tap-console" style="display: none;">
+                    <div class="tap-console-header">
+                        <span class="tap-console-title">📡 Live Tap Console</span>
+                        <button id="tapConsoleToggle" class="tap-toggle-btn">−</button>
+                    </div>
+                    <div class="tap-console-body">
+                        <div class="tap-console-stats" id="tapStats">
+                            <span id="tapStatsText">Loading...</span>
+                        </div>
+                        <div class="tap-console-timeline" id="tapTimeline">
+                            <div class="tap-loading">Waiting for events...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -3225,6 +3464,68 @@
                 document.getElementById('opsAutoTPS').textContent = 'N/A';
             }
 
+            // KPI Compare Panel (SLA Recovery)
+            if (data.kpi_compare && !data.kpi_compare.error) {
+                const kpi = data.kpi_compare;
+                const samples = kpi.samples || 0;
+
+                // Cost per 1k requests
+                const costEl = document.getElementById('opsCostPer1k');
+                if (samples < 3) {
+                    costEl.textContent = `Collecting… (${samples}/3)`;
+                    costEl.className = 'ops-kpi-compare-value greyed';
+                } else if (kpi.cost_per_1k != null) {
+                    costEl.textContent = `$${kpi.cost_per_1k.toFixed(2)}`;
+                    costEl.className = 'ops-kpi-compare-value';
+                } else {
+                    costEl.textContent = '—';
+                    costEl.className = 'ops-kpi-compare-value greyed';
+                }
+
+                // Recall@10 (before → after)
+                const recallCompareEl = document.getElementById('opsRecallCompare');
+                const recallSubtitleEl = document.getElementById('opsRecallSubtitle');
+                if (samples < 3) {
+                    recallCompareEl.textContent = `Collecting… (${samples}/3)`;
+                    recallCompareEl.className = 'ops-kpi-compare-value greyed';
+                    recallSubtitleEl.textContent = '—';
+                } else if (kpi.recall_before != null && kpi.recall_after != null) {
+                    recallCompareEl.textContent = kpi.recall_after.toFixed(4);
+                    recallCompareEl.className = 'ops-kpi-compare-value';
+                    recallSubtitleEl.textContent = `Before: ${kpi.recall_before.toFixed(4)} → After: ${kpi.recall_after.toFixed(4)}`;
+                } else if (kpi.recall_before != null) {
+                    recallCompareEl.textContent = kpi.recall_before.toFixed(4);
+                    recallCompareEl.className = 'ops-kpi-compare-value';
+                    recallSubtitleEl.textContent = 'Before guardrail trip';
+                } else {
+                    recallCompareEl.textContent = '—';
+                    recallCompareEl.className = 'ops-kpi-compare-value greyed';
+                    recallSubtitleEl.textContent = 'No guardrail events detected';
+                }
+
+                // Recovery Time
+                const recoveryEl = document.getElementById('opsRecoveryTime');
+                if (samples < 3) {
+                    recoveryEl.textContent = `Collecting… (${samples}/3)`;
+                    recoveryEl.className = 'ops-kpi-compare-value greyed';
+                } else if (kpi.recovery_time_sec != null) {
+                    recoveryEl.textContent = `${kpi.recovery_time_sec}s`;
+                    recoveryEl.className = 'ops-kpi-compare-value';
+                } else {
+                    recoveryEl.textContent = '—';
+                    recoveryEl.className = 'ops-kpi-compare-value greyed';
+                }
+            } else {
+                // Error state or no data
+                document.getElementById('opsCostPer1k').textContent = '—';
+                document.getElementById('opsCostPer1k').className = 'ops-kpi-compare-value greyed';
+                document.getElementById('opsRecallCompare').textContent = '—';
+                document.getElementById('opsRecallCompare').className = 'ops-kpi-compare-value greyed';
+                document.getElementById('opsRecallSubtitle').textContent = 'No data available';
+                document.getElementById('opsRecoveryTime').textContent = '—';
+                document.getElementById('opsRecoveryTime').className = 'ops-kpi-compare-value greyed';
+            }
+
             // One-time console log (prevent spam)
             if (!opsLogOnce && data.window60s && data.series60s) {
                 const backend = data.backend || 'unknown';
@@ -3356,6 +3657,114 @@
                     select.value = dataSourceMode;
                 });
         }
+
+        // Black Swan Demo Button Logic (with run_id gating)
+        const runBlackSwanBtn = document.getElementById("runBlackSwanBtn");
+        const blackSwanStatus = document.getElementById("blackSwanStatus");
+        let blackSwanRunId = null;  // Store run_id for current test
+        let blackSwanTimer = null;
+
+        runBlackSwanBtn.addEventListener("click", async () => {
+            // Disable button during run
+            runBlackSwanBtn.disabled = true;
+            runBlackSwanBtn.textContent = "Running...";
+
+            blackSwanStatus.textContent = "Starting Black Swan test...";
+
+            const res = await fetch("/ops/black_swan", { method: "POST" });
+            const data = await res.json();
+
+            if (!data.ok) {
+                // Handle errors (409 = already running)
+                if (res.status === 409) {
+                    blackSwanStatus.textContent = "⚠️ Test already running";
+                } else {
+                    blackSwanStatus.textContent = "⚠️ " + (data.error || "Failed to start test");
+                }
+                return;
+            }
+
+            // Store run_id from start response
+            blackSwanRunId = data.run_id;
+            console.log("[Black Swan] Started run:", blackSwanRunId);
+
+            let elapsed = 0;
+
+            // Clear any existing timer
+            if (blackSwanTimer) clearInterval(blackSwanTimer);
+
+            blackSwanTimer = setInterval(async () => {
+                elapsed += 5;
+
+                // Poll status endpoint (not report endpoint)
+                const statusRes = await fetch("/ops/black_swan/status");
+                const status = await statusRes.json();
+
+                // Check if this is our run
+                if (status.run_id !== blackSwanRunId) {
+                    clearInterval(blackSwanTimer);
+                    blackSwanStatus.textContent = "⚠️ Another run started";
+                    return;
+                }
+
+                // Update progress display
+                const phase = status.phase || "unknown";
+                const progress = status.progress || 0;
+                blackSwanStatus.textContent = `Running [${phase}] ${progress}% (${elapsed}s elapsed)`;
+
+                // Only mark complete when phase=complete AND progress=100 AND running=false
+                if (phase === "complete" && progress === 100 && status.running === false) {
+                    clearInterval(blackSwanTimer);
+
+                    // Re-enable button
+                    runBlackSwanBtn.disabled = false;
+                    runBlackSwanBtn.textContent = "Run Black Swan Test";
+
+                    // Fetch report to get filename
+                    const reportRes = await fetch("/ops/black_swan");
+                    const reportData = await reportRes.json();
+
+                    if (reportData.ok && reportData.report && reportData.state.last_run_id === blackSwanRunId) {
+                        blackSwanStatus.innerHTML =
+                            `✅ Test complete<br><a href="/reports/${reportData.latest}" target="_blank">View report</a>`;
+                    } else {
+                        blackSwanStatus.textContent = "✅ Test complete (report pending)";
+                    }
+                }
+
+                // Handle error phase (with structured error display)
+                if (phase === "error") {
+                    clearInterval(blackSwanTimer);
+
+                    // Re-enable button
+                    runBlackSwanBtn.disabled = false;
+                    runBlackSwanBtn.textContent = "Run Black Swan Test";
+
+                    // Build error message from structured error
+                    let errorMsg = "Unknown error";
+                    if (status.error && status.error.code) {
+                        const code = status.error.code;
+                        const step = status.error.step || "unknown";
+                        const msg = status.error.message || status.message || "Unknown error";
+                        const http = status.error.http || 0;
+
+                        // Format: "❌ Test failed: <code> at <step> — <message> (HTTP <http>)"
+                        errorMsg = code;
+                        if (step && step !== "unknown") {
+                            errorMsg += ` at ${step}`;
+                        }
+                        errorMsg += ` — ${msg}`;
+                        if (http > 0) {
+                            errorMsg += ` (HTTP ${http})`;
+                        }
+                    } else if (status.message) {
+                        errorMsg = status.message;
+                    }
+
+                    blackSwanStatus.innerHTML = `❌ Test failed<br><span style="font-size:0.85em">${errorMsg}</span>`;
+                }
+            }, 2000);  // Poll every 2 seconds (smoother UX)
+        });
 
         // Auto-refresh
         setInterval(render, 3000);
