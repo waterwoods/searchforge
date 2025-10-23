@@ -32,6 +32,10 @@ from logs.metrics_logger import MetricsLogger
 from modules.rag.reranker_lite import rerank_passages
 import settings
 
+# Import new core services and plugins
+from services.api.ops_routes import router as ops_router
+from services.plugins import force_override
+
 # Tuner imports
 try:
     from tuner import TunerParams, clamp, REG as StrategyRegistry
@@ -802,7 +806,7 @@ class PipelineManager:
             self.ready = True
             print(f"[QDRANT] url={settings.QDRANT_URL} collection=none points=0 mock_mode=true")
     
-    def search(self, query: str, top_k: int = 10) -> dict:
+    def search(self, query: str, top_k: int = 10, rerank_top_k: int = None) -> dict:
         """Search using Qdrant or mock data, with optional reranking"""
         t0 = time.time()
         
@@ -1024,6 +1028,7 @@ class PipelineManager:
             "rerank_model": rerank_model,
             "rerank_hit": rerank_hit,
             "candidate_k": len(candidates),
+            "rerank_top_k": rerank_top_k if rerank_top_k is not None else settings.RERANK_TOP_K,  # Use passed value or settings
             "collection": self.collection_name,
             "qdrant_latency_ms": qdrant_latency_ms,
             "network_latency_ms": network_latency_ms,  # NEW: network/overhead time
@@ -1038,6 +1043,26 @@ class PipelineManager:
 
 
 app = FastAPI(title=settings.API_TITLE)
+
+# Mount ops routes
+app.include_router(ops_router)
+
+# Log Force Override initialization
+force_config = force_override.get_status()
+logger = logging.getLogger(__name__)
+if force_config["force_override"]:
+    logger.info(
+        f"[INIT] ForceOverride loaded with force_override=True, "
+        f"hard_cap={force_config['hard_cap_enabled']}, "
+        f"params={force_config['active_params']}, "
+        f"limits={force_config['hard_cap_limits']}"
+    )
+else:
+    logger.info(
+        f"[INIT] ForceOverride loaded with force_override=False, "
+        f"hard_cap={force_config['hard_cap_enabled']}"
+    )
+
 manager = PipelineManager()
 metrics_logger = MetricsLogger()
 
@@ -1056,6 +1081,32 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 reports_dir = Path(__file__).parent.parent.parent / "reports"
 reports_dir.mkdir(exist_ok=True)
 app.mount("/reports", StaticFiles(directory=str(reports_dir)), name="reports")
+
+# Mount frontend static files with SPA fallback
+frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    # Mount static files
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    
+    # SPA fallback - serve index.html for all routes
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Skip API routes
+        if full_path.startswith(("api/", "ops/", "docs", "openapi.json", "health", "readyz", "reports/")):
+            raise HTTPException(status_code=404, detail="Not Found")
+        
+        # Serve index.html for all other routes (SPA fallback)
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            with open(index_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            return HTMLResponse(content=content)
+        else:
+            raise HTTPException(status_code=404, detail="Frontend not found")
+    
+    logger.info(f"✓ Frontend mounted with SPA fallback (from {frontend_dist})")
+else:
+    logger.warning(f"⚠ Frontend dist not found at {frontend_dist}")
 
 # Track service start time
 SERVICE_START_TIME = time.time()
@@ -1397,6 +1448,8 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = 10
     query_id: Optional[str] = None  # doc-id alignment: for real recall calculation
+    candidate_k: Optional[int] = None  # Force override: candidate count
+    rerank_top_k: Optional[int] = None  # Force override: rerank top-k
     
     @field_validator('query')
     @classmethod
@@ -1419,6 +1472,7 @@ class SearchResponse(BaseModel):
     cache_hit: bool
     mode: str = None
     candidate_k: int = None
+    rerank_top_k: int = None  # Force override: rerank top-k value
     rerank_hit: int = None
     page_index: bool = None
     doc_ids: list[str] = None
@@ -1555,15 +1609,18 @@ def search(request: Request, req: SearchRequest = None, mode: str = None, profil
             response_data = {
                 "answers": [ans.get("text", str(ans)) for ans in result['answers']],
                 "latency_ms": total_latency_ms,
-                "cache_hit": True
+                "cache_hit": True,
+                "candidate_k": result.get('candidate_k', None),
+                "rerank_top_k": result.get('rerank_top_k', None),
+                # ⭐ Recall: Always include doc_ids for recall calculation
+                "doc_ids": [ans.get("id", f"doc_{i}") for i, ans in enumerate(result['answers'])]
             }
             if mode:
                 response_data.update({
                     "mode": mode,
                     "candidate_k": result.get('candidate_k', 0),
                     "rerank_hit": result.get('rerank_hit', 0),
-                    "page_index": settings.ENABLE_PAGE_INDEX,
-                    "doc_ids": [ans.get("id", f"doc_{i}") for i, ans in enumerate(result['answers'])]
+                    "page_index": settings.ENABLE_PAGE_INDEX
                 })
             return SearchResponse(**response_data)
     
@@ -1659,13 +1716,58 @@ def search(request: Request, req: SearchRequest = None, mode: str = None, profil
         # Within acceptable range
         print(f"[SLA] target={target_p95}ms | current_p95={current_p95:.1f}ms | action=MAINTAIN | rerank={'ON' if settings.ENABLE_RERANKER else 'OFF'} | candidate_k={settings.CANDIDATE_K_MAX}")
     
+    # Apply Force Override parameters using plugin
+    force_override_candidate_k = None
+    force_override_rerank_top_k = None
+    
+    # Build planned parameters from request
+    planned_params = {}
+    if req.candidate_k is not None:
+        planned_params["num_candidates"] = req.candidate_k
+    if req.rerank_top_k is not None:
+        planned_params["rerank_topk"] = req.rerank_top_k
+    
+    # Resolve through precedence chain if any params specified or force override enabled
+    if planned_params or force_override.is_enabled():
+        # Set defaults to current settings
+        defaults = {
+            "num_candidates": settings.CANDIDATE_K_MAX,
+            "rerank_topk": settings.RERANK_TOP_K
+        }
+        
+        # Resolve through plugin
+        force_status = force_override.resolve(planned_params, context="search_endpoint", defaults=defaults)
+        effective = force_status.effective_params
+        
+        # Apply effective parameters
+        if "num_candidates" in effective:
+            settings.CANDIDATE_K_MAX = effective["num_candidates"]
+            force_override_candidate_k = effective["num_candidates"]
+        
+        if "rerank_topk" in effective:
+            settings.RERANK_TOP_K = effective["rerank_topk"]
+            force_override_rerank_top_k = effective["rerank_topk"]
+        
+        # Log precedence chain
+        if force_status.force_override or planned_params:
+            print(f"[FORCE_OVERRIDE] Precedence trace:")
+            for step in force_status.precedence_chain:
+                print(f"  {step}")
+            print(f"[FORCE_OVERRIDE] Effective params: candidate_k={settings.CANDIDATE_K_MAX}, rerank_top_k={settings.RERANK_TOP_K}")
+    
     try:
         # Call pipeline with profiling
         if PROFILER_AVAILABLE:
             with prof("api.search.pipeline"):
-                result = manager.search(query=req.query, top_k=req.top_k)
+                result = manager.search(query=req.query, top_k=req.top_k, rerank_top_k=force_override_rerank_top_k)
         else:
-            result = manager.search(query=req.query, top_k=req.top_k)
+            result = manager.search(query=req.query, top_k=req.top_k, rerank_top_k=force_override_rerank_top_k)
+        
+        # Override result fields with Force Override values if they were applied
+        if force_override_candidate_k is not None:
+            result["candidate_k"] = force_override_candidate_k
+        if force_override_rerank_top_k is not None:
+            result["rerank_top_k"] = force_override_rerank_top_k
     finally:
         # Restore original settings
         settings.ENABLE_RERANKER = original_reranker
@@ -1784,17 +1886,22 @@ def search(request: Request, req: SearchRequest = None, mode: str = None, profil
         # ⭐ FIX: Add stage timing fields to response
         "qdrant_latency_ms": result.get('qdrant_latency_ms', 0),
         "rerank_latency_ms": result.get('rerank_latency_ms', 0),
-        "network_latency_ms": endpoint_network_ms  # Use endpoint-level calculation
+        "network_latency_ms": endpoint_network_ms,  # Use endpoint-level calculation
+        # ⭐ FIX: Always include parameter fields
+        "candidate_k": force_override_candidate_k if force_override_candidate_k is not None else result.get('candidate_k', None),
+        "rerank_top_k": force_override_rerank_top_k if force_override_rerank_top_k is not None else result.get('rerank_top_k', None),
+        # ⭐ Recall: Always include doc_ids for recall calculation
+        "doc_ids": doc_ids
     }
     
     # Add compare mode metadata if mode is set
     if mode:
         response_data.update({
             "mode": mode,
-            "candidate_k": result.get('candidate_k', current_candidate_k),
+            "candidate_k": force_override_candidate_k if force_override_candidate_k is not None else settings.CANDIDATE_K_MAX,  # Use Force Override value if available
+            "rerank_top_k": force_override_rerank_top_k if force_override_rerank_top_k is not None else settings.RERANK_TOP_K,  # Use Force Override value if available
             "rerank_hit": result.get('rerank_hit', 0),
-            "page_index": current_page_index,
-            "doc_ids": [ans.get("id", f"doc_{i}") for i, ans in enumerate(result['answers'])]
+            "page_index": current_page_index
         })
     
     return SearchResponse(**response_data)

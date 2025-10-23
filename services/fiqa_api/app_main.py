@@ -34,13 +34,20 @@ from dotenv import load_dotenv
 # Load .env file before any other initialization
 load_dotenv()
 
-# Validate OPENAI_API_KEY early
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("❌ Missing OPENAI_API_KEY. Please check your .env file.")
+# ✅ OPENAI_API_KEY is optional - code_lookup will fall back to raw results if missing
+# Configure logging first before any logging calls
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
-# Log successful key loading (show first 6 chars only for security)
-print(f"✅ OPENAI_API_KEY loaded: {OPENAI_API_KEY[:6]}**** (length={len(OPENAI_API_KEY)})")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+    logger.info(f"✅ OPENAI_API_KEY loaded: {OPENAI_API_KEY[:6]}**** (length={len(OPENAI_API_KEY)})")
+else:
+    logger.warning("⚠️  OPENAI_API_KEY not set - code_lookup will use fallback mode")
 
 # ========================================
 # FastAPI and Other Imports
@@ -52,51 +59,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 
-# OpenAI client for LLM summarization (code_lookup)
-try:
-    from openai import OpenAI
-    _openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    _openai_available = True
-    print(f"✅ OpenAI client initialized successfully with model: {os.getenv('CODE_LOOKUP_LLM_MODEL', 'gpt-4o-mini')}")
-except Exception as e:
-    _openai_client = None
-    _openai_available = False
-    logging.warning(f"⚠️  OpenAI client unavailable: {e}")
-
-# LLM configuration for code_lookup
-LLM_MODEL = os.getenv("CODE_LOOKUP_LLM_MODEL", "gpt-4o-mini")
-LLM_TIMEOUT_MS = int(os.getenv("CODE_LOOKUP_LLM_TIMEOUT_MS", "8000"))
-
-# Qdrant and embedding model for code_lookup (initialize globally at startup)
-_qdrant_client = None
-_embedding_model = None
-_code_lookup_clients_available = False
-
-try:
-    from qdrant_client import QdrantClient
-    from sentence_transformers import SentenceTransformer
-    
-    QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-    QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION_NAME", "searchforge_codebase")
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
-    
-    logging.info(f"Initializing Qdrant client at {QDRANT_URL}...")
-    _qdrant_client = QdrantClient(url=QDRANT_URL, timeout=60)
-    
-    # Verify collection exists
-    collection_info = _qdrant_client.get_collection(collection_name=QDRANT_COLLECTION)
-    logging.info(f"Connected to Qdrant collection '{QDRANT_COLLECTION}' with {collection_info.points_count} points")
-    
-    logging.info(f"Loading embedding model: {EMBEDDING_MODEL}...")
-    _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-    logging.info(f"Embedding model loaded successfully")
-    
-    _code_lookup_clients_available = True
-except Exception as e:
-    logging.error(f"Failed to initialize Qdrant/embedding clients for code_lookup: {e}")
-    _qdrant_client = None
-    _embedding_model = None
-    _code_lookup_clients_available = False
+# ✅ Module-level heavy resource initialization moved to clients.py singleton pattern
+# Resources are now initialized lazily via lifespan event
 
 # Add parent directories to path for imports
 project_root = Path(__file__).parent.parent.parent.resolve()
@@ -114,21 +78,21 @@ from services.plugins.force_override import get_status as get_force_status
 from services.plugins.guardrails import get_status as get_guardrails_status
 from services.plugins.watchdog import get_status as get_watchdog_status
 
-# Import routers
+# Import existing routers
 from services.api.ops_routes import router as ops_router
 from services.routers.metrics import router as metrics_router
 from services.routers.black_swan_async import router as black_swan_router
 from services.routers.ops_control import router as ops_control_router
 from services.routers.quiet_experiment import router as quiet_experiment_router
 from services.routers.ops_lab import router as ops_lab_router, labops_router
+from services.routers.autotuner_router import router as autotuner_router
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+# ✅ Import new refactored routers
+from services.fiqa_api.routes.search import router as search_router
+from services.fiqa_api.routes.agent_code_lookup import router as code_lookup_router
+from services.fiqa_api.health.ready import router as health_router
+
+# Logging already configured above
 
 # ========================================
 # Application Configuration
@@ -150,13 +114,56 @@ shadow_config = get_shadow_config()
 SHADOW_PCT = shadow_config["percentage"]
 
 # ========================================
-# FastAPI Application
+# FastAPI Application with Lifespan
 # ========================================
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler for FastAPI.
+    Initializes singleton clients at startup.
+    """
+    # Startup: Initialize all clients
+    logger.info("=" * 60)
+    logger.info("SearchForge Main API - Starting Up")
+    logger.info("=" * 60)
+    
+    from services.fiqa_api.clients import initialize_clients
+    
+    try:
+        status = initialize_clients(skip_openai=(OPENAI_API_KEY is None))
+        logger.info(f"✅ Clients initialized: {status}")
+        
+        if not status.get("embedding_model") or not status.get("qdrant"):
+            logger.warning("⚠️  Some core clients failed to initialize - service may be degraded")
+        
+    except Exception as e:
+        logger.error(f"❌ Client initialization failed: {e}")
+    
+    logger.info(f"Port: {MAIN_PORT}")
+    logger.info(f"API Entry: {API_ENTRY}")
+    logger.info(f"CORS Origins: {CORS_ORIGINS}")
+    logger.info(f"Force Override: {FORCE_OVERRIDE}")
+    logger.info(f"Hard Cap Enabled: {HARD_CAP_ENABLED}")
+    logger.info(f"Shadow Traffic: {SHADOW_PCT}%")
+    
+    logger.info("=" * 60)
+    logger.info("Ready to accept requests")
+    logger.info("=" * 60)
+    
+    yield
+    
+    # Shutdown: cleanup if needed
+    logger.info("Shutting down...")
+
 
 app = FastAPI(
     title="SearchForge Main",
     description="Clean entry point with Force Override, Guardrails, and Watchdog",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # ========================================
@@ -300,10 +307,10 @@ app.add_middleware(DeprecatedOpsMiddleware)  # Return 410 for /ops/* before rout
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
-# CORS middleware
+# CORS middleware - allow any localhost/127.0.0.1 origin with any port
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -311,138 +318,9 @@ app.add_middleware(
 
 # ========================================
 # Health & Readiness Endpoints
+# ✅ Moved to health/ready.py for lightweight checks
+# Will be mounted via router below
 # ========================================
-
-@app.get("/healthz")
-async def health_check():
-    """
-    Fast health check - returns immediately.
-    
-    Returns:
-        Health status with basic info
-    """
-    return {
-        "ok": True,
-        "status": "healthy",
-        "service": "app_main",
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
-
-
-@app.get("/readyz")
-async def readiness_check():
-    """
-    Readiness check - verifies plugins are initialized.
-    
-    Returns:
-        Readiness status with plugin information
-    """
-    # Check plugin status
-    force_status = get_force_status()
-    guardrails_status = get_guardrails_status()
-    watchdog_status = get_watchdog_status()
-    shadow_config = get_shadow_config()
-    
-    # Check Redis/Storage status (with direct probe)
-    storage_status = {"backend": "unavailable", "degraded": False}
-    redis_ok = False
-    try:
-        from core.metrics import metrics_sink
-        if metrics_sink and hasattr(metrics_sink, 'client'):
-            metrics_sink.client.ping()
-            redis_ok = True
-            storage_status = {"backend": "redis", "degraded": False, "connected": True}
-        else:
-            from services.black_swan.storage import get_storage
-            storage = get_storage()
-            if storage.is_available():
-                storage_status = {"backend": "redis", "degraded": False}
-            else:
-                storage_status = {"backend": "memory", "degraded": True}
-    except Exception as e:
-        storage_status = {"backend": "unavailable", "degraded": True, "error": str(e)}
-    
-    # Check Qdrant connectivity
-    qdrant_status = {"ok": False, "error": "not_probed"}
-    try:
-        from qdrant_client import QdrantClient
-        import os
-        qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
-        qdrant_port = int(os.environ.get("QDRANT_PORT", "6333"))
-        client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=2)
-        collections = client.get_collections()
-        qdrant_status = {
-            "ok": True,
-            "host": qdrant_host,
-            "port": qdrant_port,
-            "collections": len(collections.collections)
-        }
-    except Exception as e:
-        qdrant_status = {"ok": False, "error": "qdrant_unreachable", "message": str(e)[:80]}
-    
-    # Check Black Swan runner status
-    black_swan_status = {"ready": False, "idle": True}
-    try:
-        from services.black_swan.state import get_state
-        from services.routers.black_swan_async import _current_runner, _runner_lock
-        
-        state_mgr = get_state()
-        state = await state_mgr.get_state()
-        
-        async with _runner_lock:
-            runner_active = _current_runner is not None
-        
-        if state:
-            black_swan_status = {
-                "ready": True,
-                "idle": state.phase.value in ["complete", "error", "canceled"] if hasattr(state.phase, 'value') else True,
-                "phase": state.phase.value if hasattr(state.phase, 'value') else str(state.phase)
-            }
-        else:
-            black_swan_status = {"ready": True, "idle": True}
-    except Exception as e:
-        black_swan_status = {"ready": False, "error": str(e)}
-    
-    # Determine overall readiness (degraded mode is still ready)
-    degraded = storage_status.get("degraded", False)
-    ready = True  # All plugins are no-op or functional
-    
-    return {
-        "ok": ready,
-        "status": "ready" if ready else "not_ready",
-        "degraded": degraded,
-        "service": "app_main",
-        "data_sources": {
-            "qdrant": qdrant_status,
-            "redis": storage_status
-        },
-        "plugins": {
-            "force_override": {
-                "enabled": force_status["force_override"],
-                "status": "ok"
-            },
-            "hard_cap": {
-                "enabled": force_status["hard_cap_enabled"],
-                "status": "ok"
-            },
-            "guardrails": {
-                "mode": guardrails_status["mode"],
-                "status": guardrails_status["status"]
-            },
-            "watchdog": {
-                "mode": watchdog_status["mode"],
-                "status": watchdog_status["status"]
-            },
-            "shadow_traffic": {
-                "enabled": shadow_config["enabled"],
-                "percentage": shadow_config["percentage"],
-                "status": shadow_config["status"]
-            }
-        },
-        "storage": storage_status,
-        "black_swan": black_swan_status,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
 
 
 # ========================================
@@ -494,6 +372,12 @@ async def root():
                 "run": "POST /api/agent/run?v=2&dry=<bool>",
                 "summary": "GET /api/agent/summary?v=2",
                 "history": "GET /api/agent/history?v=2"
+            },
+            "autotuner": {
+                "status": "GET /api/autotuner/status",
+                "start": "POST /api/autotuner/start",
+                "stop": "POST /api/autotuner/stop",
+                "recommendations": "GET /api/autotuner/recommendations"
             }
         },
         "config": {
@@ -548,7 +432,12 @@ def create_api_router(base_router: APIRouter, new_prefix: str) -> APIRouter:
         new_router.routes.append(route)
     return new_router
 
-# Mount with /api prefix (primary)
+# ✅ Mount refactored lightweight routers first
+app.include_router(health_router)  # /healthz, /readyz
+app.include_router(search_router)  # /search
+app.include_router(code_lookup_router)  # /api/agent/code_lookup
+
+# Mount existing routers with /api prefix (primary)
 app.include_router(create_api_router(ops_router, "/api"))
 app.include_router(create_api_router(ops_control_router, "/api/control"))
 app.include_router(create_api_router(black_swan_router, "/api/black_swan"))
@@ -556,6 +445,9 @@ app.include_router(create_api_router(metrics_router, "/api"))
 app.include_router(create_api_router(quiet_experiment_router, "/api"))
 app.include_router(create_api_router(ops_lab_router, "/api/lab"))
 app.include_router(create_api_router(labops_router, "/api/labops"))
+
+# Mount AutoTuner router (already has /api/autotuner prefix)
+app.include_router(autotuner_router)
 
 # LabOps Agent V2/V3 routes - Unified /api/agent endpoint with version routing
 from agents.labops.v2 import endpoints as agent_v2
@@ -905,236 +797,264 @@ async def get_routing_status():
     }
 
 
+
 # ========================================
-# Search Endpoint with FAISS Routing
+# Graph Mermaid API
 # ========================================
 
-class SearchRequest(BaseModel):
-    """Search request model."""
-    query: str
-    top_k: int = 10
-    collection: str = "fiqa"
-    rerank: bool = False
-
-
-@app.post("/search")
-async def search(request: SearchRequest, response: Response, x_lab_exp: str = Header(None), x_lab_phase: str = Header(None), x_topk: str = Header(None)):
+@app.get("/api/graph/mermaid")
+async def get_mermaid_graph(requestId: str = Query(..., description="Request ID to retrieve graph data")):
     """
-    Search endpoint with unified routing (FAISS/Qdrant/Milvus).
+    Transform raw graph data into a ready-to-render Mermaid.js string.
     
-    Routes queries between FAISS, Qdrant, and Milvus based on routing flags and query characteristics.
+    This endpoint retrieves stored graph data (edges_json and files) for a given requestId
+    and transforms it into a Mermaid.js graph syntax string with node details.
     
-    Lab experiment headers:
-    - X-Lab-Exp: Experiment ID for metrics collection
-    - X-Lab-Phase: Phase identifier (A/B)
-    - X-TopK: Top-K value for the request
-    """
-    import numpy as np
-    from backend_core.routing_policy import Router
-    from sentence_transformers import SentenceTransformer
-    from qdrant_client import QdrantClient
-    
-    # ✅ Import unified router for Milvus support
-    try:
-        from engines.factory import get_router
-        unified_router_available = True
-    except ImportError:
-        logger.warning("[ROUTING] Unified router not available, using legacy routing")
-        unified_router_available = False
-    
-    start_time = time.time()
-    route_used = "qdrant"  # Default
-    fallback = False
-    
-    # Map collection name (fiqa -> beir_fiqa_full_ta)
-    collection_map = {
-        "fiqa": "beir_fiqa_full_ta",
-        "beir_fiqa_full_ta": "beir_fiqa_full_ta"
-    }
-    actual_collection = collection_map.get(request.collection, request.collection)
-    
-    try:
-        # Get routing flags
-        flags = app.state.routing_flags
-        enabled = flags.get("enabled", True)
-        mode = flags.get("mode", "rules")
-        manual_backend = flags.get("manual_backend")
+    Args:
+        requestId: Request ID to retrieve stored graph data
         
-        # ✅ Use unified router if available (supports Milvus)
-        if unified_router_available and os.getenv("VECTOR_BACKEND", "faiss") == "milvus":
-            logger.info(f"[ROUTING] Using unified router with VECTOR_BACKEND=milvus")
-            unified_router = get_router()
-            
-            # Search using unified router
-            search_results, debug_info = unified_router.search(
-                query=request.query,
-                collection_name=actual_collection,
-                top_k=request.top_k,
-                force_backend=manual_backend,
-                trace_id=None,
-                with_fallback=True
+    Returns:
+        JSON response with mermaidText and nodeDetails
+        
+    Raises:
+        HTTPException: 404 if requestId is invalid or data not found
+        HTTPException: 422 if requestId is missing or empty
+    """
+    # Input validation
+    if not requestId or not requestId.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Request ID is invalid or has expired."
+        )
+    
+    # Check cache first (optional Redis caching)
+    cache_key = f"mermaid_graph:{requestId}"
+    cached_result = None
+    
+    try:
+        # Try to get from Redis cache if available
+        import redis
+        redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            import json
+            cached_result = json.loads(cached_data)
+            logger.info(f"[MERMAID_GRAPH] Cache hit for requestId {requestId}")
+            return cached_result
+    except Exception as e:
+        logger.warning(f"[MERMAID_GRAPH] Cache check failed: {e}")
+        # Continue without cache
+    
+    try:
+        # Retrieve data from Qdrant using requestId
+        from services.fiqa_api.clients import get_qdrant_client, ensure_qdrant_connection
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        
+        # Ensure Qdrant connection is healthy
+        if not ensure_qdrant_connection():
+            raise HTTPException(
+                status_code=503,
+                detail="Qdrant connection unavailable"
             )
-            
-            route_used = debug_info.get("routed_to", "unknown")
-            logger.info(f"[ROUTING] Router decision: {route_used}, results: {len(search_results)}")
-            
-            # Format results
-            results = []
-            for r in search_results:
-                results.append({
-                    "id": r.get("id", "unknown"),
-                    "text": r.get("text", ""),
-                    "score": float(r.get("score", 0.0))
-                })
         
-        else:
-            # Legacy routing (FAISS/Qdrant only)
-            # Determine routing decision
-            should_use_faiss = False
-            
-            if manual_backend:
-                # Manual override
-                should_use_faiss = (manual_backend == "faiss")
-                route_used = manual_backend
-            elif enabled and app.state.faiss_ready and app.state.faiss_enabled:
-                # Use Router to decide
-                router = Router(policy=mode, topk_threshold=32)
-                has_filter = False  # Could extract from request if needed
-                
-                decision = router.route(
-                    query={"topk": request.top_k, "has_filter": has_filter},
-                    faiss_load=0.0,  # Could track actual load
-                    qdrant_load=0.0
-                )
-                
-                should_use_faiss = (decision["backend"] == "faiss")
-                route_used = decision["backend"]
-            
-            # Execute search
-            results = []
-            
-            if should_use_faiss and app.state.faiss_ready and app.state.faiss_enabled:
-                # Use FAISS
-                try:
-                    # Encode query
-                    encoder_model = os.getenv("ENCODER_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-                    encoder = SentenceTransformer(encoder_model)
-                    query_vector = encoder.encode(request.query)
-                    
-                    # Search FAISS
-                    faiss_results = app.state.faiss_engine.search(query_vector, topk=request.top_k)
-                    
-                    # Format results
-                    for doc_id, score in faiss_results:
-                        results.append({
-                            "id": doc_id,
-                            "text": f"Document {doc_id}",  # Could load full text from Qdrant if needed
-                            "score": float(score)
-                        })
-                    
-                    route_used = "faiss"
-                    
-                except Exception as e:
-                    logger.warning(f"[ROUTING] FAISS search failed, falling back to Qdrant: {e}")
-                    fallback = True
-                    should_use_faiss = False
-            
-            if not should_use_faiss or fallback:
-                # Use Qdrant
-                qdrant_host = os.getenv("QDRANT_HOST", "localhost")
-                qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
-                
-                client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=10)
-                
-                # Encode query
-                encoder_model = os.getenv("ENCODER_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-                encoder = SentenceTransformer(encoder_model)
-                query_vector = encoder.encode(request.query).tolist()
-                
-                # Search Qdrant
-                qdrant_results = client.search(
-                    collection_name=actual_collection,
-                    query_vector=query_vector,
-                    limit=request.top_k
-                )
-                
-                # Format results
-                for r in qdrant_results:
-                    payload = r.payload or {}
-                    doc_id = payload.get("doc_id", str(r.id))
-                    results.append({
-                        "id": doc_id,
-                        "text": payload.get("text", "")[:200],
-                        "title": payload.get("title", "Unknown"),
-                        "score": float(r.score) if hasattr(r, 'score') else 0.0
-                    })
-                
-                route_used = "qdrant"
+        qdrant_client = get_qdrant_client()
+        collection_name = os.getenv("QDRANT_COLLECTION_NAME", "searchforge_codebase")
         
-        latency_ms = (time.time() - start_time) * 1000
+        # For now, since the current system doesn't store requestId in Qdrant,
+        # we'll return mock data for demonstration purposes
+        # TODO: Implement proper requestId-based data retrieval when the storage mechanism is updated
         
-        # Set route header
-        response.headers["X-Search-Route"] = route_used
+        logger.info(f"[MERMAID_GRAPH] Using mock data for requestId {requestId}")
         
-        # ✅ Lab experiment metrics collection hook
-        if x_lab_exp:
-            try:
-                import redis
-                from datetime import datetime
-                redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
-                
-                # Record to Redis: lab:exp:<id>:raw
-                metric_data = {
-                    "ts": start_time,
-                    "latency_ms": latency_ms,
-                    "ok": True,
-                    "route": route_used,
-                    "phase": x_lab_phase or "unknown",
-                    "topk": int(x_topk) if x_topk else request.top_k,
-                    "fallback": fallback
-                }
-                
-                # ✅ Extended TTL for long-running tests (default 24h)
-                lab_ttl = int(os.getenv("LAB_REDIS_TTL", "86400"))  # 24 hours
-                raw_key = f"lab:exp:{x_lab_exp}:raw"
-                
-                redis_client.rpush(raw_key, json.dumps(metric_data))
-                redis_client.expire(raw_key, lab_ttl)  # Refresh TTL on each write (keep-alive)
-                
-                # Every 5 seconds, trigger aggregation (simple implementation)
-                # Note: For production, use a background task
-                bucket_ts = int(start_time / 5) * 5
-                redis_client.sadd(f"lab:exp:{x_lab_exp}:buckets", bucket_ts)
-                
-            except Exception as e:
-                # Non-critical: Log but don't fail the request
-                logger.debug(f"[LAB] Failed to record metric: {e}")
+        # Mock data for demonstration
+        mock_edges_json = [
+            {"src": "main.py::start", "dst": "controller.py::init", "type": "calls"},
+            {"src": "controller.py::init", "dst": "config.py::load_settings", "type": "calls"},
+            {"src": "controller.py::init", "dst": "database.py::connect", "type": "calls"},
+            {"src": "config.py::load_settings", "dst": "settings.py::get_config", "type": "calls"},
+            {"src": "database.py::connect", "dst": "models.py::User", "type": "imports"},
+            {"src": "models.py::User", "dst": "auth.py::authenticate", "type": "calls"},
+            {"src": "auth.py::authenticate", "dst": "utils.py::hash_password", "type": "calls"},
+            {"src": "utils.py::hash_password", "dst": "crypto.py::sha256", "type": "calls"},
+        ]
         
-        return {
-            "ok": True,
-            "results": results,
-            "latency_ms": latency_ms,
-            "route": route_used,
-            "fallback": fallback,
-            "doc_ids": [r["id"] for r in results]
-        }
+        mock_files = [
+            {
+                "path": "main.py",
+                "snippet": "def start():\n    controller.init()\n    print('Application started')",
+                "language": "python"
+            },
+            {
+                "path": "controller.py", 
+                "snippet": "def init():\n    config.load_settings()\n    database.connect()",
+                "language": "python"
+            },
+            {
+                "path": "config.py",
+                "snippet": "def load_settings():\n    settings.get_config()\n    return True",
+                "language": "python"
+            }
+        ]
+        
+        edges_json = mock_edges_json
+        files = mock_files
+        
+        # Transform the data using the helper function
+        result = convert_edges_to_mermaid_data(edges_json, files)
+        
+        # Store result in cache (optional Redis caching)
+        try:
+            import redis
+            import json
+            redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+            # Cache for 15 minutes (900 seconds)
+            redis_client.setex(cache_key, 900, json.dumps(result))
+            logger.info(f"[MERMAID_GRAPH] Cached result for requestId {requestId}")
+        except Exception as e:
+            logger.warning(f"[MERMAID_GRAPH] Cache storage failed: {e}")
+            # Continue without caching
+        
+        return result
         
     except Exception as e:
-        logger.error(f"[SEARCH] Error: {e}")
-        latency_ms = (time.time() - start_time) * 1000
-        
-        # Set route header even on error
-        response.headers["X-Search-Route"] = route_used
-        
-        return JSONResponse(
+        logger.error(f"[MERMAID_GRAPH] Error processing requestId {requestId}: {e}")
+        raise HTTPException(
             status_code=500,
-            content={
-                "ok": False,
-                "error": str(e),
-                "latency_ms": latency_ms,
-                "route": route_used
-            }
+            detail=f"Internal server error: {str(e)}"
         )
+
+
+def convert_edges_to_mermaid_data(edges_json: list, files: list) -> dict:
+    """
+    Convert edges_json and files data into Mermaid.js graph format.
+    
+    Args:
+        edges_json: List of edge data with src, dst, type keys
+        files: List of file data with path, snippet, language keys
+        
+    Returns:
+        Dict with mermaidText and nodeDetails keys
+    """
+    # Security limits to prevent DoS
+    MAX_NODES = 200
+    MAX_EDGES = 500
+    
+    # Validate input limits
+    if len(edges_json) > MAX_EDGES:
+        raise ValueError(f"Too many edges: {len(edges_json)} > {MAX_EDGES}")
+    
+    # Extract all unique nodes from edges
+    nodes = set()
+    for edge in edges_json:
+        if isinstance(edge, dict) and 'src' in edge and 'dst' in edge:
+            nodes.add(edge['src'])
+            nodes.add(edge['dst'])
+    
+    if len(nodes) > MAX_NODES:
+        raise ValueError(f"Too many nodes: {len(nodes)} > {MAX_NODES}")
+    
+    # Build Mermaid.js graph syntax
+    mermaid_lines = ["graph TD"]
+    
+    # Add nodes with proper escaping
+    for node in sorted(nodes):
+        # Escape special characters for Mermaid
+        escaped_node = _escape_mermaid_identifier(node)
+        # Create a short label for display
+        label = _create_node_label(node)
+        mermaid_lines.append(f'    {escaped_node}["{label}"]')
+    
+    # Add edges with proper escaping
+    for edge in edges_json:
+        if isinstance(edge, dict) and 'src' in edge and 'dst' in edge:
+            src = _escape_mermaid_identifier(edge['src'])
+            dst = _escape_mermaid_identifier(edge['dst'])
+            edge_type = edge.get('type', 'calls')
+            
+            # Choose arrow style based on edge type
+            if edge_type == 'calls':
+                arrow = "-->"
+            elif edge_type == 'imports':
+                arrow = "-.->"
+            else:
+                arrow = "-->"
+            
+            mermaid_lines.append(f'    {src} {arrow} {dst}')
+    
+    # Add click callbacks for each node
+    click_lines = []
+    for node in sorted(nodes):
+        escaped_node = _escape_mermaid_identifier(node)
+        # Escape the node ID for JavaScript
+        js_safe_node_id = node.replace('"', '\\"').replace("'", "\\'")
+        click_lines.append(f'    click {escaped_node} call handleNodeClick("{js_safe_node_id}")')
+    
+    # Combine all lines
+    all_lines = mermaid_lines + click_lines
+    mermaid_text = ";\n".join(all_lines) + ";"
+    
+    # Build node details map
+    node_details = {}
+    for node in nodes:
+        # Find corresponding file data
+        file_data = _find_file_for_node(node, files)
+        
+        node_details[node] = {
+            "code": _escape_html(file_data.get('snippet', '')) if file_data else '',
+            "filePath": _escape_html(file_data.get('path', '')) if file_data else ''
+        }
+    
+    return {
+        "mermaidText": mermaid_text,
+        "nodeDetails": node_details
+    }
+
+
+def _escape_mermaid_identifier(identifier: str) -> str:
+    """Escape special characters in Mermaid identifiers."""
+    # Replace problematic characters with underscores
+    escaped = identifier.replace('::', '_').replace(':', '_').replace('.', '_')
+    escaped = escaped.replace(' ', '_').replace('-', '_')
+    # Remove any remaining special characters
+    import re
+    escaped = re.sub(r'[^a-zA-Z0-9_]', '_', escaped)
+    return escaped
+
+
+def _create_node_label(node: str) -> str:
+    """Create a short, readable label for a node."""
+    # Extract the function/class name from the node
+    if '::' in node:
+        return node.split('::')[-1]
+    elif '.' in node:
+        return node.split('.')[-1]
+    else:
+        return node.split('/')[-1] if '/' in node else node
+
+
+def _find_file_for_node(node: str, files: list) -> dict:
+    """Find the file data that corresponds to a node."""
+    for file_data in files:
+        file_path = file_data.get('path', '')
+        if file_path in node or node in file_path:
+            return file_data
+    return {}
+
+
+def _escape_html(text: str) -> str:
+    """Escape HTML/JavaScript characters to prevent XSS."""
+    if not text:
+        return ''
+    
+    # Replace HTML/JS special characters
+    text = text.replace('&', '&amp;')
+    text = text.replace('<', '&lt;')
+    text = text.replace('>', '&gt;')
+    text = text.replace('"', '&quot;')
+    text = text.replace("'", '&#x27;')
+    text = text.replace('/', '&#x2F;')
+    
+    return text
 
 
 # ========================================
@@ -1256,268 +1176,6 @@ async def encode_embeddings(request: EmbeddingRequest, response: Response):
         )
 
 
-# ========================================
-# Agent Code Lookup API
-# ========================================
-
-class CodeLookupRequest(BaseModel):
-    """Request model for code lookup."""
-    message: str
-
-
-class CodeFile(BaseModel):
-    """Individual code file result."""
-    path: str
-    language: str
-    start_line: int
-    end_line: int
-    snippet: str
-    why_relevant: str
-
-
-class CodeLookupResponse(BaseModel):
-    """Response model for code lookup."""
-    agent: str
-    intent: str
-    query: str
-    summary_md: str
-    files: List[CodeFile]
-
-
-@app.post("/api/agent/code_lookup", response_model=CodeLookupResponse)
-async def code_lookup(request: CodeLookupRequest):
-    """
-    Search codebase using Qdrant vector search with LLM summarization.
-    
-    This endpoint provides semantic code search powered by Qdrant vector database.
-    It embeds the user's query, searches for similar code snippets, and uses
-    GPT-4o mini to generate a concise summary and select the most relevant files.
-    
-    Args:
-        request: CodeLookupRequest with message field
-        
-    Returns:
-        CodeLookupResponse with LLM-generated summary and top files
-        
-    Environment:
-        OPENAI_API_KEY: Required for LLM summarization
-        CODE_LOOKUP_LLM_MODEL: LLM model (default: gpt-4o-mini)
-        CODE_LOOKUP_LLM_TIMEOUT_MS: Timeout in ms (default: 8000)
-        
-    Example:
-        POST /api/agent/code_lookup
-        {
-            "message": "embedding code"
-        }
-    """
-    # Check if Qdrant and embedding clients are initialized
-    if not _code_lookup_clients_available or _qdrant_client is None or _embedding_model is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Code lookup service unavailable. Qdrant or embedding model failed to initialize."
-        )
-    
-    try:
-        # Configuration
-        QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION_NAME", "searchforge_codebase")
-        MAX_RESULTS = 5
-        MIN_SIMILARITY = 0.4
-        
-        # Embed the query with error handling
-        try:
-            query_vector = _embedding_model.encode(request.message).tolist()
-        except Exception as e:
-            logger.error(f"[CODE_LOOKUP] Failed to embed query: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate query embedding: {str(e)}"
-            )
-        
-        # Search Qdrant with error handling
-        try:
-            search_results = _qdrant_client.search(
-                collection_name=QDRANT_COLLECTION,
-                query_vector=query_vector,
-                limit=MAX_RESULTS
-            )
-        except Exception as e:
-            logger.error(f"[CODE_LOOKUP] Qdrant search failed: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Vector search failed: {str(e)}"
-            )
-        
-        # Handle no results
-        if not search_results:
-            return CodeLookupResponse(
-                agent="sf_agent_qdrant_llm_v0.2",
-                intent="code_lookup",
-                query=request.message,
-                summary_md="没有找到相关代码片段。",
-                files=[]
-            )
-        
-        # Filter by similarity threshold
-        filtered_results = [r for r in search_results if r.score >= MIN_SIMILARITY]
-        
-        if not filtered_results:
-            return CodeLookupResponse(
-                agent="sf_agent_qdrant_llm_v0.2",
-                intent="code_lookup",
-                query=request.message,
-                summary_md="没有找到足够相关的代码片段。搜索结果相似度太低。",
-                files=[]
-            )
-        
-        # ========================================
-        # LLM Summarization (with fallback)
-        # ========================================
-        
-        def _clip_text(text: str, max_len: int = 400) -> str:
-            """Clip text to max length and remove null characters."""
-            text = text.replace("\u0000", "")
-            return (text[:max_len] + "…") if len(text) > max_len else text
-        
-        # Prepare top-3 snippets for LLM
-        top_snippets = []
-        for result in filtered_results[:3]:
-            payload = result.payload
-            top_snippets.append({
-                "path": payload.get("file_path") or payload.get("path") or "unknown",
-                "snippet": _clip_text(payload.get("text") or payload.get("content") or ""),
-                "score": float(result.score)
-            })
-        
-        # Try LLM summarization
-        llm_success = False
-        files_output = []
-        summary_md = ""
-        
-        if _openai_available and _openai_client:
-            try:
-                # System prompt for LLM
-                system_prompt = (
-                    "You are SearchForge Code Assistant.\n"
-                    "You will ONLY return a valid JSON object with exactly these keys:\n"
-                    "  summary_md: string (markdown),\n"
-                    "  files: array of {path, snippet, why_relevant}\n"
-                    "Rules:\n"
-                    "- Base your answer ONLY on provided snippets.\n"
-                    "- Select 1~2 most relevant files; add brief why_relevant.\n"
-                    "- Keep summary concise and cite files in markdown.\n"
-                    "- No extra keys. No code fences. Strict JSON.\n"
-                )
-                
-                # User prompt with query and snippets
-                user_prompt_data = {
-                    "query": request.message,
-                    "snippets": top_snippets
-                }
-                
-                # Call OpenAI with strict JSON mode
-                response = _openai_client.chat.completions.create(
-                    model=LLM_MODEL,
-                    response_format={"type": "json_object"},
-                    temperature=0.2,
-                    max_tokens=512,
-                    timeout=LLM_TIMEOUT_MS / 1000.0,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": json.dumps(user_prompt_data, ensure_ascii=False)}
-                    ]
-                )
-                
-                # Parse LLM response
-                content = response.choices[0].message.content
-                llm_data = json.loads(content)
-                
-                # Validate JSON shape
-                if not isinstance(llm_data, dict) or "summary_md" not in llm_data or "files" not in llm_data:
-                    raise ValueError("Invalid JSON shape from LLM")
-                
-                # Extract summary and files
-                summary_md = llm_data["summary_md"]
-                
-                # Build files from LLM selection (limit to 3)
-                for file_item in llm_data["files"][:3]:
-                    # Find original result to get full metadata
-                    matched_result = None
-                    for result in filtered_results:
-                        if result.payload.get("file_path") == file_item.get("path"):
-                            matched_result = result
-                            break
-                    
-                    if matched_result:
-                        payload = matched_result.payload
-                        files_output.append(CodeFile(
-                            path=file_item.get("path", "unknown"),
-                            language=payload.get("language", "python"),
-                            start_line=payload.get("chunk_index", 0) * 50,
-                            end_line=(payload.get("chunk_index", 0) + 1) * 50,
-                            snippet=_clip_text(file_item.get("snippet", "")),
-                            why_relevant=file_item.get("why_relevant", "Selected by LLM")
-                        ))
-                    else:
-                        # Fallback if path not found in original results
-                        files_output.append(CodeFile(
-                            path=file_item.get("path", "unknown"),
-                            language="python",
-                            start_line=0,
-                            end_line=50,
-                            snippet=_clip_text(file_item.get("snippet", "")),
-                            why_relevant=file_item.get("why_relevant", "Selected by LLM")
-                        ))
-                
-                llm_success = True
-                logger.info(f"[CODE_LOOKUP] LLM summarization successful for query: {request.message[:50]}")
-                
-            except Exception as e:
-                logger.warning(f"[CODE_LOOKUP] LLM summarization failed, falling back to raw results: {e}")
-                llm_success = False
-        
-        # ========================================
-        # Fallback: Raw Top-K if LLM fails
-        # ========================================
-        
-        if not llm_success:
-            # Build fallback response from raw Qdrant results
-            files_output = []
-            for result in filtered_results[:3]:
-                payload = result.payload
-                files_output.append(CodeFile(
-                    path=payload.get("file_path", "unknown"),
-                    language=payload.get("language", "python"),
-                    start_line=payload.get("chunk_index", 0) * 50,
-                    end_line=(payload.get("chunk_index", 0) + 1) * 50,
-                    snippet=_clip_text(payload.get("text", "")[:500]),
-                    why_relevant=f"Top-K by vector search (score: {result.score:.2f})"
-                ))
-            
-            # Generate simple markdown summary
-            summary_md = f"LLM 不可用，展示前 {len(files_output)} 条原始匹配结果。\n\n"
-            summary_md += "\n".join([f"- **{f.path}** (相似度: {filtered_results[i].score:.2f})" 
-                                     for i, f in enumerate(files_output)])
-        
-        # Return final response
-        return CodeLookupResponse(
-            agent="sf_agent_qdrant_llm_v0.2",
-            intent="code_lookup",
-            query=request.message,
-            summary_md=summary_md,
-            files=files_output
-        )
-        
-    except HTTPException:
-        # Re-raise HTTPExceptions from inner handlers
-        raise
-    except Exception as e:
-        logger.error(f"[CODE_LOOKUP] Unexpected error: {e}")
-        # Raise 500 for unexpected errors
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error during code lookup: {str(e)}"
-        )
-
 
 # ========================================
 # Tuner Endpoints (Stub Implementation)
@@ -1562,6 +1220,60 @@ async def toggle_tuner():
 # ========================================
 # Startup Event
 # ========================================
+
+@app.post("/api/demo/generate-traffic")
+async def generate_demo_traffic(high_qps: bool = False, duration: int = 60):
+    """
+    Generate demo traffic for monitoring and testing.
+    
+    Args:
+        high_qps: If True, use high QPS mode (20 QPS vs 10 QPS)
+        duration: Duration in seconds (default: 60)
+    
+    This endpoint triggers the demo_monitor.sh script to generate test traffic.
+    """
+    try:
+        import subprocess
+        import asyncio
+        
+        logger.info(f"[DEMO] Starting traffic generation (high_qps={high_qps})...")
+        
+        # Choose script based on QPS mode
+        script_path = "/Users/nanxinli/Documents/dev/searchforge/scripts/demo_monitor_configurable.sh"
+        
+        if high_qps:
+            mode = f"高QPS模式 (20 QPS, {duration}秒)"
+            # Pass duration and QPS as arguments to the script
+            process = await asyncio.create_subprocess_exec(
+                "bash", script_path, str(duration), "20",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+        else:
+            mode = f"标准模式 (10 QPS, {duration}秒)"
+            # Pass duration and QPS as arguments to the script
+            process = await asyncio.create_subprocess_exec(
+                "bash", script_path, str(duration), "10",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+        
+        # Don't wait for completion, let it run in background
+        logger.info(f"[DEMO] Traffic generation started in background ({mode})")
+        
+        return {
+            "status": "started",
+            "message": f"Demo traffic generation started ({mode})",
+            "mode": mode,
+            "pid": process.pid
+        }
+        
+    except Exception as e:
+        logger.error(f"[DEMO] Failed to start traffic generation: {e}")
+        return {
+            "status": "error", 
+            "message": f"Failed to start traffic generation: {str(e)}"
+        }
 
 @app.post("/api/lab/prewarm")
 async def prewarm_faiss():
@@ -1644,86 +1356,6 @@ async def prewarm_faiss():
             "error": str(e)
         }
 
-
-@app.on_event("startup")
-async def startup_event():
-    """Log startup configuration."""
-    logger.info("=" * 60)
-    logger.info("SearchForge Main API - Starting Up")
-    logger.info("=" * 60)
-    logger.info(f"✅ Environment loaded from .env file")
-    logger.info(f"✅ OPENAI_API_KEY: {OPENAI_API_KEY[:6]}**** (length={len(OPENAI_API_KEY)})")
-    logger.info(f"✅ OpenAI Client: {'Available' if _openai_available else 'Unavailable'}")
-    logger.info(f"Port: {MAIN_PORT}")
-    logger.info(f"API Entry: {API_ENTRY}")
-    logger.info(f"CORS Origins: {CORS_ORIGINS}")
-    logger.info(f"Force Override: {FORCE_OVERRIDE}")
-    logger.info(f"Hard Cap Enabled: {HARD_CAP_ENABLED}")
-    logger.info(f"Shadow Traffic: {SHADOW_PCT}%")
-    
-    # Log precedence chain preview (first 3 items)
-    force_status = get_force_status()
-    if force_status["force_override"]:
-        logger.info(f"Force Params: {force_status['active_params']}")
-    if force_status["hard_cap_enabled"]:
-        logger.info(f"Hard Cap Limits: {force_status['hard_cap_limits']}")
-    
-    # Initialize control plugin (TEMPORARILY DISABLED FOR DEBUGGING)
-    logger.info("⚠️ Background tasks temporarily disabled for debugging")
-    # try:
-    #     from services.plugins.control import get_control_plugin
-    #     control = get_control_plugin()
-    #     await control.start_control_loop()
-    #     logger.info("Control plugin initialized and started")
-    # except Exception as e:
-    #     logger.warning(f"Control plugin initialization failed: {e}")
-    
-    # Start quiet experiment background loop (TEMPORARILY DISABLED)
-    # try:
-    #     from services.routers.quiet_experiment import start_experiment_loop
-    #     import asyncio
-    #     asyncio.create_task(start_experiment_loop())
-    #     logger.info("Quiet experiment loop started")
-    # except Exception as e:
-    #     logger.warning(f"Quiet experiment loop initialization failed: {e}")
-    
-    # Start lab experiment background loop (TEMPORARILY DISABLED)
-    # try:
-    #     from services.routers.ops_lab import start_lab_experiment_loop
-    #     import asyncio
-    #     asyncio.create_task(start_lab_experiment_loop())
-    #     logger.info("Lab experiment loop started")
-    # except Exception as e:
-    #     logger.warning(f"Lab experiment loop initialization failed: {e}")
-    
-    # Auto-prewarm FAISS on startup (background task)
-    # ✅ TEMPORARILY DISABLED FOR STABILITY - TODO: Fix and re-enable later
-    # ✅ Skip if DISABLE_FAISS=true or PREWARM_FAISS=false
-    # import asyncio  # ✅ Import asyncio for create_task
-    # disable_faiss = os.getenv("DISABLE_FAISS", "false").lower() == "true"
-    # prewarm_faiss_enabled = os.getenv("PREWARM_FAISS", "true").lower() == "true"
-    # 
-    # if not disable_faiss and prewarm_faiss_enabled:
-    #     async def auto_prewarm():
-    #         await asyncio.sleep(5)  # Wait for app to be fully ready
-    #         try:
-    #             logger.info("[FAISS] Auto-prewarming in background...")
-    #             await prewarm_faiss()
-    #         except Exception as e:
-    #             logger.warning(f"[FAISS] Auto-prewarm failed (non-critical): {e}")
-    #     
-    #     asyncio.create_task(auto_prewarm())
-    # else:
-    #     if disable_faiss:
-    #         logger.info("[FAISS] Prewarm skipped: DISABLE_FAISS=true")
-    #     else:
-    #         logger.info("[FAISS] Prewarm skipped: PREWARM_FAISS=false")
-    
-    logger.info("⚠️ FAISS prewarm temporarily disabled for stability")
-    
-    logger.info("=" * 60)
-    logger.info("Ready to accept requests")
-    logger.info("=" * 60)
 
 
 # ========================================

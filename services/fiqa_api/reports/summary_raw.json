@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "source": "app_main",
+  "backend": "memory",
+  "window_sec": 60,
+  "timestamp": "2025-10-16T10:49:51Z",
+  "degraded": {
+    "redis": true
+  },
+  "health": {
+    "ok": true,
+    "core_metrics_backend": "memory",
+    "redis_connected": false,
+    "rows_60s": 84
+  },
+  "window60s": {
+    "p95_ms": 1369.55,
+    "tps": 1.4,
+    "recall_at_10": null,
+    "samples": 84
+  },
+  "timeline": [
+    {
+      "t": "2025-10-16T10:48:50Z",
+      "p95_ms": 911.02,
+      "recall_at_10": null
+    },
+    {
+      "t": "2025-10-16T10:48:55Z",
+      "p95_ms": 1378.54,
+      "recall_at_10": null
+    },
+    {
+      "t": "2025-10-16T10:49:00Z",
+      "p95_ms": 565.87,
+      "recall_at_10": null
+    }
+  ],
+  "series60s": {
+    "buckets": 13,
+    "non_empty": 3,
+    "step_sec": 5
+  },
+  "auto": {
+    "ok": false,
+    "error": "AutoTuner not integrated in app_main yet"
+  },
+  "data_sources": {
+    "redis": {
+      "ok": false,
+      "message": "Redis unavailable"
+    },
+    "qdrant": {
+      "ok": true,
+      "host": "localhost",
+      "port": 6333,
+      "collections": 7
+    }
+  }
+}

@@ -1,0 +1,40 @@
+=========================================
+P95 & Recall Summary Fix Verification
+=========================================
+Timestamp: 2025-10-16T10:49:41Z
+Backend: http://localhost:8011
+
+✅ Backend is healthy
+
+⚠️  Black Swan trigger: run_already_in_progress
+
+✅ Waited 10s for metrics
+
+--- /ops/summary Response ---
+ok: true
+timeline entries: 3
+degraded (Redis): true
+
+✅ PASS: ok == true
+❌ FAIL: timeline.length < 5 (got 3)
+✅ PASS: Found 3 p95_ms values in timeline
+⚠️  WARN: No recall_at_10 values in timeline
+
+--- Sample Timeline Points (first 3) ---
+  t: 2025-10-16T10:48:50Z, p95_ms: 911.02, recall_at_10: null
+  t: 2025-10-16T10:48:55Z, p95_ms: 1378.54, recall_at_10: null
+  t: 2025-10-16T10:49:00Z, p95_ms: 565.87, recall_at_10: null
+
+--- window60s Summary ---
+  p95_ms: 1369.55
+  recall_at_10: null
+  tps: 1.4
+  samples: 84
+
+=========================================
+❌ Verification FAILED (1 errors)
+
+See reports/summary_raw.json for full response
+=========================================
+
+Report saved to: reports/SUMMARY_FIX_MINI.txt

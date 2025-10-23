@@ -1,0 +1,212 @@
+INFO:     Will watch for changes in these directories: ['/Users/nanxinli/Documents/dev/searchforge/services/fiqa_api']
+INFO:     Uvicorn running on http://0.0.0.0:8011 (Press CTRL+C to quit)
+INFO:     Started reloader process [70469] using StatReload
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+2025-10-20 16:34:15 [INFO] services.core.settings: [FORCE_OVERRIDE] Enabled with params: {'num_candidates': 2000, 'rerank_topk': 300, 'qps': 180}
+2025-10-20 16:34:15 [INFO] services.core.settings: [FORCE_OVERRIDE] Hard cap enabled with limits: {'num_candidates': 5000, 'rerank_topk': 1000, 'qps': 2000}
+2025-10-20 16:34:15 [INFO] app_main: ✓ Frontend mounted with SPA fallback (from /Users/nanxinli/Documents/dev/searchforge/frontend/dist)
+INFO:     Started server process [70513]
+INFO:     Waiting for application startup.
+2025-10-20 16:34:15 [INFO] app_main: ============================================================
+2025-10-20 16:34:15 [INFO] app_main: SearchForge Main API - Starting Up
+2025-10-20 16:34:15 [INFO] app_main: ============================================================
+2025-10-20 16:34:15 [INFO] app_main: Port: 8011
+2025-10-20 16:34:15 [INFO] app_main: API Entry: main
+2025-10-20 16:34:15 [INFO] app_main: CORS Origins: ['http://localhost:3000']
+2025-10-20 16:34:15 [INFO] app_main: Force Override: True
+2025-10-20 16:34:15 [INFO] app_main: Hard Cap Enabled: True
+2025-10-20 16:34:15 [INFO] app_main: Shadow Traffic: 0.0%
+2025-10-20 16:34:15 [INFO] services.core.settings: [FORCE_OVERRIDE] Enabled with params: {'num_candidates': 2000, 'rerank_topk': 300, 'qps': 180}
+2025-10-20 16:34:15 [INFO] services.core.settings: [FORCE_OVERRIDE] Hard cap enabled with limits: {'num_candidates': 5000, 'rerank_topk': 1000, 'qps': 2000}
+2025-10-20 16:34:15 [INFO] app_main: Force Params: {'num_candidates': 2000, 'rerank_topk': 300, 'qps': 180}
+2025-10-20 16:34:15 [INFO] app_main: Hard Cap Limits: {'num_candidates': 5000, 'rerank_topk': 1000, 'qps': 2000}
+2025-10-20 16:34:15 [INFO] services.plugins.control: Control loop started
+2025-10-20 16:34:15 [INFO] app_main: Control plugin initialized and started
+2025-10-20 16:34:15 [INFO] app_main: Quiet experiment loop started
+2025-10-20 16:34:15 [INFO] app_main: Lab experiment loop started
+2025-10-20 16:34:15 [INFO] app_main: ============================================================
+2025-10-20 16:34:15 [INFO] app_main: Ready to accept requests
+2025-10-20 16:34:15 [INFO] app_main: ============================================================
+INFO:     Application startup complete.
+2025-10-20 16:34:20 [INFO] app_main: [FAISS] Auto-prewarming in background...
+2025-10-20 16:34:20 [INFO] app_main: [FAISS] Starting prewarm...
+2025-10-20 16:34:20 [INFO] faiss.loader: Loading faiss.
+2025-10-20 16:34:20 [INFO] faiss.loader: Successfully loaded faiss.
+2025-10-20 16:34:20 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:34:20 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/beir_fiqa_full_ta "HTTP/1.1 200 OK"
+2025-10-20 16:34:20 [INFO] app_main: [FAISS] Fetching 50000 vectors from Qdrant (total: 57638)
+2025-10-20 16:34:21 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/beir_fiqa_full_ta/points/scroll "HTTP/1.1 200 OK"
+2025-10-20 16:34:29 [INFO] services.search.faiss_engine: [FAISS] Initialized engine with dim=384
+2025-10-20 16:34:29 [INFO] services.search.faiss_engine: [FAISS] Loaded 50000 vectors into index
+2025-10-20 16:34:29 [INFO] app_main: [FAISS] Prewarm complete: 50000 vectors loaded
+2025-10-20 16:34:30 [INFO] app_main: [4c5f247c-7295-4212-98e8-79918486ec40] POST /api/agent/code_lookup
+2025-10-20 16:34:34 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:34:34 [INFO] sentence_transformers.SentenceTransformer: Use pytorch device_name: mps
+2025-10-20 16:34:34 [INFO] sentence_transformers.SentenceTransformer: Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.65it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.64it/s]
+2025-10-20 16:34:37 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/searchforge_codebase/points/search "HTTP/1.1 200 OK"
+2025-10-20 16:34:37 [INFO] app_main: [4c5f247c-7295-4212-98e8-79918486ec40] POST /api/agent/code_lookup → 200 (7560.37ms)
+INFO:     127.0.0.1:57008 - "POST /api/agent/code_lookup HTTP/1.1" 200 OK
+2025-10-20 16:34:45 [INFO] app_main: [ba42b305-2078-48ba-a8d8-13431412fe3b] GET /docs
+2025-10-20 16:34:45 [INFO] app_main: [ba42b305-2078-48ba-a8d8-13431412fe3b] GET /docs → 200 (0.77ms)
+INFO:     127.0.0.1:57083 - "GET /docs HTTP/1.1" 200 OK
+2025-10-20 16:35:12 [INFO] app_main: [58461361-10b2-4940-bb21-e63e5e9ccdf8] POST /api/agent/code_lookup
+2025-10-20 16:35:12 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:35:12 [INFO] sentence_transformers.SentenceTransformer: Use pytorch device_name: mps
+2025-10-20 16:35:12 [INFO] sentence_transformers.SentenceTransformer: Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 55.40it/s]
+2025-10-20 16:35:14 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/searchforge_codebase/points/search "HTTP/1.1 200 OK"
+2025-10-20 16:35:14 [INFO] app_main: [58461361-10b2-4940-bb21-e63e5e9ccdf8] POST /api/agent/code_lookup → 200 (2180.28ms)
+INFO:     127.0.0.1:57198 - "POST /api/agent/code_lookup HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'app_main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [70513]
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+2025-10-20 16:35:27 [INFO] services.core.settings: [FORCE_OVERRIDE] Enabled with params: {'num_candidates': 2000, 'rerank_topk': 300, 'qps': 180}
+2025-10-20 16:35:27 [INFO] services.core.settings: [FORCE_OVERRIDE] Hard cap enabled with limits: {'num_candidates': 5000, 'rerank_topk': 1000, 'qps': 2000}
+2025-10-20 16:35:27 [INFO] app_main: ✓ Frontend mounted with SPA fallback (from /Users/nanxinli/Documents/dev/searchforge/frontend/dist)
+INFO:     Started server process [71526]
+INFO:     Waiting for application startup.
+2025-10-20 16:35:27 [INFO] app_main: ============================================================
+2025-10-20 16:35:27 [INFO] app_main: SearchForge Main API - Starting Up
+2025-10-20 16:35:27 [INFO] app_main: ============================================================
+2025-10-20 16:35:27 [INFO] app_main: Port: 8011
+2025-10-20 16:35:27 [INFO] app_main: API Entry: main
+2025-10-20 16:35:27 [INFO] app_main: CORS Origins: ['http://localhost:3000']
+2025-10-20 16:35:27 [INFO] app_main: Force Override: True
+2025-10-20 16:35:27 [INFO] app_main: Hard Cap Enabled: True
+2025-10-20 16:35:27 [INFO] app_main: Shadow Traffic: 0.0%
+2025-10-20 16:35:27 [INFO] services.core.settings: [FORCE_OVERRIDE] Enabled with params: {'num_candidates': 2000, 'rerank_topk': 300, 'qps': 180}
+2025-10-20 16:35:27 [INFO] services.core.settings: [FORCE_OVERRIDE] Hard cap enabled with limits: {'num_candidates': 5000, 'rerank_topk': 1000, 'qps': 2000}
+2025-10-20 16:35:27 [INFO] app_main: Force Params: {'num_candidates': 2000, 'rerank_topk': 300, 'qps': 180}
+2025-10-20 16:35:27 [INFO] app_main: Hard Cap Limits: {'num_candidates': 5000, 'rerank_topk': 1000, 'qps': 2000}
+2025-10-20 16:35:27 [INFO] services.plugins.control: Control loop started
+2025-10-20 16:35:27 [INFO] app_main: Control plugin initialized and started
+2025-10-20 16:35:27 [INFO] app_main: Quiet experiment loop started
+2025-10-20 16:35:27 [INFO] app_main: Lab experiment loop started
+2025-10-20 16:35:27 [INFO] app_main: ============================================================
+2025-10-20 16:35:27 [INFO] app_main: Ready to accept requests
+2025-10-20 16:35:27 [INFO] app_main: ============================================================
+INFO:     Application startup complete.
+2025-10-20 16:35:32 [INFO] app_main: [FAISS] Auto-prewarming in background...
+2025-10-20 16:35:32 [INFO] app_main: [FAISS] Starting prewarm...
+2025-10-20 16:35:33 [INFO] faiss.loader: Loading faiss.
+2025-10-20 16:35:33 [INFO] faiss.loader: Successfully loaded faiss.
+2025-10-20 16:35:33 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:35:33 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/beir_fiqa_full_ta "HTTP/1.1 200 OK"
+2025-10-20 16:35:33 [INFO] app_main: [FAISS] Fetching 50000 vectors from Qdrant (total: 57638)
+2025-10-20 16:35:34 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/beir_fiqa_full_ta/points/scroll "HTTP/1.1 200 OK"
+2025-10-20 16:35:42 [INFO] services.search.faiss_engine: [FAISS] Initialized engine with dim=384
+2025-10-20 16:35:42 [INFO] services.search.faiss_engine: [FAISS] Loaded 50000 vectors into index
+2025-10-20 16:35:42 [INFO] app_main: [FAISS] Prewarm complete: 50000 vectors loaded
+2025-10-20 16:37:28 [INFO] app_main: [b872d034-15df-47c7-9157-bc5b85704f68] GET /docs
+2025-10-20 16:37:28 [INFO] app_main: [b872d034-15df-47c7-9157-bc5b85704f68] GET /docs → 200 (1.93ms)
+INFO:     127.0.0.1:57815 - "GET /docs HTTP/1.1" 200 OK
+2025-10-20 16:37:28 [INFO] app_main: [e94c3f0e-5f34-4f02-b3b4-d3d4e5b35877] GET /openapi.json
+/Users/nanxinli/.pyenv/versions/3.10.13/lib/python3.10/site-packages/fastapi/openapi/utils.py:246: UserWarning: Duplicate Operation ID get_decisions_ops_decisions_get for function get_decisions at /Users/nanxinli/Documents/dev/searchforge/services/routers/ops_control.py
+  warnings.warn(message, stacklevel=1)
+2025-10-20 16:37:28 [INFO] app_main: [e94c3f0e-5f34-4f02-b3b4-d3d4e5b35877] GET /openapi.json → 200 (28.42ms)
+INFO:     127.0.0.1:57815 - "GET /openapi.json HTTP/1.1" 200 OK
+2025-10-20 16:37:32 [INFO] app_main: [648303ea-4a6f-4620-b707-b2746934897c] GET /docs
+2025-10-20 16:37:32 [INFO] app_main: [648303ea-4a6f-4620-b707-b2746934897c] GET /docs → 200 (1.45ms)
+INFO:     127.0.0.1:57833 - "GET /docs HTTP/1.1" 200 OK
+2025-10-20 16:37:32 [INFO] app_main: [a787f06d-1926-4bb2-91bd-98d7efc0bb78] GET /openapi.json
+2025-10-20 16:37:32 [INFO] app_main: [a787f06d-1926-4bb2-91bd-98d7efc0bb78] GET /openapi.json → 200 (1.52ms)
+INFO:     127.0.0.1:57833 - "GET /openapi.json HTTP/1.1" 200 OK
+2025-10-20 16:38:04 [INFO] app_main: [88a83874-84d4-4c3a-b3c7-f26281a9fb10] POST /api/agent/code_lookup
+2025-10-20 16:38:09 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:38:09 [INFO] sentence_transformers.SentenceTransformer: Use pytorch device_name: mps
+2025-10-20 16:38:09 [INFO] sentence_transformers.SentenceTransformer: Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.47it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.46it/s]
+2025-10-20 16:38:12 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/searchforge_codebase/points/search "HTTP/1.1 200 OK"
+2025-10-20 16:38:12 [INFO] app_main: [88a83874-84d4-4c3a-b3c7-f26281a9fb10] POST /api/agent/code_lookup → 200 (7243.53ms)
+INFO:     127.0.0.1:57988 - "POST /api/agent/code_lookup HTTP/1.1" 200 OK
+2025-10-20 16:38:15 [INFO] app_main: [a6ca4350-b3d9-4a3c-a151-2c02c700f7d7] POST /api/agent/code_lookup
+2025-10-20 16:38:15 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:38:15 [INFO] sentence_transformers.SentenceTransformer: Use pytorch device_name: mps
+2025-10-20 16:38:15 [INFO] sentence_transformers.SentenceTransformer: Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 70.26it/s]
+2025-10-20 16:38:16 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/searchforge_codebase/points/search "HTTP/1.1 200 OK"
+2025-10-20 16:38:16 [INFO] app_main: [a6ca4350-b3d9-4a3c-a151-2c02c700f7d7] POST /api/agent/code_lookup → 200 (1965.56ms)
+INFO:     127.0.0.1:58034 - "POST /api/agent/code_lookup HTTP/1.1" 200 OK
+2025-10-20 16:38:35 [INFO] app_main: [7a3215c4-e430-4fb2-8ca2-dbb4bfab98d0] POST /api/agent/code_lookup
+2025-10-20 16:38:35 [INFO] httpx: HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-20 16:38:35 [INFO] sentence_transformers.SentenceTransformer: Use pytorch device_name: mps
+2025-10-20 16:38:35 [INFO] sentence_transformers.SentenceTransformer: Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 15.07it/s]
+2025-10-20 16:38:37 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/searchforge_codebase/points/search "HTTP/1.1 200 OK"
+2025-10-20 16:38:37 [INFO] app_main: [7a3215c4-e430-4fb2-8ca2-dbb4bfab98d0] POST /api/agent/code_lookup → 200 (2068.73ms)
+INFO:     127.0.0.1:58119 - "POST /api/agent/code_lookup HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'app_main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [71526]
+WARNING:root:OpenAI client unavailable: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+INFO:     Started server process [82851]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app_main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [82851]
+WARNING:root:OpenAI client unavailable: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+INFO:     Started server process [83153]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app_main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [83153]
+WARNING:root:OpenAI client unavailable: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+INFO:     Started server process [83593]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app_main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [83593]
+WARNING:root:OpenAI client unavailable: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+INFO:     Started server process [84613]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app_main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [84613]
+WARNING:root:OpenAI client unavailable: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+[CORE] Using METRICS_REDIS_URL: redis://localhost:6379/1
+[CORE] Connecting to Redis at localhost:6379/1...
+[CORE] ✅ Redis connection established: searchforge:metrics
+INFO:     Started server process [89643]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [89643]
+INFO:     Stopping reloader process [70469]
+/Users/nanxinli/.pyenv/versions/3.10.13/lib/python3.10/multiprocessing/resource_tracker.py:224: UserWarning: resource_tracker: There appear to be 2 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

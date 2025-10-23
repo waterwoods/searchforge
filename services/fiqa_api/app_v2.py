@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # Import settings for Black Swan Mode B configuration
 sys.path.insert(0, str(Path(__file__).parent))
 import settings
+from force_override import apply_force_override, get_force_override_status
 
 try:
     from core.metrics import metrics_sink, METRICS_BACKEND
@@ -828,11 +829,24 @@ async def _do_real_fiqa_query(query: str, top_k: int = 10, heavy: bool = False, 
     
     if heavy:
         # Get heavy mode params from settings (loaded from .env)
-        num_candidates = settings.HEAVY_NUM_CANDIDATES
-        rerank_topk = settings.HEAVY_RERANK_TOPK
+        runtime_params = {
+            "num_candidates": settings.HEAVY_NUM_CANDIDATES,
+            "rerank_topk": settings.HEAVY_RERANK_TOPK,
+            "qps": 0  # QPS not directly used here, but included for completeness
+        }
+        
+        # Apply force override (bypasses all guardrails if FORCE_OVERRIDE=true)
+        final_params = apply_force_override(runtime_params, context="black_swan_mode_b")
+        
+        # Use the potentially overridden values
+        num_candidates = final_params.get("num_candidates", runtime_params["num_candidates"])
+        rerank_topk = final_params.get("rerank_topk", runtime_params["rerank_topk"])
         
         payload["candidate_k"] = num_candidates
         payload["rerank_top_k"] = rerank_topk
+        
+        # TRACE_E2E: Log OUT payload from app_v2
+        print(f"TRACE_E2E: OUT payload from app_v2: {{top_k: {top_k}, candidate_k: {num_candidates}, rerank_topk: {rerank_topk}}}")
         
         # Optional: Add artificial delay (only in heavy mode)
         delay_ms = settings.RERANK_DELAY_MS
@@ -910,7 +924,7 @@ async def search(req: SearchRequest):
                     latency_ms=latency_ms,
                     hit_from=hit_from,
                     topk=req.top_k,
-                    rerank_k=result.get("candidate_k", 100) if heavy else 50
+                    rerank_k=result.get("rerank_top_k", 100) if heavy else 50
                 )
                 
                 # Record to metrics_sink
@@ -1713,6 +1727,26 @@ async def black_swan_config():
     }
 
 
+@app.get("/ops/force_status")
+async def force_status():
+    """
+    Get current force override status and configuration.
+    
+    Returns current flags and active forced parameters.
+    This endpoint shows whether FORCE_OVERRIDE is active and what
+    parameters are being forced (bypassing all guardrails).
+    
+    Example Response:
+    {
+        "force_override": true,
+        "active_params": {"num_candidates":2000,"rerank_topk":300,"qps":180},
+        "hard_cap_enabled": true,
+        "hard_cap_limits": {"num_candidates":5000,"rerank_topk":1000,"qps":2000}
+    }
+    """
+    return get_force_override_status()
+
+
 
 
 @app.post("/ops/black_swan")
@@ -1837,8 +1871,8 @@ async def run_black_swan(request: Optional[BlackSwanRequest] = None):
                 }
             }
             
-            # Store playbook params in state for report inclusion
-            playbook_params = {
+            # Store playbook params in state for report inclusion (before force override)
+            playbook_params_raw = {
                 "mode": mode,
                 "warmup_qps": int(os.getenv("BLACK_SWAN_WARMUP_QPS", "20")),
                 "warmup_duration": int(os.getenv("BLACK_SWAN_WARMUP_DURATION", "15")),
@@ -1854,6 +1888,10 @@ async def run_black_swan(request: Optional[BlackSwanRequest] = None):
                 "rerank_model": mode_configs[mode].get("RERANK_MODEL", "default"),
                 "rerank_delay_ms": int(mode_configs[mode].get("RERANK_DELAY_MS", "0"))
             }
+            
+            # Apply force override to playbook parameters
+            # This allows overriding QPS, num_candidates, rerank_topk across all modes
+            playbook_params = apply_force_override(playbook_params_raw, context=f"black_swan_mode_{mode}_playbook")
             BLACK_SWAN_STATE["playbook_params"] = playbook_params
             
             env = {

@@ -110,3 +110,53 @@ PLAY_B_QPS = int(os.getenv("PLAY_B_QPS", "120"))
 PLAY_B_NUM_CANDIDATES = int(os.getenv("PLAY_B_NUM_CANDIDATES", str(HEAVY_NUM_CANDIDATES)))
 PLAY_B_RERANK_TOPK = int(os.getenv("PLAY_B_RERANK_TOPK", str(HEAVY_RERANK_TOPK)))
 
+# ========================================
+# Force Override System for Black Swan
+# ========================================
+# Master switch to bypass ALL guardrails and constraints
+FORCE_OVERRIDE = os.getenv("FORCE_OVERRIDE", "false").lower() == "true"
+
+# Forced parameter set (JSON string)
+# Example: '{"num_candidates":2000,"rerank_topk":300,"qps":180}'
+FORCE_PARAMS_JSON = os.getenv("FORCE_PARAMS_JSON", '{}')
+
+# Optional hard cap as a safety fuse
+HARD_CAP_ENABLED = os.getenv("HARD_CAP_ENABLED", "false").lower() == "true"
+
+# Hard cap limits (JSON string) - soft insurance limit
+# Example: '{"num_candidates":5000,"rerank_topk":1000,"qps":2000}'
+HARD_CAP_LIMITS = os.getenv("HARD_CAP_LIMITS", '{}')
+
+# Parse JSON parameters at startup
+import json
+
+try:
+    FORCE_OVERRIDE_PARAMS = json.loads(FORCE_PARAMS_JSON) if FORCE_PARAMS_JSON else {}
+except json.JSONDecodeError as e:
+    print(f"[FORCE_OVERRIDE] ⚠️  Failed to parse FORCE_PARAMS_JSON: {e}")
+    FORCE_OVERRIDE_PARAMS = {}
+
+try:
+    HARD_CAP_LIMITS_DICT = json.loads(HARD_CAP_LIMITS) if HARD_CAP_LIMITS else {}
+except json.JSONDecodeError as e:
+    print(f"[FORCE_OVERRIDE] ⚠️  Failed to parse HARD_CAP_LIMITS: {e}")
+    HARD_CAP_LIMITS_DICT = {}
+
+# Build Force Override Configuration
+FORCE_OVERRIDE_CONFIG = {
+    "enabled": FORCE_OVERRIDE,
+    "params": FORCE_OVERRIDE_PARAMS,
+    "hard_cap_enabled": HARD_CAP_ENABLED,
+    "hard_cap_limits": HARD_CAP_LIMITS_DICT
+}
+
+# Log configuration at startup
+if FORCE_OVERRIDE:
+    print(f"[FORCE_OVERRIDE] ✅ Enabled with params: {FORCE_OVERRIDE_PARAMS}")
+    if HARD_CAP_ENABLED:
+        print(f"[FORCE_OVERRIDE] 🛡️  Hard cap enabled with limits: {HARD_CAP_LIMITS_DICT}")
+    else:
+        print(f"[FORCE_OVERRIDE] ⚠️  Hard cap disabled - no safety limits!")
+else:
+    print(f"[FORCE_OVERRIDE] ❌ Disabled - normal operation")
+
