@@ -1,6 +1,6 @@
 # SurgeForge Retrieval MVP — Study Map
 # 
-# Legend: ✦ SLA-critical   ✦ CACHE   ✦ RPS/Concurrency   ✦ FASTPATH   ✦ RETRY   ✦ EVAL
+# Legend: ⭐ SLA-critical   ⭐ CACHE   ⭐ RPS/Concurrency   ⭐ FASTPATH   ⭐ RETRY   ⭐ EVAL
 # 
 # Control Flow:
 # FakeEmbedAPI → TokenBucket → AsyncBatchEmbedder → _batcher → _dispatch → retry loop
@@ -35,7 +35,7 @@ class ServerError(Exception): ...
 # --------------------------
 # Deterministic vector helper
 # --------------------------
-def _deterministic_vector(text: str, dim: int) -> List[float]:  # ✦ EVAL: stable vectors for tests
+def _deterministic_vector(text: str, dim: int) -> List[float]:  # ⭐ EVAL: stable vectors for tests
     """
     Produce a deterministic pseudo-random vector in [0,1) per input string.
     Stable across runs for the same text & dim.
@@ -69,13 +69,13 @@ class FakeEmbedAPI:
     """
     def __init__(
         self,
-        dim: int = 64,  # ✦ SLA: vector dimension
-        base_ms: int = 35,  # ✦ SLA: base latency
-        per_item_ms: int = 4,  # ✦ SLA: per-item latency
-        jitter_ms: int = 12,  # ✦ SLA: random jitter
-        rps_limit: int = 8,  # ✦ RPS: requests per second
-        transient_err_rate: float = 0.04,  # ✦ RETRY: transient error rate
-        server_err_rate: float = 0.01,  # ✦ RETRY: server error rate
+        dim: int = 64,  # ⭐ SLA: vector dimension
+        base_ms: int = 35,  # ⭐ SLA: base latency
+        per_item_ms: int = 4,  # ⭐ SLA: per-item latency
+        jitter_ms: int = 12,  # ⭐ SLA: random jitter
+        rps_limit: int = 8,  # ⭐ RPS: requests per second
+        transient_err_rate: float = 0.04,  # ⭐ RETRY: transient error rate
+        server_err_rate: float = 0.01,  # ⭐ RETRY: server error rate
     ):
         self.dim = dim
         self.base_ms = base_ms
@@ -91,25 +91,25 @@ class FakeEmbedAPI:
     async def embed(self, batch: List[str]) -> List[List[float]]:
         # RPS window
         now = time.time()
-        if now - self._window_start >= self._window_sec:  # ✦ RPS: window reset
+        if now - self._window_start >= self._window_sec:  # ⭐ RPS: window reset
             self._window_start = now
             self._calls_in_window = 0
         self._calls_in_window += 1
-        if self._calls_in_window > self._rps_limit:  # ✦ RPS: rate limit check
+        if self._calls_in_window > self._rps_limit:  # ⭐ RPS: rate limit check
             raise RateLimitError("rps exceeded")
 
         # random errors
         r = random.random()
-        if r < self.server_err_rate:  # ✦ RETRY: server error injection
+        if r < self.server_err_rate:  # ⭐ RETRY: server error injection
             raise ServerError("5xx")
-        if r < self.server_err_rate + self.transient_err_rate:  # ✦ RETRY: transient error injection
+        if r < self.server_err_rate + self.transient_err_rate:  # ⭐ RETRY: transient error injection
             raise TransientError("transport/429")
 
         # latency model
         delay = (
-            self.base_ms + self.per_item_ms * max(1, len(batch)) + random.randint(0, self.jitter_ms)  # ✦ SLA: latency model
+            self.base_ms + self.per_item_ms * max(1, len(batch)) + random.randint(0, self.jitter_ms)  # ⭐ SLA: latency model
         ) / 1000
-        await asyncio.sleep(delay)  # ✦ SLA: simulated latency
+        await asyncio.sleep(delay)  # ⭐ SLA: simulated latency
 
         # deterministic vectors
         return [_deterministic_vector(x, self.dim) for x in batch]
@@ -132,13 +132,13 @@ class TokenBucket:
                 elapsed = now - self.ts
                 self.ts = now
                 # refill
-                self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)  # ✦ RPS: token refill logic
+                self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)  # ⭐ RPS: token refill logic
                 if self.tokens >= n:
                     self.tokens -= n
                     return
                 # wait for enough tokens
                 missing = n - self.tokens
-                sleep_s = max(missing / self.rate, 0.001)  # ✦ RPS: sleep calculation
+                sleep_s = max(missing / self.rate, 0.001)  # ⭐ RPS: sleep calculation
                 await asyncio.sleep(sleep_s)
 
 # --------------------------
@@ -163,23 +163,23 @@ class AsyncBatchEmbedder:
     def __init__(
         self,
         api: FakeEmbedAPI,
-        max_batch_size: int = 16,  # ✦ SLA: batch size limit
-        max_batch_latency_ms: int = 25,  # ✦ SLA: batch timeout
-        max_concurrency: int = 4,  # ✦ RPS: concurrency limit
-        rps_limit: int = 8,  # ✦ RPS: rate limit
-        max_retries: int = 5,  # ✦ RETRY: max retry attempts
-        retry_base_ms: int = 40,  # ✦ RETRY: base backoff time
+        max_batch_size: int = 16,  # ⭐ SLA: batch size limit
+        max_batch_latency_ms: int = 25,  # ⭐ SLA: batch timeout
+        max_concurrency: int = 4,  # ⭐ RPS: concurrency limit
+        rps_limit: int = 8,  # ⭐ RPS: rate limit
+        max_retries: int = 5,  # ⭐ RETRY: max retry attempts
+        retry_base_ms: int = 40,  # ⭐ RETRY: base backoff time
     ):
         self.api = api
         self.max_batch_size = max_batch_size
         self.max_batch_latency_ms = max_batch_latency_ms
-        self._sem = asyncio.Semaphore(max_concurrency)  # ✦ RPS: concurrency control
-        self._bucket = TokenBucket(rps_limit, rps_limit)  # ✦ RPS: rate limiting
+        self._sem = asyncio.Semaphore(max_concurrency)  # ⭐ RPS: concurrency control
+        self._bucket = TokenBucket(rps_limit, rps_limit)  # ⭐ RPS: rate limiting
         self.max_retries = max_retries
         self.retry_base_ms = retry_base_ms
 
-        self._q: "asyncio.Queue[EmbedRequest]" = asyncio.Queue()  # ✦ RPS: request queue
-        self._bg = asyncio.create_task(self._batcher())  # ✦ RPS: background batcher
+        self._q: "asyncio.Queue[EmbedRequest]" = asyncio.Queue()  # ⭐ RPS: request queue
+        self._bg = asyncio.create_task(self._batcher())  # ⭐ RPS: background batcher
 
     # Public API
     async def embed_one(self, text: str) -> List[float]:
@@ -207,22 +207,22 @@ class AsyncBatchEmbedder:
             try:
                 timeout = None
                 if batch and deadline is not None:
-                    timeout = max(deadline - time.time(), 0)  # ✦ SLA: deadline logic
+                    timeout = max(deadline - time.time(), 0)  # ⭐ SLA: deadline logic
                 req: EmbedRequest = await asyncio.wait_for(self._q.get(), timeout=timeout)
                 batch.append(req)
                 if len(batch) == 1:
                     deadline = time.time() + self.max_batch_latency_ms / 1000
-                if len(batch) >= self.max_batch_size:  # ✦ SLA: batch flush on size
+                if len(batch) >= self.max_batch_size:  # ⭐ SLA: batch flush on size
                     await self._dispatch(batch)
                     batch, deadline = [], None
             except asyncio.TimeoutError:
                 if batch:
-                    await self._dispatch(batch)  # ✦ SLA: batch flush on timeout
+                    await self._dispatch(batch)  # ⭐ SLA: batch flush on timeout
                     batch, deadline = [], None
 
     async def _dispatch(self, batch: List[EmbedRequest]) -> None:
-        await self._sem.acquire()  # ✦ RPS: semaphore acquire
-        await self._bucket.take(1)  # ✦ RPS: token bucket take
+        await self._sem.acquire()  # ⭐ RPS: semaphore acquire
+        await self._bucket.take(1)  # ⭐ RPS: token bucket take
         try:
             attempt = 0
             while True:
@@ -231,13 +231,13 @@ class AsyncBatchEmbedder:
                     texts = [r.text for r in batch]
                     vecs = await self.api.embed(texts)
                     # fulfill in order
-                    for r, v in zip(batch, vecs):  # ✦ SLA: in-order fulfillment
+                    for r, v in zip(batch, vecs):  # ⭐ SLA: in-order fulfillment
                         if not r.fut.done():
                             r.fut.set_result(v)
                     return
                 except (RateLimitError, TransientError, ServerError) as e:
-                    if attempt <= self.max_retries:  # ✦ RETRY: retry loop
-                        backoff = (self.retry_base_ms * (2 ** (attempt - 1)) + random.randint(0, 20)) / 1000  # ✦ RETRY: exp backoff + jitter
+                    if attempt <= self.max_retries:  # ⭐ RETRY: retry loop
+                        backoff = (self.retry_base_ms * (2 ** (attempt - 1)) + random.randint(0, 20)) / 1000  # ⭐ RETRY: exp backoff + jitter
                         await asyncio.sleep(backoff)
                         continue
                     # exhaust retries: fail all remaining
@@ -251,7 +251,7 @@ class AsyncBatchEmbedder:
                             r.fut.set_exception(e)
                     return
         finally:
-            self._sem.release()  # ✦ RPS: semaphore release
+            self._sem.release()  # ⭐ RPS: semaphore release
 
 # --------------------------
 # Quick benchmark (optional)
@@ -291,7 +291,7 @@ async def _bench(n: int = 200):
     )
 
     # SLA gate (aligns with earlier spec)
-    assert p95 * 1000 < 200, "p95 must be < 200ms"  # ✦ EVAL: p95<200ms assertion
+    assert p95 * 1000 < 200, "p95 must be < 200ms"  # ⭐ EVAL: p95<200ms assertion
 
 if __name__ == "__main__":
     asyncio.run(_bench(200))
@@ -306,5 +306,5 @@ if __name__ == "__main__":
 #   BM25 vs vector: BM25 exact matches, vector semantic similarity
 #   ONNX vs Torch: ONNX faster inference, Torch more flexible
 # Grep cheats:
-#   grep -n "✦" -n
+#   grep -n "⭐" -n
 #   grep -n "\[FASTPATH\]\|\[RPS\]\|\[CACHE\]"

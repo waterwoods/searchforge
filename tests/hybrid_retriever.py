@@ -1,6 +1,6 @@
 # SurgeForge Retrieval MVP — Study Map
 # 
-# Legend: ✦ SLA-critical   ✦ CACHE   ✦ RPS/Concurrency   ✦ FASTPATH   ✦ RETRY   ✦ EVAL
+# Legend: ⭐ SLA-critical   ⭐ CACHE   ⭐ RPS/Concurrency   ⭐ FASTPATH   ⭐ RETRY   ⭐ EVAL
 # 
 # Control Flow:
 # BM25Index → VectorIndex → HybridRetriever → cache → fastpath → merge
@@ -33,8 +33,8 @@ def tokenize(s: str) -> List[str]:
 
 @dataclass
 class BM25Index:
-    k1: float = 1.5  # ✦ SLA: BM25 k1 parameter
-    b: float = 0.75  # ✦ SLA: BM25 b parameter
+    k1: float = 1.5  # ⭐ SLA: BM25 k1 parameter
+    b: float = 0.75  # ⭐ SLA: BM25 b parameter
 
     def build(self, docs: List[str]):
         self.N = len(docs)
@@ -46,11 +46,11 @@ class BM25Index:
         df = Counter()
         for ts in self.toks:
             df.update(set(ts))
-        self.idf = {t: math.log((self.N - df[t] + 0.5) / (df[t] + 0.5) + 1.0) for t in df}  # ✦ SLA: idf calculation
+        self.idf = {t: math.log((self.N - df[t] + 0.5) / (df[t] + 0.5) + 1.0) for t in df}  # ⭐ SLA: idf calculation
         # 预计算 tf
         self.tf = [Counter(ts) for ts in self.toks]
         # --- 在 BM25Index.build 里加倒排 ---
-        self.postings = defaultdict(list)  # ✦ FASTPATH: postings inverted index
+        self.postings = defaultdict(list)  # ⭐ FASTPATH: postings inverted index
         for i, ts in enumerate(self.toks):
             for t in set(ts):
                 self.postings[t].append(i)
@@ -80,7 +80,7 @@ class BM25Index:
         q = tokenize(query)
         cand = set()
         for t in q:
-            cand.update(self.postings.get(t, []))  # ✦ FASTPATH: candidate set (no full scan)
+            cand.update(self.postings.get(t, []))  # ⭐ FASTPATH: candidate set (no full scan)
         if not cand:
             return []
         scores = {}
@@ -103,7 +103,7 @@ class BM25Index:
 @dataclass
 class VectorIndex:
     mat: np.ndarray  # (N, D)
-    def search(self, qvec: np.ndarray, topk: int = 20) -> List[Tuple[int, float]]:  # ✦ SLA: vector similarity
+    def search(self, qvec: np.ndarray, topk: int = 20) -> List[Tuple[int, float]]:  # ⭐ SLA: vector similarity
         # 点积越大越相似；不做归一化以保持区分度（配合 FakeEmbedAPI）
         sims = self.mat @ qvec
         # topk
@@ -115,7 +115,7 @@ class VectorIndex:
         return [(int(i), float(sims[i])) for i in idx[:topk]]
 
 @dataclass
-class FaissIndex:  # ✦ SLA: FAISS vector backend
+class FaissIndex:  # ⭐ SLA: FAISS vector backend
     mat: np.ndarray
     def __post_init__(self):
         d = self.mat.shape[1]
@@ -128,7 +128,7 @@ class FaissIndex:  # ✦ SLA: FAISS vector backend
 # -----------------------
 # TTL LRU 缓存
 # -----------------------
-class TTLLRU:  # ✦ CACHE: TTL LRU cache
+class TTLLRU:  # ⭐ CACHE: TTL LRU cache
     def __init__(self, max_items=1000, ttl_s=60):
         self.max = max_items
         self.ttl = ttl_s
@@ -140,7 +140,7 @@ class TTLLRU:  # ✦ CACHE: TTL LRU cache
         if key in self.od:
             exp, val = self.od[key]
             if exp > now:
-                self.od.move_to_end(key)  # ✦ CACHE: LRU eviction
+                self.od.move_to_end(key)  # ⭐ CACHE: LRU eviction
                 self.hits += 1
                 return val
             else:
@@ -152,12 +152,12 @@ class TTLLRU:  # ✦ CACHE: TTL LRU cache
         self.od[key] = (now + self.ttl, val)
         self.od.move_to_end(key)
         if len(self.od) > self.max:
-            self.od.popitem(last=False)  # ✦ CACHE: eviction
-    def hit_rate(self):  # ✦ CACHE: hit rate tracking
+            self.od.popitem(last=False)  # ⭐ CACHE: eviction
+    def hit_rate(self):  # ⭐ CACHE: hit rate tracking
         tot = self.hits + self.miss
         return (self.hits / tot) if tot else 0.0
 
-class TTLLFU:  # ✦ CACHE: TTL LFU cache
+class TTLLFU:  # ⭐ CACHE: TTL LFU cache
     def __init__(self, max_items=1000, ttl_s=60):
         self.max, self.ttl = max_items, ttl_s
         self.store = {}  # key -> (expire_ts, val, freq)
@@ -169,15 +169,15 @@ class TTLLFU:  # ✦ CACHE: TTL LFU cache
             if it: self.store.pop(key, None)
             self.miss += 1; return None
         exp, val, f = it
-        self.store[key] = (exp, val, f+1)  # ✦ CACHE: frequency tracking
+        self.store[key] = (exp, val, f+1)  # ⭐ CACHE: frequency tracking
         self.hits += 1; return val
     def set(self, key, val):
         now = time.time()
         if len(self.store) >= self.max:
-            victim = min(self.store.items(), key=lambda kv: (kv[1][2], kv[1][0]))[0]  # ✦ CACHE: LFU eviction
+            victim = min(self.store.items(), key=lambda kv: (kv[1][2], kv[1][0]))[0]  # ⭐ CACHE: LFU eviction
             self.store.pop(victim, None)
         self.store[key] = (now + self.ttl, val, 1)
-    def hit_rate(self):  # ✦ CACHE: hit rate tracking
+    def hit_rate(self):  # ⭐ CACHE: hit rate tracking
         tot = self.hits + self.miss
         return (self.hits / tot) if tot else 0.0
 
@@ -186,18 +186,18 @@ class TTLLFU:  # ✦ CACHE: TTL LFU cache
 # -----------------------
 class HybridRetriever:
     def __init__(self, embedder: AsyncBatchEmbedder, vec_index: VectorIndex, bm25: BM25Index,
-                 alpha: float = 0.6, cache_ttl_s: int = 60, cache_max: int = 1000,  # ✦ SLA/CACHE: alpha, cache params
-                 bm25_fast_thresh: float = 0.85):  # ✦ FASTPATH: fast path threshold
+                 alpha: float = 0.6, cache_ttl_s: int = 60, cache_max: int = 1000,  # ⭐ SLA/CACHE: alpha, cache params
+                 bm25_fast_thresh: float = 0.85):  # ⭐ FASTPATH: fast path threshold
         self.embedder = embedder
         self.vec_index = vec_index
         self.bm25 = bm25
         self.alpha = alpha
-        self.cache = TTLLFU(cache_max, cache_ttl_s)  # ✦ CACHE: 用 LFU
-        self.qvec_cache = TTLLRU(cache_max, cache_ttl_s)   # ✦ CACHE: 查询向量仍用 LRU
+        self.cache = TTLLFU(cache_max, cache_ttl_s)  # ⭐ CACHE: 用 LFU
+        self.qvec_cache = TTLLRU(cache_max, cache_ttl_s)   # ⭐ CACHE: 查询向量仍用 LRU
         self.bm25_fast_thresh = bm25_fast_thresh
 
     async def _embed_query(self, query: str):
-        v = self.qvec_cache.get(query)  # ✦ CACHE: qvec TTL cache
+        v = self.qvec_cache.get(query)  # ⭐ CACHE: qvec TTL cache
         if v is not None: 
             return v
         v = np.array(await self.embedder.embed_one(query), dtype=np.float32)
@@ -206,16 +206,16 @@ class HybridRetriever:
 
     async def retrieve(self, query: str, k: int = 10) -> List[Tuple[int, float]]:
         ck = (query, k, self.alpha)
-        hit = self.cache.get(ck)  # ✦ CACHE: result cache check
+        hit = self.cache.get(ck)  # ⭐ CACHE: result cache check
         if hit is not None:
             return hit
 
         # 并行启动嵌入，BM25 同时计算；若 BM25 足够强则直接走快路径并取消向量
-        embed_task = asyncio.create_task(self._embed_query(query))  # ✦ FASTPATH: parallel query embed
-        bres = self.bm25.search(query, topk=max(50, k))  # ✦ SLA: BM25 first
+        embed_task = asyncio.create_task(self._embed_query(query))  # ⭐ FASTPATH: parallel query embed
+        bres = self.bm25.search(query, topk=max(50, k))  # ⭐ SLA: BM25 first
 
         # 归一化（稳健 min-max）
-        def norm(res):  # ✦ SLA: normalize scores
+        def norm(res):  # ⭐ SLA: normalize scores
             if not res: return {}
             mx = max(1e-9, max(s for _, s in res)); mn = min(s for _, s in res)
             d = (mx - mn) if (mx - mn) > 1e-9 else 1.0
@@ -224,11 +224,11 @@ class HybridRetriever:
         bdict, b_degenerate, b_top = norm(bres)
 
         # 快路径：BM25 足够自信 → 直接返回（避免等待向量嵌入）
-        if bres and b_top >= self.bm25_fast_thresh and not b_degenerate:  # ✦ FASTPATH: fast-path return if bm25_top≥threshold
+        if bres and b_top >= self.bm25_fast_thresh and not b_degenerate:  # ⭐ FASTPATH: fast-path return if bm25_top≥threshold
             with contextlib.suppress(Exception):
                 embed_task.cancel()
             out = [(i, bdict[i]) for i, _ in bres[:k]]
-            self.cache.set(ck, out)  # ✦ CACHE: cache set
+            self.cache.set(ck, out)  # ⭐ CACHE: cache set
             return out
 
         # 否则融合（等待向量结果）
@@ -236,10 +236,10 @@ class HybridRetriever:
         vres = self.vec_index.search(qvec, topk=max(50, k))
         vdict, _, _ = norm(vres)
         union = set(vdict) | set(bdict)
-        merged = [(i, self.alpha * vdict.get(i, 0.0) + (1 - self.alpha) * bdict.get(i, 0.0)) for i in union]  # ✦ SLA: merge scores (alpha-weighted)
+        merged = [(i, self.alpha * vdict.get(i, 0.0) + (1 - self.alpha) * bdict.get(i, 0.0)) for i in union]  # ⭐ SLA: merge scores (alpha-weighted)
         merged.sort(key=lambda x: x[1], reverse=True)
         out = merged[:k]
-        self.cache.set(ck, out)  # ✦ CACHE: cache set
+        self.cache.set(ck, out)  # ⭐ CACHE: cache set
         return out
 
 # -----------------------
@@ -247,7 +247,7 @@ class HybridRetriever:
 # -----------------------
 async def build_corpus_and_indexes(N=300, dim=64):
     # 文档离线嵌入（可以慢点）
-    api_doc = FakeEmbedAPI(dim=dim, rps_limit=36, base_ms=35, per_item_ms=4, jitter_ms=12)  # ✦ FASTPATH/SLA: doc vs query embed API (slow vs low-latency)
+    api_doc = FakeEmbedAPI(dim=dim, rps_limit=36, base_ms=35, per_item_ms=4, jitter_ms=12)  # ⭐ FASTPATH/SLA: doc vs query embed API (slow vs low-latency)
     embedder_doc = AsyncBatchEmbedder(api_doc, max_batch_size=32, max_batch_latency_ms=25,
                                       max_concurrency=8, rps_limit=36)
 
@@ -258,7 +258,7 @@ async def build_corpus_and_indexes(N=300, dim=64):
     V = np.vstack(vecs)
 
     # 查询在线嵌入（低延迟通道）
-    api_q = FakeEmbedAPI(dim=dim, rps_limit=64, base_ms=10, per_item_ms=2, jitter_ms=6)  # ✦ FASTPATH/SLA: low-latency query API
+    api_q = FakeEmbedAPI(dim=dim, rps_limit=64, base_ms=10, per_item_ms=2, jitter_ms=6)  # ⭐ FASTPATH/SLA: low-latency query API
     embedder_q = AsyncBatchEmbedder(api_q, max_batch_size=16, max_batch_latency_ms=15,
                                     max_concurrency=8, rps_limit=64)
 
@@ -306,9 +306,9 @@ async def benchmark(Q=200, N=300, k=10):
     print(f"N={N} Q={Q} k={k} total={t1-t0:.3f}s p50={p50*1000:.1f}ms p95={p95*1000:.1f}ms cache_hit={hit*100:.1f}% top1_correct={correct_top1}/{Q//2}")
 
     # 验收断言
-    assert p95*1000 < 30.0, "检索 p95 未小于 30ms"  # ✦ EVAL: p95<30ms, cache≥40%, top1≥95/100
-    assert hit >= 0.40, "缓存命中率不足 40%"  # ✦ EVAL: cache≥40%
-    assert correct_top1 >= int(0.95 * (Q//2)), "Top-1 自检召回不足 95%"  # ✦ EVAL: top1≥95/100
+    assert p95*1000 < 30.0, "检索 p95 未小于 30ms"  # ⭐ EVAL: p95<30ms, cache≥40%, top1≥95/100
+    assert hit >= 0.40, "缓存命中率不足 40%"  # ⭐ EVAL: cache≥40%
+    assert correct_top1 >= int(0.95 * (Q//2)), "Top-1 自检召回不足 95%"  # ⭐ EVAL: top1≥95/100
 
 async def smoke_10q():
     """10Q<1s 自测闸门"""
@@ -319,7 +319,7 @@ async def smoke_10q():
     t0 = time.time()
     await asyncio.gather(*(retr.retrieve(q, k=5) for q in qs))
     dur = time.time() - t0
-    assert dur < 1.0, f"10Q took {dur:.3f}s"  # ✦ EVAL: total<1s gate
+    assert dur < 1.0, f"10Q took {dur:.3f}s"  # ⭐ EVAL: total<1s gate
     print(f"10Q total {dur:.3f}s ✓")
 
 async def benchmark_3000():
@@ -341,5 +341,5 @@ if __name__ == "__main__":
 #   BM25 vs vector: BM25 exact matches, vector semantic similarity
 #   ONNX vs Torch: ONNX faster inference, Torch more flexible
 # Grep cheats:
-#   grep -n "✦" -n
+#   grep -n "⭐" -n
 #   grep -n "\[FASTPATH\]\|\[RPS\]\|\[CACHE\]"
