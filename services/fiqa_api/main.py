@@ -21,8 +21,21 @@ from agent.planner import Planner
 from agent.executor import Executor
 from agent.judge import Judge
 from agent.explainer import Explainer
+from services.code_intelligence.ai_analyzer import get_node_intelligence
 from tools.codegraph import CodeGraph
 from engines.networkx_engine import NetworkXEngine
+try:
+    # Preferred import path when package structure allows
+    from services.code_intelligence.golden_path import extract_golden_path  # type: ignore
+except Exception:
+    # Fallback: import module directly from services/code_intelligence
+    import sys as _sys
+    from pathlib import Path as _Path
+    _gp_dir = _Path(__file__).parent.parent / "code_intelligence"
+    if str(_gp_dir) not in _sys.path:
+        _sys.path.insert(0, str(_gp_dir))
+    from golden_path import extract_golden_path  # type: ignore
+from services.code_intelligence.graph_ranker import layer2_graph_ranking
 
 
 def calculate_llm_cost(usage, model_name: str = "gpt-4o-mini") -> float:
@@ -159,6 +172,41 @@ async def startup_event():
     except Exception as e:
         print(f"❌ Failed to initialize Agent components: {e}")
         raise
+
+
+@app.get("/api/v1/graph/golden-path")
+async def api_golden_path(entry: str = Query(..., description="Entry node id")):
+    """Return the Golden Path from the given entry node.
+
+    Uses AI labels (if available) to target the nearest Core node. Falls back to
+    a shortest path to the PageRank top-1 node. Ensures 5-9 nodes in the result
+    where possible.
+    """
+    try:
+        if graph_engine is None or getattr(graph_engine, "graph", None) is None:
+            raise HTTPException(status_code=503, detail="Graph engine not initialized")
+
+        graph = graph_engine.graph
+
+        # Build a best-effort AI labels mapping from node attributes if present
+        ai_labels = {}
+        try:
+            for node_id, attrs in graph.nodes(data=True):
+                label = attrs.get("ai_label") or attrs.get("layer3_label")
+                tags = attrs.get("ai_tags") or attrs.get("tags")
+                if label is not None:
+                    ai_labels[str(node_id)] = label
+                elif isinstance(tags, (list, tuple)) and ("Core" in tags):
+                    ai_labels[str(node_id)] = "Core"
+        except Exception:
+            ai_labels = {}
+
+        path = extract_golden_path(entry_node_id=str(entry), graph=graph, ai_labels=ai_labels)
+        return {"path": path}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compute golden path: {e}")
 
 
 @app.get("/")
@@ -968,11 +1016,31 @@ async def get_graph_stats():
                 for node_id, score in sorted(metric_map.items(), key=lambda x: x[1], reverse=True)[:k]
             ]
 
+        # Build Layer 2 composite ranking using Top-200 PageRank as candidates
+        try:
+            top200_candidates = [
+                node_id for node_id, _ in sorted(pagerank.items(), key=lambda x: x[1], reverse=True)[:200]
+            ]
+        except Exception:
+            top200_candidates = list(pagerank.keys())[:200]
+
+        layer2_top80 = []
+        layer2_top10 = []
+        try:
+            # Safety: ensure graph is available on engine
+            nx_graph = getattr(graph_engine, "graph", None)
+            if nx_graph is not None:
+                layer2_top80 = layer2_graph_ranking(top200_candidates, nx_graph)
+                layer2_top10 = layer2_top80[:10]
+        except Exception:
+            layer2_top10 = []
+
         return {
             "total_nodes": total_nodes,
             "total_edges": total_edges,
             "pagerank_top": top_k_items(pagerank, 20),
             "betweenness_top": top_k_items(betweenness, 20),
+            "layer2_top10": layer2_top10,
         }
 
     except HTTPException:
@@ -1031,6 +1099,29 @@ async def stream_query_execution(goal: str = Query(..., description="The user's 
             "Access-Control-Allow-Headers": "*",
         }
     )
+
+
+@app.get("/api/v1/intelligence/summary/{node_id}")
+async def get_intelligence_summary(node_id: str):
+    """
+    Return Layer-3 AI analysis summary and tags for a given node.
+
+    Response keys: aiSummary, aiTags
+    """
+    try:
+        data = get_node_intelligence(node_id)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No intelligence found for node '{node_id}'")
+
+        return {
+            "nodeId": node_id,
+            "aiSummary": data.get("aiSummary", ""),
+            "aiTags": data.get("aiTags", []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch intelligence: {str(e)}")
 
 
 @app.get("/api/v1/analyze-node/{node_id}")
