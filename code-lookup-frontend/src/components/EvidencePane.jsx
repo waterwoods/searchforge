@@ -17,6 +17,12 @@ const EvidencePane = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [eventSource, setEventSource] = useState(null);
 
+    // Chat-related state
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatInput, setChatInput] = useState('');
+    const [isChatting, setIsChatting] = useState(false);
+    const [chatEventSource, setChatEventSource] = useState(null);
+
     // Mock RAG API call simulation
     const fetchRAGEvidence = async (nodeId) => {
         setRagLoading(true);
@@ -99,6 +105,24 @@ const EvidencePane = () => {
         };
     }, [eventSource]);
 
+    // Clear chat messages when node changes
+    useEffect(() => {
+        setChatMessages([]);
+        setChatInput('');
+        setIsChatting(false);
+        if (chatEventSource) {
+            try { chatEventSource.close(); } catch { }
+        }
+    }, [selectedNodeId]);
+
+    useEffect(() => {
+        return () => {
+            if (chatEventSource) {
+                try { chatEventSource.close(); } catch { }
+            }
+        };
+    }, [chatEventSource]);
+
     const handleAnalyzeClick = () => {
         if (!selectedNode?.id || isLoading) return;
         setIsLoading(true);
@@ -124,6 +148,73 @@ const EvidencePane = () => {
         setEventSource(es);
     };
 
+    // Handle sending chat messages
+    const handleSendMessage = (messageText) => {
+        if (!selectedNode?.id || isChatting || !messageText.trim()) return;
+
+        const userMessage = {
+            role: 'user',
+            content: messageText.trim(),
+            timestamp: new Date()
+        };
+
+        setChatMessages(prev => [...prev, userMessage]);
+        setChatInput('');
+        setIsChatting(true);
+
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+
+        // Start building the assistant's response in state
+        const assistantMessage = {
+            role: 'assistant',
+            content: '',
+            timestamp: new Date()
+        };
+        setChatMessages(prev => [...prev, assistantMessage]);
+
+        // Create a server-sent events connection for streaming
+        const queryParams = new URLSearchParams({
+            node_id: selectedNode.id,
+            message: messageText.trim()
+        });
+        const es = new EventSource(`${apiBaseUrl}/api/v1/agent/chat?${queryParams}`);
+
+        es.onmessage = (event) => {
+            if (event.data === '[DONE]') {
+                setIsChatting(false);
+                es.close();
+                setChatEventSource(null);
+                return;
+            }
+
+            // Append streaming data to the last assistant message
+            setChatMessages(prev => {
+                const newMessages = [...prev];
+                const lastIndex = newMessages.length - 1;
+                if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+                    // Create a new object instead of mutating
+                    newMessages[lastIndex] = {
+                        ...newMessages[lastIndex],
+                        content: newMessages[lastIndex].content + event.data
+                    };
+                }
+                return newMessages;
+            });
+        };
+
+        es.onerror = () => {
+            setIsChatting(false);
+            try { es.close(); } catch { }
+            setChatEventSource(null);
+        };
+
+        setChatEventSource(es);
+    };
+
+    const handleQuickQuestion = (question) => {
+        handleSendMessage(question);
+    };
+
     const formatCode = (code) => {
         if (!code) return '';
 
@@ -134,6 +225,184 @@ const EvidencePane = () => {
             .replace(/(["'].*?["'])/g, '<span class="string">$1</span>')
             .replace(/(#.*$)/gm, '<span class="comment">$1</span>')
             .replace(/\n/g, '<br>');
+    };
+
+    // Render chat UI
+    const renderChat = () => {
+        if (!selectedNode?.id) {
+            return (
+                <div className="no-selection">
+                    <h3>No Node Selected</h3>
+                    <p>Please select a node in the graph to start chatting.</p>
+                </div>
+            );
+        }
+
+        const quickQuestions = [
+            "请用更简单的方式解释这段代码",
+            "这段代码有什么潜在风险？",
+            "这段代码的核心功能是什么？",
+            "这段代码有哪些依赖关系？"
+        ];
+
+        return (
+            <div className="chat-container">
+                {/* Chat Messages Area */}
+                <div className="chat-messages" style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                }}>
+                    {chatMessages.length === 0 ? (
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100%',
+                            opacity: 0.6
+                        }}>
+                            <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
+                            <h3 style={{ marginBottom: 8 }}>Start a Conversation</h3>
+                            <p style={{ textAlign: 'center', maxWidth: 400 }}>
+                                Ask me anything about this code node: <strong>{selectedNode.id}</strong>
+                            </p>
+
+                            {/* Quick Questions */}
+                            <div style={{
+                                marginTop: 24,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 8,
+                                width: '100%',
+                                maxWidth: 400
+                            }}>
+                                <p style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Quick questions:</p>
+                                {quickQuestions.map((question, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => handleQuickQuestion(question)}
+                                        style={{
+                                            padding: '8px 12px',
+                                            background: '#2a2a2a',
+                                            border: '1px solid #444',
+                                            borderRadius: '6px',
+                                            color: '#fff',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            fontSize: 13,
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = '#333';
+                                            e.target.style.borderColor = '#6c5ce7';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = '#2a2a2a';
+                                            e.target.style.borderColor = '#444';
+                                        }}
+                                    >
+                                        {question}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        chatMessages.map((msg, idx) => (
+                            <div
+                                key={idx}
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                                }}
+                            >
+                                <div style={{
+                                    maxWidth: '80%',
+                                    padding: '10px 14px',
+                                    borderRadius: '12px',
+                                    background: msg.role === 'user' ? '#6c5ce7' : '#2a2a2a',
+                                    border: msg.role === 'user' ? 'none' : '1px solid #444',
+                                    color: '#fff',
+                                    wordWrap: 'break-word'
+                                }}>
+                                    {msg.role === 'assistant' && msg.content ? (
+                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                    ) : (
+                                        <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+                                    )}
+                                </div>
+                                {msg.role === 'assistant' && idx === chatMessages.length - 1 && isChatting && (
+                                    <div style={{
+                                        marginTop: 4,
+                                        marginLeft: 4,
+                                        display: 'flex',
+                                        gap: 4,
+                                        alignItems: 'center',
+                                        opacity: 0.6
+                                    }}>
+                                        <div className="loading-spinner-small"></div>
+                                        <span style={{ fontSize: 11 }}>AI is thinking...</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* Chat Input Area */}
+                <div className="chat-input" style={{
+                    padding: '16px',
+                    borderTop: '1px solid #333',
+                    display: 'flex',
+                    gap: '8px',
+                    background: '#1a1a1a'
+                }}>
+                    <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyPress={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage(chatInput);
+                            }
+                        }}
+                        placeholder="Type your message... (Press Enter to send)"
+                        disabled={isChatting}
+                        style={{
+                            flex: 1,
+                            padding: '10px 14px',
+                            background: '#2a2a2a',
+                            border: '1px solid #444',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontSize: 14,
+                            outline: 'none'
+                        }}
+                    />
+                    <button
+                        onClick={() => handleSendMessage(chatInput)}
+                        disabled={isChatting || !chatInput.trim()}
+                        style={{
+                            padding: '10px 20px',
+                            background: isChatting || !chatInput.trim() ? '#444' : '#6c5ce7',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: isChatting || !chatInput.trim() ? 'not-allowed' : 'pointer',
+                            fontSize: 14,
+                            fontWeight: 500
+                        }}
+                    >
+                        {isChatting ? 'Sending...' : 'Send'}
+                    </button>
+                </div>
+            </div>
+        );
     };
 
     const renderEvidence = () => {
@@ -389,6 +658,13 @@ const EvidencePane = () => {
                     {analysis && <span className="tab-indicator">●</span>}
                 </button>
                 <button
+                    className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('chat')}
+                >
+                    AI Chat
+                    {chatMessages.length > 0 && <span className="tab-indicator">●</span>}
+                </button>
+                <button
                     className={`tab-button ${activeTab === 'workflow' ? 'active' : ''}`}
                     onClick={() => setActiveTab('workflow')}
                 >
@@ -441,6 +717,7 @@ const EvidencePane = () => {
                         </div>
                     </div>
                 )}
+                {activeTab === 'chat' && renderChat()}
                 {activeTab === 'workflow' && <WorkflowPanel />}
             </div>
         </div>

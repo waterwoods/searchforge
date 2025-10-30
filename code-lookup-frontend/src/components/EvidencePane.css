@@ -1,0 +1,478 @@
+.evidence-pane {
+    width: 400px;
+    background: #1a1a1a;
+    border-left: 1px solid #333;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tab Header */
+.tab-header {
+    display: flex;
+    background: #2a2a2a;
+    border-bottom: 1px solid #333;
+}
+
+.tab-button {
+    flex: 1;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.tab-button:hover:not(:disabled) {
+    background: #333;
+    color: #ccc;
+}
+
+.tab-button.active {
+    background: #1a1a1a;
+    color: #fff;
+    border-bottom: 2px solid #4a9eff;
+}
+
+.tab-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tab-indicator {
+    color: #4a9eff;
+    font-size: 12px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Tab Content */
+.tab-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.no-selection {
+    padding: 40px 20px;
+    text-align: center;
+    color: #888;
+}
+
+.no-selection h3 {
+    margin: 0 0 15px 0;
+    color: #ccc;
+    font-size: 18px;
+}
+
+.no-selection p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.evidence-content {
+    padding: 20px;
+}
+
+.node-header {
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #333;
+}
+
+.node-header h3 {
+    margin: 0 0 8px 0;
+    color: #fff;
+    font-size: 18px;
+}
+
+.node-id {
+    color: #4a9eff;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    background: #2a2a2a;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.node-info {
+    margin-bottom: 25px;
+}
+
+.info-section {
+    margin-bottom: 20px;
+}
+
+.info-section h4 {
+    margin: 0 0 8px 0;
+    color: #ccc;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-section p {
+    margin: 0;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.fqname {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    word-break: break-all;
+}
+
+.kind,
+.language {
+    color: #4a9eff;
+    font-weight: 600;
+}
+
+.signature {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    color: #fff;
+}
+
+.doc {
+    color: #ccc;
+    font-style: italic;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+}
+
+.metrics {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.metric {
+    background: #2a2a2a;
+    color: #4a9eff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #444;
+}
+
+.evidence-section {
+    border-top: 1px solid #333;
+    padding-top: 20px;
+}
+
+.evidence-section h3 {
+    margin: 0 0 20px 0;
+    color: #fff;
+    font-size: 16px;
+}
+
+.evidence-item {
+    margin-bottom: 20px;
+}
+
+.evidence-item h4 {
+    margin: 0 0 8px 0;
+    color: #ccc;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.file-path {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    color: #fff;
+    word-break: break-all;
+    margin: 0;
+}
+
+.span-info {
+    color: #4a9eff;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    margin: 0;
+}
+
+.line-count {
+    color: #888;
+    margin-left: 8px;
+}
+
+.code-container {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.code-block {
+    margin: 0;
+    padding: 15px;
+    background: #1a1a1a;
+    color: #fff;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.code-block code {
+    background: none;
+    padding: 0;
+    border: none;
+    color: inherit;
+}
+
+/* Syntax highlighting */
+.code-block .keyword {
+    color: #ff79c6;
+    font-weight: bold;
+}
+
+.code-block .function {
+    color: #50fa7b;
+}
+
+.code-block .string {
+    color: #f1fa8c;
+}
+
+.code-block .comment {
+    color: #6272a4;
+    font-style: italic;
+}
+
+/* Scrollbar styling */
+.evidence-pane::-webkit-scrollbar {
+    width: 8px;
+}
+
+.evidence-pane::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.evidence-pane::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+.evidence-pane::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+/* Performance Metrics Styles */
+.performance-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metric-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+}
+
+.metric-label {
+    color: #ccc;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.metric-value {
+    color: #4a9eff;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.metric-value.bottleneck {
+    color: #ff4444;
+    font-weight: bold;
+}
+
+/* RAG Evidence Styles */
+.rag-evidence-container {
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+.rag-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #4a9eff;
+    font-size: 14px;
+}
+
+.loading-spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #333;
+    border-top: 2px solid #4a9eff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.rag-evidence-content {
+    color: #fff;
+}
+
+.evidence-text {
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+    color: #ccc;
+}
+
+.evidence-source {
+    color: #888;
+    font-size: 11px;
+    text-align: right;
+    border-top: 1px solid #444;
+    padding-top: 8px;
+}
+
+.rag-evidence-empty {
+    color: #888;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+
+.rag-evidence-empty p {
+    margin: 0;
+}
+
+/* Chat Container Styles */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #1a1a1a;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+.chat-input {
+    padding: 16px;
+    border-top: 1px solid #333;
+    display: flex;
+    gap: 8px;
+    background: #1a1a1a;
+}
+
+.chat-input input {
+    flex: 1;
+    padding: 10px 14px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.chat-input input:focus {
+    border-color: #6c5ce7;
+}
+
+.chat-input input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.chat-input button {
+    padding: 10px 20px;
+    background: #6c5ce7;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.chat-input button:hover:not(:disabled) {
+    background: #5a4dd7;
+}
+
+.chat-input button:disabled {
+    background: #444;
+    cursor: not-allowed;
+}

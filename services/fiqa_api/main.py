@@ -87,6 +87,12 @@ class ErrorResponse(BaseModel):
     issues: list = []
 
 
+class ChatRequest(BaseModel):
+    """Request model for conversational chat endpoint."""
+    node_id: str
+    user_message: str
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="FIQA API Agent",
@@ -1101,6 +1107,158 @@ async def stream_query_execution(goal: str = Query(..., description="The user's 
     )
 
 
+@app.post("/api/v1/agent/chat")
+async def agent_chat(request: ChatRequest):
+    """
+    Streaming chat endpoint that builds rich context for a given node and
+    streams the assistant's response. The request body must include:
+      - node_id: graph node identifier
+      - user_message: the user's message for multi-turn conversation
+    """
+    async def event_generator():
+        try:
+            # Validate dependencies
+            if graph_engine is None or getattr(graph_engine, "graph", None) is None:
+                yield "data: Graph engine not initialized.\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            if explainer is None or getattr(explainer, "client", None) is None:
+                yield "data: LLM client not initialized.\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            node_id = str(request.node_id)
+            user_message = request.user_message or ""
+
+            g = graph_engine.graph
+            if node_id not in g:
+                yield f"data: Node '{node_id}' not found.\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # Collect node attributes with robust fallbacks
+            attrs = dict(g.nodes[node_id])
+            fq_name = (
+                attrs.get("fqName")
+                or attrs.get("fqname")
+                or attrs.get("qualified_name")
+                or attrs.get("name")
+                or node_id
+            )
+            kind = attrs.get("kind") or attrs.get("type") or attrs.get("node_type") or "unknown"
+            file_path = attrs.get("file") or attrs.get("filepath") or attrs.get("path") or ""
+
+            evidence = attrs.get("evidence") if isinstance(attrs.get("evidence"), dict) else {}
+            snippet = (
+                attrs.get("snippet")
+                or attrs.get("code")
+                or attrs.get("codeSnippet")
+                or attrs.get("code_snippet")
+                or attrs.get("text")
+                or (evidence.get("snippet") if isinstance(evidence, dict) else None)
+                or ""
+            )
+
+            # Optional AI intelligence (summary/tags)
+            ai_info = {}
+            try:
+                ai_info = get_node_intelligence(node_id) or {}
+            except Exception:
+                ai_info = {}
+            ai_summary = ai_info.get("aiSummary", attrs.get("ai_summary") or attrs.get("layer3_summary") or "")
+            ai_tags = ai_info.get("aiTags", attrs.get("ai_tags") or attrs.get("tags") or [])
+
+            # Collect neighborhood (limited for prompt brevity)
+            try:
+                succ = list(g.successors(node_id))[:10]
+            except Exception:
+                succ = []
+            try:
+                pred = list(g.predecessors(node_id))[:10]
+            except Exception:
+                pred = []
+
+            def _fmt_node(nid: str) -> str:
+                a = g.nodes[nid] if nid in g else {}
+                name = (
+                    a.get("fqName")
+                    or a.get("fqname")
+                    or a.get("qualified_name")
+                    or a.get("name")
+                    or nid
+                )
+                k = a.get("kind") or a.get("type") or a.get("node_type") or ""
+                return f"- {name} ({k})"
+
+            callers_list = "\n".join(_fmt_node(n) for n in pred)
+            callees_list = "\n".join(_fmt_node(n) for n in succ)
+
+            # Build the assistant-facing prompt with rich context
+            prompt_template = (
+                "You are a senior code assistant helping with a specific graph node.\n"
+                "Use ONLY the provided context to answer concisely and accurately.\n\n"
+                f"Node: {fq_name}\n"
+                f"Kind: {kind}\n"
+                f"File: {file_path}\n"
+                f"AI Summary: {ai_summary}\n"
+                f"AI Tags: {', '.join(map(str, ai_tags)) if isinstance(ai_tags, (list, tuple)) else ai_tags}\n\n"
+                "Relevant Code:\n"
+                "```\n"
+                f"{snippet}\n"
+                "```\n\n"
+                "Neighborhood (callers -> this -> callees):\n"
+                "Callers:\n{callers}\n\nCallees:\n{callees}\n\n"
+                "Now answer the user's message. If uncertain, say so and suggest next steps."
+            )
+
+            prompt = prompt_template.format(callers=callers_list or "(none)", callees=callees_list or "(none)")
+
+            # Stream from OpenAI via existing explainer client
+            try:
+                stream = explainer.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a senior code assistant for a code graph."},
+                        {"role": "user", "content": prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    temperature=0.2,
+                    stream=True,
+                )
+
+                async def iterate_stream():
+                    for chunk in stream:
+                        delta = None
+                        try:
+                            delta = chunk.choices[0].delta.content
+                        except Exception:
+                            delta = None
+                        if delta:
+                            yield f"data: {delta}\n\n"
+                        await asyncio.sleep(0)
+
+                async for sse_chunk in iterate_stream():
+                    yield sse_chunk
+
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                yield f"data: Error generating response: {str(e)}\n\n"
+                yield "data: [DONE]\n\n"
+        except Exception as outer_e:
+            yield f"data: Unexpected error: {str(outer_e)}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 @app.get("/api/v1/intelligence/summary/{node_id}")
 async def get_intelligence_summary(node_id: str):
     """
