@@ -11,6 +11,8 @@ import ReactFlow, {
     Position,
     useReactFlow,
     ReactFlowProvider,
+    BaseEdge,
+    SmoothStepEdge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import useStore from '../store';
@@ -120,6 +122,9 @@ const CustomNode = ({ data, selected }) => {
 
     const performanceStyle = getPerformanceStyle();
 
+    // Golden path highlight styles
+    const isOnGoldenPath = data?.isOnGoldenPath === true;
+
     return (
         <>
             <Handle type="target" position={Position.Top} />
@@ -142,7 +147,14 @@ const CustomNode = ({ data, selected }) => {
                     overflowWrap: 'break-word',
                     whiteSpace: 'normal',
                     ...performanceStyle,
-                    border: selected ? '3px solid #00BFFF' : '2px solid #666',
+                    border: isOnGoldenPath
+                        ? '3px solid #FFD700' // gold
+                        : selected
+                            ? '3px solid #00BFFF'
+                            : '2px solid #666',
+                    boxShadow: isOnGoldenPath
+                        ? '0 0 10px rgba(255,215,0,0.7), 0 0 20px rgba(255,215,0,0.4)'
+                        : performanceStyle.boxShadow || '0 2px 4px rgba(0,0,0,0.3)',
                 }}
             >
                 <div style={{ marginBottom: '4px' }}>
@@ -183,6 +195,32 @@ const CustomNode = ({ data, selected }) => {
 // Define custom node types - moved outside component to prevent recreation
 const nodeTypes = {
     custom: CustomNode,
+};
+
+// Custom Edge to enable golden path styling while preserving smoothstep behavior
+const CustomEdge = (edgeProps) => {
+    const { data } = edgeProps;
+    const isOnGoldenPath = data?.isOnGoldenPath === true;
+
+    const stroke = isOnGoldenPath ? '#FFD700' : (edgeProps.style?.stroke || '#888');
+    const strokeWidth = isOnGoldenPath ? 3 : (edgeProps.style?.strokeWidth || 2);
+
+    return (
+        <SmoothStepEdge
+            {...edgeProps}
+            style={{
+                ...(edgeProps.style || {}),
+                stroke,
+                strokeWidth,
+                strokeDasharray: isOnGoldenPath ? '6 3' : edgeProps.style?.strokeDasharray,
+            }}
+            animated={isOnGoldenPath || edgeProps.animated}
+        />
+    );
+};
+
+const edgeTypes = {
+    customEdge: CustomEdge,
 };
 
 // Convert backend data to ReactFlow format (WITHOUT trunk highlighting)
@@ -256,6 +294,9 @@ const GraphPanelInner = () => {
     const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
     const [isTrunkHighlighted, setIsTrunkHighlighted] = useState(false);
     const [heatmapMode, setHeatmapMode] = useState('hotness'); // 'hotness' | 'performance'
+    const [goldenPathNodeIds, setGoldenPathNodeIds] = useState(new Set());
+    const [goldenPathEdgePairs, setGoldenPathEdgePairs] = useState(new Set());
+    const [isLoadingGoldenPath, setIsLoadingGoldenPath] = useState(false);
 
     // 🔍 DEBUG: Log initial state
     useEffect(() => {
@@ -511,8 +552,9 @@ const GraphPanelInner = () => {
                 console.log('🎯 VERIFICATION - Sample node classes:', layoutedNodes.slice(0, 3).map(n => ({ id: n.id, className: n.className })));
 
                 // Set ReactFlow state
+                // ensure edges use custom type for styling
                 setNodes(layoutedNodes);
-                setEdges(layoutedEdges);
+                setEdges(layoutedEdges.map(e => ({ ...e, type: 'customEdge' })));
 
                 // Auto-fit view after layout
                 setTimeout(() => {
@@ -625,6 +667,57 @@ const GraphPanelInner = () => {
         });
     }, [isTrunkHighlighted]); // CRITICAL: ONLY depends on isTrunkHighlighted toggle (setNodes/setEdges are stable refs)
 
+    // Fetch and compute Golden Path from backend
+    const fetchGoldenPath = useCallback(async () => {
+        if (!nodeId) return;
+        try {
+            setIsLoadingGoldenPath(true);
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+            const res = await fetch(`${apiBaseUrl}/api/v1/graph/golden-path?entry=${encodeURIComponent(nodeId)}`);
+            if (!res.ok) throw new Error('Failed to fetch golden path');
+            const pathNodeIds = await res.json(); // expects array of node IDs
+
+            if (!Array.isArray(pathNodeIds) || pathNodeIds.length === 0) {
+                setGoldenPathNodeIds(new Set());
+                setGoldenPathEdgePairs(new Set());
+                return;
+            }
+
+            const nodeIdSet = new Set(pathNodeIds);
+            const edgePairs = new Set();
+            for (let i = 0; i < pathNodeIds.length - 1; i++) {
+                edgePairs.add(`${pathNodeIds[i]}->${pathNodeIds[i + 1]}`);
+            }
+
+            setGoldenPathNodeIds(nodeIdSet);
+            setGoldenPathEdgePairs(edgePairs);
+        } catch (e) {
+            console.error('❌ Error fetching golden path:', e);
+        } finally {
+            setIsLoadingGoldenPath(false);
+        }
+    }, [nodeId]);
+
+    // Apply Golden Path highlighting to nodes when path changes
+    useEffect(() => {
+        setNodes((current) => current.map(n => ({
+            ...n,
+            data: { ...(n.data || {}), isOnGoldenPath: goldenPathNodeIds.has(n.id) },
+        })));
+    }, [goldenPathNodeIds, setNodes]);
+
+    // Apply Golden Path highlighting to edges when path changes
+    useEffect(() => {
+        setEdges((current) => current.map(e => {
+            const isOnPath = goldenPathEdgePairs.has(`${e.source}->${e.target}`);
+            return {
+                ...e,
+                type: 'customEdge',
+                data: { ...(e.data || {}), isOnGoldenPath: isOnPath },
+            };
+        }));
+    }, [goldenPathEdgePairs, setEdges]);
+
     // Handle node click
     const onNodeClick = useCallback((event, clickedNode) => {
         console.log('Node clicked:', clickedNode);
@@ -660,6 +753,14 @@ const GraphPanelInner = () => {
                         style={{ marginRight: '8px' }}
                     >
                         {heatmapMode === 'hotness' ? 'Switch to Performance Heatmap' : 'Switch to Hotness Heatmap'}
+                    </button>
+                    <button
+                        className={`golden-path-btn`}
+                        onClick={fetchGoldenPath}
+                        style={{ marginRight: '8px' }}
+                        disabled={isLoadingGoldenPath}
+                    >
+                        {isLoadingGoldenPath ? 'Loading Golden Path…' : 'Show Golden Path'}
                     </button>
                     <button
                         className={`trunk-toggle-btn ${isTrunkHighlighted ? 'active' : ''}`}
@@ -713,6 +814,7 @@ const GraphPanelInner = () => {
                         onConnect={onConnect}
                         onNodeClick={onNodeClick}
                         nodeTypes={nodeTypes}
+                        edgeTypes={edgeTypes}
                         attributionPosition="bottom-left"
                         minZoom={LAYOUT_CONFIG.MIN_ZOOM}
                         maxZoom={LAYOUT_CONFIG.MAX_ZOOM}
