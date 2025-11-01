@@ -53,10 +53,10 @@ wait:
 	$(call ensure_tool,curl)
 	$(call ensure_tool,jq)
 	@echo "⏳ Waiting for health at $(BASE) ..."
-	@BASE="$(BASE)" bash -lc 'set -e; for i in {1..60}; do \
-	  if curl -s "$$BASE/api/health/qdrant" | jq -e ".http_ok and .grpc_ok" >/dev/null; then \
+	@BASE="$(BASE)" bash -lc 'set -e; for i in {1..30}; do \
+	  if curl -s --connect-timeout 0.5 --max-time 1.5 "$$BASE/api/health/qdrant" | jq -e ".http_ok and .grpc_ok" >/dev/null; then \
 	    echo "✅ Health OK on $$BASE"; exit 0; fi; \
-	  sleep 1; done; echo "❌ Backend not ready on $$BASE" >&2; exit 1'
+	  sleep 0.5; done; echo "❌ Backend not ready on $$BASE" >&2; exit 1'
 
 smoke:
 	$(call ensure_tool,bash)
