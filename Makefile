@@ -46,8 +46,8 @@ up-qdrant:
 start:
 	$(call ensure_tool,poetry)
 	@echo "▶ Starting backend on MAIN_PORT=$(MAIN_PORT)"
-	@MAIN_PORT=$(MAIN_PORT) nohup poetry run bash services/fiqa_api/start_server.sh >/tmp/fiqa_api.log 2>&1 & \
-	 && echo "  logs: /tmp/fiqa_api.log"
+	@MAIN_PORT=$(MAIN_PORT) nohup poetry run bash services/fiqa_api/start_server.sh >/tmp/fiqa_api.log 2>&1 &
+	@echo "  logs: /tmp/fiqa_api.log"
 
 wait:
 	$(call ensure_tool,curl)
