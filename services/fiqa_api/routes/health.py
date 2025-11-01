@@ -62,7 +62,7 @@ def _check_http() -> Tuple[bool, Optional[str]]:
 def _check_grpc() -> Tuple[bool, Optional[str]]:
     """
     Check gRPC connectivity to Qdrant (port 6334).
-    Uses short timeout (0.5s) and deadline for fast health checks.
+    Uses short timeout (0.5s) for fast health checks.
     
     Returns:
         (success: bool, error_message: str | None)
@@ -70,6 +70,7 @@ def _check_grpc() -> Tuple[bool, Optional[str]]:
     try:
         from qdrant_client import QdrantClient
         import grpc
+        import signal
         
         # Create a temporary client for health check with very short timeout
         client = QdrantClient(
@@ -80,21 +81,17 @@ def _check_grpc() -> Tuple[bool, Optional[str]]:
             timeout=0.5  # Very short timeout for fast health check
         )
         
-        # Try to get collections to verify gRPC connectivity with deadline
-        # Use asyncio timeout for additional safety
-        try:
-            import asyncio
-            result = asyncio.run(asyncio.wait_for(
-                asyncio.to_thread(client.get_collections),
-                timeout=0.5
-            ))
-            return True, None
-        except asyncio.TimeoutError:
-            return False, "gRPC request timed out after 0.5 seconds"
+        # Try to get collections to verify gRPC connectivity
+        # The timeout is enforced by QdrantClient itself
+        client.get_collections()
+        return True, None
     except grpc.RpcError as e:
         # Specifically catch gRPC errors
         return False, f"gRPC error: {str(e)}"
     except Exception as e:
+        error_str = str(e)
+        if "timeout" in error_str.lower() or "deadline" in error_str.lower():
+            return False, "gRPC request timed out after 0.5 seconds"
         return False, str(e)
 
 
