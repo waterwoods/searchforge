@@ -70,7 +70,6 @@ def _check_grpc() -> Tuple[bool, Optional[str]]:
     try:
         from qdrant_client import QdrantClient
         import grpc
-        import signal
         
         # Create a temporary client for health check with very short timeout
         client = QdrantClient(
