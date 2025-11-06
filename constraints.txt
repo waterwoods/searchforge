@@ -1,0 +1,12 @@
+numpy<2
+transformers==4.33.3
+sentence-transformers==2.2.2
+qdrant-client==1.7.3
+uvicorn==0.23.2
+fastapi==0.103.2
+prometheus-client==0.20.0
+requests==2.31.0
+httpx==0.25.2
+pydantic==2.5.0
+
+huggingface_hub==0.19.4

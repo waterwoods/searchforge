@@ -1,0 +1,44 @@
+# LabOps Agent V1 - COMBO Experiment Plan
+# =========================================
+# Configuration for autonomous COMBO experiment execution.
+
+# Base configuration
+base_url: "http://localhost:8011"
+timeout: 30  # API timeout in seconds
+
+# Experiment parameters
+experiment:
+  # Load generation
+  qps: 10.0
+  window_sec: 120  # 2 minutes per window
+  rounds: 2  # ABAB cycles
+  seed: 42
+  
+  # Flow control parameters
+  flow_policy: "aimd"  # aimd or pid
+  target_p95: 1200  # Target P95 latency in ms
+  conc_cap: 32  # Max concurrency
+  batch_cap: 32  # Max batch size
+  
+  # Routing parameters
+  routing_mode: "rules"  # rules or cost
+  topk_threshold: 32  # FAISS if topk <= threshold
+
+# Decision thresholds
+thresholds:
+  pass_delta_p95_max: -10.0  # Pass if ΔP95 ≤ -10%
+  edge_delta_p95_max: -5.0   # Edge if ΔP95 in (-10%, -5%]
+  max_error_rate: 1.0        # Fail if error rate ≥ 1%
+  ab_balance_warn: 5.0       # Warn if AB imbalance > 5%
+
+# Execution limits
+time_budget: 0  # Total time budget in seconds (0 = no limit)
+per_combo_cap: 0  # Max combos to try (0 = no limit, not used in V1)
+early_stop: 0  # Early stop after N fails (0 = disabled, not used in V1)
+
+# Report generation
+report:
+  max_lines: 60  # Summary ≤60 lines
+  output_path: "reports/LABOPS_AGENT_SUMMARY.txt"
+  history_path: "agents/labops/state/history.jsonl"
+

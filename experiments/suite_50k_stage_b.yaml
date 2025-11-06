@@ -1,0 +1,34 @@
+# FiQA 50k Stage-B Suite Configuration
+# Stage-B: 全量复跑最优配置
+# Sample: 6648 queries (full), 3 repeats
+
+experiment:
+  name: "fiqa_50k_stage_b"
+  description: "FiQA 50k Stage-B: Full evaluation of winners from Stage-A"
+  dataset_name: "fiqa_50k_v1"
+  qrels_name: "fiqa_qrels_50k_v1"
+
+# Common settings
+common:
+  base_url: "http://localhost:8011"
+  top_k: 50
+  sample: null  # Use all queries with ground truth
+  repeats: 3
+  warmup: 5
+  concurrency: 16
+  timeout_s: 20.0
+  fast_mode: false
+
+# Output settings
+output:
+  reports_dir: "reports/fiqa_50k/stage_b"
+  artifacts_dir: "reports/fiqa_50k/stage_b/artifacts"
+
+# Stage-B: Run winners from Stage-A
+# Note: Winners will be loaded from winners.json
+# This file defines the structure, actual configs come from winners.json
+winners:
+  source: "reports/fiqa_50k/winners.json"
+  # Will contain:
+  # - rrf_winner: best RRF config from Stage-A
+  # - rerank_winner: best rerank config (if meets acceptance criteria)

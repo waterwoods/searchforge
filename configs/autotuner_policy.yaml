@@ -1,0 +1,21 @@
+# Minimal AutoTuner policy (MVP)
+targets:
+  enabled: true
+  p95_target_ms: 120
+  p99_hard_ms: 250
+  window_seconds: 30
+  min_samples: 30
+
+policy:
+  # bounds
+  min_top_k: 20
+  max_top_k: 100
+  min_batch_size: 8
+  max_batch_size: 512
+  cooldown_seconds: 30
+
+  # step sizes (reduce load on breaches)
+  soft_top_k_step: -10
+  soft_batch_step: -16
+  hard_top_k_step: -20
+  hard_batch_step: -64

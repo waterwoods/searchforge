@@ -1,0 +1,73 @@
+# FiQA 50k Suite Configuration
+# Three families: Baseline, +RRF, +Rerank
+# Sample size: 1000 queries
+
+experiment:
+  name: "fiqa_50k_suite"
+  description: "FiQA 50k evaluation suite with Baseline, +RRF, and +Rerank families"
+  dataset_name: "fiqa_50k_v1"
+  qrels_name: "fiqa_qrels_50k_v1"
+  
+# Common settings
+common:
+  base_url: "http://localhost:8011"
+  top_k: 50
+  sample: 1000  # Sample 1000 queries for faster Stage-A runs
+  repeats: 1    # Single repeat for Stage-A
+  warmup: 5
+  concurrency: 16
+  timeout_s: 20.0
+
+# Experiment families
+groups:
+  - name: "Baseline"
+    family: "Baseline"
+    use_hybrid: false
+    rerank: false
+    description: "Pure vector search baseline"
+    
+  - name: "+RRF"
+    family: "RRF"
+    use_hybrid: true
+    rrf_k: 60
+    rerank: false
+    description: "Hybrid RRF (BM25 + vector fusion)"
+    
+  - name: "+Rerank"
+    family: "Rerank"
+    use_hybrid: true
+    rrf_k: 60
+    rerank: true
+    rerank_top_k: 20
+    rerank_if_margin_below: 0.12
+    max_rerank_trigger_rate: 0.25
+    rerank_budget_ms: 25
+    description: "Hybrid RRF + gated reranking"
+
+# Output settings
+output:
+  reports_dir: "reports/fiqa_50k"
+  artifacts_dir: "reports/fiqa_50k/artifacts"
+  
+# Stage-A specific settings (sample-based quick evaluation)
+stage_a:
+  sample: 1000
+  repeats: 1
+  
+# Stage-B specific settings (full evaluation)
+stage_b:
+  sample: null  # Use all queries with ground truth
+  repeats: 3
+
+# Fast mode overrides (if used)
+fast_mode:
+  repeats: 1
+  sample: 200
+  concurrency: 16
+  fast_rrf_k: 40
+  fast_top_k: 40
+  fast_rerank_top_k: 10
+
+
+
+

@@ -1,0 +1,11 @@
+retriever:
+  type: qdrant
+  host: localhost
+  port: 6333
+  collection_name: demo_5k  # override at runtime with --collection if different
+  top_k: 200                   # more candidates so reranker有发挥空间
+
+reranker:
+  type: cross_encoder
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_k: 50

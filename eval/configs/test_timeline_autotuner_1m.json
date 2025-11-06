@@ -1,0 +1,55 @@
+{
+    "duration_seconds": 60,
+    "common": {
+        "prom_scrape_interval": 2,
+        "tuner_sample_interval": 5,
+        "tuner_cooldown_sec": 15,
+        "recovery_stable_threshold": 15,
+        "collection_name": "amazon_electronics_100k",
+        "reranker_type": "llm",
+        "explainer_type": "simple"
+    },
+    "baseline": {
+        "name": "Test Timeline with AutoTuner",
+        "duration_seconds": 60,
+        "warmup_seconds": 10,
+        "sample_every_seconds": 10,
+        "probes": {
+            "qps": 1.0,
+            "burst_enabled": false,
+            "burst_qps": 0,
+            "burst_duration": 0,
+            "burst_interval": 0
+        },
+        "chaos": {
+            "enabled": false,
+            "latency_ms": 0,
+            "loss_percent": 0,
+            "disconnect_times": [],
+            "disconnect_duration": 0
+        },
+        "rag_api": {
+            "initial_topk": 50,
+            "warm_cache": true,
+            "disable_prewarm": false
+        },
+        "shadow": {
+            "mirror_rate": 0.1
+        },
+        "auto_tuner_v1": true,
+        "target_p95_ms": 250.0,
+        "target_recall": 0.8
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+

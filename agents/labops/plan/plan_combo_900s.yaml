@@ -1,0 +1,30 @@
+# LabOps Agent - COMBO with 900s time budget
+base_url: "http://localhost:8011"
+timeout: 30
+
+experiment:
+  qps: 10.0
+  window_sec: 120
+  rounds: 2
+  seed: 42
+  flow_policy: "aimd"
+  target_p95: 1200
+  conc_cap: 32
+  batch_cap: 32
+  routing_mode: "rules"
+  topk_threshold: 32
+
+thresholds:
+  pass_delta_p95_max: -10.0
+  edge_delta_p95_max: -5.0
+  max_error_rate: 1.0
+  ab_balance_warn: 5.0
+
+time_budget: 900  # 15 minutes
+per_combo_cap: 0
+early_stop: 0
+
+report:
+  max_lines: 60
+  output_path: "reports/LABOPS_AGENT_SUMMARY.txt"
+  history_path: "agents/labops/state/history.jsonl"

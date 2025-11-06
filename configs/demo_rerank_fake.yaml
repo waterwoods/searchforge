@@ -1,0 +1,9 @@
+retriever:
+  type: qdrant
+  top_k: 20
+
+reranker:
+  type: fake      # or: mock / demo
+  top_k: 10
+  params:
+    weight: 1.0

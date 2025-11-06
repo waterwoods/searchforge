@@ -1,0 +1,20 @@
+# Core services
+services/rag_api/
+services/autotuner/
+
+# Experiments and evaluation
+eval/
+scripts/
+
+# Reports and results
+reports/
+
+# Infrastructure
+infra/grafana/
+infra/prometheus/
+
+# Documentation and configs
+README.md
+requirements.txt
+docker-compose.yml
+Makefile

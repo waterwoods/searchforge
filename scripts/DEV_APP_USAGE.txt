@@ -1,0 +1,111 @@
+================================================================
+  dev_app.sh - Unified Development Environment Startup Script
+================================================================
+
+USAGE:
+------
+./scripts/dev_app.sh
+
+WHAT IT DOES:
+-------------
+1. Starts Redis + Qdrant (via docker-compose)
+2. Starts Backend (app_main.py on port 8011)
+3. Starts Frontend (npm run dev on port 3000)
+4. Performs health checks on all services
+5. Generates a summary report
+
+PREREQUISITES:
+--------------
+- Docker and docker-compose installed
+- Node.js and npm installed
+- Python 3.10+ with required packages
+- jq installed (for JSON parsing)
+
+FIRST TIME SETUP:
+-----------------
+# Make sure script is executable
+chmod +x scripts/dev_app.sh
+
+# Ensure dependencies are installed
+pip install -r requirements.txt
+cd frontend && npm install
+
+RUNNING THE SCRIPT:
+------------------
+cd /path/to/searchforge
+./scripts/dev_app.sh
+
+The script will:
+- Start all services in the background
+- Wait for each service to be ready
+- Perform health checks
+- Display a status summary
+- Generate reports/dev_start_mini.txt
+
+EXPECTED OUTPUT:
+---------------
+✅ PASS - Service is running and healthy
+❌ FAIL - Service failed to start or not responding
+⚠  Partial - Some services have issues
+
+SERVICES:
+---------
+Redis:      http://localhost:6379
+Qdrant:     http://localhost:6333
+Backend:    http://localhost:8011
+Frontend:   http://localhost:3000
+
+HEALTH ENDPOINTS:
+----------------
+Backend Health:    curl http://localhost:8011/healthz
+Backend Verify:    curl http://localhost:8011/ops/verify | jq
+Qdrant Health:     curl http://localhost:6333/healthz
+
+LOGS:
+-----
+Backend:   logs/app_main.log
+Frontend:  logs/frontend.log
+Report:    reports/dev_start_mini.txt
+
+STOPPING SERVICES:
+-----------------
+# Stop backend and frontend
+pkill -f "python.*app_main.py"
+pkill -f "vite.*3000"
+
+# Stop docker services
+docker-compose down
+
+TROUBLESHOOTING:
+---------------
+If any service fails to start:
+
+1. Check logs:
+   - Backend: tail -f logs/app_main.log
+   - Frontend: tail -f logs/frontend.log
+   - Docker: docker-compose logs redis qdrant
+
+2. Verify ports are not in use:
+   lsof -i :3000  # Frontend
+   lsof -i :8011  # Backend
+   lsof -i :6379  # Redis
+   lsof -i :6333  # Qdrant
+
+3. Check Docker services:
+   docker-compose ps
+
+4. Manually restart a service:
+   docker-compose restart redis
+   docker-compose restart qdrant
+
+RERUNNING:
+----------
+The script can be run multiple times safely.
+It will kill existing processes and restart cleanly.
+
+EXECUTION TIME:
+--------------
+Expected: ~10-15 seconds for full startup
+
+================================================================
+

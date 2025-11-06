@@ -1,0 +1,48 @@
+# FiQA 50k Stage-A Suite Configuration
+# Stage-A: RRF微调 + 重排门控扫参
+# Sample: 1000 queries, 1 repeat
+
+experiment:
+  name: "fiqa_50k_stage_a"
+  description: "FiQA 50k Stage-A: RRF tuning + rerank gate sweep"
+  dataset_name: "fiqa_50k_v1"
+  qrels_name: "fiqa_qrels_50k_v1"
+
+# Common settings
+common:
+  base_url: "http://localhost:8011"
+  top_k: 50
+  sample: 1000
+  repeats: 1
+  warmup: 5
+  concurrency: 16
+  timeout_s: 20.0
+  fast_mode: false
+
+# Output settings
+output:
+  reports_dir: "reports/fiqa_50k/stage_a"
+  artifacts_dir: "reports/fiqa_50k/stage_a/artifacts"
+
+# Stage-A Part A: RRF 微调 (不启用重排)
+stage_a_rrf:
+  description: "RRF tuning grid (rerank disabled)"
+  use_hybrid: true
+  rerank: false
+  grid:
+    top_k: [32, 48, 64, 80]
+    rrf_k: [20, 40, 60]
+
+# Stage-A Part B: 重排门控 (在最优 RRF 基础上)
+# Note: Will be populated after RRF winner is selected
+stage_a_rerank:
+  description: "Rerank gate tuning grid (on best RRF)"
+  use_hybrid: true
+  rerank: true
+  # rrf_k will be set from RRF winner
+  grid:
+    rerank_top_k: [32, 64, 96]
+    rerank_budget_ms: [25, 50]
+    rerank_if_margin_below: [0.05, 0.10, 0.15]
+  # Fixed parameters
+  max_rerank_trigger_rate: 0.25

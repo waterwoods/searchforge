@@ -1,0 +1,261 @@
+================================================================
+  dev_app.sh - Testing and Verification Guide
+================================================================
+
+🧪 PRE-FLIGHT CHECK
+-------------------
+Before running the script for the first time, ensure:
+
+1. Docker is running:
+   docker ps
+
+2. Docker Compose is available:
+   docker-compose --version
+
+3. Python dependencies are installed:
+   pip list | grep -E "fastapi|uvicorn|redis"
+
+4. Node.js and npm are installed:
+   node --version && npm --version
+
+5. Frontend dependencies are installed:
+   cd frontend && npm install
+
+6. jq is installed (for JSON parsing):
+   which jq
+
+7. Ports are free:
+   lsof -i :3000 :8011 :6379 :6333
+   # Should return empty or show services you're about to start
+
+
+🚀 FIRST RUN TEST
+-----------------
+
+Step 1: Clean slate
+-------------------
+# Stop any existing services
+pkill -f "python.*app_main.py" 2>/dev/null || true
+pkill -f "vite" 2>/dev/null || true
+docker-compose down
+
+# Verify ports are free
+lsof -i :3000 :8011 :6379 :6333
+# Should return empty
+
+Step 2: Run the script
+----------------------
+cd /path/to/searchforge
+./scripts/dev_app.sh
+
+Step 3: Watch the output
+------------------------
+You should see:
+✓ "Starting Infrastructure (Redis + Qdrant)..."
+✓ "Starting Backend (app_main)..."
+✓ "Starting Frontend..."
+✓ "Health Verification..."
+✓ Green checkmarks (✓) for successful services
+✓ "All services started successfully!" at the end
+
+Step 4: Verify services
+-----------------------
+
+A. Check Docker services:
+   docker-compose ps
+   # Should show redis and qdrant as "Up"
+
+B. Check backend health:
+   curl http://localhost:8011/healthz
+   # Should return: {"ok": true, "status": "healthy", ...}
+
+C. Check backend verify:
+   curl http://localhost:8011/ops/verify | jq
+   # Should return JSON with:
+   # - "ok": true
+   # - "proxy_to_v2": false
+   # - "data_sources.redis.ok": true (or "connected": true)
+   # - "data_sources.qdrant.available": true
+
+D. Check frontend:
+   curl -I http://localhost:3000
+   # Should return: HTTP/1.1 200 OK
+
+E. Visit in browser:
+   open http://localhost:3000
+   # Should see the SearchForge dashboard
+
+Step 5: Check logs
+------------------
+# Backend log (should show server startup)
+tail -n 20 logs/app_main.log
+
+# Frontend log (should show Vite dev server)
+tail -n 20 logs/frontend.log
+
+Step 6: Check report
+--------------------
+cat reports/dev_start_mini.txt
+
+# Should contain:
+# - All services marked as "✅ PASS"
+# - Overall: "✅ SUCCESS"
+# - Process IDs
+# - Next steps
+
+
+🔄 IDEMPOTENCY TEST
+-------------------
+Test that the script can be run multiple times:
+
+# Run script first time
+./scripts/dev_app.sh
+
+# Wait 5 seconds
+sleep 5
+
+# Run script again (should kill old processes and restart)
+./scripts/dev_app.sh
+
+# Verify services still work
+curl http://localhost:8011/healthz
+curl http://localhost:3000
+
+
+⚠️ FAILURE SCENARIO TESTS
+--------------------------
+
+Test 1: Redis down
+------------------
+docker-compose stop redis
+./scripts/dev_app.sh
+# Should show: Redis: ❌ FAIL
+# Backend might show degraded mode
+
+Test 2: Qdrant down
+-------------------
+docker-compose stop qdrant
+./scripts/dev_app.sh
+# Should show: Qdrant: ❌ FAIL
+
+Test 3: Port conflict (backend)
+-------------------------------
+# Start something on port 8011
+python -m http.server 8011 &
+./scripts/dev_app.sh
+# Should show backend startup but may fail health check
+
+Test 4: Port conflict (frontend)
+--------------------------------
+# Start something on port 3000
+python -m http.server 3000 &
+./scripts/dev_app.sh
+# Should show frontend startup but may fail health check
+
+
+✅ SUCCESS CRITERIA CHECKLIST
+-----------------------------
+
+After running ./scripts/dev_app.sh successfully:
+
+□ Script completes without errors
+□ All services show "✅ PASS" in output
+□ Redis responds: echo PING | nc localhost 6379 → +PONG
+□ Qdrant responds: curl -s http://localhost:6333/healthz → ok
+□ Backend responds: curl -s http://localhost:8011/healthz → {"ok":true,...}
+□ Backend verify: curl -s http://localhost:8011/ops/verify | jq '.ok' → true
+□ Backend verify: curl -s http://localhost:8011/ops/verify | jq '.proxy_to_v2' → false
+□ Backend verify: curl -s http://localhost:8011/ops/verify | jq '.data_sources.redis.ok' → true
+□ Backend verify: curl -s http://localhost:8011/ops/verify | jq '.data_sources.qdrant.available' → true
+□ Frontend responds: curl -s http://localhost:3000 → returns HTML
+□ Report exists: [ -f reports/dev_start_mini.txt ]
+□ Report is concise: [ $(wc -l < reports/dev_start_mini.txt) -lt 50 ]
+□ Logs exist: [ -f logs/app_main.log ] && [ -f logs/frontend.log ]
+□ Process IDs visible in report
+□ Execution time < 20 seconds
+
+
+🔧 CLEANUP AFTER TESTING
+-------------------------
+
+# Stop all services
+pkill -f "python.*app_main.py"
+pkill -f "vite"
+docker-compose down
+
+# Optional: Clean volumes
+docker-compose down -v
+
+# Optional: Clean logs
+rm -f logs/app_main.log logs/frontend.log
+
+
+📊 PERFORMANCE BENCHMARKS
+--------------------------
+
+Expected timing (approximate):
+- Infrastructure startup: 3-5 seconds
+- Backend startup: 3-5 seconds
+- Frontend startup: 3-5 seconds
+- Health checks: 2-3 seconds
+- Total: 10-15 seconds
+
+If significantly slower:
+- Check Docker resource allocation
+- Check network connectivity
+- Check system load
+
+
+🐛 COMMON ISSUES & SOLUTIONS
+-----------------------------
+
+Issue: "docker-compose: command not found"
+Solution: Install Docker Desktop or docker-compose CLI
+
+Issue: "Permission denied: ./scripts/dev_app.sh"
+Solution: chmod +x scripts/dev_app.sh
+
+Issue: "jq: command not found"
+Solution: brew install jq (macOS) or apt install jq (Linux)
+
+Issue: "Port already in use"
+Solution: lsof -ti:PORT | xargs kill -9
+
+Issue: "Backend fails to start"
+Solution: 
+  - Check logs/app_main.log
+  - Verify Python dependencies
+  - Check port 8011 is free
+
+Issue: "Frontend fails to start"
+Solution:
+  - Check logs/frontend.log
+  - Run: cd frontend && npm install
+  - Check port 3000 is free
+
+Issue: "Redis connection failed"
+Solution:
+  - docker-compose restart redis
+  - Check: docker-compose logs redis
+
+Issue: "Qdrant connection failed"
+Solution:
+  - docker-compose restart qdrant
+  - Check: docker-compose logs qdrant
+
+
+📞 GETTING HELP
+---------------
+
+If issues persist:
+1. Review logs in logs/ directory
+2. Check reports/dev_start_mini.txt for errors
+3. Review documentation:
+   - scripts/DEV_APP_USAGE.txt
+   - scripts/DEV_APP_QUICKREF.txt
+
+
+================================================================
+Happy testing! 🎉
+================================================================
+

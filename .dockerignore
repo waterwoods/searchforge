@@ -1,0 +1,17 @@
+.git/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.env
+data/
+reports/
+*.ipynb# --- generated for lean docker context ---
+.git
+.gitignore
+.pytest_cache/
+*.log
+archives/
+.trash/
+models/
+.env.*

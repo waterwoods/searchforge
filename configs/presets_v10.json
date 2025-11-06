@@ -1,0 +1,112 @@
+{
+    "version": "v10",
+    "presets": [
+        {
+            "name": "FIQA Fast - Baseline (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 40,
+            "mmr": false,
+            "rerank": false
+        },
+        {
+            "name": "FIQA Fast - Rerank (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 20,
+            "mmr": false,
+            "rerank": true,
+            "rerank_top_k": 10
+        },
+        {
+            "name": "K=5, MMR=off (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 5,
+            "mmr": false
+        },
+        {
+            "name": "K=10, MMR=off (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 10,
+            "mmr": false
+        },
+        {
+            "name": "K=20, MMR=off (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 20,
+            "mmr": false
+        },
+        {
+            "name": "K=40, MMR=off (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 40,
+            "mmr": false
+        },
+        {
+            "name": "K=5, MMR=0.3 (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 5,
+            "mmr": 0.3
+        },
+        {
+            "name": "K=10, MMR=0.3 (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 10,
+            "mmr": 0.3
+        },
+        {
+            "name": "K=20, MMR=0.3 (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 20,
+            "mmr": 0.3
+        },
+        {
+            "name": "K=40, MMR=0.3 (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_50k_v1",
+            "top_k": 40,
+            "mmr": 0.3
+        },
+        {
+            "name": "Chunk: Para (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_para_50k",
+            "top_k": 20,
+            "mmr": false
+        },
+        {
+            "name": "Chunk: Sent (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_sent_50k",
+            "top_k": 20,
+            "mmr": false
+        },
+        {
+            "name": "Chunk: Win256_o64 (50k)",
+            "dataset_name": "fiqa_50k_v1",
+            "qrels_name": "fiqa_qrels_50k_v1",
+            "collection": "fiqa_win256_o64_50k",
+            "top_k": 20,
+            "mmr": false
+        }
+    ]
+}

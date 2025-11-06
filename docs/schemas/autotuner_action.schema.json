@@ -1,0 +1,107 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://searchforge.dev/schemas/autotuner_action.json",
+    "title": "AutoTuner Action",
+    "description": "调优动作的数据结构定义，用于描述参数调整操作",
+    "type": "object",
+    "required": [
+        "kind",
+        "step",
+        "reason"
+    ],
+    "properties": {
+        "kind": {
+            "type": "string",
+            "description": "动作类型",
+            "enum": [
+                "noop",
+                "bump_ef",
+                "drop_ef",
+                "bump_T",
+                "drop_T",
+                "bump_rerank",
+                "drop_rerank",
+                "bump_ncand",
+                "drop_ncand",
+                "rollback",
+                "multi_knob"
+            ]
+        },
+        "step": {
+            "type": "number",
+            "description": "调整幅度（正数为增加，负数为减少），单参数模式使用"
+        },
+        "reason": {
+            "type": "string",
+            "description": "可读的解释说明（如 high_latency_with_recall_redundancy）",
+            "minLength": 1
+        },
+        "age_sec": {
+            "type": "number",
+            "description": "动作年龄（秒），用于冷却判断",
+            "minimum": 0,
+            "default": 0.0
+        },
+        "updates": {
+            "type": [
+                "object",
+                "null"
+            ],
+            "description": "多参数更新字典（仅在 multi_knob 模式下使用）",
+            "additionalProperties": {
+                "type": "number"
+            },
+            "examples": [
+                {
+                    "ef": -32,
+                    "Ncand_max": -25,
+                    "T": 100
+                },
+                {
+                    "ef_search": 32,
+                    "rerank_k": 6,
+                    "threshold_T": -0.01
+                }
+            ]
+        },
+        "mode": {
+            "type": "string",
+            "description": "应用模式（sequential: 顺序应用，atomic: 原子化应用）",
+            "enum": [
+                "sequential",
+                "atomic"
+            ],
+            "default": "sequential"
+        }
+    },
+    "examples": [
+        {
+            "kind": "drop_ef",
+            "step": -32.0,
+            "reason": "high_latency_with_recall_redundancy",
+            "age_sec": 0.0
+        },
+        {
+            "kind": "bump_ef",
+            "step": 32.0,
+            "reason": "low_recall_with_latency_margin",
+            "age_sec": 5.2
+        },
+        {
+            "kind": "multi_knob",
+            "step": 0.0,
+            "reason": "MULTI_KNOB_LATENCY_DROP",
+            "updates": {
+                "ef": -32,
+                "Ncand_max": -25,
+                "T": 0.01
+            },
+            "mode": "atomic"
+        },
+        {
+            "kind": "noop",
+            "step": 0.0,
+            "reason": "within_hysteresis_band"
+        }
+    ]
+}

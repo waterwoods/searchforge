@@ -1,0 +1,72 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    🚀 REMOTE LONG-RUN QUICK REFERENCE                      ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║ Remote: andy@100.67.88.114 (Alienware via Tailscale)                      ║
+║ Session: autotuner_long                                                    ║
+║ Current Run: ~/runs/20251008_2120 (ETA: ~22:20)                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ 🔍 CHECK STATUS ─────────────────────────────────────────────────────────┐
+│ ssh andy@100.67.88.114 "bash ~/searchforge/scripts/remote/status.sh"     │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📜 VIEW LIVE LOGS ───────────────────────────────────────────────────────┐
+│ # Replace timestamp with latest from status check                         │
+│ ssh andy@100.67.88.114 "tail -f ~/runs/20251008_2113/logs/A.log"         │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📥 FETCH RESULTS ────────────────────────────────────────────────────────┐
+│ export REMOTE_USER_HOST="andy@100.67.88.114"                              │
+│ export LOCAL_DST="$HOME/Downloads/autotuner_runs"                         │
+│ bash /Users/nanxinli/Documents/dev/searchforge/scripts/remote/fetch.sh   │
+│                                                                            │
+│ # Then open report:                                                        │
+│ open ~/Downloads/autotuner_runs/<timestamp>/index.html                    │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ 🛑 STOP SESSION ─────────────────────────────────────────────────────────┐
+│ ssh andy@100.67.88.114 "tmux kill-session -t autotuner_long"             │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ 🔌 ATTACH TO SESSION (Interactive) ─────────────────────────────────────┐
+│ ssh -t andy@100.67.88.114 "tmux attach -t autotuner_long"                │
+│ # Press Ctrl+B then D to detach                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                          ⚙️  MODIFY & RESTART                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ RUN B or C SCENARIOS (2-3 hours each) ──────────────────────────────────┐
+│ ssh andy@100.67.88.114 'tmux kill-session -t autotuner_long;             │
+│   PACK_ROOT_TIMESTAMP=$(date +%Y%m%d_%H%M);                               │
+│   tmux new-session -d -s autotuner_long "                                 │
+│     export DURATION=7200 QPS=12 BUCKET=10 SCENARIOS=\"B C\"               │
+│     PACK_ROOT=~/runs/${PACK_ROOT_TIMESTAMP} REMOTE_BASE=~/searchforge;    │
+│     cd ~/searchforge && bash ~/searchforge/scripts/remote/run_long.sh;   │
+│     exec bash";                                                            │
+│   echo "Started: ~/runs/${PACK_ROOT_TIMESTAMP}"'                          │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ CHANGE DURATIONS ────────────────────────────────────────────────────────┐
+│ DURATION=3600   → 1 hour per scenario                                     │
+│ DURATION=7200   → 2 hours per scenario                                    │
+│ DURATION=10800  → 3 hours per scenario                                    │
+└───────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        🐛 TROUBLESHOOTING                                  ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ START QDRANT & POPULATE DATA ───────────────────────────────────────────┐
+│ ssh andy@100.67.88.114 "cd ~/searchforge &&                              │
+│   docker-compose up -d qdrant && sleep 5 &&                               │
+│   python3 data/populate_qdrant.py"                                        │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ REINSTALL DEPENDENCIES ──────────────────────────────────────────────────┐
+│ ssh andy@100.67.88.114 "cd ~/searchforge &&                              │
+│   python3 -m pip install --user -r requirements.txt"                      │
+└───────────────────────────────────────────────────────────────────────────┘
+
+Full documentation: /Users/nanxinli/Documents/dev/searchforge/scripts/remote/README.md

@@ -1,0 +1,60 @@
+experiment: fiqa_suite
+timestamp: '2025-11-01T14:41:03.547016'
+configurations:
+- name: Baseline
+  config:
+    use_hybrid: false
+    rerank: false
+    description: Pure vector search baseline
+  metrics:
+    p95_ms:
+      mean: 866.88
+      std: 230.12
+    qps:
+      mean: 2.65
+      std: 0.0
+    recall_at_10:
+      mean: 0.4353
+      std: 0.3993
+  total_queries: 1944
+  failed_queries: 0
+- name: +RRF
+  config:
+    use_hybrid: true
+    rrf_k: 60
+    rerank: false
+    description: Hybrid RRF (BM25 + vector fusion)
+  metrics:
+    p95_ms:
+      mean: 4441.61
+      std: 618.68
+    qps:
+      mean: 0.28
+      std: 0.0
+    recall_at_10:
+      mean: 0.4668
+      std: 0.4366
+  total_queries: 1944
+  failed_queries: 1881
+- name: +Gated Rerank
+  config:
+    use_hybrid: true
+    rrf_k: 60
+    rerank: true
+    rerank_top_k: 20
+    rerank_if_margin_below: 0.12
+    max_rerank_trigger_rate: 0.25
+    rerank_budget_ms: 25
+    description: Hybrid RRF + gated reranking
+  metrics:
+    p95_ms:
+      mean: 0.0
+      std: 0.0
+    qps:
+      mean: 0.0
+      std: 0.0
+    recall_at_10:
+      mean: 0.0
+      std: 0.0
+  total_queries: 1944
+  failed_queries: 1944

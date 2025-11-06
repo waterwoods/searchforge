@@ -1,0 +1,72 @@
+================================================================
+  dev_app.sh - Quick Reference Card
+================================================================
+
+ONE-LINE START:
+--------------
+./scripts/dev_app.sh
+
+WHAT GETS STARTED:
+------------------
+✓ Redis         (localhost:6379)
+✓ Qdrant        (localhost:6333)
+✓ Backend       (localhost:8011)
+✓ Frontend      (localhost:3000)
+
+QUICK CHECKS:
+------------
+# Backend health
+curl http://localhost:8011/healthz
+
+# Backend verify (detailed)
+curl http://localhost:8011/ops/verify | jq
+
+# Frontend
+curl http://localhost:3000
+
+# Redis
+echo PING | nc localhost 6379
+
+# Qdrant
+curl http://localhost:6333/healthz
+
+QUICK STOP:
+----------
+pkill -f "python.*app_main.py"
+pkill -f "vite"
+docker-compose down
+
+LOGS:
+-----
+tail -f logs/app_main.log
+tail -f logs/frontend.log
+
+REPORT:
+-------
+cat reports/dev_start_mini.txt
+
+TROUBLESHOOT:
+------------
+# Port conflicts
+lsof -i :3000 :8011 :6379 :6333
+
+# Docker status
+docker-compose ps
+
+# Restart infra
+docker-compose restart redis qdrant
+
+EXPECTED TIME:
+-------------
+~10-15 seconds total
+
+SUCCESS CRITERIA:
+----------------
+✓ All services show "✅ PASS"
+✓ /ops/verify returns "ok": true
+✓ proxy_to_v2: false
+✓ redis.ok: true
+✓ qdrant.ok: true
+
+================================================================
+

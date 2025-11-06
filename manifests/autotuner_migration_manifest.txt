@@ -1,0 +1,82 @@
+# AutoTuner Migration Manifest: SmartSearchX → SearchForge
+# Minimal set of files to migrate AutoTuner + SLA auto-enable loop
+
+## CORE AUTOTUNER COMPONENTS
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/autotuner.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/autotuner.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/controller.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/controller.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/controller_v2.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/controller_v2.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/policies.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/policies.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/policy_loader.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/policy_loader.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/state.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/state.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/__init__.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/__init__.py
+
+## POLICIES & CONFIGURATION
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/configs/autotuner_policy.yaml → /Users/nanxinli/Documents/dev/searchforge/configs/autotuner_policy.yaml
+/Users/nanxinli/Documents/dev/SmartSearchX/configs/slo_targets.yaml → /Users/nanxinli/Documents/dev/searchforge/configs/slo_targets.yaml
+
+## SLA ADAPTERS & METRICS
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/metrics/sla_monitor.py → /Users/nanxinli/Documents/dev/searchforge/modules/metrics/sla_monitor.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/metrics/prometheus_adapter.py → /Users/nanxinli/Documents/dev/searchforge/modules/metrics/prometheus_adapter.py
+
+## ACTION EXECUTORS
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/executors/parameter_executor.py → /Users/nanxinli/Documents/dev/searchforge/modules/executors/parameter_executor.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/executors/routing_executor.py → /Users/nanxinli/Documents/dev/searchforge/modules/executors/routing_executor.py
+
+## API HOOKS & SLA AUTO-ENABLE
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/services/rag_api/sla_webhook.py → /Users/nanxinli/Documents/dev/searchforge/services/rag_api/sla_webhook.py
+/Users/nanxinli/Documents/dev/SmartSearchX/services/rag_api/metrics_middleware.py → /Users/nanxinli/Documents/dev/searchforge/services/rag_api/metrics_middleware.py
+
+## DOCKER & SERVICE DEFINITIONS
+# SmartSearchX → SearchForge
+# NOTE: auto_tuner service already exists in SearchForge docker-compose.yml
+/Users/nanxinli/Documents/dev/SmartSearchX/services/auto_tuner/Dockerfile → /Users/nanxinli/Documents/dev/searchforge/services/auto_tuner/Dockerfile
+/Users/nanxinli/Documents/dev/SmartSearchX/services/auto_tuner/main.py → /Users/nanxinli/Documents/dev/searchforge/services/auto_tuner/main.py
+/Users/nanxinli/Documents/dev/SmartSearchX/services/auto_tuner/requirements.txt → /Users/nanxinli/Documents/dev/searchforge/services/auto_tuner/requirements.txt
+
+## DEPENDENCIES & REQUIREMENTS
+# SmartSearchX → SearchForge
+# NOTE: Most dependencies already exist in SearchForge constraints.txt
+/Users/nanxinli/Documents/dev/SmartSearchX/requirements_autotuner.txt → /Users/nanxinli/Documents/dev/searchforge/requirements_autotuner.txt
+
+## RUNTIME CONFIGS & EVALUATION
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/eval/configs/autotuner_config.json → /Users/nanxinli/Documents/dev/searchforge/eval/configs/autotuner_config.json
+/Users/nanxinli/Documents/dev/SmartSearchX/reports/autotuner/ → /Users/nanxinli/Documents/dev/searchforge/reports/autotuner/
+
+## DEMO & TEST FILES (OPTIONAL)
+# SmartSearchX → SearchForge
+/Users/nanxinli/Documents/dev/SmartSearchX/demo_autotuner_simple.py → /Users/nanxinli/Documents/dev/searchforge/demo_autotuner_simple.py
+/Users/nanxinli/Documents/dev/SmartSearchX/demo_real_autotuner.py → /Users/nanxinli/Documents/dev/searchforge/demo_real_autotuner.py
+
+## INTEGRATION POINTS
+# Files that need modification to integrate AutoTuner
+# SmartSearchX → SearchForge
+# NOTE: These need to be modified, not copied
+/Users/nanxinli/Documents/dev/SmartSearchX/services/rag_api/app.py → /Users/nanxinli/Documents/dev/searchforge/services/rag_api/app.py (MODIFY)
+/Users/nanxinli/Documents/dev/SmartSearchX/docker-compose.yml → /Users/nanxinli/Documents/dev/searchforge/docker-compose.yml (MODIFY)
+
+## MINIMAL MVP FILES (6-10 files for basic SLA auto-enable)
+# Core autotuner
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/controller.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/controller.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/policies.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/policies.py
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/autotune/state.py → /Users/nanxinli/Documents/dev/searchforge/modules/autotune/state.py
+
+# SLA detection
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/metrics/sla_monitor.py → /Users/nanxinli/Documents/dev/searchforge/modules/metrics/sla_monitor.py
+
+# Action execution
+/Users/nanxinli/Documents/dev/SmartSearchX/modules/executors/parameter_executor.py → /Users/nanxinli/Documents/dev/searchforge/modules/executors/parameter_executor.py
+
+# Service integration
+/Users/nanxinli/Documents/dev/SmartSearchX/services/auto_tuner/main.py → /Users/nanxinli/Documents/dev/searchforge/services/auto_tuner/main.py
+
+# API hooks (modify existing)
+/Users/nanxinli/Documents/dev/SmartSearchX/services/rag_api/app.py → /Users/nanxinli/Documents/dev/searchforge/services/rag_api/app.py (MODIFY)
+
+# Configuration
+/Users/nanxinli/Documents/dev/SmartSearchX/configs/autotuner_policy.yaml → /Users/nanxinli/Documents/dev/searchforge/configs/autotuner_policy.yaml

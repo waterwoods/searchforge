@@ -1,0 +1,23 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: ["redis-server","--appendonly","yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  redis-data: {}

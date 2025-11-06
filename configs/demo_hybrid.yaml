@@ -1,0 +1,11 @@
+retriever:
+  type: hybrid
+  alpha: 0.6
+  vector_top_k: 200
+  bm25_top_k: 200
+  top_k: 50
+
+reranker:
+  type: cross_encoder
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_k: 50

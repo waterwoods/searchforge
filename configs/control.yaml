@@ -1,0 +1,116 @@
+# Control Flow Shaping Configuration
+# ===================================
+# Hot-reloadable configuration for control and routing systems
+
+control:
+  # Enable/disable control loop
+  enabled: true
+  
+  # Control loop interval (seconds)
+  interval: 10
+  
+  # Active policy: "aimd" or "pid"
+  policy: "aimd"
+  
+  # Enabled signals
+  signals:
+    p95:
+      enabled: true
+      target_ms: 100.0
+      window_secs: 60
+    
+    queue_depth:
+      enabled: true
+      max_depth: 100
+      queue_key: "queue:depth"
+  
+  # Policy configurations
+  policies:
+    aimd:
+      threshold: 0.8
+      increase_step: 0.05
+      decrease_factor: 0.7
+      cooldown_secs: 30
+    
+    pid:
+      target: 0.5
+      kp: 0.5
+      ki: 0.1
+      kd: 0.2
+      max_adjustment: 0.3
+  
+  # Actuator configurations
+  actuators:
+    concurrency:
+      enabled: true
+      initial_value: 10
+      min_value: 1
+      max_value: 50
+      gray_rollout_pct: 0.10
+    
+    batch_size:
+      enabled: true
+      initial_value: 32
+      min_value: 4
+      max_value: 128
+      gray_rollout_pct: 0.10
+
+routing:
+  # Enable/disable routing
+  enabled: true
+  
+  # Routing policy: "rules" or "manual"
+  policy: "rules"
+  
+  # Rules-based routing configuration
+  rules:
+    topk_threshold: 32
+    sampling_pct: 0.05
+    faiss_health_check_interval: 60
+  
+  # Backend health
+  backends:
+    faiss:
+      enabled: true
+      healthy: true
+    
+    qdrant:
+      enabled: true
+      healthy: true
+  
+  # Cost estimation
+  cost:
+    faiss_cost_per_query: 1.0
+    qdrant_cost_per_query: 2.0
+    faiss_avg_latency_ms: 10.0
+    qdrant_avg_latency_ms: 50.0
+
+# Storage configuration
+storage:
+  # Backend: "redis" or "memory"
+  backend: "redis"
+  
+  # Redis configuration
+  redis:
+    host: "localhost"
+    port: 6379
+    db: 0
+    key_prefix: "control:"
+  
+  # Memory fallback
+  memory:
+    enabled: true
+
+# Monitoring
+monitoring:
+  # Decision log size
+  max_decisions: 200
+  
+  # Metrics export
+  export_interval: 60
+  
+  # Alert thresholds
+  alerts:
+    signal_errors_threshold: 3
+    actuator_failures_threshold: 5
+

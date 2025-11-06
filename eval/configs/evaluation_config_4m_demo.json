@@ -1,0 +1,102 @@
+{
+    "duration_seconds": 240,
+    "common": {
+        "prom_scrape_interval": 2,
+        "tuner_sample_interval": 5,
+        "tuner_cooldown_sec": 15,
+        "recovery_stable_threshold": 15,
+        "collection_name": "amazon_electronics_100k",
+        "reranker_type": "llm",
+        "explainer_type": "simple",
+        "duration_seconds": 240,
+        "fixed_query_set": [
+            "What is machine learning?",
+            "How does neural network work?",
+            "Explain deep learning concepts",
+            "What are the applications of ML?",
+            "What is artificial intelligence?",
+            "How does reinforcement learning work?",
+            "What are the benefits of AI?",
+            "Explain computer vision",
+            "What is natural language processing?",
+            "How to implement ML models?"
+        ]
+    },
+    "baseline": {
+        "name": "Run A (Baseline 4m - Fixed HNSW)",
+        "duration_seconds": 240,
+        "warmup_seconds": 30,
+        "sample_every_seconds": 10,
+        "probes": {
+            "qps": 2.0,
+            "burst_enabled": false,
+            "burst_qps": 0,
+            "burst_duration": 0,
+            "burst_interval": 0
+        },
+        "chaos": {
+            "enabled": false,
+            "latency_ms": 0,
+            "loss_percent": 0,
+            "disconnect_times": [],
+            "disconnect_duration": 0
+        },
+        "rag_api": {
+            "initial_topk": 50,
+            "warm_cache": true,
+            "disable_prewarm": false,
+            "fixed_hnsw_ef": 64
+        },
+        "shadow": {
+            "mirror_rate": 0.1
+        },
+        "auto_tuner_v1": false,
+        "target_p95_ms": 250.0,
+        "target_recall": 0.8
+    },
+    "high_stress": {
+        "name": "Run B (Stress + Tuner 4m)",
+        "duration_seconds": 240,
+        "warmup_seconds": 30,
+        "sample_every_seconds": 10,
+        "probes": {
+            "qps": 3.0,
+            "burst_enabled": true,
+            "burst_qps": 15.0,
+            "burst_duration": 10,
+            "burst_interval": 40
+        },
+        "chaos": {
+            "enabled": true,
+            "latency_ms": 200,
+            "loss_percent": 2,
+            "disconnect_times": [
+                60,
+                120,
+                180
+            ],
+            "disconnect_duration": 5
+        },
+        "rag_api": {
+            "initial_topk": 50,
+            "warm_cache": false,
+            "disable_prewarm": true,
+            "initial_hnsw_ef": 64
+        },
+        "shadow": {
+            "mirror_rate": 0.3
+        },
+        "auto_tuner_v1": true,
+        "target_p95_ms": 250.0,
+        "target_recall": 0.8,
+        "autotuner_config": {
+            "hnsw_ef_range": [
+                64,
+                256
+            ],
+            "step_up": 32,
+            "step_down": 16,
+            "policy": "Balanced"
+        }
+    }
+}

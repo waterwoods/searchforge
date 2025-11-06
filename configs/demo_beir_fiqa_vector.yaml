@@ -1,0 +1,6 @@
+retriever:
+  type: vector
+  top_k: 200
+reranker:
+  enabled: false
+

@@ -1,0 +1,9 @@
+retriever:
+  type: qdrant
+  collection: amazon_electronics_100k   # 或你小集合的实际名字
+  top_k: 20
+
+reranker:
+  type: cross_encoder
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_k: 50

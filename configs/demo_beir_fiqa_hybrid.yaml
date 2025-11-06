@@ -1,0 +1,9 @@
+retriever:
+  type: hybrid
+  alpha: 0.6
+  vector_top_k: 200
+  bm25_top_k: 200
+  top_k: 200
+reranker:
+  enabled: false
+

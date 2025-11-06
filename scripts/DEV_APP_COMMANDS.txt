@@ -1,0 +1,228 @@
+================================================================
+  dev_app.sh - Command Cheat Sheet
+================================================================
+
+🚀 START EVERYTHING
+-------------------
+./scripts/dev_app.sh
+
+
+🔍 CHECK STATUS
+---------------
+# Quick health checks
+curl http://localhost:8011/healthz
+curl http://localhost:8011/ops/verify | jq
+curl http://localhost:3000
+
+# Detailed verify
+curl -s http://localhost:8011/ops/verify | jq '.'
+
+# Specific checks
+curl -s http://localhost:8011/ops/verify | jq '.ok'
+curl -s http://localhost:8011/ops/verify | jq '.proxy_to_v2'
+curl -s http://localhost:8011/ops/verify | jq '.data_sources.redis'
+curl -s http://localhost:8011/ops/verify | jq '.data_sources.qdrant'
+
+# Docker services
+docker-compose ps
+
+# Processes
+ps aux | grep "app_main\|vite"
+
+
+📊 VIEW LOGS
+------------
+# Tail logs (follow)
+tail -f logs/app_main.log
+tail -f logs/frontend.log
+
+# View last 50 lines
+tail -n 50 logs/app_main.log
+tail -n 50 logs/frontend.log
+
+# Docker logs
+docker-compose logs redis
+docker-compose logs qdrant
+docker-compose logs -f redis  # follow
+
+
+📝 VIEW REPORTS
+---------------
+# Startup report
+cat reports/dev_start_mini.txt
+
+# Example report
+cat reports/dev_start_mini.EXAMPLE.txt
+
+
+🛑 STOP SERVICES
+----------------
+# Stop backend
+pkill -f "python.*app_main.py"
+
+# Stop frontend
+pkill -f "vite"
+
+# Stop Docker services
+docker-compose stop redis qdrant
+
+# Stop all
+pkill -f "python.*app_main.py" && pkill -f "vite" && docker-compose down
+
+
+🔄 RESTART INDIVIDUAL SERVICES
+-------------------------------
+# Restart Redis
+docker-compose restart redis
+
+# Restart Qdrant
+docker-compose restart qdrant
+
+# Restart backend (run script again or manual)
+pkill -f "python.*app_main.py"
+cd services/fiqa_api && nohup python app_main.py > ../../logs/app_main.log 2>&1 &
+
+# Restart frontend (run script again or manual)
+pkill -f "vite"
+cd frontend && nohup npm run dev > ../logs/frontend.log 2>&1 &
+
+
+🔧 DOCKER MANAGEMENT
+--------------------
+# Start only infrastructure
+docker-compose up -d redis qdrant
+
+# Stop all
+docker-compose down
+
+# Remove volumes (clean slate)
+docker-compose down -v
+
+# View running containers
+docker ps
+
+# View all containers
+docker ps -a
+
+# Check Docker Compose config
+docker-compose config
+
+
+🌐 OPEN IN BROWSER
+------------------
+# macOS
+open http://localhost:3000
+open http://localhost:8011/ops/verify
+
+# Linux
+xdg-open http://localhost:3000
+
+
+🔎 DEBUG COMMANDS
+-----------------
+# Check if ports are in use
+lsof -i :3000
+lsof -i :8011
+lsof -i :6379
+lsof -i :6333
+
+# Check all our ports
+lsof -i :3000 -i :8011 -i :6379 -i :6333
+
+# Kill process on specific port
+lsof -ti:3000 | xargs kill -9
+
+# Test Redis
+echo PING | nc localhost 6379
+
+# Test Redis with redis-cli (if installed)
+redis-cli ping
+redis-cli info
+
+# Test Qdrant
+curl http://localhost:6333/healthz
+curl http://localhost:6333/collections
+
+# Get Qdrant collections
+curl http://localhost:6333/collections | jq
+
+
+📦 INSTALLATION CHECKS
+----------------------
+# Check Docker
+docker --version
+docker-compose --version
+
+# Check Python
+python --version
+python -c "import fastapi, uvicorn, redis; print('OK')"
+
+# Check Node
+node --version
+npm --version
+
+# Check jq
+jq --version
+
+# Check nc (netcat)
+which nc
+
+
+🧹 CLEANUP
+----------
+# Remove logs
+rm -f logs/app_main.log logs/frontend.log
+
+# Remove reports
+rm -f reports/dev_start_mini.txt
+
+# Clean Docker volumes
+docker-compose down -v
+
+# Full cleanup
+pkill -f "python.*app_main.py" && \
+pkill -f "vite" && \
+docker-compose down -v && \
+rm -f logs/*.log reports/dev_start_mini.txt
+
+
+📚 DOCUMENTATION
+----------------
+# View usage guide
+cat scripts/DEV_APP_USAGE.txt
+
+# View quick reference
+cat scripts/DEV_APP_QUICKREF.txt
+
+# View test guide
+cat scripts/DEV_APP_TEST_GUIDE.txt
+
+# View checklist
+cat reports/DEV_APP_CHECKLIST.txt
+
+# View delivery summary
+cat DEV_APP_DELIVERY.txt
+
+
+🎯 ONE-LINERS
+-------------
+# Full restart
+pkill -f "python.*app_main.py" && pkill -f "vite" && docker-compose restart redis qdrant && ./scripts/dev_app.sh
+
+# Quick verify
+curl -s http://localhost:8011/ops/verify | jq '{ok, proxy_to_v2, redis: .data_sources.redis.ok, qdrant: .data_sources.qdrant.available}'
+
+# Watch logs (both)
+tail -f logs/app_main.log logs/frontend.log
+
+# Service status summary
+echo "Redis: $(docker-compose ps redis | grep -c Up)" && \
+echo "Qdrant: $(docker-compose ps qdrant | grep -c Up)" && \
+echo "Backend: $(curl -s http://localhost:8011/healthz | jq -r .ok)" && \
+echo "Frontend: $(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000)"
+
+
+================================================================
+Copy and paste these commands as needed! 📋
+================================================================
+

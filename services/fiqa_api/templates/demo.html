@@ -1,0 +1,3788 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Demo Dashboard - Live Metrics</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+            padding-right: 320px;
+        }
+
+        /* Right sidebar panels */
+        .sla-panel,
+        .auto-panel,
+        .tuner-panel {
+            position: fixed;
+            right: 20px;
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            width: 280px;
+            z-index: 100;
+        }
+
+        .sla-panel {
+            top: 20px;
+        }
+
+        .auto-panel {
+            top: 200px;
+        }
+
+        .tuner-panel {
+            top: 450px;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .sla-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .sla-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+        }
+
+        .sla-actual {
+            margin-top: 12px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        .auto-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .status-dot.active {
+            background: #28a745;
+        }
+
+        .auto-meta {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .auto-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .auto-btn {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            background: white;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .auto-btn:hover {
+            background: #e7f3ff;
+        }
+
+        .auto-btn.stop {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
+        /* Toggle Switch Styles */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: #3b82f6;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
+
+        input:disabled+.slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Main content */
+        h1 {
+            margin-bottom: 20px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Data Source Badge */
+        .data-source-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 12px;
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .data-source-badge .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .data-source-badge.ready .dot {
+            background: #28a745;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Data Source Toggle */
+        .data-source-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 11px;
+        }
+
+        .data-source-toggle select {
+            padding: 2px 6px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: white;
+            cursor: pointer;
+        }
+
+        .data-source-toggle select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #f8f9fa;
+        }
+
+        /* Ops Button */
+        .ops-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 12px;
+            background: #f0f9ff;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .ops-button:hover {
+            background: #e0f2fe;
+            border-color: #7dd3fc;
+        }
+
+        /* Ops Drawer */
+        .ops-drawer {
+            position: fixed;
+            top: 80px;
+            right: -360px;
+            width: 340px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+        }
+
+        .ops-drawer.open {
+            right: 20px;
+        }
+
+        .ops-drawer-header {
+            padding: 16px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ops-drawer-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .ops-drawer-close {
+            cursor: pointer;
+            font-size: 20px;
+            color: #6c757d;
+            background: none;
+            border: none;
+        }
+
+        .ops-drawer-content {
+            padding: 16px;
+        }
+
+        .ops-error-bar {
+            padding: 8px 12px;
+            background: #fee;
+            color: #c33;
+            font-size: 11px;
+            cursor: pointer;
+            text-align: center;
+            border-bottom: 1px solid #fcc;
+        }
+
+        .ops-section {
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .ops-section:last-child {
+            border-bottom: none;
+        }
+
+        .ops-section-title {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .ops-meta-line {
+            font-size: 12px;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .ops-kpi {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 6px;
+        }
+
+        .ops-kpi-label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .ops-kpi-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .ops-kpi-value.collecting {
+            color: #fd7e14;
+        }
+
+        .ops-kpi-value.greyed {
+            color: #adb5bd;
+            opacity: 0.6;
+        }
+
+        .ops-kpi-compare-card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .ops-kpi-compare-label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .ops-kpi-compare-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .ops-kpi-compare-value.greyed {
+            color: #adb5bd;
+            opacity: 0.6;
+        }
+
+        .ops-kpi-compare-subtitle {
+            font-size: 10px;
+            color: #6c757d;
+            margin-top: 4px;
+            font-family: 'SF Mono', monospace;
+        }
+
+        .ops-kpi-arrow {
+            display: inline-block;
+            margin: 0 4px;
+            color: #0d6efd;
+        }
+
+        .ops-btn {
+            background: #2563eb;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .ops-status {
+            margin-top: 6px;
+            font-size: 0.9em;
+            color: #333;
+        }
+
+        /* Tap Console Styles */
+        .tap-console {
+            margin-top: 16px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            overflow: hidden;
+            max-height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tap-console-header {
+            background: #2d2d2d;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #404040;
+        }
+
+        .tap-console-title {
+            color: #00d9ff;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .tap-toggle-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tap-toggle-btn:hover {
+            color: #fff;
+        }
+
+        .tap-console-body {
+            padding: 12px;
+            overflow-y: auto;
+            max-height: 350px;
+            background: #1e1e1e;
+        }
+
+        .tap-console-stats {
+            padding: 8px;
+            background: #252525;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+            color: #999;
+        }
+
+        .tap-console-timeline {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .tap-event {
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            border-left: 3px solid #404040;
+            background: #252525;
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .tap-event-header {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .tap-event-ts {
+            color: #666;
+            font-size: 10px;
+        }
+
+        .tap-event-source {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .tap-event-source.backend {
+            background: #1e40af;
+            color: #bfdbfe;
+        }
+
+        .tap-event-source.event {
+            background: #047857;
+            color: #d1fae5;
+        }
+
+        .tap-event-type {
+            color: #00d9ff;
+            font-weight: 600;
+        }
+
+        .tap-event-details {
+            color: #aaa;
+            font-size: 10px;
+            padding-left: 8px;
+        }
+
+        .tap-event-error {
+            border-left-color: #ef4444;
+        }
+
+        .tap-event-error .tap-event-type {
+            color: #fca5a5;
+        }
+
+        .tap-loading {
+            color: #666;
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        /* 6 KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .kpi-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .kpi-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .kpi-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .kpi-value.green {
+            color: #28a745;
+        }
+
+        .kpi-value.red {
+            color: #dc3545;
+        }
+
+        .kpi-value.orange {
+            color: #fd7e14;
+        }
+
+        .kpi-value.gray {
+            color: #6c757d;
+        }
+
+        .kpi-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+
+        .kpi-tooltip .tooltiptext {
+            visibility: hidden;
+            width: 280px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -140px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .kpi-tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
+        }
+
+        .kpi-tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* 4 Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .chart-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .chart-toggle {
+            padding: 4px 10px;
+            font-size: 11px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .chart-toggle.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        canvas {
+            width: 100%;
+            height: 180px;
+        }
+
+        /* Events Lane */
+        .events-lane {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .events-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .events-timeline {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 8px 0;
+        }
+
+        .event-dot {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 80px;
+        }
+
+        .event-circle {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-bottom: 4px;
+        }
+
+        .event-circle.profile {
+            background: #007bff;
+        }
+
+        .event-circle.sla {
+            background: #fd7e14;
+        }
+
+        .event-circle.auto {
+            background: #28a745;
+        }
+
+        .event-label {
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+        }
+
+        /* Mock mode banner */
+        .mock-banner {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        /* Collecting message */
+        .collecting-msg {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            padding: 60px 20px;
+        }
+
+        /* Profile Tabs */
+        .profile-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .profile-tab {
+            padding: 6px 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .profile-tab.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .profile-tab:hover:not(.active) {
+            background: #f8f9fa;
+        }
+
+        /* Auto Traffic Inputs */
+        .auto-inputs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .auto-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .auto-input-label {
+            font-size: 9px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .auto-input {
+            width: 100%;
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .auto-input:disabled {
+            background: #f3f4f6;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        /* Screen reader only - for accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        /* Tuner HUD - compact monospace display */
+        .tuner-hud {
+            margin-top: 12px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Courier New', monospace;
+            font-size: 10px;
+            line-height: 1.5;
+            color: #374151;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .tuner-hud.empty {
+            color: #9ca3af;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Right Sidebar Panels -->
+    <div class="sla-panel">
+        <div class="panel-title" id="slaLabel">🎯 Target P95: 300 ms</div>
+        <input type="range" min="100" max="800" step="10" value="300" class="sla-slider" id="slaSlider">
+        <div class="sla-actual" id="slaActual">📊 Actual: <span id="actualP95">—</span></div>
+
+        <div style="margin-top: 16px; font-size: 11px;">
+            <div style="font-weight: 600; margin-bottom: 4px; font-size: 10px; color: #666;">Profile Parameters</div>
+            <div id="paramsStatus" style="
+                display: flex;
+                gap: 6px;
+                align-items: center;
+                flex-wrap: wrap;
+                white-space: normal;
+                line-height: 1.3;
+                max-width: 260px;
+            ">—</div>
+        </div>
+    </div>
+
+    <div class="auto-panel">
+        <!-- Toggle Switch Mode (new) -->
+        <div id="autoSwitchMode" style="display: none;">
+            <div
+                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-weight: 600; font-size: 13px; color: #374151;">Auto Traffic</span>
+                    <span id="autoCycleBadge" style="
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-size: 10px;
+                        font-weight: 600;
+                        background: #f3f4f6;
+                        color: #64748b;
+                        border: 1px solid #cbd5e1;
+                    ">Cycle —/—</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="trafficToggle" disabled role="switch" aria-checked="false"
+                        aria-label="Auto Traffic Toggle" tabindex="0" onchange="toggleAutoTraffic(this.checked)"
+                        onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click();}">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Legacy Button Mode (old) -->
+        <div id="autoButtonMode">
+            <div class="auto-header">
+                <span class="status-dot" id="autoDot"></span>
+                <span class="panel-title">Auto Traffic</span>
+                <span id="autoCycle" style="
+                    margin-left: 8px;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    background: #f3f4f6;
+                    color: #64748b;
+                    border: 1px solid #cbd5e1;
+                ">Cycle —/—</span>
+            </div>
+        </div>
+
+        <div class="auto-inputs">
+            <div class="auto-input-group">
+                <label class="auto-input-label">QPS</label>
+                <input type="number" class="auto-input" id="inputQps" min="1" max="64" step="1" value="6">
+            </div>
+            <div class="auto-input-group">
+                <label class="auto-input-label">Duration(s)</label>
+                <input type="number" class="auto-input" id="inputDuration" min="5" max="300" step="5" value="20">
+            </div>
+            <div class="auto-input-group">
+                <label class="auto-input-label" title="Interval between cycles (must be >= Duration + 5s)">CYCLE
+                    (sec)</label>
+                <input type="number" class="auto-input" id="inputCycle" min="5" max="120" step="5" value="25"
+                    placeholder="every 25s">
+            </div>
+            <div class="auto-input-group">
+                <label class="auto-input-label" title="Total number of cycles to run (empty = infinite)">TOTAL</label>
+                <input type="number" class="auto-input" id="inputTotal" min="1" max="999" step="1" value=""
+                    placeholder="∞">
+            </div>
+        </div>
+        <div class="auto-meta" id="autoMeta">
+            <span id="autoParamsHint" style="font-size: 10px; color: #9ca3af; display: none;">
+                Parameters apply on next start
+            </span>
+            <span>Last: <span id="autoLast">—</span></span>
+            <div id="autoEffectiveStats" style="font-size: 10px; color: #64748b; margin-top: 4px; display: none;">
+                Effective TPS (60s): <span id="autoEffTps">—</span> | Concurrency: <span id="autoConcurrency">—</span>
+            </div>
+        </div>
+        <div class="auto-buttons" id="autoButtons">
+            <button class="auto-btn" onclick="autoStart()">▶ Start</button>
+            <button class="auto-btn stop" onclick="autoStop()">■ Stop</button>
+        </div>
+
+        <!-- Aria live region for accessibility -->
+        <div aria-live="polite" aria-atomic="true" class="sr-only" id="trafficAriaStatus"></div>
+    </div>
+
+    <div class="tuner-panel">
+        <div class="panel-title">🧠 Strategy</div>
+        <div
+            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+            <span style="font-weight: 600; font-size: 13px; color: #374151;">Auto-Tuner</span>
+            <label class="switch">
+                <input type="checkbox" id="tunerToggle" onchange="toggleTuner()">
+                <span class="slider round"></span>
+            </label>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <select id="tunerStrategy" class="auto-input" onchange="setTunerStrategy()"
+                style="width: 100%; font-size: 13px;">
+                <option value="default">default</option>
+                <option value="linear_only">linear_only</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="font-size: 11px; color: #666; display: block; margin-bottom: 4px;">
+                Shadow: <span id="tunerShadowLabel">10%</span>
+            </label>
+            <input type="range" min="0" max="50" step="5" value="10" class="sla-slider" id="tunerShadowSlider"
+                oninput="updateTunerShadowLabel()" onchange="setTunerShadow()">
+        </div>
+        <div style="margin-top: 12px; font-size: 11px; display: flex; gap: 6px; flex-wrap: wrap;">
+            <span style="padding: 3px 8px; background: #e9ecef; border-radius: 4px; white-space: nowrap;">Reranker: <b
+                    id="tunerReranker">—</b></span>
+            <span style="padding: 3px 8px; background: #e9ecef; border-radius: 4px; white-space: nowrap;">TopK: <b
+                    id="tunerTopK">—</b></span>
+            <span style="padding: 3px 8px; background: #e9ecef; border-radius: 4px; white-space: nowrap;">EF: <b
+                    id="tunerEF">—</b></span>
+            <span style="padding: 3px 8px; background: #e9ecef; border-radius: 4px; white-space: nowrap;">||: <b
+                    id="tunerParallel">—</b></span>
+        </div>
+        <div id="tunerHUD" class="tuner-hud empty">Last step: —</div>
+
+        <!-- Cumulative Delta Indicators (60s window) -->
+        <div id="tunerCumulative"
+            style="margin-top: 12px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e5e7eb; display: none;">
+            <div style="font-size: 10px; color: #666; font-weight: 600; margin-bottom: 4px;">Cumulative (60s):</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; font-family: 'SF Mono', monospace;">
+                <span id="cumTopK" style="padding: 2px 6px; border-radius: 3px; background: #e5e7eb;">Δtopk: —</span>
+                <span id="cumEF" style="padding: 2px 6px; border-radius: 3px; background: #e5e7eb;">Δef: —</span>
+                <span id="cumP95" style="padding: 2px 6px; border-radius: 3px; background: #e5e7eb;">Δp95: —</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 12px; border-top: 1px solid #e0e0e0; padding-top: 8px;">
+            <div style="font-size: 11px; color: #666; margin-bottom: 6px; font-weight: 600;">Recent Decisions (last 10):
+            </div>
+            <div id="tunerDecisions" style="font-size: 10px; max-height: 200px; overflow-y: auto; line-height: 1.4;">
+                <div style="color: #999;">No decisions yet</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ops Drawer -->
+    <div class="ops-drawer" id="opsDrawer">
+        <div class="ops-error-bar" id="opsErrorBar" style="display: none;" onclick="fetchOpsData()">
+            OPS fetch failed (click to retry)
+        </div>
+        <div class="ops-drawer-header">
+            <div class="ops-drawer-title">🛠️ Ops Summary</div>
+            <button class="ops-drawer-close" onclick="toggleOpsDrawer()">×</button>
+        </div>
+        <div class="ops-drawer-content">
+            <!-- Meta Section -->
+            <div class="ops-section">
+                <div class="ops-section-title">System Info</div>
+                <div class="ops-meta-line"><strong>Backend:</strong> <span id="opsBackend">—</span></div>
+                <div class="ops-meta-line"><strong>Source:</strong> <span id="opsSource">—</span></div>
+                <div class="ops-meta-line"><strong>Window:</strong> <span id="opsWindow">—</span></div>
+            </div>
+
+            <!-- KPI Section -->
+            <div class="ops-section">
+                <div class="ops-section-title">KPIs (60s window)</div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">TPS</div>
+                    <div class="ops-kpi-value" id="opsTPS">—</div>
+                </div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">P95 (ms)</div>
+                    <div class="ops-kpi-value" id="opsP95">—</div>
+                </div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">Recall@10</div>
+                    <div class="ops-kpi-value" id="opsRecall">—</div>
+                </div>
+            </div>
+
+            <!-- Series Section -->
+            <div class="ops-section">
+                <div class="ops-section-title">Series60s (5s buckets)</div>
+                <div class="ops-meta-line"><strong>Buckets:</strong> <span id="opsBuckets">—</span></div>
+                <div class="ops-meta-line"><strong>Non-Empty:</strong> <span id="opsNonEmpty">—</span></div>
+                <div class="ops-meta-line"><strong>Step:</strong> <span id="opsStep">—</span></div>
+            </div>
+
+            <!-- Auto Section (Optional) -->
+            <div class="ops-section">
+                <div class="ops-section-title">Auto Traffic</div>
+                <div class="ops-meta-line"><strong>Effective TPS:</strong> <span id="opsAutoTPS">—</span></div>
+            </div>
+
+            <!-- KPI Compare Panel (SLA Recovery) -->
+            <div class="ops-section">
+                <div class="ops-section-title">📊 SLA Recovery KPIs</div>
+
+                <!-- Cost per 1k requests -->
+                <div class="ops-kpi-compare-card">
+                    <div class="ops-kpi-compare-label">Cost per 1k Requests</div>
+                    <div class="ops-kpi-compare-value" id="opsCostPer1k">—</div>
+                </div>
+
+                <!-- Recall@10 -->
+                <div class="ops-kpi-compare-card">
+                    <div class="ops-kpi-compare-label">Recall@10</div>
+                    <div class="ops-kpi-compare-value" id="opsRecallCompare">—</div>
+                    <div class="ops-kpi-compare-subtitle" id="opsRecallSubtitle">—</div>
+                </div>
+
+                <!-- Recovery Time -->
+                <div class="ops-kpi-compare-card">
+                    <div class="ops-kpi-compare-label">Recovery Time</div>
+                    <div class="ops-kpi-compare-value" id="opsRecoveryTime">—</div>
+                    <div class="ops-kpi-compare-subtitle">Guardrail after 10 min</div>
+                </div>
+            </div>
+
+            <!-- Black Swan Demo Section -->
+            <div class="ops-section">
+                <h3>🦢 Black Swan Demo</h3>
+                <button id="runBlackSwanBtn" class="ops-btn">Run Black Swan Test</button>
+                <div id="blackSwanStatus" class="ops-status"></div>
+
+                <!-- Tap Console Drawer (only visible in dev mode with TAP_ENABLED) -->
+                <div id="tapConsole" class="tap-console" style="display: none;">
+                    <div class="tap-console-header">
+                        <span class="tap-console-title">📡 Live Tap Console</span>
+                        <button id="tapConsoleToggle" class="tap-toggle-btn">−</button>
+                    </div>
+                    <div class="tap-console-body">
+                        <div class="tap-console-stats" id="tapStats">
+                            <span id="tapStatsText">Loading...</span>
+                        </div>
+                        <div class="tap-console-timeline" id="tapTimeline">
+                            <div class="tap-loading">Waiting for events...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <h1>
+        🔍 Demo Dashboard - Live Metrics
+        <span class="data-source-badge" id="dataSourceBadge">
+            <span class="dot"></span>
+            <span id="dataSourceText">Data Source: CSV • Core(—)</span>
+        </span>
+        <span class="data-source-toggle">
+            <label for="dataSourceSelect" style="margin: 0;">Source:</label>
+            <select id="dataSourceSelect" onchange="switchDataSource(this.value)"
+                title="Switch between CSV and Core (memory) data source">
+                <option value="csv">CSV</option>
+                <option value="core" disabled>Core</option>
+            </select>
+        </span>
+        <span class="data-source-badge" id="windowBadge"
+            style="background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe;">
+            <span style="font-weight: 600;">window: <span id="windowValue">60s</span></span>
+        </span>
+        <span class="data-source-badge" id="taiBadge"
+            style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
+            <span style="font-weight: 600;">TAI: <span id="taiValue">0.00</span>/s</span>
+        </span>
+        <span class="data-source-badge" id="casesBadge"
+            style="background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;">
+            <span style="font-weight: 600;">cases: <span id="casesValue">live</span></span>
+        </span>
+        <span class="data-source-badge" id="shadowBadge"
+            style="background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff;">
+            <span style="font-weight: 600;">shadow: <span id="shadowValue">0</span></span>
+        </span>
+        <span class="ops-button" onclick="toggleOpsDrawer()" title="Open Ops Summary">
+            🛠️ Ops
+        </span>
+    </h1>
+
+    <!-- Profile Tabs -->
+    <div class="profile-tabs">
+        <button class="profile-tab" data-profile="fast">⚡ Fast</button>
+        <button class="profile-tab" data-profile="balanced">⚖️ Balanced</button>
+        <button class="profile-tab" data-profile="quality">💎 Quality</button>
+    </div>
+
+    <div id="mockBanner" class="mock-banner" style="display:none;">
+        ⚠️ <span id="mockBannerText">Mock mode (no vector DB)</span>
+    </div>
+
+    <div id="warmupBanner" class="mock-banner"
+        style="display:none; background:#fff3cd; border-color:#ffeaa7; color:#856404;">
+        ⏳ <span id="warmupBannerText">Warming up traffic... 30–60s needed</span>
+    </div>
+
+    <!-- 6 KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-label">Load Intensity (WII)</div>
+            <div class="kpi-value" id="kpiWII">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">System Response (TAI)</div>
+            <div class="kpi-value" id="kpiTAI">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">p-value</div>
+            <div class="kpi-value" id="kpiPValue">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Human Better</div>
+            <div class="kpi-value" id="kpiHuman">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">TPS</div>
+            <div class="kpi-value" id="kpiTPS">—</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Cache Hit %</div>
+            <div class="kpi-value" id="kpiCache">—</div>
+        </div>
+    </div>
+
+    <!-- 4 Charts Grid -->
+    <div class="charts-grid">
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">P95 Latency (ms)</span>
+                <button class="chart-toggle" id="axisLock" onclick="toggleAxisLock()">🔓 Auto</button>
+            </div>
+            <canvas id="chartP95"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">Recall@10</span>
+            </div>
+            <canvas id="chartRecall"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">Throughput (req/s)</span>
+            </div>
+            <canvas id="chartTPS"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">Rerank & Cache Hit</span>
+            </div>
+            <canvas id="chartRerankCache"></canvas>
+        </div>
+    </div>
+
+    <!-- NEW: Stage Timing Breakdown Panel -->
+    <div style="margin-bottom: 20px;">
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                <div style="font-weight: 600; font-size: 14px;">📊 Stage Timing Breakdown</div>
+                <span id="stageWindowBadge" style="
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    background: #e0e7ff;
+                    color: #3730a3;
+                    border: 1px solid #c7d2fe;
+                ">60s</span>
+            </div>
+            <div id="stageTimingContent" style="display: flex; gap: 20px; align-items: center;">
+                <div style="flex: 1; min-width: 300px;">
+                    <canvas id="chartStageTiming" style="width: 100%; height: 120px;"></canvas>
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 16px; height: 16px; background: #3b82f6; border-radius: 2px;"></div>
+                        <span>ANN Search: <b id="annTime">—</b></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 16px; height: 16px; background: #f59e0b; border-radius: 2px;"></div>
+                        <span>Rerank: <b id="rerankTime">—</b></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 16px; height: 16px; background: #10b981; border-radius: 2px;"></div>
+                        <span>Network/API: <b id="networkTime">—</b></span>
+                    </div>
+                    <div
+                        style="display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
+                        <span style="font-weight: 600;">Total: <b id="totalTime">—</b></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Events Lane -->
+    <div class="events-lane">
+        <div class="events-title">📍 Events Timeline</div>
+        <div class="events-timeline" id="eventsTimeline">
+            <div class="event-dot">
+                <div class="event-circle" style="background:#ddd;"></div>
+                <div class="event-label">No events yet</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Feature Flags
+        const UI_TRAFFIC_SWITCH = true;  // Toggle switch for Auto Traffic (false = old Start/Stop buttons)
+
+        // Global state
+        let axisLocked = false;
+        let maxP95Seen = 0;
+        let lastDataHash = '';
+        let trafficSwitchInitialized = false;  // Prevent interaction before first status
+        let trafficTogglePending = false;      // Debounce flag
+
+        // Data Source State
+        let dataSourceMode = localStorage.getItem('sf.dataSource') || 'csv';  // 'csv' | 'core' - persist in localStorage
+        let coreMetricsCache = null;  // Cache Core metrics for 3s refresh
+
+        // ✅ NEW: Health status cache (for backend type display)
+        let healthCache = null;  // Cache for /admin/health response
+
+        // ✅ NEW: Series60s state
+        let series60sCache = null;     // Cache for /metrics/series60s response
+        let series60sFallback = false; // Flag: true if series60s failed, use CSV fallback
+        let series60sLoggedOnce = false; // Flag: prevent log spam
+
+        // ✅ NEW: TAI trend tracking
+        let lastTAI = null;  // Previous TAI value for trend arrow
+
+        // ✅ NEW: Time-bucket resampling for Core metrics
+        const CORE_BUCKET_MS = 5000;     // 5-second buckets
+        const CORE_WINDOW_MS = 60000;    // 60-second window
+        const CORE_MAX_BUCKETS = CORE_WINDOW_MS / CORE_BUCKET_MS;  // 12 buckets
+        let coreBuf = {
+            p95: new Map(),      // Map<slot_ts, value>
+            tps: new Map(),      // Map<slot_ts, value>
+            recall: new Map()    // Map<slot_ts, value>
+        };
+
+        // ✅ NEW: Dirty flags for input protection
+        let inputDirtyFlags = {
+            qps: false,
+            duration: false,
+            cycle: false,
+            total: false
+        };
+
+        // Helpers
+        const $ = id => document.getElementById(id);
+
+        // SLA Panel
+        function initSLA() {
+            const slider = $('slaSlider');
+            slider.oninput = e => {
+                const val = parseInt(e.target.value);
+                updateSLALabel(val);
+                fetch(`/demo/sla?target_p95=${val}`).catch(console.warn);
+            };
+            fetch('/demo/sla').then(r => r.json()).then(d => {
+                slider.value = d.target_p95 || 300;
+                updateSLALabel(d.target_p95);
+            }).catch(console.warn);
+        }
+
+        function updateSLALabel(val) {
+            let color = val >= 500 ? '#dc3545' : val >= 300 ? '#fd7e14' : '#28a745';
+            $('slaLabel').innerHTML = `🎯 Target P95: <span style="color:${color}">${val} ms</span>`;
+        }
+
+        // Reset Core series buffers
+        function resetCoreSeries() {
+            console.log('[UI] Resetting Core series buffers');
+            coreBuf.p95.clear();
+            coreBuf.tps.clear();
+            coreBuf.recall.clear();
+        }
+
+        // Profile Tabs
+        function initProfileTabs() {
+            const params = new URLSearchParams(location.search);
+            const currentProfile = params.get('profile') || 'balanced';
+
+            document.querySelectorAll('.profile-tab').forEach(btn => {
+                const profile = btn.dataset.profile;
+                btn.className = 'profile-tab' + (profile === currentProfile ? ' active' : '');
+                btn.onclick = () => {
+                    console.log(`[UI] profile -> ${profile}`);
+                    // Reset Core buffers on profile change
+                    resetCoreSeries();
+                    params.set('profile', profile);
+                    location.search = params.toString();
+                };
+            });
+        }
+
+        // Auto Traffic - Initialize UI mode
+        function initAutoTrafficUI() {
+            if (UI_TRAFFIC_SWITCH) {
+                $('autoSwitchMode').style.display = 'block';
+                $('autoButtonMode').style.display = 'none';
+                $('autoButtons').style.display = 'none';
+            } else {
+                $('autoSwitchMode').style.display = 'none';
+                $('autoButtonMode').style.display = 'block';
+                $('autoButtons').style.display = 'flex';
+            }
+
+            // ✅ Setup dirty flag listeners on inputs
+            $('inputQps').addEventListener('input', () => {
+                inputDirtyFlags.qps = true;
+                console.log('[UI] QPS input dirty');
+            });
+            $('inputDuration').addEventListener('input', () => {
+                inputDirtyFlags.duration = true;
+                console.log('[UI] Duration input dirty');
+            });
+            $('inputCycle').addEventListener('input', () => {
+                inputDirtyFlags.cycle = true;
+                console.log('[UI] Cycle input dirty');
+            });
+            $('inputTotal').addEventListener('input', () => {
+                inputDirtyFlags.total = true;
+                console.log('[UI] Total input dirty');
+            });
+        }
+
+        // Auto Traffic - Toggle handler (new)
+        async function toggleAutoTraffic(checked) {
+            if (trafficTogglePending) return;  // Debounce
+
+            trafficTogglePending = true;
+            const toggle = $('trafficToggle');
+            const prevChecked = !checked;
+
+            try {
+                // Disable toggle during request
+                toggle.disabled = true;
+
+                if (checked) {
+                    // ✅ B3) Starting traffic - read inputs and validate
+                    const qps = parseFloat($('inputQps').value) || 6;
+                    const duration = parseInt($('inputDuration').value) || 45;
+                    const cycleRaw = $('inputCycle').value;
+                    const cycle = parseInt(cycleRaw);
+                    const totalRaw = $('inputTotal').value;
+                    const total = parseInt(totalRaw);
+
+                    // Clamp values
+                    const qpsClamp = Math.max(1, Math.min(64, qps));
+                    const durClamp = Math.max(5, Math.min(300, duration));
+
+                    // If cycle is NaN, 0, or negative, treat as infinite (omit param)
+                    let cycleParam = null;
+                    if (!isNaN(cycle) && cycle > 0) {
+                        const cycleClamp = Math.max(5, Math.min(120, cycle));
+                        if (cycleClamp !== cycle) {
+                            throw new Error(`Cycle out of range. Valid: [5-120]`);
+                        }
+                        cycleParam = cycle;
+                    }
+
+                    // Parse total_cycles (empty or 0 = infinite)
+                    let totalParam = 0;  // 0 = infinite
+                    if (!isNaN(total) && total > 0) {
+                        totalParam = total;
+                    }
+
+                    // Validate QPS and duration
+                    if (qpsClamp !== qps || durClamp !== duration) {
+                        throw new Error(`Parameters out of range. Valid: QPS[1-64], Duration[5-300]`);
+                    }
+
+                    console.log(`[UI] auto.start qps=${qps}, dur=${duration}, cycle=${cycleParam || '∞'}, total=${totalParam || '∞'}`);
+
+                    // Build URL with cycle and total_cycles params
+                    const cycleValue = cycleParam || 0;
+                    const res = await fetch(`/auto/start?qps=${qps}&duration=${duration}&cycle=${cycleValue}&total_cycles=${totalParam}`, {
+                        method: 'POST'
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(`Start failed: ${res.statusText}`);
+                    }
+
+                    const result = await res.json();
+                    console.log('[UI] auto.start result:', result);
+
+                    // Emit event for timeline
+                    emitEvent('auto.start', { qps, duration, cycle: cycleValue, total_cycles: totalParam });
+
+                    // Update aria status
+                    $('trafficAriaStatus').textContent = 'Traffic started';
+
+                } else {
+                    // Stopping traffic
+                    console.log('[UI] auto.stop');
+
+                    const res = await fetch('/auto/stop', { method: 'POST' });
+
+                    if (!res.ok) {
+                        throw new Error(`Stop failed: ${res.statusText}`);
+                    }
+
+                    console.log('[UI] auto.stop result: ok');
+
+                    // Emit event for timeline
+                    emitEvent('auto.stop', {});
+
+                    // Update aria status
+                    $('trafficAriaStatus').textContent = 'Traffic stopped';
+                }
+
+                // Wait for status to reflect change (max 3s)
+                let verified = false;
+                for (let i = 0; i < 10; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    const status = await fetch(`/auto/status?ts=${Date.now()}`).then(r => r.json());
+                    // ✅ FIX: Verify enabled, not running (running can be false between cycles)
+                    if (status.enabled === checked) {
+                        verified = true;
+                        updateTrafficUI(status);
+                        break;
+                    }
+                }
+
+                if (!verified) {
+                    console.warn('[UI] Status verification timeout - rolling back toggle');
+                    toggle.checked = prevChecked;
+                    throw new Error('Status change not reflected within 3s');
+                }
+
+                // ✅ Clear dirty flags on successful start (params now applied)
+                if (checked) {
+                    inputDirtyFlags.qps = false;
+                    inputDirtyFlags.duration = false;
+                    inputDirtyFlags.cycle = false;
+                    inputDirtyFlags.total = false;
+                    console.log('[UI] Cleared dirty flags after successful start');
+                }
+
+            } catch (err) {
+                console.error('[UI] toggleAutoTraffic error:', err);
+                alert(`Auto Traffic ${checked ? 'start' : 'stop'} failed:\n${err.message}`);
+
+                // Rollback toggle
+                toggle.checked = prevChecked;
+                toggle.setAttribute('aria-checked', String(prevChecked));
+
+            } finally {
+                toggle.disabled = false;
+                trafficTogglePending = false;
+            }
+        }
+
+        // Auto Traffic - Update UI from status
+        function updateTrafficUI(status) {
+            const enabled = status.enabled || false;  // ✅ Use enabled, not running
+            const running = status.running || false;
+
+            // Update toggle switch (if in switch mode)
+            if (UI_TRAFFIC_SWITCH) {
+                const toggle = $('trafficToggle');
+
+                // ✅ FIX: Only update if state actually changed, and don't trigger onchange
+                if (toggle.checked !== enabled) {
+                    // Temporarily remove onchange to prevent triggering
+                    const onChange = toggle.onchange;
+                    toggle.onchange = null;
+
+                    toggle.checked = enabled;  // ✅ Use enabled, not running
+                    toggle.setAttribute('aria-checked', String(enabled));
+
+                    // Restore onchange after a small delay
+                    setTimeout(() => { toggle.onchange = onChange; }, 50);
+                }
+
+                // Enable toggle after first status
+                if (!trafficSwitchInitialized) {
+                    toggle.disabled = false;
+                    trafficSwitchInitialized = true;
+                }
+            }
+
+            // Update legacy dot (if in button mode)
+            if (!UI_TRAFFIC_SWITCH) {
+                const dot = $('autoDot');
+                dot.className = 'status-dot' + (enabled ? ' active' : '');  // ✅ Use enabled
+            }
+
+            // ✅ B2) Sync inputs with desired params (only when OFF and NOT dirty)
+            // Never overwrite user input while switch is OFF (keep typed values)
+            if (!enabled) {
+                // Only update input if it's not been edited by user (dirty=false)
+                if (!inputDirtyFlags.qps && status.desired_qps !== undefined) {
+                    $('inputQps').value = status.desired_qps;
+                }
+                if (!inputDirtyFlags.duration && status.desired_duration !== undefined) {
+                    $('inputDuration').value = status.desired_duration;
+                }
+                if (!inputDirtyFlags.cycle && status.desired_cycle_sec !== undefined) {
+                    $('inputCycle').value = status.desired_cycle_sec;
+                }
+                if (!inputDirtyFlags.total && status.desired_total_cycles !== undefined) {
+                    // Display empty for infinite (null), otherwise show the number
+                    $('inputTotal').value = (status.desired_total_cycles === null || status.desired_total_cycles === 0) ? '' : status.desired_total_cycles;
+                }
+            }
+            // When ON, DO NOT push runtime back into inputs to avoid flicker
+
+            // Lock/unlock inputs based on enabled state
+            $('inputQps').disabled = enabled;
+            $('inputDuration').disabled = enabled;
+            $('inputCycle').disabled = enabled;
+            $('inputTotal').disabled = enabled;
+
+            // Show/hide parameter hint
+            const hint = $('autoParamsHint');
+            if (hint) {
+                hint.style.display = enabled ? 'block' : 'none';
+            }
+
+            // Update "Last" text - show running state as visual feedback
+            let lastText = '—';
+            if (running) {
+                lastText = '🟢 Running...';
+            } else if (enabled && !running) {
+                lastText = '⏸️ Waiting...';  // Between cycles
+            } else if (status.last_run) {
+                try {
+                    lastText = new Date(status.last_run).toLocaleTimeString();
+                } catch (e) {
+                    lastText = status.last_run;
+                }
+            }
+            $('autoLast').textContent = lastText;
+
+            // 🆕 Update effective TPS and concurrency stats
+            const statsDiv = $('autoEffectiveStats');
+            if (status.concurrency_enabled && status.effective_tps_60s !== undefined) {
+                $('autoEffTps').textContent = status.effective_tps_60s || '0.00';
+                $('autoConcurrency').textContent = status.concurrency || '—';
+                statsDiv.style.display = enabled ? 'block' : 'none';
+            } else {
+                statsDiv.style.display = 'none';
+            }
+
+            // ✅ B1) Update cycle badge using total_cycles_label from status
+            const cc = Number(status.completed_cycles ?? 0);
+            const label = status.total_cycles_label || "∞";
+
+            // Generate text: "Cycle N/M" or "Cycle N/∞"
+            const text = `Cycle ${cc}/${label}`;
+            const title = `cycles: ${cc}/${label}`;
+
+            // Parse total for ratio calculation (if available)
+            const tcRaw = status.total_cycles;
+            const hasTotal = tcRaw !== null && tcRaw !== undefined;
+            const tc = hasTotal ? Number(tcRaw) : null;
+
+            // Color by progress ratio
+            let bgColor = '#f3f4f6';
+            let textColor = '#64748b';
+            let borderColor = '#cbd5e1';
+
+            if (hasTotal && tc > 0) {
+                const ratio = Math.min(cc / tc, 1.0);
+                if (ratio >= 0.75) {
+                    // 75-100%: Green
+                    bgColor = '#dcfce7';
+                    textColor = '#166534';
+                    borderColor = '#86efac';
+                } else if (ratio >= 0.5) {
+                    // 50-75%: Yellow
+                    bgColor = '#fef9c3';
+                    textColor = '#854d0e';
+                    borderColor = '#fde047';
+                } else {
+                    // 0-50%: Blue
+                    bgColor = '#dbeafe';
+                    textColor = '#1e40af';
+                    borderColor = '#93c5fd';
+                }
+            }
+
+            // Update both cycle elements
+            const updateCycleEl = (el) => {
+                if (el) {
+                    el.textContent = text;
+                    el.title = title;
+                    el.style.background = bgColor;
+                    el.style.color = textColor;
+                    el.style.borderColor = borderColor;
+                }
+            };
+
+            updateCycleEl($('autoCycle'));        // Legacy
+            updateCycleEl($('autoCycleBadge'));   // New
+
+            // 🔒 Update feature flag badges
+            const casesValue = status.effective_cases || 'live';
+            const shadowValue = status.effective_shadow || 0;
+            const pairedEnabled = status.paired_cases_enabled || false;
+            const shadowEnabled = status.shadow_enabled || false;
+
+            // Update cases badge
+            const casesBadge = $('casesBadge');
+            const casesValueEl = $('casesValue');
+            if (casesValueEl) {
+                casesValueEl.textContent = casesValue;
+            }
+            // Gray out if disabled
+            if (casesBadge && !pairedEnabled) {
+                casesBadge.style.background = '#f3f4f6';
+                casesBadge.style.color = '#6b7280';
+                casesBadge.style.border = '1px solid #d1d5db';
+            }
+
+            // Update shadow badge
+            const shadowBadge = $('shadowBadge');
+            const shadowValueEl = $('shadowValue');
+            if (shadowValueEl) {
+                shadowValueEl.textContent = shadowValue;
+            }
+            // Gray out if disabled
+            if (shadowBadge && !shadowEnabled) {
+                shadowBadge.style.background = '#f3f4f6';
+                shadowBadge.style.color = '#6b7280';
+                shadowBadge.style.border = '1px solid #d1d5db';
+            }
+        }
+
+        // Auto Traffic - Poll status
+        function pollAuto() {
+            fetch(`/auto/status?ts=${Date.now()}`)
+                .then(r => r.json())
+                .then(status => {
+                    console.log('[UI] auto.status', status);
+                    updateTrafficUI(status);
+                })
+                .catch(console.warn);
+        }
+
+        // Auto Traffic - Legacy button handlers (for button mode)
+        function autoStart() {
+            const qps = parseFloat($('inputQps').value) || 6;
+            const duration = parseInt($('inputDuration').value) || 45;
+            const cycle = parseInt($('inputCycle').value) || 20;
+
+            console.log(`[UI] auto.start qps=${qps}, dur=${duration}, cycle=${cycle}`);
+
+            fetch(`/auto/start?qps=${qps}&duration=${duration}&cycle=${cycle}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(result => {
+                    console.log('[UI] auto.start result:', result);
+                    pollAuto();
+                })
+                .catch(console.error);
+        }
+
+        function autoStop() {
+            fetch('/auto/stop', { method: 'POST' })
+                .then(() => pollAuto()).catch(console.error);
+        }
+
+        // Helper: emit event to timeline
+        function emitEvent(type, meta) {
+            // Backend already emits events via /auto/start and /auto/stop
+            // This is just for logging in the console
+            console.log('[UI] emitEvent', type, meta);
+        }
+
+        // Tuner functions
+        function updateTunerShadowLabel() {
+            const val = parseInt($('tunerShadowSlider').value);
+            $('tunerShadowLabel').textContent = `${val}%`;
+        }
+
+        async function setTunerStrategy() {
+            const name = $('tunerStrategy').value;
+            console.log(`[UI] setTunerStrategy: ${name}`);
+
+            try {
+                const res = await fetch(`/tuner/strategy?name=${name}`, { method: 'POST' });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Strategy switch failed');
+                }
+
+                const data = await res.json();
+                console.log('[UI] strategy switched:', data);
+
+                // Immediately render the response (contains full status)
+                renderTuner(data);
+
+                // Also refresh from /tuner/status to ensure consistency
+                setTimeout(() => pollTuner(), 500);
+            } catch (err) {
+                console.error('[UI] setTunerStrategy error:', err);
+                alert(`Failed to switch strategy: ${err.message}`);
+            }
+        }
+
+        function setTunerShadow() {
+            const ratio = parseFloat($('tunerShadowSlider').value) / 100.0;
+            fetch(`/tuner/shadow?ratio=${ratio}`, { method: 'POST' })
+                .then(() => pollTuner()).catch(console.error);
+        }
+
+        async function toggleTuner() {
+            const checked = $('tunerToggle').checked;
+            await fetch('/tuner/enabled', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: checked })
+            });
+            console.log('[UI] tuner.toggle', checked ? 'ON' : 'OFF');
+
+            // Update UI state
+            updateTunerDisabledState(!checked);
+        }
+
+        async function refreshTunerState() {
+            try {
+                const res = await fetch('/tuner/enabled');
+                const { enabled } = await res.json();
+                $('tunerToggle').checked = enabled;
+                updateTunerDisabledState(!enabled);
+            } catch (e) {
+                console.warn('[UI] failed to refresh tuner state', e);
+            }
+        }
+
+        function updateTunerDisabledState(disabled) {
+            // Grey out strategy controls when tuner is OFF
+            const opacity = disabled ? '0.5' : '1.0';
+            const pointerEvents = disabled ? 'none' : 'auto';
+
+            $('tunerStrategy').style.opacity = opacity;
+            $('tunerStrategy').style.pointerEvents = pointerEvents;
+
+            // Allow shadow slider to work even when tuner is disabled
+            // (shadow traffic can be useful for testing without full tuner)
+            $('tunerShadowSlider').style.opacity = '1.0';
+            $('tunerShadowSlider').style.pointerEvents = 'auto';
+        }
+
+        function renderTuner(tunerData) {
+            /**
+             * Render tuner UI from tuner data object
+             * Expected structure: {enabled, strategy, params: {topk, ef, parallel, reranker_on}, last_step}
+             */
+            if (!tunerData) {
+                console.warn('[UI] renderTuner: no data');
+                return;
+            }
+
+            try {
+                // Update strategy dropdown
+                if (tunerData.strategy) {
+                    $('tunerStrategy').value = tunerData.strategy;
+                }
+
+                // Update shadow slider (only if shadow_ratio is explicitly set)
+                if (tunerData.shadow_ratio !== undefined) {
+                    const shadowPct = Math.round((tunerData.shadow_ratio || 0) * 100);
+                    $('tunerShadowSlider').value = shadowPct;
+                    $('tunerShadowLabel').textContent = `${shadowPct}%`;
+                }
+
+                // Update badges - always show if params exist
+                const params = tunerData.params || {};
+                $('tunerReranker').textContent = params.reranker_on ? 'ON' : 'OFF';
+                $('tunerTopK').textContent = params.topk !== undefined ? params.topk : '—';
+                $('tunerEF').textContent = params.ef !== undefined ? params.ef : '—';
+                $('tunerParallel').textContent = params.parallel !== undefined ? params.parallel : '—';
+
+                // Update last step
+                if (tunerData.last_step && tunerData.last_step !== null) {
+                    try {
+                        const ts = new Date(tunerData.last_step);
+                        $('tunerLastStep').textContent = ts.toLocaleTimeString();
+                    } catch (e) {
+                        $('tunerLastStep').textContent = '—';
+                    }
+                } else {
+                    $('tunerLastStep').textContent = '—';
+                }
+
+                console.log('[UI] renderTuner updated', tunerData.strategy, params);
+            } catch (e) {
+                console.error('[UI] renderTuner error:', e);
+            }
+        }
+
+        function pollTuner() {
+            // Poll /tuner/status endpoint for latest state
+            fetch(`/tuner/status?ts=${Date.now()}`)
+                .then(r => r.json())
+                .then(data => {
+                    console.log('[UI] tuner.status', data);
+                    renderTuner(data);
+                })
+                .catch(err => {
+                    console.warn('[UI] pollTuner failed:', err);
+                });
+        }
+
+        function renderTunerHUD(hudData) {
+            /**
+             * Render compact HUD for last tuner step
+             * Format: [HH:MM:SS] action=ACTION rerank=ON/OFF topk:128→96 (-32) ef:128→96 (-32) ||:4→4 p95: 680→520 ms conf: 0.78
+             */
+            const hud = $('tunerHUD');
+
+            if (!hudData) {
+                hud.className = 'tuner-hud empty';
+                hud.textContent = 'Last step: —';
+                return;
+            }
+
+            // Format timestamp
+            const dt = new Date(hudData.step_ts);
+            const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            // Build compact string
+            const rerank = hudData.reranker_on ? 'ON' : 'OFF';
+            const topk = `topk:${hudData.topk}`;
+            const ef = `ef:${hudData.ef}`;
+            const parallel = `||:${hudData.parallel}`;
+            const p95 = hudData.p95_before > 0 ? `p95:${Math.round(hudData.p95_before)}ms` : 'p95:—';
+            const conf = hudData.confidence > 0 ? `conf:${hudData.confidence.toFixed(2)}` : '';
+
+            // Show deltas if available
+            let topkStr = topk;
+            let efStr = ef;
+            if (hudData.delta_topk !== 0) {
+                const sign = hudData.delta_topk > 0 ? '+' : '';
+                topkStr = `${topk} (${sign}${hudData.delta_topk})`;
+            }
+            if (hudData.delta_ef !== 0) {
+                const sign = hudData.delta_ef > 0 ? '+' : '';
+                efStr = `${ef} (${sign}${hudData.delta_ef})`;
+            }
+
+            const parts = [
+                `[${time}]`,
+                `action=${hudData.action}`,
+                `rerank=${rerank}`,
+                topkStr,
+                efStr,
+                parallel,
+                p95
+            ];
+
+            if (conf) {
+                parts.push(conf);
+            }
+
+            hud.className = 'tuner-hud';
+            hud.textContent = `Last step: ${parts.join(' ')}`;
+        }
+
+        function pollTunerHUD() {
+            // Poll /metrics/window60s for tuner_last_step
+            fetch(`/metrics/window60s?ts=${Date.now()}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok && data.tuner_last_step) {
+                        renderTunerHUD(data.tuner_last_step);
+                    } else {
+                        renderTunerHUD(null);
+                    }
+                })
+                .catch(err => {
+                    console.warn('[UI] pollTunerHUD failed:', err);
+                    renderTunerHUD(null);
+                });
+        }
+
+        // Axis Lock Toggle
+        function toggleAxisLock() {
+            axisLocked = !axisLocked;
+            const btn = $('axisLock');
+            btn.textContent = axisLocked ? '🔒 Locked' : '🔓 Auto';
+            btn.className = 'chart-toggle' + (axisLocked ? ' active' : '');
+            render();  // Re-render charts
+        }
+
+        // Render KPIs
+        function renderKPIs(data) {
+            const fmt = (val, decimals) => val == null ? '—' : val.toFixed(decimals);
+
+            // Support both kpi.* (new) and cards.* (backward compat)
+            let kpi = data.kpi || data.cards;
+            let sla = data.sla || {};
+            const metaKpi = data.meta?.kpi || {};
+
+            // 🔥 Core mode override: use Core metrics for P95/TPS/Recall
+            if (dataSourceMode === 'core' && coreMetricsCache && coreMetricsCache.ok) {
+                console.log('[UI] Using Core metrics for KPIs');
+                kpi = {
+                    ...kpi,
+                    tps: coreMetricsCache.tps,
+                };
+
+                // Override SLA current_p95 for rendering
+                sla = {
+                    ...sla,
+                    current_p95: coreMetricsCache.p95_ms || null
+                };
+            }
+
+            // WII (Workload Intensity Index)
+            const wiiData = metaKpi.wii || {};
+            const wiiValue = wiiData.value ?? kpi.wii;
+            if (wiiValue === null || wiiValue === undefined) {
+                const reason = wiiData.reason || 'no_data';
+                const samples = wiiData.samples || 0;
+                let reasonText = reason;
+                if (reason === 'auto_off') reasonText = 'traffic off';
+                else if (reason === 'no_data') reasonText = 'no samples';
+                $('kpiWII').innerHTML = `<span style="font-size: 0.75em; color: #999;">Collecting… (samples=${samples}, ${reasonText})</span>`;
+                $('kpiWII').className = 'kpi-value gray';
+            } else {
+                $('kpiWII').textContent = Math.round(wiiValue);
+                // Color by intensity: low (green), medium (orange), high (red)
+                if (wiiValue < 33) {
+                    $('kpiWII').className = 'kpi-value green';
+                } else if (wiiValue < 66) {
+                    $('kpiWII').className = 'kpi-value orange';
+                } else {
+                    $('kpiWII').className = 'kpi-value red';
+                }
+            }
+
+            // TAI (Tactical Adaptation Index)
+            const taiData = metaKpi.tai || {};
+            const taiValue = taiData.value ?? kpi.tai;
+            if (taiValue === null || taiValue === undefined) {
+                const reason = taiData.reason || 'no_data';
+                const samples = taiData.samples || 0;
+                let reasonText = reason;
+                if (reason === 'tuner_off') reasonText = 'tuner off';
+                else if (reason === 'no_tuner_activity') reasonText = 'no activity';
+                else if (reason === 'no_data') reasonText = 'no samples';
+                $('kpiTAI').innerHTML = `<span style="font-size: 0.75em; color: #999;">Collecting… (samples=${samples}, ${reasonText})</span>`;
+                $('kpiTAI').className = 'kpi-value gray';
+            } else {
+                $('kpiTAI').textContent = Math.round(taiValue);
+                // Color by intensity: low (green), medium (orange), high (red)
+                if (taiValue < 33) {
+                    $('kpiTAI').className = 'kpi-value green';
+                } else if (taiValue < 66) {
+                    $('kpiTAI').className = 'kpi-value orange';
+                } else {
+                    $('kpiTAI').className = 'kpi-value red';
+                }
+            }
+
+            const pval = kpi.p_value;
+            $('kpiPValue').textContent = fmt(pval, 3);
+            $('kpiPValue').className = 'kpi-value ' + (pval < 0.05 ? 'green' : 'gray');
+
+            const human = kpi.human_better || 0;
+            $('kpiHuman').textContent = fmt(human, 2);
+            $('kpiHuman').className = 'kpi-value ' + (human > 0.6 ? 'green' : human < 0.4 ? 'red' : 'orange');
+
+            let tps = kpi.tps || 0;
+            $('kpiTPS').textContent = fmt(tps, 1);
+            $('kpiTPS').className = 'kpi-value gray';
+
+            // Add source indicator (if Core mode)
+            if (dataSourceMode === 'core' && coreMetricsCache?.ok) {
+                $('kpiTPS').title = 'Source: Core (memory)';
+            } else {
+                $('kpiTPS').title = '';
+            }
+
+            const cache = kpi.cache_hit || 0;
+            $('kpiCache').textContent = fmt(cache * 100, 0) + (cache > 0 ? '%' : '');
+            $('kpiCache').className = 'kpi-value ' + (cache > 0.2 ? 'green' : 'gray');
+        }
+
+        // Chart: P95 Latency with Target Line
+        function renderP95(series, targetP95, slaData) {
+            const canvas = $('chartP95');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;  // Retina
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            let p95On = series.p95_on || [];
+            let p95Off = series.p95_off || [];
+
+            // ✅ Core mode: render time series from bucketed data
+            if (dataSourceMode === 'core') {
+                // Build series from buckets within window
+                const now = Date.now();
+                const windowStart = now - CORE_WINDOW_MS;
+
+                // Get all entries within window, sorted by timestamp
+                const p95Series = Array.from(coreBuf.p95.entries())
+                    .filter(([ts, v]) => ts >= windowStart)
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([ts, v]) => [ts, v]);
+
+                if (p95Series.length < 3) {
+                    // Show collecting message
+                    ctx.fillStyle = '#999';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Collecting… (${p95Series.length}/3 samples)`, dw / 2, dh / 2);
+
+                    // Update actual P95 display
+                    $('actualP95').textContent = `Collecting… (${p95Series.length}/3)`;
+                    $('actualP95').style.color = '#fd7e14';
+                    $('actualP95').style.fontSize = '11px';
+                    return;
+                }
+
+                console.log(`[UI] Rendering Core P95 series: ${p95Series.length} buckets`);
+
+                // Calculate Y range
+                const allVals = p95Series.map(p => p[1]);
+                const yMax = Math.max(...allVals, targetP95) * 1.1;
+                const yMin = Math.max(0, Math.min(...allVals) * 0.9);
+
+                // Draw target line (dashed red)
+                const targetY = dh - 20 - ((targetP95 - yMin) / (yMax - yMin)) * (dh - 40);
+                ctx.strokeStyle = '#dc3545';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 3]);
+                ctx.beginPath();
+                ctx.moveTo(30, targetY);
+                ctx.lineTo(dw - 10, targetY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw Core time series (blue line)
+                ctx.strokeStyle = '#007bff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                p95Series.forEach((pt, i) => {
+                    const x = (i / Math.max(p95Series.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                // Labels
+                ctx.fillStyle = '#666';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'right';
+                ctx.fillText(`${Math.round(yMax)}`, 25, 15);
+                ctx.fillText('0', 25, dh - 15);
+
+                // Update actual P95 display (use last value)
+                const latestP95 = p95Series[p95Series.length - 1][1];
+                $('actualP95').textContent = Math.round(latestP95) + ' ms (Core)';
+                const ratio = latestP95 / targetP95;
+                let color = ratio > 1.1 ? '#dc3545' : ratio > 0.9 ? '#fd7e14' : '#28a745';
+                $('actualP95').style.color = color;
+                $('actualP95').style.fontSize = '';
+
+                return;  // Skip CSV rendering
+            }
+
+            if (p95On.length === 0 && p95Off.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Collecting data...', dw / 2, dh / 2);
+                return;
+            }
+
+            // Calculate Y range
+            const allVals = [...p95On.map(p => p[1]), ...p95Off.map(p => p[1])];
+            maxP95Seen = Math.max(maxP95Seen, ...allVals);
+            const yMax = axisLocked ? maxP95Seen * 1.2 : Math.max(...allVals, targetP95) * 1.1;
+            // Added padding to Y-axis to prevent the blue line from touching chart bottom
+            const yMin = Math.max(0, Math.min(...allVals) * 0.9);
+
+            const drawLine = (data, color, width = 2) => {
+                if (!data || data.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    const x = (i / Math.max(data.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            };
+
+            // Target line (dashed red)
+            const targetY = dh - 20 - ((targetP95 - yMin) / (yMax - yMin)) * (dh - 40);
+            ctx.strokeStyle = '#dc3545';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(30, targetY);
+            ctx.lineTo(dw - 10, targetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Lines
+            drawLine(p95On, '#007bff', 2);
+            drawLine(p95Off, '#6c757d', 2);
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(`${Math.round(yMax)}`, 25, 15);
+            ctx.fillText('0', 25, dh - 15);
+
+            // Actual P95 indicator with debug info
+            if (slaData && slaData.current_p95 > 0) {
+                const actual = slaData.current_p95;
+                $('actualP95').textContent = Math.round(actual) + ' ms';
+                const ratio = actual / targetP95;
+                let color = ratio > 1.1 ? '#dc3545' : ratio > 0.9 ? '#fd7e14' : '#28a745';
+                $('actualP95').style.color = color;
+            } else {
+                // Show collecting state with reason
+                const debug = slaData?.debug || {};
+                const samples = debug.p95_samples || 0;
+                const reason = debug.reason || 'unknown';
+
+                // Friendly reason text
+                let reasonText = reason;
+                if (reason === 'no_recent_samples') reasonText = 'no traffic';
+                else if (reason === 'insufficient_samples') reasonText = 'low samples';
+                else if (reason === 'csv_missing') reasonText = 'no data';
+
+                $('actualP95').textContent = `Collecting… (${samples}, ${reasonText})`;
+                $('actualP95').style.color = '#fd7e14';
+                $('actualP95').style.fontSize = '11px';
+            }
+        }
+
+        // Chart: Recall@10
+        function renderRecall(series) {
+            const canvas = $('chartRecall');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            let recallOn = series.recall_on || [];
+            let recallOff = series.recall_off || [];
+
+            // ✅ Core mode: render time series from bucketed data
+            if (dataSourceMode === 'core') {
+                // Build series from buckets within window
+                const now = Date.now();
+                const windowStart = now - CORE_WINDOW_MS;
+
+                // Get all entries within window, sorted by timestamp
+                const recallSeries = Array.from(coreBuf.recall.entries())
+                    .filter(([ts, v]) => ts >= windowStart)
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([ts, v]) => [ts, v]);
+
+                if (recallSeries.length < 3) {
+                    // Show collecting message
+                    ctx.fillStyle = '#999';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Collecting… (${recallSeries.length}/3 samples)`, dw / 2, dh / 2);
+                    return;
+                }
+
+                console.log(`[UI] Rendering Core Recall series: ${recallSeries.length} buckets`);
+
+                const yMax = 1.0;
+                const yMin = 0.0;
+
+                // Draw Core time series (blue line)
+                ctx.strokeStyle = '#007bff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                recallSeries.forEach((pt, i) => {
+                    const x = (i / Math.max(recallSeries.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                // Labels
+                ctx.fillStyle = '#666';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'right';
+                ctx.fillText('1.0', 25, 15);
+                ctx.fillText('0', 25, dh - 15);
+
+                return;  // Skip CSV rendering
+            }
+
+            if (recallOn.length < 5 && recallOff.length < 5) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                const n = recallOn.length + recallOff.length;
+                ctx.fillText(`Collecting... (${n} points)`, dw / 2, dh / 2);
+                return;
+            }
+
+            const allVals = [...recallOn.map(p => p[1]), ...recallOff.map(p => p[1])];
+            const yMax = Math.max(...allVals) * 1.1 || 1;
+            const yMin = Math.min(...allVals) * 0.9 || 0;
+
+            const drawLine = (data, color) => {
+                if (!data || data.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    const x = (i / Math.max(data.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            };
+
+            drawLine(recallOn, '#007bff');
+            drawLine(recallOff, '#6c757d');
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(yMax.toFixed(2), 25, 15);
+            ctx.fillText(yMin.toFixed(2), 25, dh - 15);
+        }
+
+        // Chart: Throughput (Bar)
+        function renderTPS(series) {
+            const canvas = $('chartTPS');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            let tps = series.tps || [];
+
+            // ✅ Core mode: use bucketed data
+            if (dataSourceMode === 'core') {
+                // Build series from buckets within window
+                const now = Date.now();
+                const windowStart = now - CORE_WINDOW_MS;
+
+                // Get all entries within window, sorted by timestamp
+                tps = Array.from(coreBuf.tps.entries())
+                    .filter(([ts, v]) => ts >= windowStart)
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([ts, v]) => [ts, v]);
+
+                if (tps.length < 3) {
+                    // Show collecting message
+                    ctx.fillStyle = '#999';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Collecting… (${tps.length}/3 samples)`, dw / 2, dh / 2);
+                    return;
+                }
+
+                console.log(`[UI] Rendering Core TPS series: ${tps.length} buckets`);
+            }
+
+            if (tps.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data', dw / 2, dh / 2);
+                return;
+            }
+
+            const yMax = Math.max(...tps.map(p => p[1])) * 1.2 || 10;
+            const barWidth = Math.max(2, (dw - 40) / tps.length);
+
+            ctx.fillStyle = '#007bff';
+            tps.forEach((pt, i) => {
+                const x = 30 + i * barWidth;
+                const barHeight = (pt[1] / yMax) * (dh - 40);
+                const y = dh - 20 - barHeight;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(Math.round(yMax), 25, 15);
+        }
+
+        // Chart: Rerank Rate & Cache Hit (Dual Axis)
+        function renderRerankCache(series) {
+            const canvas = $('chartRerankCache');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            const rerank = series.rerank_rate || [];
+            const cache = series.cache_hit || [];
+
+            if (rerank.length === 0 && cache.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data', dw / 2, dh / 2);
+                return;
+            }
+
+            const drawLine = (data, color) => {
+                if (!data || data.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    const x = (i / Math.max(data.length - 1, 1)) * (dw - 40) + 30;
+                    const y = dh - 20 - pt[1] * (dh - 40);  // 0-1 range
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            };
+
+            drawLine(rerank, '#fd7e14');
+            drawLine(cache, '#28a745');
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText('1.0', 25, 15);
+            ctx.fillText('0', 25, dh - 15);
+
+            // Legend
+            ctx.fillStyle = '#fd7e14';
+            ctx.fillRect(dw - 120, 10, 10, 10);
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('Rerank', dw - 105, 18);
+
+            ctx.fillStyle = '#28a745';
+            ctx.fillRect(dw - 60, 10, 10, 10);
+            ctx.fillText('Cache', dw - 45, 18);
+        }
+
+        // NEW: Chart: Stage Timing Breakdown (Stacked Bar)
+        function renderStageTiming(stageTiming) {
+            // Update window badge - same as dashboard window
+            const windowSec = stageTiming?.window_sec || 60;
+            $('stageWindowBadge').textContent = `window: ${windowSec}s`;
+
+            // Check if we have enough samples (min 20 to avoid misleading zeros)
+            const minSamples = 20;
+            if (!stageTiming || !stageTiming.samples || stageTiming.samples < minSamples) {
+                // Show "Collecting..." state with sample count
+                const sampleCount = stageTiming?.samples || 0;
+                $('annTime').textContent = '—';
+                $('rerankTime').textContent = '—';
+                $('networkTime').textContent = '—';
+                $('totalTime').textContent = '—';
+
+                const canvas = $('chartStageTiming');
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width = canvas.offsetWidth * 2;
+                const h = canvas.height = canvas.offsetHeight * 2;
+                ctx.scale(2, 2);
+                const dw = w / 2, dh = h / 2;
+                ctx.clearRect(0, 0, dw, dh);
+
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Collecting… (samples=${sampleCount}, need ${minSamples})`, dw / 2, dh / 2);
+                return;
+            }
+
+            // Use new data structure (with fallback to old for backward compatibility)
+            const avgMs = stageTiming.avg_ms || {
+                ann: stageTiming.ann_avg_ms || 0,
+                rerank: stageTiming.rerank_avg_ms || 0,
+                network: stageTiming.network_avg_ms || 0,
+                total: stageTiming.total_avg_ms || 0
+            };
+
+            const p95Ms = stageTiming.p95_ms || {
+                ann: stageTiming.ann_p95_ms || 0,
+                rerank: stageTiming.rerank_p95_ms || 0,
+                network: stageTiming.network_p95_ms || 0,
+                total: stageTiming.total_p95_ms || 0
+            };
+
+            // Update text labels
+            $('annTime').textContent = `${avgMs.ann.toFixed(1)}ms (p95: ${p95Ms.ann.toFixed(1)}ms)`;
+            $('rerankTime').textContent = `${avgMs.rerank.toFixed(1)}ms (p95: ${p95Ms.rerank.toFixed(1)}ms)`;
+            $('networkTime').textContent = `${avgMs.network.toFixed(1)}ms (p95: ${p95Ms.network.toFixed(1)}ms)`;
+
+            // Show actual total from data (not sum) to match end-to-end latency
+            const totalDisplay = avgMs.total > 0 ? avgMs.total : (avgMs.ann + avgMs.rerank + avgMs.network);
+            $('totalTime').textContent = `${totalDisplay.toFixed(1)}ms (p95: ${p95Ms.total.toFixed(1)}ms)`;
+
+            // Draw stacked horizontal bar chart
+            const canvas = $('chartStageTiming');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            const annMs = avgMs.ann;
+            const rerankMs = avgMs.rerank;
+            const networkMs = avgMs.network;
+            // Use actual total for display (matches end-to-end latency better)
+            const totalMs = avgMs.total > 0 ? avgMs.total : (annMs + rerankMs + networkMs);
+
+            if (totalMs === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No timing data', dw / 2, dh / 2);
+                return;
+            }
+
+            // Calculate widths (proportional to time)
+            const barHeight = 40;
+            const barY = (dh - barHeight) / 2;
+            const barX = 10;
+            const barWidth = dw - 20;
+
+            const annWidth = (annMs / totalMs) * barWidth;
+            const rerankWidth = (rerankMs / totalMs) * barWidth;
+            const networkWidth = (networkMs / totalMs) * barWidth;
+
+            // Draw stacked bars
+            // ANN (blue)
+            ctx.fillStyle = '#3b82f6';
+            ctx.fillRect(barX, barY, annWidth, barHeight);
+
+            // Rerank (orange)
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(barX + annWidth, barY, rerankWidth, barHeight);
+
+            // Network (green)
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(barX + annWidth + rerankWidth, barY, networkWidth, barHeight);
+
+            // Draw labels on bars (if wide enough)
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const centerY = barY + barHeight / 2;
+
+            if (annWidth > 40) {
+                ctx.fillText(`${annMs.toFixed(0)}ms`, barX + annWidth / 2, centerY);
+            }
+            if (rerankWidth > 40) {
+                ctx.fillText(`${rerankMs.toFixed(0)}ms`, barX + annWidth + rerankWidth / 2, centerY);
+            }
+            if (networkWidth > 40) {
+                ctx.fillText(`${networkMs.toFixed(0)}ms`, barX + annWidth + rerankWidth + networkWidth / 2, centerY);
+            }
+
+            // Draw percentage labels below
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+
+            const annPct = ((annMs / totalMs) * 100).toFixed(0);
+            const rerankPct = ((rerankMs / totalMs) * 100).toFixed(0);
+            const networkPct = ((networkMs / totalMs) * 100).toFixed(0);
+
+            if (annWidth > 30) {
+                ctx.fillText(`${annPct}%`, barX + annWidth / 2, barY + barHeight + 15);
+            }
+            if (rerankWidth > 30) {
+                ctx.fillText(`${rerankPct}%`, barX + annWidth + rerankWidth / 2, barY + barHeight + 15);
+            }
+            if (networkWidth > 30) {
+                ctx.fillText(`${networkPct}%`, barX + annWidth + rerankWidth + networkWidth / 2, barY + barHeight + 15);
+            }
+        }
+
+        // Events Lane with deduplication
+        function renderEvents(events, globalProfile) {
+            const container = $('eventsTimeline');
+            if (!events || events.length === 0) {
+                container.innerHTML = '<div class="event-dot"><div class="event-circle" style="background:#ddd;"></div><div class="event-label">No events</div></div>';
+                return;
+            }
+
+            // Deduplicate consecutive events by type+profile+minute
+            const seen = new Set();
+            const deduped = [];
+
+            for (const e of events.slice().reverse()) {  // Process newest first
+                const pf = e.meta?.profile ?? globalProfile ?? 'balanced';
+                const roundedMinute = Math.floor(e.ts / 60000);
+                const key = `${e.type}|${pf}|${roundedMinute}`;
+
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    deduped.push(e);
+                }
+            }
+
+            // Render last 10 events (already newest first from reverse)
+            container.innerHTML = deduped.slice(0, 10).map(e => {
+                // Use event's own profile, fallback to global
+                const pf = e.meta?.profile ?? globalProfile ?? 'balanced';
+
+                // Label based on event type
+                let label = '';
+                let tunerColor = null;
+                if (e.type === 'profile') {
+                    label = `→ ${e.meta?.to || pf}`;
+                } else if (e.type === 'sla') {
+                    label = `SLA ${e.meta?.to || e.meta?.target_p95}ms`;
+                } else if (e.type === 'auto') {
+                    label = `Auto ${e.meta?.action || 'event'}`;
+                } else if (e.type === 'tuner.toggle') {
+                    label = `🧠 ${e.meta?.enabled ? 'ON' : 'OFF'}`;
+                    tunerColor = '#14b8a6';  // Teal
+                } else if (e.type === 'tuner.switch') {
+                    label = `Strategy → ${e.meta?.to}`;
+                    tunerColor = '#14b8a6';  // Teal
+                } else if (e.type === 'tuner.step') {
+                    label = `TopK ${e.meta?.topk || '—'}`;
+                    tunerColor = '#14b8a6';  // Teal
+                } else if (e.type === 'tuner.shadow') {
+                    const pct = Math.round((e.meta?.to || 0) * 100);
+                    label = `Shadow ${pct}%`;
+                    tunerColor = '#14b8a6';  // Teal
+                } else {
+                    label = 'Event';
+                }
+
+                // Color map (matching profile tab colors, or tuner color)
+                const color = tunerColor || (pf === 'fast' ? '#2563eb' : (pf === 'quality' ? '#7c3aed' : '#6b7280'));
+
+                // Local time display (HH:MM:SS)
+                const dt = new Date(e.ts);
+                const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                return `<div class="event-dot">
+                <div class="event-circle" style="background:${color};"></div>
+                <div class="event-label">${label}<br>${time}</div>
+            </div>`;
+            }).join('');
+        }
+
+        // Update Profile Parameters Status Bar with wrapping badges
+        function updateParamsStatus(params) {
+            const el = $('paramsStatus');
+            if (!params) {
+                el.innerHTML = '—';
+                return;
+            }
+
+            const p = params || {};
+
+            // Define badge items
+            const items = [
+                {
+                    label: 'Reranker',
+                    value: p.reranker_on ? 'ON' : 'OFF',
+                    color: p.reranker_on ? '#f59e0b' : '#9ca3af'
+                },
+                {
+                    label: 'K',
+                    value: String(p.candidate_k ?? 128),
+                    color: '#334155'
+                },
+                {
+                    label: 'Cache',
+                    value: (p.cache_policy || 'standard')
+                        .replace('prefer_hit', 'PreferHit')
+                        .replace('bypass', 'Bypass')
+                        .replace('standard', 'Standard'),
+                    color: '#10b981'
+                }
+            ];
+
+            // Clear and create badge elements
+            el.innerHTML = '';
+            items.forEach(it => {
+                const badge = document.createElement('span');
+                badge.textContent = `${it.label}: ${it.value}`;
+                badge.style.cssText = `
+                    padding: 2px 6px;
+                    border-radius: 8px;
+                    background: #f3f4f6;
+                    color: ${it.color};
+                    border: 1px solid #e5e7eb;
+                    font-size: 10px;
+                    font-weight: 500;
+                    white-space: nowrap;
+                `;
+                el.appendChild(badge);
+            });
+        }
+
+        // Poll warmup status
+        function pollWarmupStatus() {
+            fetch('/admin/warmup/status')
+                .then(r => r.json())
+                .then(status => {
+                    const warmupBanner = $('warmupBanner');
+                    const now = Date.now() / 1000;
+
+                    // Show warmup banner if recently warmed up (within 60s)
+                    if (status.did_warmup && (now - status.last_warmup_ts) < 60) {
+                        warmupBanner.style.display = 'block';
+                    } else {
+                        warmupBanner.style.display = 'none';
+                    }
+                })
+                .catch(() => { });  // Silent fail
+        }
+
+        // ✅ NEW: Fetch series60s data (5s buckets / 60s window)
+        async function fetchSeries() {
+            try {
+                const res = await fetch(`/metrics/series60s?ts=${Date.now()}`);
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
+
+                const data = await res.json();
+
+                // Validate structure
+                if (!data.ok || !data.p95 || !data.tps || !data.recall) {
+                    console.warn('[fetchSeries] Invalid structure:', data);
+                    throw new Error('Invalid series60s structure');
+                }
+
+                // Validate arrays
+                if (!Array.isArray(data.p95) || !Array.isArray(data.tps) || !Array.isArray(data.recall)) {
+                    console.warn('[fetchSeries] Non-array series:', data);
+                    throw new Error('Series data not arrays');
+                }
+
+                // Cache successful result
+                series60sCache = data;
+                series60sFallback = false;
+
+                // Count non-empty buckets
+                const nonEmptyP95 = data.p95.filter(b => b?.[1] != null).length;
+                const nonEmptyTPS = data.tps.filter(b => b?.[1] != null).length;
+                const nonEmptyRecall = data.recall.filter(b => b?.[1] != null).length;
+
+                // Update badge to show Core source
+                updateDataSourceBadge('core', data.window_sec || 60, data.samples || 0);
+
+                // ✅ One-time debug log with all KPI info (prevent spam)
+                if (!series60sLoggedOnce) {
+                    const tpsAvg = nonEmptyTPS > 0 ? (data.tps.filter(b => b?.[1] != null).reduce((a, b) => a + b[1], 0) / nonEmptyTPS).toFixed(2) : 'N/A';
+                    console.debug('[series60s]', {
+                        buckets: data.buckets,
+                        samples: data.samples,
+                        backend: data.meta?.debug?.backend || data.meta?.debug?.source_backend,
+                        kpi: { tps_avg: tpsAvg }
+                    });
+                    series60sLoggedOnce = true;
+                }
+                return data;
+
+            } catch (err) {
+                console.warn('[fetchSeries] Failed, will fallback to CSV:', err.message);
+                series60sFallback = true;
+                return null;
+            }
+        }
+
+        // ✅ Helper: Update data source badge (with backend type support)
+        function updateDataSourceBadge(source, windowSec, samples) {
+            const badge = $('dataSourceBadge');
+            const text = $('dataSourceText');
+
+            if (source === 'core') {
+                // Determine backend type from health cache
+                let coreLabel = 'Core';
+                if (healthCache && healthCache.core_metrics_backend) {
+                    const backend = healthCache.core_metrics_backend;
+                    if (backend === 'redis') {
+                        coreLabel = 'Core(redis)';
+                    } else if (backend === 'memory') {
+                        coreLabel = 'Core(memory)';
+                    }
+                }
+
+                // Determine badge state and text with source annotation
+                const sourceAnnotation = '<span style="font-size: 10px; color: #999; margin-left: 8px;">source=/metrics/series60s</span>';
+                if (samples < 3) {
+                    badge.className = 'data-source-badge';  // Yellow/gray for collecting
+                    text.innerHTML = `${coreLabel} • window: ${windowSec}s • Collecting… (${samples}/3) ${sourceAnnotation}`;
+                } else {
+                    badge.className = 'data-source-badge ready';  // Green for ready
+                    text.innerHTML = `${coreLabel} • window: ${windowSec}s ${sourceAnnotation}`;
+                }
+            } else if (source === 'csv') {
+                badge.className = 'data-source-badge';
+                text.textContent = `CSV • window: ${windowSec}s`;
+            }
+        }
+
+        // ✅ NEW: Update TAI (Tuner Activity Index) badge with trend arrow
+        function updateTAI(decisions) {
+            const now_ms = Date.now();
+            const window_ms = 60000; // 60 seconds
+            const recent = decisions.filter(d => d.ts && (now_ms - d.ts) <= window_ms);
+            const tai = parseFloat((recent.length / 60).toFixed(2)); // decisions per second
+
+            // Compute trend arrow
+            let trendArrow = '';
+            if (lastTAI !== null && tai !== lastTAI) {
+                if (tai > lastTAI) {
+                    trendArrow = ' ↑';
+                } else if (tai < lastTAI) {
+                    trendArrow = ' ↓';
+                } else {
+                    trendArrow = ' →';
+                }
+            }
+
+            $('taiValue').textContent = tai.toFixed(2) + trendArrow;
+            lastTAI = tai;
+        }
+
+        // ✅ NEW: Render cumulative delta indicators
+        function renderCumulativeDelta(cumulative) {
+            const container = $('tunerCumulative');
+            if (!cumulative) {
+                container.style.display = 'none';
+                return;
+            }
+
+            const deltaTopK = cumulative.delta_topk || 0;
+            const deltaEF = cumulative.delta_ef || 0;
+            const deltaP95 = cumulative.delta_p95_ms || 0;
+
+            // Only show if there's any non-zero delta
+            if (deltaTopK === 0 && deltaEF === 0 && deltaP95 === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+
+            // Color coding: red=increase, green=decrease, gray=stable
+            const colorTopK = deltaTopK > 0 ? '#dc3545' : deltaTopK < 0 ? '#28a745' : '#6c757d';
+            const colorEF = deltaEF > 0 ? '#dc3545' : deltaEF < 0 ? '#28a745' : '#6c757d';
+            const colorP95 = deltaP95 > 0 ? '#dc3545' : deltaP95 < 0 ? '#28a745' : '#6c757d';
+
+            $('cumTopK').textContent = `Δtopk: ${deltaTopK >= 0 ? '+' : ''}${deltaTopK}`;
+            $('cumTopK').style.background = colorTopK;
+            $('cumTopK').style.color = '#fff';
+
+            $('cumEF').textContent = `Δef: ${deltaEF >= 0 ? '+' : ''}${deltaEF}`;
+            $('cumEF').style.background = colorEF;
+            $('cumEF').style.color = '#fff';
+
+            $('cumP95').textContent = `Δp95: ${deltaP95 >= 0 ? '+' : ''}${deltaP95.toFixed(1)}ms`;
+            $('cumP95').style.background = colorP95;
+            $('cumP95').style.color = '#fff';
+        }
+
+        // ✅ NEW: Render recent tuner decisions (with collapse for repeated actions)
+        function renderRecentDecisions(decisions) {
+            const container = $('tunerDecisions');
+            if (!decisions || decisions.length === 0) {
+                container.innerHTML = '<div style="color: #999;">No decisions yet</div>';
+                return;
+            }
+
+            // Collapse consecutive same actions
+            const collapsed = [];
+            let lastAction = null;
+            let count = 0;
+
+            decisions.forEach((d, idx) => {
+                if (d.action === lastAction && d.action === 'HOLD') {
+                    // Increment count for consecutive HOLD actions
+                    count++;
+                    collapsed[collapsed.length - 1].count = count;
+                } else {
+                    // New action or non-HOLD action
+                    collapsed.push({ ...d, count: 1 });
+                    lastAction = d.action;
+                    count = 1;
+                }
+            });
+
+            const html = collapsed.map(d => {
+                const time = d.ts ? new Date(d.ts).toLocaleTimeString() : '—';
+                const action = d.action || '—';
+                const actionColor = action === 'INCREASE' ? '#dc3545' : action === 'REDUCE' ? '#28a745' : '#6c757d';
+                const deltaTopK = d.delta_topk || 0;
+                const deltaEF = d.delta_ef || 0;
+                const deltaPar = d.delta_parallel || 0;
+                const p95 = d.p95_ms !== undefined ? d.p95_ms.toFixed(1) : '—';
+                const target = d.target_ms !== undefined ? d.target_ms : '—';
+                const reason = d.reason || '';
+
+                // Show count badge for collapsed HOLD actions
+                const countBadge = d.count > 1 ? ` <span style="background: #e9ecef; padding: 1px 4px; border-radius: 3px; font-size: 9px;">×${d.count}</span>` : '';
+
+                return `<div style="margin-bottom: 4px; padding: 4px; background: #f8f9fa; border-radius: 3px; border-left: 3px solid ${actionColor};">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #666; font-size: 9px;">${time}</span>
+                        <span style="font-weight: 600; color: ${actionColor}; font-size: 11px;">${action}${countBadge}</span>
+                    </div>
+                    ${deltaTopK !== 0 || deltaEF !== 0 || deltaPar !== 0 ? `
+                    <div style="margin-top: 2px; color: #666; font-size: 9px; font-family: monospace;">
+                        Δ: topk${deltaTopK >= 0 ? '+' : ''}${deltaTopK}, ef${deltaEF >= 0 ? '+' : ''}${deltaEF}, ||${deltaPar >= 0 ? '+' : ''}${deltaPar}
+                    </div>` : ''}
+                    <div style="margin-top: 2px; color: #666; font-size: 9px;">
+                        p95: ${p95}ms / target: ${target}ms
+                    </div>
+                    ${reason ? `<div style="margin-top: 2px; color: #999; font-size: 8px; font-style: italic;">${reason}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            container.innerHTML = html;
+
+            // Auto-scroll to bottom if new decisions
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ✅ NEW: Render from series60s data
+        async function renderFromSeries60s(seriesData, profile) {
+            try {
+                // Update window badge
+                const windowSec = seriesData.window_sec || 60;
+                $('windowValue').textContent = `${windowSec}s`;
+
+                // ✅ NEW: Update TAI, render recent decisions and cumulative delta
+                if (seriesData.meta) {
+                    if (seriesData.meta.recent_decisions) {
+                        const decisions = seriesData.meta.recent_decisions;
+                        updateTAI(decisions);
+                        renderRecentDecisions(decisions);
+                    }
+
+                    if (seriesData.meta.cumulative_delta) {
+                        renderCumulativeDelta(seriesData.meta.cumulative_delta);
+                    }
+                }
+
+                // Fetch dashboard.json for supplementary data (KPIs, events, etc.)
+                const dashboardRes = await fetch(`/dashboard.json?profile=${profile}&ts=${Date.now()}`);
+                const dashboardData = await dashboardRes.json();
+
+                // ✅ Compute KPIs from Core series60s (TPS, P95, Recall)
+                const tpsVals = seriesData.tps.map(b => b?.[1]).filter(v => v != null);
+                const p95Vals = seriesData.p95.map(b => b?.[1]).filter(v => v != null);
+                const recallVals = seriesData.recall.map(b => b?.[1]).filter(v => v != null);
+
+                let avgTPS = null, avgP95 = null, avgRecall = null;
+                if (tpsVals.length >= 3) {
+                    avgTPS = tpsVals.reduce((a, b) => a + b, 0) / tpsVals.length;
+                }
+                if (p95Vals.length >= 3) {
+                    avgP95 = p95Vals.reduce((a, b) => a + b, 0) / p95Vals.length;
+                }
+                if (recallVals.length >= 3) {
+                    avgRecall = recallVals.reduce((a, b) => a + b, 0) / recallVals.length;
+                }
+
+                // Debug log (omitted to reduce spam, see fetchSeries for one-time log)
+
+                // Render KPIs from dashboard first (for WII, TAI, etc.)
+                renderKPIs(dashboardData);
+
+                // Override TPS KPI with series60s data (with /auto/status fallback)
+                if (tpsVals.length < 3) {
+                    // Fallback: Try to get effective_tps_60s from /auto/status
+                    try {
+                        const autoStatusRes = await fetch(`/auto/status?ts=${Date.now()}`);
+                        if (autoStatusRes.ok) {
+                            const autoStatus = await autoStatusRes.json();
+                            if (autoStatus.effective_tps_60s !== undefined) {
+                                $('kpiTPS').textContent = autoStatus.effective_tps_60s.toFixed(1) + ' (fallback)';
+                                $('kpiTPS').className = 'kpi-value gray';
+                                $('kpiTPS').title = 'Source: /auto/status (fallback, series60s has insufficient data)';
+                            } else {
+                                $('kpiTPS').innerHTML = `<span style="font-size: 0.75em; color: #999;">Collecting… (${tpsVals.length}/3)</span>`;
+                                $('kpiTPS').className = 'kpi-value gray';
+                                $('kpiTPS').title = 'Source: /metrics/series60s';
+                            }
+                        } else {
+                            $('kpiTPS').innerHTML = `<span style="font-size: 0.75em; color: #999;">Collecting… (${tpsVals.length}/3)</span>`;
+                            $('kpiTPS').className = 'kpi-value gray';
+                            $('kpiTPS').title = 'Source: /metrics/series60s';
+                        }
+                    } catch (err) {
+                        $('kpiTPS').innerHTML = `<span style="font-size: 0.75em; color: #999;">Collecting… (${tpsVals.length}/3)</span>`;
+                        $('kpiTPS').className = 'kpi-value gray';
+                        $('kpiTPS').title = 'Source: /metrics/series60s';
+                    }
+                } else {
+                    $('kpiTPS').textContent = avgTPS.toFixed(1);
+                    $('kpiTPS').className = 'kpi-value gray';
+                    $('kpiTPS').title = 'Source: /metrics/series60s';
+                }
+
+                // Override Recall KPI with series60s data
+                const kpiRecallElem = document.querySelector('.kpi-card:nth-child(6) .kpi-value');
+                if (kpiRecallElem) {
+                    if (recallVals.length < 3) {
+                        kpiRecallElem.innerHTML = `<span style="font-size: 0.75em; color: #999;">Collecting… (${recallVals.length}/3)</span>`;
+                        kpiRecallElem.className = 'kpi-value gray';
+                    } else {
+                        kpiRecallElem.textContent = (avgRecall * 100).toFixed(1) + '%';
+                        kpiRecallElem.className = 'kpi-value ' + (avgRecall > 0.9 ? 'green' : avgRecall > 0.85 ? 'orange' : 'red');
+                    }
+                    kpiRecallElem.title = 'Source: /metrics/series60s';
+                }
+
+                // ✅ Render P95/TPS/Recall from series60s
+                renderP95FromSeries(seriesData.p95, dashboardData.sla?.target_p95 || 300);
+                renderTPSFromSeries(seriesData.tps);
+                renderRecallFromSeries(seriesData.recall);
+
+                // Render other charts from dashboard (unchanged)
+                renderRerankCache(dashboardData.series);
+                renderEvents(dashboardData.events, dashboardData.meta?.profile || profile);
+
+                // Render stage timing if available
+                if (dashboardData.meta?.stage_timing) {
+                    renderStageTiming(dashboardData.meta.stage_timing);
+                }
+
+                // Update profile parameters
+                updateParamsStatus(dashboardData.meta?.params);
+
+                // Update tuner UI
+                if (dashboardData.meta?.tuner) {
+                    renderTuner(dashboardData.meta.tuner);
+                }
+
+                // Update actual P95 display
+                if (seriesData.p95.length > 0) {
+                    const latestP95 = seriesData.p95[seriesData.p95.length - 1][1];
+                    const targetP95 = dashboardData.sla?.target_p95 || 300;
+                    $('actualP95').textContent = Math.round(latestP95) + ' ms (Core)';
+                    const ratio = latestP95 / targetP95;
+                    let color = ratio > 1.1 ? '#dc3545' : ratio > 0.9 ? '#fd7e14' : '#28a745';
+                    $('actualP95').style.color = color;
+                    $('actualP95').style.fontSize = '';
+                }
+
+                // Log omitted (see fetchSeries for consolidated one-time log)
+
+            } catch (err) {
+                console.error('[renderFromSeries60s] Error:', err);
+                // On error, fallback flag will trigger CSV render on next cycle
+                series60sFallback = true;
+            }
+        }
+
+        // ✅ NEW: Render P95 from series array [[ts, value], ...]
+        function renderP95FromSeries(series, targetP95) {
+            const canvas = $('chartP95');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            // Check minimum non-null samples
+            const nonNullSeries = series.filter(p => p?.[1] != null);
+            if (nonNullSeries.length < 3) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Collecting… (${nonNullSeries.length}/3 samples)`, dw / 2, dh / 2);
+
+                $('actualP95').textContent = `Collecting… (${nonNullSeries.length}/3)`;
+                $('actualP95').style.color = '#fd7e14';
+                $('actualP95').style.fontSize = '11px';
+                return;
+            }
+
+            // Calculate Y range from non-null values only
+            const values = nonNullSeries.map(p => p[1]);
+            const yMax = Math.max(...values, targetP95) * 1.1;
+            const yMin = Math.max(0, Math.min(...values) * 0.9);
+
+            // Draw target line (dashed red)
+            const targetY = dh - 20 - ((targetP95 - yMin) / (yMax - yMin)) * (dh - 40);
+            ctx.strokeStyle = '#dc3545';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(30, targetY);
+            ctx.lineTo(dw - 10, targetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw P95 series (blue line, skip null buckets)
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            let isFirst = true;
+            series.forEach((pt, i) => {
+                // Skip null buckets (creates gap/disconnect)
+                if (pt?.[1] == null) {
+                    isFirst = true;
+                    return;
+                }
+                const x = (i / Math.max(series.length - 1, 1)) * (dw - 40) + 30;
+                const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                if (isFirst) {
+                    ctx.moveTo(x, y);
+                    isFirst = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(`${Math.round(yMax)}`, 25, 15);
+            ctx.fillText('0', 25, dh - 15);
+        }
+
+        // ✅ NEW: Render TPS from series array
+        function renderTPSFromSeries(series) {
+            const canvas = $('chartTPS');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            // Check minimum samples (count non-null values)
+            const nonNullSeries = series.filter(p => p?.[1] != null);
+            if (nonNullSeries.length < 3) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Collecting… (${nonNullSeries.length}/3 samples)`, dw / 2, dh / 2);
+                return;
+            }
+
+            // Calculate yMax from non-null values only
+            const yMax = Math.max(...series.filter(p => p?.[1] != null).map(p => p[1])) * 1.2 || 10;
+            const barWidth = Math.max(2, (dw - 40) / series.length);
+
+            ctx.fillStyle = '#007bff';
+            series.forEach((pt, i) => {
+                // Skip null buckets (leave gap/disconnect)
+                if (pt?.[1] == null) return;
+
+                const x = 30 + i * barWidth;
+                const barHeight = (pt[1] / yMax) * (dh - 40);
+                const y = dh - 20 - barHeight;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(Math.round(yMax), 25, 15);
+        }
+
+        // ✅ NEW: Render Recall from series array
+        function renderRecallFromSeries(series) {
+            const canvas = $('chartRecall');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth * 2;
+            const h = canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const dw = w / 2, dh = h / 2;
+
+            ctx.clearRect(0, 0, dw, dh);
+
+            // Check minimum non-null samples
+            const nonNullSeries = series.filter(p => p?.[1] != null);
+            if (nonNullSeries.length < 3) {
+                ctx.fillStyle = '#999';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Collecting… (${nonNullSeries.length}/3 samples)`, dw / 2, dh / 2);
+                return;
+            }
+
+            const yMax = 1.0;
+            const yMin = 0.0;
+
+            // Draw Recall series (blue line, skip null buckets)
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            let isFirst = true;
+            series.forEach((pt, i) => {
+                // Skip null buckets (creates gap/disconnect)
+                if (pt?.[1] == null) {
+                    isFirst = true;
+                    return;
+                }
+                const x = (i / Math.max(series.length - 1, 1)) * (dw - 40) + 30;
+                const y = dh - 20 - ((pt[1] - yMin) / (yMax - yMin)) * (dh - 40);
+                if (isFirst) {
+                    ctx.moveTo(x, y);
+                    isFirst = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText('1.0', 25, 15);
+            ctx.fillText('0', 25, dh - 15);
+        }
+
+        // Main render function
+        async function render() {
+            const profile = new URLSearchParams(location.search).get('profile') || 'balanced';
+
+            // ✅ NEW: Priority 1 - Try /metrics/series60s first
+            const seriesData = await fetchSeries();
+
+            if (seriesData && seriesData.ok) {
+                // Use series60s data directly
+                await renderFromSeries60s(seriesData, profile);
+                return;
+            }
+
+            // ✅ Fallback: Use dashboard.json (existing CSV logic)
+            console.log('[render] Using CSV fallback');
+            updateDataSourceBadge('csv', 60, 0);
+
+            fetch(`/dashboard.json?profile=${profile}&ts=${Date.now()}`)
+                .then(r => r.json())
+                .then(data => {
+                    // Check data hash to avoid unnecessary redraws
+                    const hash = JSON.stringify(data.series);
+                    if (hash === lastDataHash && !axisLocked) return;
+                    lastDataHash = hash;
+
+                    // Update window badge from meta.window_sec
+                    const windowSec = data.meta?.window_sec || 60;
+                    $('windowValue').textContent = `${windowSec}s`;
+
+                    // Update banner based on mode (source of truth: data.mock_mode from /admin/qdrant/collections)
+                    const banner = $('mockBanner');
+                    const bannerText = $('mockBannerText');
+
+                    // Only show yellow "Mock mode" banner when mock_mode==true
+                    if (data.mock_mode === true) {
+                        banner.style.display = 'block';
+                        banner.style.background = '#fff3cd';
+                        banner.style.borderColor = '#ffc107';
+                        banner.style.color = '#856404';
+                        bannerText.textContent = '⚠️ Mock mode (no vector DB)';
+                    } else if (data.mock_mode === false && data.meta && data.meta.collection) {
+                        // Show blue badge when Qdrant is connected
+                        banner.style.display = 'block';
+                        banner.style.background = '#d1ecf1';
+                        banner.style.borderColor = '#bee5eb';
+                        banner.style.color = '#0c5460';
+                        const points = data.meta.points || '?';
+                        bannerText.textContent = `Qdrant: ${data.meta.collection} (points=${points})`;
+                    } else {
+                        banner.style.display = 'none';
+                    }
+
+                    // Show warmup banner if in collecting state
+                    const warmupBanner = $('warmupBanner');
+                    if (data.meta && data.meta.note === 'collecting') {
+                        warmupBanner.style.display = 'block';
+                    }
+
+                    // Render all components
+                    renderKPIs(data);
+
+                    // Add CSV fallback source indicator
+                    $('kpiTPS').title = 'Source: CSV (fallback)';
+
+                    renderP95(data.series, data.sla?.target_p95 || 300, data.sla);
+                    renderRecall(data.series);
+                    renderTPS(data.series);
+                    renderRerankCache(data.series);
+                    renderEvents(data.events, data.meta?.profile || profile);
+
+                    // NEW: Render stage timing breakdown
+                    if (data.meta && data.meta.stage_timing) {
+                        renderStageTiming(data.meta.stage_timing);
+                    }
+
+                    // Update profile parameters status bar
+                    updateParamsStatus(data.meta?.params);
+
+                    // Update tuner UI from dashboard.json (merged with /tuner/status polling)
+                    if (data.meta?.tuner) {
+                        renderTuner(data.meta.tuner);
+                    }
+
+                    console.log(`[DEMO] Updated | p95=${data.series.p95_on?.length || 0}/${data.series.p95_off?.length || 0} | recall=${data.series.recall_on?.length || 0}/${data.series.recall_off?.length || 0}`);
+                })
+                .catch(err => {
+                    console.error('[DEMO] Fetch failed:', err);
+                });
+        }
+
+        // Initialize
+        initProfileTabs();
+        initSLA();
+        initAutoTrafficUI();  // Initialize Auto Traffic UI mode
+
+        // ✅ Restore data source from localStorage
+        const select = $('dataSourceSelect');
+        if (dataSourceMode === 'core') {
+            select.value = 'core';
+            console.log('[UI] Restored data source: Core (from localStorage)');
+        } else {
+            select.value = 'csv';
+            console.log('[UI] Using default data source: CSV');
+        }
+
+        pollAuto();
+        pollTuner();
+        pollTunerHUD();  // Initial HUD poll
+        pollWarmupStatus();
+        render();
+
+        // Switch data source handler
+        function switchDataSource(mode) {
+            console.log(`[UI] Switching data source to: ${mode}`);
+            dataSourceMode = mode;
+
+            // ✅ Persist to localStorage
+            localStorage.setItem('sf.dataSource', mode);
+
+            // Reset buffers when switching source
+            resetCoreSeries();
+
+            if (mode === 'core') {
+                pollCoreMetrics();
+            }
+            render();
+        }
+
+        // ✅ NEW: Poll health status (for backend type display, every 5s)
+        function pollHealthStatus() {
+            fetch('/admin/health')
+                .then(r => r.json())
+                .then(data => {
+                    healthCache = data;
+                    console.log(`[UI] Health: backend=${data.core_metrics_backend}, rows=${data.core_metrics_rows_60s}, redis=${data.redis_connected}`);
+                })
+                .catch(err => {
+                    console.warn('[UI] pollHealthStatus error:', err);
+                    // Keep old cache on error, don't reset
+                });
+        }
+
+        // Ops Drawer Functions
+        let opsDrawerOpen = false;
+        let opsLogOnce = false;  // Only log once to prevent spam
+
+        function toggleOpsDrawer() {
+            const drawer = document.getElementById('opsDrawer');
+            opsDrawerOpen = !opsDrawerOpen;
+            if (opsDrawerOpen) {
+                drawer.classList.add('open');
+                fetchOpsData();  // Fetch immediately when opening
+            } else {
+                drawer.classList.remove('open');
+            }
+        }
+
+        function fetchOpsData() {
+            fetch(`/ops/summary?ts=${Date.now()}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok) {
+                        updateOpsUI(data);
+                        // Hide error bar on success
+                        document.getElementById('opsErrorBar').style.display = 'none';
+                    } else {
+                        showOpsError();
+                    }
+                })
+                .catch(err => {
+                    console.warn('[ops] fetch failed:', err);
+                    showOpsError();
+                });
+        }
+
+        function showOpsError() {
+            document.getElementById('opsErrorBar').style.display = 'block';
+        }
+
+        function updateOpsUI(data) {
+            // System Info
+            document.getElementById('opsBackend').textContent = data.backend || '—';
+            document.getElementById('opsSource').textContent = data.source || '—';
+            document.getElementById('opsWindow').textContent = data.window_sec ? `${data.window_sec}s` : '—';
+
+            // Window60s KPIs
+            if (data.window60s && !data.window60s.error) {
+                const samples = data.window60s.samples || 0;
+                const tpsEl = document.getElementById('opsTPS');
+                const p95El = document.getElementById('opsP95');
+                const recallEl = document.getElementById('opsRecall');
+
+                if (samples < 3) {
+                    // Collecting state
+                    tpsEl.textContent = `Collecting… (${samples}/3)`;
+                    tpsEl.className = 'ops-kpi-value collecting';
+                    p95El.textContent = `Collecting… (${samples}/3)`;
+                    p95El.className = 'ops-kpi-value collecting';
+                    recallEl.textContent = `Collecting… (${samples}/3)`;
+                    recallEl.className = 'ops-kpi-value collecting';
+                } else {
+                    // Normal state
+                    tpsEl.textContent = data.window60s.tps != null ? data.window60s.tps.toFixed(1) : '—';
+                    tpsEl.className = 'ops-kpi-value';
+                    p95El.textContent = data.window60s.p95_ms != null ? data.window60s.p95_ms.toFixed(1) : '—';
+                    p95El.className = 'ops-kpi-value';
+                    recallEl.textContent = data.window60s.recall_at_10 != null ? data.window60s.recall_at_10.toFixed(4) : '—';
+                    recallEl.className = 'ops-kpi-value';
+                }
+            }
+
+            // Series60s metadata
+            if (data.series60s && !data.series60s.error) {
+                document.getElementById('opsBuckets').textContent = data.series60s.buckets || '—';
+                document.getElementById('opsNonEmpty').textContent = data.series60s.non_empty || '—';
+                document.getElementById('opsStep').textContent = data.series60s.step_sec ? `${data.series60s.step_sec}s` : '—';
+            }
+
+            // Auto status
+            if (data.auto && data.auto.available && data.auto.effective_tps_60s != null) {
+                document.getElementById('opsAutoTPS').textContent = data.auto.effective_tps_60s.toFixed(2);
+            } else {
+                document.getElementById('opsAutoTPS').textContent = 'N/A';
+            }
+
+            // KPI Compare Panel (SLA Recovery)
+            if (data.kpi_compare && !data.kpi_compare.error) {
+                const kpi = data.kpi_compare;
+                const samples = kpi.samples || 0;
+
+                // Cost per 1k requests
+                const costEl = document.getElementById('opsCostPer1k');
+                if (samples < 3) {
+                    costEl.textContent = `Collecting… (${samples}/3)`;
+                    costEl.className = 'ops-kpi-compare-value greyed';
+                } else if (kpi.cost_per_1k != null) {
+                    costEl.textContent = `$${kpi.cost_per_1k.toFixed(2)}`;
+                    costEl.className = 'ops-kpi-compare-value';
+                } else {
+                    costEl.textContent = '—';
+                    costEl.className = 'ops-kpi-compare-value greyed';
+                }
+
+                // Recall@10 (before → after)
+                const recallCompareEl = document.getElementById('opsRecallCompare');
+                const recallSubtitleEl = document.getElementById('opsRecallSubtitle');
+                if (samples < 3) {
+                    recallCompareEl.textContent = `Collecting… (${samples}/3)`;
+                    recallCompareEl.className = 'ops-kpi-compare-value greyed';
+                    recallSubtitleEl.textContent = '—';
+                } else if (kpi.recall_before != null && kpi.recall_after != null) {
+                    recallCompareEl.textContent = kpi.recall_after.toFixed(4);
+                    recallCompareEl.className = 'ops-kpi-compare-value';
+                    recallSubtitleEl.textContent = `Before: ${kpi.recall_before.toFixed(4)} → After: ${kpi.recall_after.toFixed(4)}`;
+                } else if (kpi.recall_before != null) {
+                    recallCompareEl.textContent = kpi.recall_before.toFixed(4);
+                    recallCompareEl.className = 'ops-kpi-compare-value';
+                    recallSubtitleEl.textContent = 'Before guardrail trip';
+                } else {
+                    recallCompareEl.textContent = '—';
+                    recallCompareEl.className = 'ops-kpi-compare-value greyed';
+                    recallSubtitleEl.textContent = 'No guardrail events detected';
+                }
+
+                // Recovery Time
+                const recoveryEl = document.getElementById('opsRecoveryTime');
+                if (samples < 3) {
+                    recoveryEl.textContent = `Collecting… (${samples}/3)`;
+                    recoveryEl.className = 'ops-kpi-compare-value greyed';
+                } else if (kpi.recovery_time_sec != null) {
+                    recoveryEl.textContent = `${kpi.recovery_time_sec}s`;
+                    recoveryEl.className = 'ops-kpi-compare-value';
+                } else {
+                    recoveryEl.textContent = '—';
+                    recoveryEl.className = 'ops-kpi-compare-value greyed';
+                }
+            } else {
+                // Error state or no data
+                document.getElementById('opsCostPer1k').textContent = '—';
+                document.getElementById('opsCostPer1k').className = 'ops-kpi-compare-value greyed';
+                document.getElementById('opsRecallCompare').textContent = '—';
+                document.getElementById('opsRecallCompare').className = 'ops-kpi-compare-value greyed';
+                document.getElementById('opsRecallSubtitle').textContent = 'No data available';
+                document.getElementById('opsRecoveryTime').textContent = '—';
+                document.getElementById('opsRecoveryTime').className = 'ops-kpi-compare-value greyed';
+            }
+
+            // One-time console log (prevent spam)
+            if (!opsLogOnce && data.window60s && data.series60s) {
+                const backend = data.backend || 'unknown';
+                const window = data.window_sec || 0;
+                const buckets = data.series60s.buckets || 0;
+                const samples = data.window60s.samples || 0;
+                const nonEmpty = data.series60s.non_empty || 0;
+                const tps = data.window60s.tps || 0;
+                const p95 = data.window60s.p95_ms || 0;
+                const recall = data.window60s.recall_at_10 || 0;
+                console.log(`[ops] backend=${backend}, window=${window}, buckets=${buckets}, samples=${samples}, non_empty=${nonEmpty}, tps=${tps.toFixed(1)}, p95=${p95.toFixed(1)}, recall=${recall.toFixed(4)}`);
+                opsLogOnce = true;
+            }
+        }
+
+        // Poll Core metrics status (every 3s)
+        function pollCoreMetrics() {
+            fetch('/metrics/window60s')
+                .then(r => r.json())
+                .then(data => {
+                    try {
+                        const badge = $('dataSourceBadge');
+                        const text = $('dataSourceText');
+                        const select = $('dataSourceSelect');
+                        const coreOption = select.querySelector('option[value="core"]');
+
+                        // Cache Core metrics
+                        coreMetricsCache = data;
+
+                        // ✅ Time-bucket resampling: bin data into 5s slots
+                        if (data.ok && data.samples > 0) {
+                            const now = Date.now();
+                            const slot = Math.floor(now / CORE_BUCKET_MS) * CORE_BUCKET_MS;
+
+                            // Add to bucketed Maps (overwrite if slot exists)
+                            if (data.p95_ms !== null && data.p95_ms !== undefined) {
+                                coreBuf.p95.set(slot, data.p95_ms);
+                            }
+
+                            if (data.tps !== null && data.tps !== undefined) {
+                                coreBuf.tps.set(slot, data.tps);
+                            }
+
+                            if (data.recall_at_10 !== null && data.recall_at_10 !== undefined) {
+                                coreBuf.recall.set(slot, data.recall_at_10);
+                            }
+
+                            // Trim old buckets (keep only last maxBuckets)
+                            const windowStart = now - CORE_WINDOW_MS;
+                            for (const [ts] of coreBuf.p95.entries()) {
+                                if (ts < windowStart) coreBuf.p95.delete(ts);
+                            }
+                            for (const [ts] of coreBuf.tps.entries()) {
+                                if (ts < windowStart) coreBuf.tps.delete(ts);
+                            }
+                            for (const [ts] of coreBuf.recall.entries()) {
+                                if (ts < windowStart) coreBuf.recall.delete(ts);
+                            }
+
+                            console.log(`[UI] Core buckets: p95=${coreBuf.p95.size}, tps=${coreBuf.tps.size}, recall=${coreBuf.recall.size}`);
+                        }
+
+                        const minSamples = 3;  // ✅ Changed to 3 for badge display
+                        const isReady = data.ok && data.samples >= minSamples;
+                        const isCollecting = data.ok && data.samples > 0 && data.samples < minSamples;
+
+                        // ✅ NEW: Use health cache for backend type
+                        const windowSec = (healthCache && healthCache.window_sec) || 60;
+                        const actualSamples = (healthCache && healthCache.core_metrics_rows_60s) || data.samples || 0;
+
+                        // ✅ Update badge using helper function
+                        if (dataSourceMode === 'core') {
+                            updateDataSourceBadge('core', windowSec, actualSamples);
+                        } else {
+                            // CSV mode
+                            updateDataSourceBadge('csv', windowSec, 0);
+                        }
+
+                        // Enable/disable Core option based on readiness
+                        if (isReady || isCollecting) {
+                            coreOption.disabled = false;
+                            coreOption.title = `Core: ${actualSamples} samples, p95=${data.p95_ms?.toFixed(1) || 'N/A'}ms`;
+                        } else {
+                            coreOption.disabled = true;
+                            const reason = data.ok ? 'warming' : (data.reason || 'disabled');
+                            coreOption.title = `Core not ready: ${reason}`;
+                        }
+
+                        // ✅ ONLY fallback to CSV on actual API failure ({ok: false, reason: "disabled"})
+                        // Do NOT switch on low samples - just show collecting state
+                        if (dataSourceMode === 'core' && !data.ok && data.reason === 'disabled') {
+                            console.warn('[UI] Core disabled (CORE_METRICS_ENABLED=0), switching back to CSV');
+                            dataSourceMode = 'csv';
+                            select.value = 'csv';
+                            localStorage.setItem('sf.dataSource', 'csv');
+                            updateDataSourceBadge('csv', windowSec, 0);
+                        }
+
+                        // Update select value to match current mode
+                        select.value = dataSourceMode;
+
+                        console.log(`[UI] Core status: ok=${data.ok}, samples=${actualSamples}, ready=${isReady}, collecting=${isCollecting}`);
+                    } catch (err) {
+                        console.error('[UI] pollCoreMetrics render error:', err);
+                    }
+                })
+                .catch(err => {
+                    console.warn('[UI] pollCoreMetrics fetch error:', err);
+
+                    // ✅ Network error - disable Core option but keep selected source
+                    const badge = $('dataSourceBadge');
+                    const text = $('dataSourceText');
+                    const select = $('dataSourceSelect');
+                    const coreOption = select.querySelector('option[value="core"]');
+
+                    coreOption.disabled = true;
+                    coreOption.title = 'Core endpoint unavailable';
+
+                    if (dataSourceMode === 'core') {
+                        // Show error state but DON'T auto-switch
+                        badge.className = 'data-source-badge';
+                        text.textContent = 'Core • window: 60s • Unknown (error)';
+                        console.warn('[UI] Core endpoint error - staying on Core, will retry');
+                    } else {
+                        badge.className = 'data-source-badge';
+                        text.textContent = 'CSV • window: 60s';
+                    }
+
+                    select.value = dataSourceMode;
+                });
+        }
+
+        // Black Swan Demo Button Logic (with run_id gating)
+        const runBlackSwanBtn = document.getElementById("runBlackSwanBtn");
+        const blackSwanStatus = document.getElementById("blackSwanStatus");
+        let blackSwanRunId = null;  // Store run_id for current test
+        let blackSwanTimer = null;
+
+        runBlackSwanBtn.addEventListener("click", async () => {
+            // Disable button during run
+            runBlackSwanBtn.disabled = true;
+            runBlackSwanBtn.textContent = "Running...";
+
+            blackSwanStatus.textContent = "Starting Black Swan test...";
+
+            const res = await fetch("/ops/black_swan", { method: "POST" });
+            const data = await res.json();
+
+            if (!data.ok) {
+                // Handle errors (409 = already running)
+                if (res.status === 409) {
+                    blackSwanStatus.textContent = "⚠️ Test already running";
+                } else {
+                    blackSwanStatus.textContent = "⚠️ " + (data.error || "Failed to start test");
+                }
+                return;
+            }
+
+            // Store run_id from start response
+            blackSwanRunId = data.run_id;
+            console.log("[Black Swan] Started run:", blackSwanRunId);
+
+            let elapsed = 0;
+
+            // Clear any existing timer
+            if (blackSwanTimer) clearInterval(blackSwanTimer);
+
+            blackSwanTimer = setInterval(async () => {
+                elapsed += 5;
+
+                // Poll status endpoint (not report endpoint)
+                const statusRes = await fetch("/ops/black_swan/status");
+                const status = await statusRes.json();
+
+                // Check if this is our run
+                if (status.run_id !== blackSwanRunId) {
+                    clearInterval(blackSwanTimer);
+                    blackSwanStatus.textContent = "⚠️ Another run started";
+                    return;
+                }
+
+                // Update progress display
+                const phase = status.phase || "unknown";
+                const progress = status.progress || 0;
+                blackSwanStatus.textContent = `Running [${phase}] ${progress}% (${elapsed}s elapsed)`;
+
+                // Only mark complete when phase=complete AND progress=100 AND running=false
+                if (phase === "complete" && progress === 100 && status.running === false) {
+                    clearInterval(blackSwanTimer);
+
+                    // Re-enable button
+                    runBlackSwanBtn.disabled = false;
+                    runBlackSwanBtn.textContent = "Run Black Swan Test";
+
+                    // Fetch report to get filename
+                    const reportRes = await fetch("/ops/black_swan");
+                    const reportData = await reportRes.json();
+
+                    if (reportData.ok && reportData.report && reportData.state.last_run_id === blackSwanRunId) {
+                        blackSwanStatus.innerHTML =
+                            `✅ Test complete<br><a href="/reports/${reportData.latest}" target="_blank">View report</a>`;
+                    } else {
+                        blackSwanStatus.textContent = "✅ Test complete (report pending)";
+                    }
+                }
+
+                // Handle error phase (with structured error display)
+                if (phase === "error") {
+                    clearInterval(blackSwanTimer);
+
+                    // Re-enable button
+                    runBlackSwanBtn.disabled = false;
+                    runBlackSwanBtn.textContent = "Run Black Swan Test";
+
+                    // Build error message from structured error
+                    let errorMsg = "Unknown error";
+                    if (status.error && status.error.code) {
+                        const code = status.error.code;
+                        const step = status.error.step || "unknown";
+                        const msg = status.error.message || status.message || "Unknown error";
+                        const http = status.error.http || 0;
+
+                        // Format: "❌ Test failed: <code> at <step> — <message> (HTTP <http>)"
+                        errorMsg = code;
+                        if (step && step !== "unknown") {
+                            errorMsg += ` at ${step}`;
+                        }
+                        errorMsg += ` — ${msg}`;
+                        if (http > 0) {
+                            errorMsg += ` (HTTP ${http})`;
+                        }
+                    } else if (status.message) {
+                        errorMsg = status.message;
+                    }
+
+                    blackSwanStatus.innerHTML = `❌ Test failed<br><span style="font-size:0.85em">${errorMsg}</span>`;
+                }
+            }, 2000);  // Poll every 2 seconds (smoother UX)
+        });
+
+        // Auto-refresh
+        setInterval(render, 3000);
+        setInterval(pollAuto, 3000);
+        setInterval(pollTuner, 3000);
+        setInterval(pollTunerHUD, 3000);  // Poll HUD every 3s
+        setInterval(pollWarmupStatus, 3000);
+        setInterval(refreshTunerState, 3000);
+        setInterval(pollCoreMetrics, 3000);  // Poll Core every 3s (same as render)
+        setInterval(pollHealthStatus, 5000);  // ✅ NEW: Poll health every 5s
+        setInterval(fetchOpsData, 5000);  // Poll Ops summary every 5s
+
+        // Initial loads
+        refreshTunerState();
+        pollHealthStatus();  // ✅ NEW: Initial health poll
+        pollCoreMetrics();
+        fetchOpsData();  // Initial Ops data load
+    </script>
+</body>
+
+</html>

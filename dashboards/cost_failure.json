@@ -1,0 +1,65 @@
+{
+  "dashboard": {
+    "title": "RAG QueryRewriter - Cost & Failures",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Cost per Query Timeline",
+        "type": "graph",
+        "datasource": "prometheus",
+        "targets": [
+          {
+            "expr": "rag_cost_per_query_usd",
+            "legendFormat": "Cost/Query"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "currencyUSD"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Failure Rate Timeline",
+        "type": "graph",
+        "datasource": "prometheus",
+        "targets": [
+          {
+            "expr": "rag_failure_rate",
+            "legendFormat": "Failure Rate"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "min": 0,
+            "max": 0.1
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Token Usage Timeline",
+        "type": "graph",
+        "datasource": "prometheus",
+        "targets": [
+          {
+            "expr": "rag_tokens_in",
+            "legendFormat": "Tokens In"
+          },
+          {
+            "expr": "rag_tokens_out",
+            "legendFormat": "Tokens Out"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "short"
+          }
+        ]
+      }
+    ]
+  }
+}

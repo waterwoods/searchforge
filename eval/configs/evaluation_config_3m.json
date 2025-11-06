@@ -1,0 +1,79 @@
+{
+    "duration_seconds": 180,
+    "common": {
+        "prom_scrape_interval": 2,
+        "tuner_sample_interval": 5,
+        "tuner_cooldown_sec": 15,
+        "recovery_stable_threshold": 15,
+        "collection_name": "amazon_electronics_100k",
+        "reranker_type": "llm",
+        "explainer_type": "simple",
+        "duration_seconds": 180
+    },
+    "baseline": {
+        "name": "Run A (Baseline 3m)",
+        "duration_seconds": 180,
+        "warmup_seconds": 30,
+        "sample_every_seconds": 10,
+        "probes": {
+            "qps": 2.0,
+            "burst_enabled": false,
+            "burst_qps": 0,
+            "burst_duration": 0,
+            "burst_interval": 0
+        },
+        "chaos": {
+            "enabled": false,
+            "latency_ms": 0,
+            "loss_percent": 0,
+            "disconnect_times": [],
+            "disconnect_duration": 0
+        },
+        "rag_api": {
+            "initial_topk": 50,
+            "warm_cache": true,
+            "disable_prewarm": false
+        },
+        "shadow": {
+            "mirror_rate": 0.1
+        },
+        "auto_tuner_v1": true,
+        "target_p95_ms": 30.0,
+        "target_recall": 0.95
+    },
+    "high_stress": {
+        "name": "Run B (High-Stress 3m)",
+        "duration_seconds": 180,
+        "warmup_seconds": 30,
+        "sample_every_seconds": 10,
+        "probes": {
+            "qps": 15.0,
+            "burst_enabled": true,
+            "burst_qps": 80.0,
+            "burst_duration": 15,
+            "burst_interval": 45
+        },
+        "chaos": {
+            "enabled": true,
+            "latency_ms": 800,
+            "loss_percent": 5,
+            "disconnect_times": [
+                45,
+                90,
+                135
+            ],
+            "disconnect_duration": 8
+        },
+        "rag_api": {
+            "initial_topk": 80,
+            "warm_cache": false,
+            "disable_prewarm": true
+        },
+        "shadow": {
+            "mirror_rate": 0.7
+        },
+        "auto_tuner_v1": true,
+        "target_p95_ms": 30.0,
+        "target_recall": 0.95
+    }
+}
