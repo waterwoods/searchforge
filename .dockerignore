@@ -15,3 +15,5 @@ archives/
 .trash/
 models/
 .env.*
+services/fiqa_api/logs/
+*.csv

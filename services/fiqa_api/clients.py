@@ -530,30 +530,55 @@ def are_clients_ready() -> bool:
 
 def _warmup_embedding_background():
     """
-    Background thread function to warm up FastEmbed model.
-    Sets EMBED_READY flag when complete.
+    Background thread function to warm up embedding model.
+    Sets EMBED_READY flag when complete after self-check.
     """
     global EMBED_READY, _embedder
+    import time as time_module
     
     try:
-        model_name = os.getenv("FASTEMBED_MODEL", "BAAI/bge-small-en-v1.5")
-        logger.info(f"[CLIENTS] Starting background embedding warmup (model={model_name})...")
+        backend = EMBEDDING_BACKEND
+        model_name = os.getenv("SBERT_MODEL", os.getenv("FASTEMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
+        logger.info(f"[WARMUP] Starting embedding warmup (backend={backend}, model={model_name})...")
         
-        from fastembed import TextEmbedding
-        # This will download and initialize the model
-        warmup_model = TextEmbedding(model_name=model_name)
-        
-        # Also initialize the embedder through the provider for consistency
+        # Initialize embedder through provider
         from services.fiqa_api.embeddings.providers import get_embedder as _factory
         _embedder = _factory()
+        
+        if _embedder is None:
+            raise RuntimeError("Embedder factory returned None")
+        
+        # Self-check: encode a single token and verify it works
+        logger.info("[WARMUP] Running self-check: encoding test token...")
+        test_text = "test"
+        try:
+            test_embedding = _embedder.encode([test_text])
+            if test_embedding is None or len(test_embedding) == 0:
+                raise RuntimeError("Self-check failed: encoding returned empty result")
+            logger.info(f"[WARMUP] Self-check passed: encoded test token, dim={len(test_embedding[0]) if len(test_embedding) > 0 else 'unknown'}")
+        except Exception as e:
+            logger.warning(f"[WARMUP] Self-check encoding failed: {e}, will retry...")
+            raise
+        
+        # Self-check: ping vector client (quick timeout)
+        logger.info("[WARMUP] Running self-check: pinging vector client...")
+        try:
+            qdrant_client = get_qdrant_client()
+            # Quick ping with timeout
+            collections = qdrant_client.get_collections()
+            logger.info(f"[WARMUP] Self-check passed: vector client reachable (collections: {len(collections.collections)})")
+        except Exception as e:
+            logger.warning(f"[WARMUP] Self-check vector ping failed: {e}, will retry...")
+            raise
         
         # Mark as ready
         with EMBED_READY_LOCK:
             EMBED_READY = True
+            ready_ts = time_module.strftime("%Y-%m-%d %H:%M:%S", time_module.gmtime())
+            logger.info(f"[READY] flip true at {ready_ts} (backend={backend}, model={model_name})")
         
-        logger.info(f"[CLIENTS] Embedding warmup complete (model={model_name})")
     except Exception as e:
-        logger.error(f"[CLIENTS] Embedding warmup failed: {e}")
+        logger.error(f"[WARMUP] Embedding warmup failed: {e}", exc_info=True)
         # Don't set EMBED_READY, so queries will return 503
 
 

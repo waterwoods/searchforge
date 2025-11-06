@@ -244,6 +244,13 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
     finished_at = datetime.now().isoformat()
     final_status = "SUCCEEDED" if rc == 0 else "FAILED"
     
+    # Write metrics.json after job completion (if succeeded)
+    if rc == 0:
+        try:
+            _write_metrics_json(job_id, overrides, log_path)
+        except Exception as e:
+            logger.warning(f"Failed to write metrics.json for job {job_id}: {e}", exc_info=True)
+    
     with _LOCK:
         _JOBS[job_id]["rc"] = rc
         _JOBS[job_id]["ended"] = time.time()
@@ -258,6 +265,52 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
             # Persist updated meta
             logger.info(f"[HISTORY] job {job_id} status updated to {final_status}")
             _save_job_meta(meta)
+
+
+def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
+    """
+    Write metrics.json after job completion.
+    Tries to parse from log output, falls back to defaults if not found.
+    """
+    job_dir = _RUNS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    metrics_file = job_dir / "metrics.json"
+    
+    metrics = {
+        "job_id": job_id,
+        "schema_version": 11,
+        "recall_at_10": 0.0,
+        "p95_ms": 0.0,
+        "qps": 0.0,
+        "cost_per_query": 0.0,
+        "config": overrides.copy() if overrides else {}
+    }
+    
+    # Try to parse metrics from log file
+    try:
+        if Path(log_path).exists():
+            log_content = Path(log_path).read_text(encoding="utf-8", errors="ignore")
+            # Look for metrics patterns in log
+            import re
+            # Try to find recall@10
+            recall_match = re.search(r'recall[_\s@]?10[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
+            if recall_match:
+                metrics["recall_at_10"] = float(recall_match.group(1))
+            # Try to find p95
+            p95_match = re.search(r'p95[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
+            if p95_match:
+                metrics["p95_ms"] = float(p95_match.group(1))
+            # Try to find qps
+            qps_match = re.search(r'qps[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
+            if qps_match:
+                metrics["qps"] = float(qps_match.group(1))
+    except Exception as e:
+        logger.debug(f"Could not parse metrics from log: {e}")
+    
+    # Write metrics.json
+    with open(metrics_file, 'w', encoding='utf-8') as f:
+        json.dump(metrics, f, indent=2, ensure_ascii=False)
+    logger.info(f"Wrote metrics.json for job {job_id}")
 
 
 def _get_job_status(job_id: str) -> Optional[Dict[str, Any]]:

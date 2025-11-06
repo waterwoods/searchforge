@@ -288,6 +288,31 @@ async def lifespan(app: FastAPI):
         # Fallback if no loop (should not happen under uvicorn)
         pass
     
+    # Periodic readiness check: promote phase to "ready" when EMBED_READY and vector client are ready
+    async def _check_readiness_periodic():
+        """Periodic check to promote phase to 'ready' when conditions are met."""
+        global _READINESS, _PHASE
+        while True:
+            await asyncio.sleep(2)  # Check every 2 seconds
+            try:
+                from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+                
+                # Check if embedding is ready and vector client is reachable
+                if EMBED_READY:
+                    vector_ok = ensure_qdrant_connection()
+                    if vector_ok and _PHASE != "ready":
+                        _READINESS = True
+                        _PHASE = "ready"
+                        logger.info(f"[READY] Phase promoted to 'ready' (EMBED_READY=True, vector_ok=True)")
+            except Exception as e:
+                logger.debug(f"[READY] Periodic check error (non-critical): {e}")
+    
+    # Start periodic readiness check
+    try:
+        asyncio.get_running_loop().create_task(_check_readiness_periodic())
+    except RuntimeError:
+        pass
+    
     logger.info(f"Port: {MAIN_PORT}")
     logger.info(f"API Entry: {API_ENTRY}")
     logger.info(f"CORS Origins: {CORS_ORIGINS}")
@@ -621,13 +646,51 @@ app.include_router(qdrant_health_router, tags=["Health"])  # /api/health/qdrant
 # Health and readiness endpoints (hardened semantics)
 @app.get("/health")
 async def health():
+    """Health endpoint: returns phase based on EMBED_READY and vector client."""
+    global _PHASE
+    try:
+        from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+        
+        # Check readiness: EMBED_READY and vector client must be OK
+        if EMBED_READY:
+            vector_ok = ensure_qdrant_connection()
+            if vector_ok and _PHASE != "ready":
+                _PHASE = "ready"
+        elif _PHASE == "ready":
+            # If EMBED_READY becomes False, demote to degraded
+            _PHASE = "degraded"
+    except Exception as e:
+        logger.debug(f"[HEALTH] Check error (non-critical): {e}")
+    
     return {"ok": True, "phase": _PHASE}
 
 @app.get("/ready")
 async def ready():
-    if _READINESS:
-        return {"ok": True, "phase": _PHASE}
-    raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE})
+    """Readiness endpoint: returns 200 only when EMBED_READY and vector client are ready."""
+    global _READINESS, _PHASE
+    try:
+        from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+        
+        # Check readiness: EMBED_READY and vector client must be OK
+        if EMBED_READY:
+            vector_ok = ensure_qdrant_connection()
+            if vector_ok:
+                _READINESS = True
+                if _PHASE != "ready":
+                    _PHASE = "ready"
+                return {"ok": True, "phase": _PHASE}
+        
+        # Not ready
+        _READINESS = False
+        if _PHASE == "ready":
+            _PHASE = "degraded"
+        raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"[READY] Check error: {e}")
+        _READINESS = False
+        raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE, "error": str(e)})
 app.include_router(search_router)  # /search
 app.include_router(query_router, prefix="/api")  # /api/query
 app.include_router(code_lookup_router)  # /api/agent/code_lookup

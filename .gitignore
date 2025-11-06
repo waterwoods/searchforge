@@ -37,3 +37,4 @@ data/
 *.tar.gz
 *.parquet
 *.csv
+services/fiqa_api/logs/
