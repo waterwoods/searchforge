@@ -1,0 +1,90 @@
+base_url: http://andy-wsl:8000
+collections:
+  default: fiqa_para_50k
+  allowed:
+    - fiqa_para_50k
+    - fiqa_sent_50k
+    - fiqa_win256_o64_50k
+datasets:
+  whitelist:
+    - fiqa_para_50k
+    - fiqa_win256_o64_50k
+    - fiqa_sent_50k
+  disabled:
+    - fiqa_50k_v1  # legacy, string ids; keep disabled
+  default: fiqa_para_50k
+  qrels_map:
+    fiqa_para_50k: experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv
+    fiqa_win256_o64_50k: experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv
+    fiqa_sent_50k: experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv
+  queries_map:
+    fiqa_para_50k: experiments/data/fiqa/fiqa_hard_50k.jsonl
+    fiqa_win256_o64_50k: experiments/data/fiqa/fiqa_hard_50k.jsonl
+    fiqa_sent_50k: experiments/data/fiqa/fiqa_hard_50k.jsonl
+smoke:
+  sample: 50
+  top_k: 10
+  mmr: false
+  concurrency: 4
+  timeout_s: 1800
+  max_retries: 3
+  backoff_s: 2.0
+  rate_limit_per_sec: 4
+grid:
+  sample: 100
+  top_k:
+    - 10
+    - 20
+    - 30
+  mmr:
+    - false
+    - 0.3
+  ef_search:
+    - 32
+    - 64
+ab:
+  sample: 200
+  seed: 20251107
+  concurrency: 4
+  warm_cache: 100
+baseline_policy: baseline_v1
+winners_source: reports/winners.final.json
+reports_dir: reports
+runs_dir: .runs
+allowed_hosts:
+  - localhost:8000
+  - localhost:6333
+  - 127.0.0.1:8001
+  - andy-wsl:8000
+  - 127.0.0.1:8000
+  - searchforge-qdrant-1:6333  # Docker container name for Qdrant
+reflection:
+  failure_rate_threshold: 0.3
+  recall_variance_threshold: 0.02
+  llm:
+    enable: true
+    provider: openai
+    model: gpt-4o-mini
+    max_tokens: 512
+    temperature: 0.1
+    cost_cap_usd: 0.05
+policies_path: configs/policies.json
+runner_cmd: python -m experiments.fiqa_suite_runner
+runner_timeout_s: 1200
+health_endpoints:
+  - /ready
+  - /api/health/embeddings
+host_aliases:
+  andy-wsl: 127.0.0.1
+  localhost:6333: searchforge-qdrant-1:6333  # Map localhost:6333 to container name in Docker
+mock_runner: false
+run:
+  dry_run_default: true
+  concurrency_limit: 2
+  queue_size: 10
+budget:
+  max_tokens: null  # null = no limit
+  max_cost_usd: null
+  max_concurrent_runs: 2
+sla_policy_path: configs/SLA_POLICY.yaml
+

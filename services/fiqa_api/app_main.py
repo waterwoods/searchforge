@@ -96,6 +96,7 @@ from services.fiqa_api.routes.code_graph import router as code_graph_router
 from services.fiqa_api.routes.best import router as best_router
 from services.fiqa_api.routes.health import router as qdrant_health_router
 from services.fiqa_api.routes.experiment import router as experiment_router
+from services.fiqa_api.routes.admin import router as admin_router
 from services.fiqa_api.health.ready import router as health_router
 
 # Import NetworkX engine for code graph analysis
@@ -697,6 +698,7 @@ app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*
 app.include_router(best_router)  # /api/best
 app.include_router(experiment_router, prefix="/api/experiment", tags=["experiment"])  # /api/experiment/*
+app.include_router(admin_router)  # /api/admin/*
 
 # Mount existing routers with /api prefix (primary)
 app.include_router(create_api_router(ops_router, "/api"))
@@ -709,6 +711,16 @@ app.include_router(create_api_router(labops_router, "/api/labops"))
 
 # Mount AutoTuner router (already has /api/autotuner prefix)
 app.include_router(autotuner_router)
+
+# Mount Orchestrator router
+try:
+    from services.orchestrate_router import router as orchestrate_router
+    app.include_router(orchestrate_router, prefix="/orchestrate")
+    logger.info("[ORCHESTRATOR] Successfully mounted orchestrator router at /orchestrate")
+except ImportError as e:
+    logger.warning(f"[ORCHESTRATOR] Failed to import orchestrator router: {e}")
+except Exception as e:
+    logger.error(f"[ORCHESTRATOR] Failed to mount orchestrator router: {e}", exc_info=True)
 
 # LabOps Agent V2/V3 routes - Unified /api/agent endpoint with version routing
 from agents.labops.v2 import endpoints as agent_v2

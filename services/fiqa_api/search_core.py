@@ -246,7 +246,8 @@ def perform_search(
     rerank_top_k: int = 20,
     rerank_if_margin_below: Optional[float] = None,
     max_rerank_trigger_rate: float = 0.25,
-    rerank_budget_ms: int = 25
+    rerank_budget_ms: int = 25,
+    ef_search: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Execute search with unified routing (FAISS/Qdrant/Milvus).
@@ -411,11 +412,19 @@ def perform_search(
                 # Non-fatal: continue if dimension check fails
             
             # Search Qdrant
-            qdrant_results = client.search(
-                collection_name=actual_collection,
-                query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
-                limit=top_k
-            )
+            search_kwargs = {
+                "collection_name": actual_collection,
+                "query_vector": query_vector,  # Ensure it's 1D, NOT [query_vector]
+                "limit": top_k
+            }
+            
+            # Add HNSW ef parameter if specified
+            if ef_search is not None:
+                from qdrant_client import models
+                search_kwargs["search_params"] = models.SearchParams(hnsw_ef=ef_search)
+                logger.info(f"[SEARCH] Using ef_search={ef_search}")
+            
+            qdrant_results = client.search(**search_kwargs)
             
             # Format results (ensure doc_id is string)
             for r in qdrant_results:

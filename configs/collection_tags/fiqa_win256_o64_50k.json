@@ -1,0 +1,16 @@
+{
+  "collection_name": "fiqa_win256_o64_50k",
+  "embed_model": "all-MiniLM-L6-v2",
+  "dim": 384,
+  "chunking_strategy": "sliding_window",
+  "chunking_params": {
+    "window_size": 256,
+    "overlap": 64
+  },
+  "num_documents": 50000,
+  "num_chunks": 225055,
+  "chunks_per_doc": 4.5011,
+  "build_time_sec": 191.2094578742981,
+  "index_size_mb": 412.862824010849,
+  "created_at": "2025-11-07T02:39:45.067805Z"
+}

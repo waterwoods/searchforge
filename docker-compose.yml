@@ -84,19 +84,22 @@ services:
       - SBERT_MODEL=sentence-transformers/all-MiniLM-L6-v2
       - EXPECTED_EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
       - FAST_STARTUP=1
-      - INIT_TIMEOUT_SEC=30
+      - INIT_TIMEOUT_S=30
       - QUERY_TIMEOUT_S=${QUERY_TIMEOUT_S:-45}
+      # OpenAI API Key for LLM reflection feature
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports:
       - "8000:8000"
     depends_on: [ qdrant, milvus-standalone ]
     volumes:
-      - ~/ssx-lab/models:/app/models
-      - ./models:/app/models
+      - ~/data/searchforge/models:/app/models:ro
+      - ~/data/searchforge/data:/app/data:ro
+      # REMOVED: volume conflict - this empty mount was overriding ./experiments
+      # - ~/data/searchforge/experiments/data:/app/experiments/data:ro
       - ./modules:/app/modules
       - ./experiments:/app/experiments:ro
       - ./configs:/app/configs:ro
       - ./services/fiqa_api:/app/services/fiqa_api:ro
-      - ./data:/app/data:ro
       - ./reports:/app/reports
       - rag_runs:/app/.runs
     # CPU-only service - no GPU runtime

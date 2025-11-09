@@ -1,0 +1,13 @@
+services:
+  rag-api:
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"   # 禁止写 __pycache__，配合 :ro 更稳
+      DEV_MODE: "1"  # 开发模式标识（守门人：默认走快路）
+      FAST_MODE_DEFAULT: "1"  # 默认快速模式
+    volumes:
+      # 【守门人】开发态只读挂载（代码热更新）
+      - ./experiments:/app/experiments:ro
+      - ./services/fiqa_api/routes:/app/services/fiqa_api/routes:ro
+      - ./modules:/app/modules:ro
+      # 【守门人】确保外置卷映射到容器内（数据与模型外置）
+      # 注：~/data/searchforge/* 在父 compose 已挂载为只读

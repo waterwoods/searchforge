@@ -118,13 +118,30 @@ def enqueue_run(config_file: Optional[str], overrides: dict | None = None) -> st
         else:
             logger.warning("[ENQUEUE] No dataset_name in overrides!")
         if "qrels_name" in overrides and overrides["qrels_name"]:
-            cmd += ["--qrels-name", str(overrides["qrels_name"])]
-            logger.info("[ENQUEUE] Adding --qrels-name %s", overrides["qrels_name"])
+            # If use_hard is True, don't pass qrels_name (runner will use HARD_QRELS_MAP)
+            if not overrides.get("use_hard", False):
+                cmd += ["--qrels-name", str(overrides["qrels_name"])]
+                logger.info("[ENQUEUE] Adding --qrels-name %s", overrides["qrels_name"])
+            else:
+                logger.info("[ENQUEUE] Skipping --qrels-name (use_hard=True, runner will use HARD_QRELS_MAP)")
         else:
             logger.warning("[ENQUEUE] No qrels_name in overrides!")
         if "top_k" in overrides and overrides["top_k"] is not None:
             cmd += ["--top_k", str(overrides["top_k"])]
             logger.info("[ENQUEUE] Adding --top_k %s", overrides["top_k"])
+        if "use_hard" in overrides and overrides["use_hard"]:
+            cmd += ["--use-hard"]
+            logger.info("[ENQUEUE] Adding --use-hard flag")
+            # Note: env["USE_HARD"] will be set in _run_job function
+        if "ef_search" in overrides and overrides["ef_search"] is not None:
+            cmd += ["--ef-search", str(overrides["ef_search"])]
+            logger.info("[ENQUEUE] Adding --ef-search %s", overrides["ef_search"])
+        if "mmr" in overrides and overrides["mmr"]:
+            cmd += ["--mmr"]
+            logger.info("[ENQUEUE] Adding --mmr flag")
+        if "mmr_lambda" in overrides and overrides["mmr_lambda"] is not None:
+            cmd += ["--mmr-lambda", str(overrides["mmr_lambda"])]
+            logger.info("[ENQUEUE] Adding --mmr-lambda %s", overrides["mmr_lambda"])
     
     # Create JobMeta with full parameter set (before logging)
     params = {
@@ -138,6 +155,7 @@ def enqueue_run(config_file: Optional[str], overrides: dict | None = None) -> st
         "use_hybrid": overrides.get("use_hybrid") if overrides else None,
         "rerank": overrides.get("rerank") if overrides else None,
         "collection": overrides.get("collection") if overrides else None,
+        "use_hard": overrides.get("use_hard", False) if overrides else False,
     }
     # Remove None values
     params = {k: v for k, v in params.items() if v is not None}
@@ -206,7 +224,17 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
         if "dataset_name" in overrides and overrides["dataset_name"]:
             cmd += ["--dataset-name", str(overrides["dataset_name"])]
         if "qrels_name" in overrides and overrides["qrels_name"]:
-            cmd += ["--qrels-name", str(overrides["qrels_name"])]
+            # If use_hard is True, don't pass qrels_name (runner will use HARD_QRELS_MAP)
+            if not overrides.get("use_hard", False):
+                cmd += ["--qrels-name", str(overrides["qrels_name"])]
+        if "top_k" in overrides and overrides["top_k"] is not None:
+            cmd += ["--top_k", str(overrides["top_k"])]
+        if "use_hard" in overrides and overrides["use_hard"]:
+            cmd += ["--use-hard"]
+        if "mmr" in overrides and overrides["mmr"]:
+            cmd += ["--mmr"]
+        if "mmr_lambda" in overrides and overrides["mmr_lambda"] is not None:
+            cmd += ["--mmr-lambda", str(overrides["mmr_lambda"])]
     
     with _LOCK:
         _JOBS[job_id]["status"] = "RUNNING"
@@ -220,6 +248,8 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
     env = os.environ.copy()
     env["BASE"] = base_url
     env["JOB_ID"] = job_id  # Pass job_id to runner for metrics.json writing
+    if overrides.get("use_hard", False):
+        env["USE_HARD"] = "true"
     
     proc = subprocess.Popen(
         cmd,
@@ -244,12 +274,11 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
     finished_at = datetime.now().isoformat()
     final_status = "SUCCEEDED" if rc == 0 else "FAILED"
     
-    # Write metrics.json after job completion (if succeeded)
-    if rc == 0:
-        try:
-            _write_metrics_json(job_id, overrides, log_path)
-        except Exception as e:
-            logger.warning(f"Failed to write metrics.json for job {job_id}: {e}", exc_info=True)
+    # Job completion fallback: try to write metrics.json if missing (regardless of status)
+    try:
+        _write_metrics_json_if_missing(job_id, note=f"job finished with status={final_status} without runner metrics")
+    except Exception as e:
+        logger.warning(f"Failed to write fallback metrics.json for job {job_id}: {e}", exc_info=True)
     
     with _LOCK:
         _JOBS[job_id]["rc"] = rc
@@ -267,50 +296,58 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
             _save_job_meta(meta)
 
 
-def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
+def _write_metrics_json_if_missing(job_id: str, note: str = ""):
     """
-    Write metrics.json after job completion.
-    Tries to parse from log output, falls back to defaults if not found.
-    """
-    job_dir = _RUNS_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    metrics_file = job_dir / "metrics.json"
+    API fallback: only write metrics.json if file is missing or source is not "runner".
     
-    metrics = {
+    Args:
+        job_id: Job ID
+        note: Optional note about why fallback was used
+    """
+    out_dir = Path("/app/.runs") / job_id
+    out_file = out_dir / "metrics.json"
+    
+    if out_file.exists():
+        # Check if source is "runner" - if so, skip fallback
+        try:
+            with open(out_file, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+                if existing.get("source") == "runner":
+                    print(f"[API][METRICS] skip fallback, runner metrics exist: {out_file}")
+                    return
+        except Exception as e:
+            print(f"[API][METRICS] error reading existing metrics.json: {e}, will overwrite")
+    
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 2,
+        "source": "api-fallback",  # <- 明确兜底
         "job_id": job_id,
-        "schema_version": 11,
-        "recall_at_10": 0.0,
-        "p95_ms": 0.0,
-        "qps": 0.0,
-        "cost_per_query": 0.0,
-        "config": overrides.copy() if overrides else {}
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "note": note or "runner did not produce metrics.json",
+        "metrics": {
+            "recall_at_10": 0.0,
+            "ndcg_at_10": 0.0,
+            "mrr": 0.0,
+            "p95_ms": 0.0,
+            "qps": 0.0
+        },
+        "config": {}
     }
     
-    # Try to parse metrics from log file
-    try:
-        if Path(log_path).exists():
-            log_content = Path(log_path).read_text(encoding="utf-8", errors="ignore")
-            # Look for metrics patterns in log
-            import re
-            # Try to find recall@10
-            recall_match = re.search(r'recall[_\s@]?10[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
-            if recall_match:
-                metrics["recall_at_10"] = float(recall_match.group(1))
-            # Try to find p95
-            p95_match = re.search(r'p95[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
-            if p95_match:
-                metrics["p95_ms"] = float(p95_match.group(1))
-            # Try to find qps
-            qps_match = re.search(r'qps[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
-            if qps_match:
-                metrics["qps"] = float(qps_match.group(1))
-    except Exception as e:
-        logger.debug(f"Could not parse metrics from log: {e}")
+    with open(out_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     
-    # Write metrics.json
-    with open(metrics_file, 'w', encoding='utf-8') as f:
-        json.dump(metrics, f, indent=2, ensure_ascii=False)
-    logger.info(f"Wrote metrics.json for job {job_id}")
+    print(f"[API][METRICS] wrote fallback {out_file}")
+
+
+def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
+    """
+    DEPRECATED: Use _write_metrics_json_if_missing instead.
+    This function is kept for backward compatibility but should not be used.
+    """
+    # Legacy function - now just calls fallback
+    _write_metrics_json_if_missing(job_id, note="legacy fallback")
 
 
 def _get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
@@ -403,6 +440,10 @@ class RunOverrides(BaseModel):
     use_hybrid: Optional[bool] = None
     rrf_k: Optional[int] = None
     collection: Optional[str] = None
+    use_hard: Optional[bool] = False  # Use hard query subset
+    ef_search: Optional[int] = None  # Qdrant HNSW ef parameter
+    mmr: Optional[bool] = None  # MMR diversification
+    mmr_lambda: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="MMR lambda parameter")
 
 
 class RunRequest(BaseModel):
@@ -426,6 +467,8 @@ class RunRequest(BaseModel):
     use_hybrid: Optional[bool] = None
     rerank: Optional[bool] = None
     collection: Optional[str] = None
+    use_hard: Optional[bool] = False  # Use hard query subset
+    ef_search: Optional[int] = None  # Qdrant HNSW ef parameter
     
     # V9 legacy fields
     kind: Optional[RunKind] = None
@@ -838,10 +881,18 @@ async def run_experiment(request: RunRequest):
     try:
         # If config_file not provided, use None to run with pure CLI args (no --config-file)
         cfg = request.config_file
-        # Merge precedence: overrides > top-level fields > defaults
+        # Merge precedence: top-level fields override overrides for dataset/qrels (bug fix)
         if request.overrides:
             # If overrides provided, use them (they already have defaults)
             overrides_dict = request.overrides.model_dump()
+            # Top-level dataset_name/qrels_name take precedence (for API compatibility)
+            if hasattr(request, 'dataset_name') and request.dataset_name:
+                overrides_dict['dataset_name'] = request.dataset_name
+            if hasattr(request, 'qrels_name') and request.qrels_name:
+                overrides_dict['qrels_name'] = request.qrels_name
+            # top_k can come from either place
+            if hasattr(request, 'top_k') and request.top_k and 'top_k' not in overrides_dict:
+                overrides_dict['top_k'] = request.top_k
         else:
             # Otherwise, use top-level fields with defaults
             overrides_dict = RunOverrides(
@@ -850,9 +901,12 @@ async def run_experiment(request: RunRequest):
                 fast_mode=request.fast_mode,
                 dataset_name=getattr(request, 'dataset_name', None),
                 qrels_name=getattr(request, 'qrels_name', None),
+                top_k=getattr(request, 'top_k', None),
+                use_hard=getattr(request, 'use_hard', False),
+                ef_search=getattr(request, 'ef_search', None),
             ).model_dump()
-            # Remove None values
-            overrides_dict = {k: v for k, v in overrides_dict.items() if v is not None}
+            # Remove None values (but keep False values for use_hard)
+            overrides_dict = {k: v for k, v in overrides_dict.items() if v is not None or k == 'use_hard'}
         logger.info("[RUN] Request dataset_name=%s, qrels_name=%s, top_k=%s, fast_mode=%s", 
                    getattr(request, 'dataset_name', None), 
                    getattr(request, 'qrels_name', None),
@@ -878,7 +932,15 @@ async def get_status_simple(job_id: str):
     """Get job status."""
     meta = _get_job_status(job_id)
     if not meta:
-        raise HTTPException(status_code=404, detail="job_not_found")
+        # Return FAILED instead of unknown when job not found (registry might have been reloaded)
+        return {
+            "ok": True, 
+            "job": {
+                "job_id": job_id, 
+                "status": "FAILED", 
+                "error": "job not found in registry (may have been lost after container restart)"
+            }
+        }
     return {"ok": True, "job": meta}
 
 
@@ -1656,3 +1718,4 @@ async def runner_check():
 
 
 
+# dev-reload-132054

@@ -98,6 +98,32 @@ def calculate_ndcg_at_k(retrieved_docs: List[str], relevant_docs: List[str], k: 
     return dcg / idcg
 
 
+def calculate_precision_at_k(retrieved_docs: List[str], relevant_docs: List[str], k: int) -> float:
+    """
+    Calculate Precision@K metric.
+    
+    Args:
+        retrieved_docs: List of retrieved document IDs (top K, already deduplicated)
+        relevant_docs: List of relevant document IDs
+        k: K value (typically 10)
+        
+    Returns:
+        Precision@K value (0.0-1.0)
+    """
+    if not retrieved_docs[:k]:
+        return 0.0
+    
+    # Normalize doc IDs for comparison
+    retrieved_set = {str(doc_id).strip() for doc_id in retrieved_docs[:k]}
+    relevant_set = {str(doc_id).strip() for doc_id in relevant_docs}
+    
+    # Calculate hits (relevant docs in retrieved set)
+    hits = len(retrieved_set & relevant_set)
+    
+    # Precision@K = hits / min(K, |retrieved|)
+    return hits / min(k, len(retrieved_set))
+
+
 def calculate_mrr(retrieved_docs: List[str], relevant_docs: List[str]) -> float:
     """
     Calculate MRR (Mean Reciprocal Rank).

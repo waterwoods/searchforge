@@ -1,0 +1,24 @@
+{
+  "job_id": "75f3dd6e48e1",
+  "status": "SUCCEEDED",
+  "created_at": "2025-11-06T19:06:10.176637",
+  "finished_at": "2025-11-06T19:06:10.234309",
+  "return_code": 0,
+  "params": {
+    "sample": 20,
+    "repeats": 1,
+    "fast_mode": false
+  },
+  "cmd": [
+    "/usr/local/bin/python",
+    "-u",
+    "-m",
+    "experiments.fiqa_suite_runner",
+    "--base",
+    "http://localhost:8000",
+    "--sample",
+    "20",
+    "--repeats",
+    "1"
+  ]
+}

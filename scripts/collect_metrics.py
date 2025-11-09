@@ -71,22 +71,31 @@ def collect_all_jobs() -> List[Dict]:
             metrics = load_metrics_from_api(job_id)
         
         if metrics:
-            # Extract key metrics
-            overall = metrics.get("overall", {})
-            config = metrics.get("config", {})
+            # Support both old format (overall/config) and new format (metrics/config)
+            if "metrics" in metrics:
+                # New format (schema_version 2)
+                metrics_data = metrics.get("metrics", {})
+                config = metrics.get("config", {})
+                source = metrics.get("source", "unknown")
+            else:
+                # Old format (schema_version 11)
+                metrics_data = metrics.get("overall", {})
+                config = metrics.get("config", {})
+                source = "legacy"
             
             item = {
                 "job_id": job_id,
                 "top_k": config.get("top_k"),
                 "fast_mode": config.get("fast_mode", False),
-                "dataset_name": config.get("dataset"),
-                "qrels_name": config.get("qrels"),
+                "dataset_name": config.get("dataset") or config.get("dataset_name"),
+                "qrels_name": config.get("qrels") or config.get("qrels_name"),
                 "collection": config.get("collection"),
                 "use_hybrid": config.get("use_hybrid", False),
                 "rerank": config.get("rerank", False),
-                "recall_at_10": overall.get("recall_at_10", 0.0),
-                "p95_ms": overall.get("p95_ms", 0.0),
-                "qps": overall.get("qps", 0.0),
+                "recall_at_10": metrics_data.get("recall_at_10", 0.0),
+                "p95_ms": metrics_data.get("p95_ms", 0.0),
+                "qps": metrics_data.get("qps", 0.0),
+                "source": source,
                 "status": "SUCCEEDED"  # Assume succeeded if metrics exist
             }
             all_items.append(item)

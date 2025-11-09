@@ -1,0 +1,30 @@
+{
+  "job_id": "bf586aacc9c2",
+  "status": "SUCCEEDED",
+  "created_at": "2025-11-06T19:38:49.135890",
+  "finished_at": "2025-11-06T19:39:03.690840",
+  "return_code": 0,
+  "params": {
+    "sample": 200,
+    "repeats": 1,
+    "fast_mode": false,
+    "dataset_name": "fiqa_50k_v1",
+    "qrels_name": "fiqa_qrels_50k_v1"
+  },
+  "cmd": [
+    "/usr/local/bin/python",
+    "-u",
+    "-m",
+    "experiments.fiqa_suite_runner",
+    "--base",
+    "http://localhost:8000",
+    "--sample",
+    "200",
+    "--repeats",
+    "1",
+    "--dataset-name",
+    "fiqa_50k_v1",
+    "--qrels-name",
+    "fiqa_qrels_50k_v1"
+  ]
+}

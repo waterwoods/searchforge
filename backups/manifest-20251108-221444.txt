@@ -1,0 +1,118 @@
+==== BACKUP MANIFEST ====
+Time: 20251108-221444
+Current Branch: feat/phase-b
+Repo: /home/andy/searchforge
+Commit (HEAD): 6da9c37923b14c97e39983f769c0bbbbbe482c5b
+
+---- Dirty Changes (git status --porcelain) ----
+ M .dockerignore
+ M .github/pull_request_template.md
+ M .gitignore
+ M Makefile
+ D app/Dockerfile
+RD app/main.py -> app/main.py.deprecated
+ M docker-compose.yml
+ M experiments/fiqa_lib.py
+ M experiments/fiqa_suite_runner.py
+ M experiments/metrics.py
+ M scripts/ab_oneclick.sh
+ M scripts/cf_oneclick.sh
+ M scripts/collect_metrics.py
+ M scripts/smoke.sh
+ M services/fiqa_api/app_main.py
+ M services/fiqa_api/routes/experiment.py
+ M services/fiqa_api/routes/query.py
+ M services/fiqa_api/search_core.py
+ M services/fiqa_api/services/search_core.py
+ M services/rag_api/Dockerfile
+?? .last_run
+?? AB_LATENCY_FINAL_DELIVERY.txt
+?? CHANGES_AND_OUTPUTS.md
+?? DELIVERY_REPORT.md
+?? EDITORIAL_DELIVERABLES.md
+?? EXPERIMENT_SUMMARY.md
+?? FINAL_CHECKLIST.md
+?? FINAL_OVERVIEW.md
+?? FRONTEND_AUDIT.md
+?? GATEKEEPER_CHANGES.md
+?? GATEKEEPER_SUMMARY.txt
+?? LATENCY_OPTIMIZATION_SUITE.md
+?? LATENCY_SUITE_SUMMARY.txt
+?? LINKEDIN_POST.md
+?? POLICY_QUICKSTART.md
+?? POLICY_STATUS.md
+?? QUICKSTART_DEV.md
+?? QUICKSTART_LATENCY_OPTIMIZATION.md
+?? SUCCESS_SUMMARY.md
+?? VALIDATION_REPORT.md
+?? VERIFICATION_COMMANDS.sh
+?? agents/orchestrator/
+?? aggregate_and_plot.py
+?? app/orchestrate_router.py
+?? build_hard_subset.py
+?? configs/SLA_POLICY.yaml
+?? configs/collection_tags/
+?? configs/dev_defaults.yaml
+?? configs/policies.json
+?? configs/policies.json.lock
+?? configs/policies/
+?? docker-compose.dev.yml
+?? docs/DEV_MODE_CONFIG.md
+?? docs/SLA_CALLBACK_GUIDE.md
+?? evals/
+?? experiments/CHUNK_COMPARISON_QUICKSTART.md
+?? experiments/analyze_chunk_results.py
+?? experiments/build_chunk_collections.py
+?? experiments/chunking_strategies.py
+?? experiments/run_chunk_comparison.py
+?? experiments/run_chunk_experiments.py
+?? experiments/run_chunk_health_checks.py
+?? final_summary.sh
+?? frontend/
+?? generate_final_report.py
+?? gold_eval_quickrun.sh
+?? migrate_ui.sh
+?? observe/
+?? run_baseline_experiments.sh
+?? run_gold_hard_grid.sh
+?? runs_backup_20251106_133731/
+?? scripts/ab_latency_smoke.sh
+?? scripts/acceptance_test.py
+?? scripts/acceptance_test.sh
+?? scripts/analyze_latency_winners.py
+?? scripts/bandit/
+?? scripts/daily_health_sweep.sh
+?? scripts/full_validation.sh
+?? scripts/generate_data_triplets_audit.py
+?? scripts/guard_metrics.sh
+?? scripts/policy_demo.sh
+?? scripts/policy_switch.sh
+?? scripts/run_chunk_comparison.sh
+?? scripts/run_grid_dev.sh
+?? scripts/run_latency_grid.sh
+?? scripts/run_mmr_grid.sh
+?? scripts/smoke_test_orchestrator.py
+?? scripts/test_mmr.sh
+?? scripts/update_sla_from_results.py
+?? scripts/warmup.sh
+?? services/fiqa_api/patch_orchestrator.py
+?? services/fiqa_api/routes/admin.py
+?? services/orchestrate_router.py
+?? tests/
+?? tools/__init__.py
+?? tools/ab_test.py
+?? tools/cache_clear.py
+?? tools/data_snapshot.py
+?? tools/draw_pareto.py
+?? tools/eval/id_alignment_auditor.py
+?? tools/eval/spot_check.py
+?? tools/fetch_metrics.py
+?? tools/policy_apply.py
+?? tools/report/
+?? tools/run_eval.py
+?? ui/
+?? verify_and_report.sh
+
+---- Snapshot ----
+File: backups/repo-20251108-221444.tar.gz
+SHA256: 7f188c65183c6bb1241b803bfd164bcef6cca8fe7bd46cec5d82379c1a4ab173

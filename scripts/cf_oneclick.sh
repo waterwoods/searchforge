@@ -113,5 +113,5 @@ cd "$AGENTSERVICE_DIR"
 
 # Start service with poetry (foreground)
 # Use --timeout-keep-alive for SSE stability
-poetry run uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120
+poetry run uvicorn services.fiqa_api.app_main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120
 

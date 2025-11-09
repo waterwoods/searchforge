@@ -49,8 +49,11 @@ COPY services/api/ /app/services/api/
 COPY services/routers/ /app/services/routers/
 COPY services/code_intelligence/ /app/services/code_intelligence/
 COPY services/black_swan/ /app/services/black_swan/
+COPY services/orchestrate_router.py /app/services/orchestrate_router.py
 COPY tools/ /app/tools/
+COPY observe/ /app/observe/
 COPY experiments/ /app/experiments/
+COPY configs/ /app/configs/
 
 # 4) CUDA 守门：若 pip freeze 出现 nvidia/torch-cuda 直接失败
 RUN set -eux; \

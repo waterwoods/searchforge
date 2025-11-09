@@ -81,6 +81,9 @@ class QueryRequest(BaseModel):
     rerank_if_margin_below: Optional[float] = Field(default=0.12, ge=0.0, le=1.0, description="Margin threshold for gated reranking")
     max_rerank_trigger_rate: float = Field(default=0.25, ge=0.0, le=1.0, description="Max rerank trigger rate")
     rerank_budget_ms: int = Field(default=25, ge=1, le=1000, description="Rerank budget in milliseconds")
+    ef_search: Optional[int] = Field(default=None, ge=16, le=512, description="Qdrant HNSW ef parameter for search")
+    mmr: bool = Field(default=False, description="Whether to use MMR (Maximum Marginal Relevance) diversification")
+    mmr_lambda: float = Field(default=0.3, ge=0.0, le=1.0, description="MMR lambda parameter (0=max diversity, 1=max relevance)")
 
 
 # ========================================
@@ -260,7 +263,10 @@ async def query(request: QueryRequest, response: Response):
                     rerank_top_k=rerank_top_k,
                     rerank_if_margin_below=request.rerank_if_margin_below,
                     max_rerank_trigger_rate=request.max_rerank_trigger_rate,
-                    rerank_budget_ms=request.rerank_budget_ms
+                    rerank_budget_ms=request.rerank_budget_ms,
+                    ef_search=request.ef_search,
+                    mmr=request.mmr,
+                    mmr_lambda=request.mmr_lambda
                 ),
                 timeout=QUERY_TIMEOUT_SEC
             )
@@ -312,6 +318,8 @@ async def query(request: QueryRequest, response: Response):
         response.headers["X-Mode"] = "fast" if hasattr(request, 'fast_mode') and getattr(request, 'fast_mode', False) else "normal"
         response.headers["X-Hybrid"] = "true" if request.use_hybrid else "false"
         response.headers["X-Rerank"] = "true" if request.rerank else "false"
+        response.headers["X-MMR"] = "true" if request.mmr else "false"
+        response.headers["X-MMR-Lambda"] = f"{request.mmr_lambda:.2f}"
         response.headers["X-Dataset"] = request.collection or "fiqa"
         response.headers["X-Qrels"] = "unknown"  # Will be set from experiment params if available
         response.headers["X-Collection"] = actual_collection

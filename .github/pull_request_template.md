@@ -1,43 +1,104 @@
-# Pull Request
+# Pull Request - 守门人质量检查
 
-## Summary
+## 📝 变更描述
 
-<!-- What does this PR do? Why is it needed? What user impact does it have? -->
+<!-- 简要说明此 PR 的目的和主要变更 -->
 
-## Changes
+## ✅ 烟测指标（必填）
 
-<!-- List of changes in bullet points -->
-- 
-- 
-- 
+**请在提交 PR 前运行烟测并粘贴结果：**
 
-## Verification
-
-<!-- Commands to run, screenshots, metrics, test results -->
 ```bash
-# Example verification commands
+# 运行以下命令获取烟测指标
+make dev-restart && make warmup && make smoke
 ```
 
-## Rollback Plan
+### 烟测结果
 
-<!-- How to safely revert this change if needed -->
-1. 
-2. 
+<!-- ⚠️ 必须填写，否则 PR 将被要求补充 -->
 
-## Risks & Guardrails
+```
+Job ID: ___________________
+recall_at_10: ______________
+p95_ms: ___________________
+source: runner
+```
 
-<!-- SLO guards, feature flags, canary deployments, auto-rollback criteria -->
-- **SLO Guard**: 
-- **Feature Flag**: 
-- **Canary**: 
-- **Auto-rollback Criteria**: 
+**烟测通过标准：**
+- ✅ recall_at_10 > 0.90
+- ✅ p95_ms < 1000ms
+- ✅ source = "runner"
 
-## Checklist
+## 🏆 并行实验结果（可选，建议提供）
 
-- [ ] Code passes linting
-- [ ] Tests pass (unit/integration)
-- [ ] Documentation updated
-- [ ] Dashboards/alerts updated
-- [ ] Rollback plan documented
-- [ ] Risk assessment completed
+如果进行了参数调优，请粘贴 `reports/winners_dev.json` 片段：
 
+```bash
+# 运行以下命令获取胜者配置
+make grid-dev
+cat reports/winners_dev.json | python3 -m json.tool
+```
+
+### 胜者配置
+
+```json
+{
+  "winner": {
+    "name": "___________________",
+    "top_k": ___,
+    "recall_at_10": ___,
+    "p95_ms": ___
+  }
+}
+```
+
+## 🔍 测试检查清单
+
+- [ ] 本地运行 `make preflight` 通过
+- [ ] 本地运行 `make smoke` 通过
+- [ ] 代码遵循项目规范（无 CUDA 依赖、使用开发阈值）
+- [ ] 如果修改了实验逻辑，已运行 `make grid-dev` 验证
+- [ ] 更新了相关文档（如有必要）
+
+## 📊 性能影响
+
+<!-- 如果此 PR 影响性能，请说明：-->
+- **预期影响**：（提升 / 降低 / 无影响）
+- **影响范围**：（查询延迟 / 召回率 / 资源使用）
+
+## 🔗 相关链接
+
+<!-- 相关 Issue、文档或讨论链接 -->
+
+---
+
+## 守门人提示
+
+**默认走快路：** 所有实验默认使用开发阈值（sample≤50, fast_mode=true, rerank=false）。
+
+如需运行生产级配置，请在 PR 描述中明确说明原因，并设置 `FULL=1` 或 `PROD=1`。
+
+**验证命令：**
+```bash
+# 完整验证流程（推荐）
+make full-validate
+
+# 快速烟测
+make dev-restart && make warmup && make smoke
+
+# 并行小批实验
+make grid-dev
+```
+
+**如何获取指标：**
+```bash
+# 查看最新烟测结果
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T rag-api sh -c '
+  cd /app/.runs
+  LATEST=$(ls -t | grep -v ".json" | head -1)
+  cat $LATEST/metrics.json | python3 -m json.tool
+'
+
+# 查看胜者配置
+cat reports/winners_dev.json | python3 -m json.tool
+```

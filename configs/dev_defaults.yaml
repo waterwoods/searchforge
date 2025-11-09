@@ -1,0 +1,58 @@
+# Development Mode Default Parameters
+# Low-cost configuration for rapid iteration
+
+experiment:
+  name: "dev_mode"
+  description: "Development mode with reduced computational cost"
+  
+# Common settings (低成本配置)
+common:
+  base_url: "http://localhost:8000"
+  top_k: 20         # 降低 retrieval_k (prod: 50)
+  sample: 50        # 小样本 (prod: 1000+)
+  repeats: 1        # 单次重复 (prod: 3)
+  warmup: 3         # 减少预热 (prod: 5)
+  concurrency: 8    # 较低并发 (prod: 16)
+  timeout_s: 10.0   # 较短超时 (prod: 20.0)
+  fast_mode: true   # 强制快速模式
+
+# 开发模式搜索参数
+search_params:
+  # Vector search
+  top_k_range: [10, 20]   # 开发：仅测试小范围 (prod: [32, 48, 64, 80])
+  
+  # Hybrid (RRF)
+  use_hybrid: false        # 默认关闭混合检索 (prod: true)
+  rrf_k: 20               # 低成本 RRF (prod: 60)
+  
+  # Reranking
+  rerank: false            # 默认关闭重排 (prod: varies)
+  rerank_top_k: 10         # 低成本重排 (prod: 20)
+  rerank_budget_ms: 15     # 低预算 (prod: 25-50)
+  
+  # Qdrant HNSW
+  ef_search: 64           # 降低精度换速度 (prod: 128+)
+
+# 数据集配置（使用 10k 子集）
+datasets:
+  dev_dataset: "fiqa_10k_v1"
+  dev_qrels: "fiqa_qrels_10k_v1"
+  prod_dataset: "fiqa_50k_v1"
+  prod_qrels: "fiqa_qrels_50k_v1"
+
+# Output settings
+output:
+  reports_dir: "reports/dev"
+  artifacts_dir: "reports/dev/artifacts"
+
+# 如何覆盖到生产配置
+production_overrides:
+  top_k: 50
+  sample: null  # 使用全量
+  repeats: 3
+  concurrency: 16
+  timeout_s: 20.0
+  ef_search: 128
+  use_hybrid: true
+  rerank: true
+

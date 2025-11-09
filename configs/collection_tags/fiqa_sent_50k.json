@@ -1,0 +1,13 @@
+{
+  "collection_name": "fiqa_sent_50k",
+  "embed_model": "all-MiniLM-L6-v2",
+  "dim": 384,
+  "chunking_strategy": "sentence",
+  "chunking_params": {},
+  "num_documents": 50000,
+  "num_chunks": 233747,
+  "chunks_per_doc": 4.67494,
+  "build_time_sec": 203.518052816391,
+  "index_size_mb": 412.8896650314331,
+  "created_at": "2025-11-07T02:36:32.879926Z"
+}

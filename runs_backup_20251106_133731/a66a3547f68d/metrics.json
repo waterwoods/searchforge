@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "source": "runner",
+  "runner_version": "v2.0.0",
+  "job_id": "a66a3547f68d",
+  "ts": "2025-11-06T19:39:18Z",
+  "metrics": {
+    "recall_at_10": 0.9995,
+    "ndcg_at_10": 0.0,
+    "mrr": 0.0,
+    "p95_ms": 1288.639965991024,
+    "qps": 0.9168040911848383
+  },
+  "config": {
+    "dataset": "fiqa_50k_v1",
+    "qrels": "fiqa_qrels_50k_v1",
+    "top_k": 30,
+    "fast_mode": true,
+    "rerank": false
+  }
+}

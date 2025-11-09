@@ -1,0 +1,10 @@
+{
+    "name": "policy_latency_v1",
+    "description": "Latency-optimized configuration based on grid search results",
+    "top_k": 10,
+    "mmr": false,
+    "mmr_lambda": 0.3,
+    "ef_search": 32,
+    "concurrency": 4,
+    "warm_cache": 100
+}

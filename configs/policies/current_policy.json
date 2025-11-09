@@ -1,0 +1,10 @@
+{
+    "name": "baseline_v0",
+    "description": "Baseline configuration with default parameters",
+    "top_k": 10,
+    "mmr": false,
+    "mmr_lambda": 0.3,
+    "ef_search": 96,
+    "concurrency": 12,
+    "warm_cache": 0
+}

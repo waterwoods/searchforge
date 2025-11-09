@@ -1,0 +1,2 @@
+"""Observer module tests package."""
+

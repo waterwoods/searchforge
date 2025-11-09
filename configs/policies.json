@@ -1,0 +1,107 @@
+{
+    "schema_version": "1.1",
+    "generated_at": "2025-11-07T17:17:57Z",
+    "source": "reports/winners.final.json",
+    "policies": {
+        "fast_v1": {
+            "description": "Time-saving: Optimized for lowest P95 latency with excellent quality",
+            "collection": "fiqa_sent_50k",
+            "dataset": "fiqa_sent_50k",
+            "queries_path": "experiments/data/fiqa/fiqa_hard_50k.jsonl",
+            "qrels_path": "experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv",
+            "top_k": 30,
+            "mmr": true,
+            "mmr_lambda": 0.5,
+            "ef_search": 32,
+            "use_hybrid": true,
+            "rerank": false,
+            "expected_recall": 0.985,
+            "expected_p95_ms": 560,
+            "tier": 1,
+            "source": {
+                "chunk": "winners_chunk.json:fast",
+                "mmr": "winners_topk_mmr.json:timesaving",
+                "latency": "winners_latency.json:timesaving"
+            }
+        },
+        "balanced_v1": {
+            "description": "Balanced: Pareto-optimal quality/latency tradeoff (default recommended)",
+            "collection": "fiqa_win256_o64_50k",
+            "dataset": "fiqa_win256_o64_50k",
+            "queries_path": "experiments/data/fiqa/fiqa_hard_50k.jsonl",
+            "qrels_path": "experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv",
+            "top_k": 30,
+            "mmr": true,
+            "mmr_lambda": 0.5,
+            "ef_search": 32,
+            "use_hybrid": true,
+            "rerank": false,
+            "expected_recall": 0.988,
+            "expected_p95_ms": 1090,
+            "tier": 2,
+            "source": {
+                "chunk": "winners_chunk.json:balanced",
+                "mmr": "winners_topk_mmr.json:balanced",
+                "latency": "winners_latency.json:balanced"
+            }
+        },
+        "quality_v1": {
+            "description": "Quality-focused: Maximum recall with acceptable latency overhead",
+            "collection": "fiqa_para_50k",
+            "dataset": "fiqa_para_50k",
+            "queries_path": "experiments/data/fiqa/fiqa_hard_50k.jsonl",
+            "qrels_path": "experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv",
+            "top_k": 10,
+            "mmr": true,
+            "mmr_lambda": 0.1,
+            "ef_search": 96,
+            "use_hybrid": true,
+            "rerank": false,
+            "expected_recall": 0.995,
+            "expected_p95_ms": 1280,
+            "tier": 3,
+            "source": {
+                "chunk": "winners_chunk.json:high_quality",
+                "mmr": "winners_topk_mmr.json:quality",
+                "latency": "winners_latency.json:quality"
+            }
+        },
+        "baseline_v1": {
+            "description": "Original baseline for rollback safety",
+            "collection": "fiqa_para_50k",
+            "dataset": "fiqa_para_50k",
+            "queries_path": "experiments/data/fiqa/fiqa_hard_50k.jsonl",
+            "qrels_path": "experiments/data/fiqa/fiqa_qrels_hard_50k_v1.tsv",
+            "top_k": 10,
+            "mmr": false,
+            "mmr_lambda": null,
+            "ef_search": 64,
+            "use_hybrid": true,
+            "rerank": false,
+            "expected_recall": 0.988,
+            "expected_p95_ms": 1250
+        }
+    },
+    "default_policy": "balanced_v1",
+    "arms": [
+        "fast_v1",
+        "balanced_v1",
+        "quality_v1"
+    ],
+    "sla_thresholds": {
+        "p95_budget_ms": 1500,
+        "error_budget_rate": 0.01,
+        "breach_streak": 2,
+        "rollback_target": "baseline_v1"
+    },
+    "metadata": {
+        "generated_at": "2025-11-07T00:00:00Z",
+        "source_files": [
+            "reports/winners_chunk.json",
+            "reports/mmr_grid_20251106_181539/winners_topk_mmr.json",
+            "reports/winners_latency.json"
+        ],
+        "description": "Unified winners from chunk, MMR/top-k, and latency optimization experiments",
+        "strategy": "Fast tier optimizes P95 latency with minimal recall loss; Balanced tier provides Pareto-optimal quality/latency tradeoff; Quality tier maximizes recall"
+    }
+}

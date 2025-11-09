@@ -1,19 +1,48 @@
+# === 守门人：Docker 构建上下文忽略清单 ===
+# 目标：轻仓构建，数据外置
+
+# VCS
 .git/
+.gitignore
+
+# Python runtime
 __pycache__/
 *.pyc
 *.pyo
-.DS_Store
-.env
-data/
-reports/
-*.ipynb# --- generated for lean docker context ---
-.git
-.gitignore
+*.pyd
 .pytest_cache/
-*.log
+.mypy_cache/
+.cache/
+.venv/
+.env
+.env.*
+
+# 数据与模型（外置卷）
+data/
+models/
+experiments/data/
+
+# 产物与报告
+reports/
+.runs/
+logs/
+services/fiqa_api/logs/
+
+# 归档与临时文件
 archives/
 .trash/
-models/
-.env.*
-services/fiqa_api/logs/
+.project_trash/
+*.log
+
+# 大文件与压缩包
+*.zip
+*.tar.gz
+*.parquet
 *.csv
+
+# 系统与编辑器
+.DS_Store
+*.ipynb
+
+# Node.js（如有前端）
+node_modules/

@@ -233,6 +233,129 @@ def calculate_margin(results: List[Dict[str, Any]]) -> float:
     return max(0.0, scores[0] - scores[1])
 
 
+def cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
+    """
+    Calculate cosine similarity between two vectors.
+    
+    Args:
+        vec_a: First vector
+        vec_b: Second vector
+        
+    Returns:
+        Cosine similarity value in range [-1, 1]
+    """
+    norm_a = np.linalg.norm(vec_a)
+    norm_b = np.linalg.norm(vec_b)
+    
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    
+    return float(np.dot(vec_a, vec_b) / (norm_a * norm_b))
+
+
+def mmr_rerank(
+    query_vector: np.ndarray,
+    candidate_results: List[Dict[str, Any]],
+    candidate_vectors: List[np.ndarray],
+    top_k: int,
+    lambda_param: float = 0.3
+) -> List[Dict[str, Any]]:
+    """
+    Apply Maximum Marginal Relevance (MMR) diversification to search results.
+    
+    MMR selects documents that are relevant to the query while minimizing redundancy
+    with already selected documents.
+    
+    Algorithm: MMR(S) = argmax_i [λ*sim(i,q) - (1-λ)*max_{j∈S} sim(i,j)]
+    where:
+    - λ=1: pure relevance (original ranking)
+    - λ=0: pure diversity (maximize document differences)
+    - λ=0.3: balanced diversity and relevance
+    
+    Args:
+        query_vector: Query embedding vector
+        candidate_results: List of search results (with id, text, score)
+        candidate_vectors: List of document embedding vectors (aligned with candidate_results)
+        top_k: Number of results to return
+        lambda_param: Balance parameter (0=max diversity, 1=max relevance)
+        
+    Returns:
+        Reranked list of results (length <= top_k)
+    """
+    if not candidate_results or len(candidate_results) != len(candidate_vectors):
+        logger.warning(f"[MMR] Invalid input: {len(candidate_results)} results, {len(candidate_vectors)} vectors")
+        return candidate_results[:top_k]
+    
+    # Convert query vector to numpy array
+    query_vec = np.asarray(query_vector, dtype=np.float32).reshape(-1)
+    
+    # Normalize query vector
+    query_norm = np.linalg.norm(query_vec)
+    if query_norm > 0:
+        query_vec = query_vec / query_norm
+    
+    # Normalize all candidate vectors
+    normalized_vectors = []
+    for vec in candidate_vectors:
+        vec_np = np.asarray(vec, dtype=np.float32).reshape(-1)
+        vec_norm = np.linalg.norm(vec_np)
+        if vec_norm > 0:
+            vec_np = vec_np / vec_norm
+        normalized_vectors.append(vec_np)
+    
+    # Calculate relevance scores (query similarity)
+    relevance_scores = []
+    for vec in normalized_vectors:
+        sim = cosine_similarity(query_vec, vec)
+        relevance_scores.append(sim)
+    
+    # MMR selection
+    selected_indices = []
+    selected_vectors = []
+    remaining_indices = list(range(len(candidate_results)))
+    
+    # Iteratively select documents
+    for _ in range(min(top_k, len(candidate_results))):
+        if not remaining_indices:
+            break
+        
+        best_score = -float('inf')
+        best_idx = None
+        
+        for idx in remaining_indices:
+            # Relevance component: λ * sim(i, query)
+            relevance = lambda_param * relevance_scores[idx]
+            
+            # Diversity component: (1-λ) * max_{j∈S} sim(i, j)
+            diversity_penalty = 0.0
+            if selected_vectors:
+                # Calculate maximum similarity with already selected documents
+                max_sim = max(
+                    cosine_similarity(normalized_vectors[idx], sel_vec)
+                    for sel_vec in selected_vectors
+                )
+                diversity_penalty = (1 - lambda_param) * max_sim
+            
+            # MMR score
+            mmr_score = relevance - diversity_penalty
+            
+            if mmr_score > best_score:
+                best_score = mmr_score
+                best_idx = idx
+        
+        if best_idx is not None:
+            selected_indices.append(best_idx)
+            selected_vectors.append(normalized_vectors[best_idx])
+            remaining_indices.remove(best_idx)
+    
+    # Build reranked results
+    reranked = [candidate_results[idx] for idx in selected_indices]
+    
+    logger.info(f"[MMR] Reranked {len(candidate_results)} candidates -> {len(reranked)} results (λ={lambda_param})")
+    
+    return reranked
+
+
 # ========================================
 # Core Search Function (Reusable)
 # ========================================
@@ -252,7 +375,10 @@ def perform_search(
     rerank_top_k: int = 20,
     rerank_if_margin_below: Optional[float] = None,
     max_rerank_trigger_rate: float = 0.25,
-    rerank_budget_ms: int = 25
+    rerank_budget_ms: int = 25,
+    ef_search: Optional[int] = None,
+    mmr: bool = False,
+    mmr_lambda: float = 0.3
 ) -> Dict[str, Any]:
     """
     Execute search with unified routing (FAISS/Qdrant/Milvus).
@@ -518,6 +644,98 @@ def perform_search(
         fusion_metrics = {"fusion_overlap": 0, "rrf_candidates": 0}
     
     # ========================================
+    # MMR Diversification (if enabled)
+    # ========================================
+    mmr_info = None
+    
+    if mmr and len(results) > 1:
+        try:
+            mmr_start = time.perf_counter()
+            logger.info(f"[MMR] Starting diversification with λ={mmr_lambda}, candidates={len(results)}")
+            
+            # Get query vector (reuse from search)
+            client = get_qdrant_client()
+            encoder = get_encoder_model()
+            if encoder is None:
+                from services.fiqa_api.clients import get_embedder
+                embedder = get_embedder()
+                if embedder is None:
+                    raise RuntimeError("Encoder model not available for MMR")
+                raw_vector = embedder.encode([query])[0]
+            else:
+                try:
+                    raw_vector = encoder.encode([query])[0]
+                except (TypeError, AttributeError):
+                    raw_vector = encoder.encode(query)
+            
+            query_vector_mmr = ensure_1d_float32(raw_vector)
+            
+            # Fetch document vectors from Qdrant for candidates
+            # We need to retrieve the vectors for each document ID
+            doc_ids = [r["id"] for r in results]
+            
+            # Retrieve points with vectors from Qdrant
+            try:
+                retrieved_points = client.retrieve(
+                    collection_name=actual_collection,
+                    ids=doc_ids,
+                    with_vectors=True
+                )
+                
+                # Extract vectors in same order as results
+                candidate_vectors = []
+                for point in retrieved_points:
+                    if hasattr(point, 'vector') and point.vector is not None:
+                        candidate_vectors.append(ensure_1d_float32(point.vector))
+                    else:
+                        # Fallback: use zero vector if not found
+                        candidate_vectors.append(np.zeros(len(query_vector_mmr), dtype=np.float32))
+                
+                if len(candidate_vectors) == len(results):
+                    # Apply MMR reranking
+                    mmr_results = mmr_rerank(
+                        query_vector=query_vector_mmr,
+                        candidate_results=results,
+                        candidate_vectors=candidate_vectors,
+                        top_k=top_k,
+                        lambda_param=mmr_lambda
+                    )
+                    
+                    # Deduplicate by doc_id after MMR
+                    seen_ids = set()
+                    deduped_results = []
+                    for r in mmr_results:
+                        doc_id = r["id"]
+                        if doc_id not in seen_ids:
+                            seen_ids.add(doc_id)
+                            deduped_results.append(r)
+                    
+                    results = deduped_results[:top_k]
+                    
+                    mmr_elapsed = (time.perf_counter() - mmr_start) * 1000
+                    mmr_info = {
+                        "enabled": True,
+                        "lambda": mmr_lambda,
+                        "candidates": len(candidate_vectors),
+                        "selected": len(results),
+                        "elapsed_ms": round(mmr_elapsed, 2)
+                    }
+                    logger.info(f"[MMR] Completed in {mmr_elapsed:.1f}ms, selected {len(results)} diverse results")
+                else:
+                    logger.warning(f"[MMR] Vector count mismatch: {len(candidate_vectors)} != {len(results)}, skipping MMR")
+                    mmr_info = {"enabled": False, "reason": "vector_count_mismatch"}
+                    
+            except Exception as e:
+                logger.error(f"[MMR] Failed to retrieve vectors: {e}", exc_info=True)
+                mmr_info = {"enabled": False, "reason": "vector_retrieval_failed", "error": str(e)}
+                
+        except Exception as e:
+            logger.error(f"[MMR] Unexpected error: {e}", exc_info=True)
+            mmr_info = {"enabled": False, "reason": "error", "error": str(e)}
+    else:
+        mmr_info = {"enabled": False}
+    
+    # ========================================
     # Gated Reranking (if enabled)
     # ========================================
     reranker_info = None
@@ -738,11 +956,13 @@ def perform_search(
         "doc_ids": [r["id"] for r in results]
     }
     
-    # Add enhanced metrics if hybrid or rerank was configured
-    if hybrid_fusion_info or reranker_info:
+    # Add enhanced metrics if hybrid, MMR, or rerank was configured
+    if hybrid_fusion_info or mmr_info or reranker_info:
         response["metrics_details"] = {}
         if hybrid_fusion_info:
             response["metrics_details"]["fusion"] = hybrid_fusion_info
+        if mmr_info:
+            response["metrics_details"]["mmr"] = mmr_info
         if reranker_info:
             response["metrics_details"]["rerank"] = reranker_info
     

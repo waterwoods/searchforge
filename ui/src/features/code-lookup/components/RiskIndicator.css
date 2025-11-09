@@ -1,0 +1,72 @@
+.risk-indicator {
+    margin: 15px 0;
+    padding: 15px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+}
+
+.risk-header h4 {
+    margin: 0 0 10px 0;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.risk-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.risk-bar {
+    position: relative;
+    height: 24px;
+    border: 2px solid;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #1a1a1a;
+}
+
+.risk-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    opacity: 0.8;
+}
+
+.risk-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 12px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.risk-score {
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.risk-level {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.risk-description {
+    color: #ccc;
+    font-size: 11px;
+    line-height: 1.4;
+    font-style: italic;
+    text-align: center;
+}
+
+
+

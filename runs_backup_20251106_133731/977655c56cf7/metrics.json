@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "source": "runner",
+  "runner_version": "v2.0.0",
+  "job_id": "977655c56cf7",
+  "ts": "2025-11-06T20:33:00Z",
+  "dataset": "fiqa_50k_v1",
+  "qrels_name": "fiqa_qrels_50k_v1",
+  "metrics": {
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "recall_at_10": 0.9995,
+    "precision_at_10": 0.9995,
+    "ndcg_at_10": 0.9996818960590053,
+    "mrr": 1.0,
+    "p95_ms": 1283.7804110022262,
+    "qps": 0.9393930179130641,
+    "cost_per_query": 1e-05
+  },
+  "config": {
+    "dataset": "fiqa_50k_v1",
+    "qrels": "fiqa_qrels_50k_v1",
+    "top_k": 30,
+    "fast_mode": true,
+    "rerank": false,
+    "mmr": null
+  }
+}
