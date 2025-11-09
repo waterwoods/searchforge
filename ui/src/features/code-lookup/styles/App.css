@@ -1,0 +1,244 @@
+/* Global styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0a0a0a;
+  color: #fff;
+  overflow-x: hidden;
+}
+
+code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+/* App layout */
+.clu-app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.clu-app-header {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  border-bottom: 1px solid #333;
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+
+.clu-header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.clu-header-content h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #4a9eff 0%, #6bb6ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.clu-header-content p {
+  color: #ccc;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+/* Navigation styles */
+.clu-header-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.clu-header-link:hover {
+  text-decoration: none;
+}
+
+.clu-app-nav {
+  margin-top: 15px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.clu-nav-link {
+  color: #ccc;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.clu-nav-link:hover {
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.1);
+  border-color: rgba(74, 158, 255, 0.3);
+}
+
+.clu-nav-link.clu-active {
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.2);
+  border-color: #4a9eff;
+}
+
+.clu-app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.clu-graph-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.clu-app-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.clu-query-section {
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+}
+
+.clu-main-content {
+  flex: 1;
+  display: flex;
+  min-height: calc(100vh - 200px);
+  height: calc(100vh - 200px);
+}
+
+.clu-graph-section {
+  flex: 1;
+  background: #1a1a1a;
+}
+
+.clu-evidence-section {
+  background: #1a1a1a;
+}
+
+.clu-trace-section {
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.clu-app-footer {
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+  padding: 15px 0;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.clu-app-footer p {
+  color: #888;
+  font-size: 14px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .clu-main-content {
+    flex-direction: column;
+  }
+
+  .clu-evidence-section {
+    width: 100%;
+    height: 300px;
+    border-left: none;
+    border-top: 1px solid #333;
+  }
+
+  .clu-header-content h1 {
+    font-size: 24px;
+  }
+
+  .clu-header-content p {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .clu-header-content {
+    padding: 0 15px;
+  }
+
+  .header-content h1 {
+    font-size: 20px;
+  }
+
+  .header-content p {
+    font-size: 12px;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+::-webkit-scrollbar-corner {
+  background: #1a1a1a;
+}
+
+/* Focus styles */
+button:focus,
+input:focus {
+  outline: 2px solid #4a9eff;
+  outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+  background: #4a9eff;
+  color: #fff;
+}
+
+::-moz-selection {
+  background: #4a9eff;
+  color: #fff;
+}

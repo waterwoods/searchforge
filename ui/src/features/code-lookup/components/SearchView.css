@@ -1,0 +1,109 @@
+.search-view {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.search-view-container {
+    max-width: 1200px;
+    width: 100%;
+    text-align: center;
+}
+
+.search-header {
+    margin-bottom: 3rem;
+}
+
+.search-header h2 {
+    color: #ffffff;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #4a9eff 0%, #6bb6ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.search-header p {
+    color: #cccccc;
+    font-size: 1.2rem;
+    margin-bottom: 0;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.search-input-section {
+    margin-bottom: 4rem;
+    display: flex;
+    justify-content: center;
+}
+
+.search-features {
+    margin-top: 4rem;
+}
+
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.feature-card {
+    background: rgba(42, 42, 42, 0.8);
+    border: 1px solid #444;
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: left;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    border-color: #4a9eff;
+    box-shadow: 0 10px 30px rgba(74, 158, 255, 0.2);
+}
+
+.feature-card h3 {
+    color: #ffffff;
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.feature-card p {
+    color: #cccccc;
+    font-size: 1rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .search-view {
+        padding: 1rem;
+    }
+    
+    .search-header h2 {
+        font-size: 2rem;
+    }
+    
+    .search-header p {
+        font-size: 1rem;
+    }
+    
+    .feature-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .feature-card {
+        padding: 1.5rem;
+    }
+}

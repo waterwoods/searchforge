@@ -1,0 +1,23 @@
+/* Global styles for proper height chain and layout */
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+#root {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure Ant Design Layout components can grow properly */
+.ant-layout {
+    height: 100%;
+}
+
+.ant-layout-content {
+    flex: 1;
+    overflow: hidden;
+}
