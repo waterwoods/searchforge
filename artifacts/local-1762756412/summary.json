@@ -1,0 +1,9 @@
+{
+  "p95_ms": 257.4977490003221,
+  "err_rate": 0.0,
+  "recall_at_10": 1.0,
+  "cost_tokens": 0,
+  "total": 20,
+  "hits": 20,
+  "errors": 0
+}

@@ -16,7 +16,7 @@ const useGraphStore = create((set, get) => ({
         // Reset state and start loading
         set({ isLoading: true, graphData: null });
 
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+        const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
         const source = new EventSource(`${apiBaseUrl}/api/v1/graph/stream-search?q=${encodeURIComponent(q)}`);
 
         source.onmessage = (event) => {

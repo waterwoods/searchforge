@@ -30,6 +30,7 @@ from services.fiqa_api.models.diff_models import DiffMetrics, DiffResponse, Diff
 from services.fiqa_api.utils.gitinfo import get_git_sha
 from services.fiqa_api.preset_manager import get_preset_manager
 from services.fiqa_api.clients import get_qdrant_client
+from services.fiqa_api.utils.metrics_loader import parse_metrics_from_log
 
 logger = logging.getLogger(__name__)
 
@@ -276,41 +277,163 @@ def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
     job_dir.mkdir(parents=True, exist_ok=True)
     metrics_file = job_dir / "metrics.json"
     
-    metrics = {
+    project_root = Path(__file__).resolve().parents[3]
+
+    metrics: Dict[str, Any] = {
         "job_id": job_id,
         "schema_version": 11,
-        "recall_at_10": 0.0,
-        "p95_ms": 0.0,
-        "qps": 0.0,
-        "cost_per_query": 0.0,
-        "config": overrides.copy() if overrides else {}
+        "config": overrides.copy() if overrides else {},
     }
-    
-    # Try to parse metrics from log file
-    try:
-        if Path(log_path).exists():
-            log_content = Path(log_path).read_text(encoding="utf-8", errors="ignore")
-            # Look for metrics patterns in log
-            import re
-            # Try to find recall@10
-            recall_match = re.search(r'recall[_\s@]?10[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
-            if recall_match:
-                metrics["recall_at_10"] = float(recall_match.group(1))
-            # Try to find p95
-            p95_match = re.search(r'p95[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
-            if p95_match:
-                metrics["p95_ms"] = float(p95_match.group(1))
-            # Try to find qps
-            qps_match = re.search(r'qps[:\s=]+([\d.]+)', log_content, re.IGNORECASE)
-            if qps_match:
-                metrics["qps"] = float(qps_match.group(1))
-    except Exception as e:
-        logger.debug(f"Could not parse metrics from log: {e}")
-    
-    # Write metrics.json
+
+    def _sanitize_metric(key: str, value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            if key == "cost_tokens":
+                ivalue = int(float(value))
+                return ivalue if ivalue >= 0 else None
+            fvalue = float(value)
+        except (TypeError, ValueError):
+            return None
+        if key == "p95_ms" and fvalue <= 0:
+            return None
+        if key == "err_rate":
+            return max(0.0, min(1.0, fvalue))
+        if key == "recall_at_10":
+            return max(0.0, min(1.0, fvalue))
+        return fvalue
+
+    summary_metrics: Dict[str, Optional[float]] = {k: None for k in ("p95_ms", "err_rate", "recall_at_10", "cost_tokens")}
+
+    # 1) summary.json emitted by runner (check multiple candidate locations)
+    summary_path = job_dir / "summary.json"
+    summary_candidates = [
+        summary_path,
+        Path("/app/artifacts") / job_id / "summary.json",
+        project_root / "artifacts" / job_id / "summary.json",
+    ]
+
+    summary_data: Optional[Dict[str, Any]] = None
+    for candidate in summary_candidates:
+        if not candidate.exists():
+            continue
+        try:
+            text = candidate.read_text(encoding="utf-8")
+            loaded = json.loads(text)
+            if isinstance(loaded, dict):
+                summary_data = loaded
+                if candidate != summary_path:
+                    try:
+                        job_dir.mkdir(parents=True, exist_ok=True)
+                        summary_path.write_text(text, encoding="utf-8")
+                    except Exception as write_exc:
+                        logger.debug(f"Failed to copy summary.json for {job_id}: {write_exc}")
+                break
+        except Exception as exc:
+            logger.debug(f"Failed to read summary.json candidate {candidate} for {job_id}: {exc}")
+
+    if summary_data:
+        for key in summary_metrics.keys():
+            summary_metrics[key] = _sanitize_metric(key, summary_data.get(key))
+
+    # 2) fallback to manifests if summary missing any key
+    manifest_candidates = [
+        Path("/app/artifacts/manifests") / f"{job_id}.json",
+        job_dir / "manifest.json",
+    ]
+    for candidate in manifest_candidates:
+        if all(value is not None for value in summary_metrics.values()):
+            break
+        if not candidate.exists():
+            continue
+        try:
+            manifest_data = json.loads(candidate.read_text(encoding="utf-8"))
+            manifest_summary = manifest_data.get("summary") if isinstance(manifest_data, dict) else None
+            if not isinstance(manifest_summary, dict):
+                manifest_summary = manifest_data if isinstance(manifest_data, dict) else {}
+            for key in summary_metrics.keys():
+                if summary_metrics[key] is None:
+                    summary_metrics[key] = _sanitize_metric(key, manifest_summary.get(key))
+        except Exception as exc:
+            logger.debug(f"Failed to parse manifest for {job_id}: {exc}")
+
+    # 3) log fallback using METRICS line
+    if any(value is None for value in summary_metrics.values()):
+        log_text = ""
+        try:
+            log_text = Path(log_path).read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            pass
+        log_metrics = parse_metrics_from_log(log_text)
+        for key in summary_metrics.keys():
+            if summary_metrics[key] is None:
+                summary_metrics[key] = _sanitize_metric(key, log_metrics.get(key))
+
+    metrics["recall_at_10"] = summary_metrics["recall_at_10"]
+    metrics["p95_ms"] = summary_metrics["p95_ms"]
+    metrics["err_rate"] = summary_metrics["err_rate"]
+    metrics["qps"] = None
+    metrics["cost_per_query"] = None
+    metrics["cost_tokens"] = summary_metrics["cost_tokens"]
+
     with open(metrics_file, 'w', encoding='utf-8') as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
     logger.info(f"Wrote metrics.json for job {job_id}")
+
+    # Emit METRICS line only if not already present
+    should_emit_metrics_line = False
+    try:
+        if Path(log_path).exists():
+            existing = Path(log_path).read_text(encoding="utf-8", errors="ignore")
+            should_emit_metrics_line = "METRICS" not in existing
+        else:
+            should_emit_metrics_line = True
+    except Exception:
+        should_emit_metrics_line = True
+
+    if should_emit_metrics_line:
+        try:
+            parts = ["METRICS"]
+            if summary_metrics["p95_ms"] is not None:
+                parts.append(f"p95_ms={int(round(summary_metrics['p95_ms']))}")
+            if summary_metrics["err_rate"] is not None:
+                parts.append(f"err_rate={summary_metrics['err_rate']:.3f}")
+            if summary_metrics["recall_at_10"] is not None:
+                parts.append(f"recall@10={summary_metrics['recall_at_10']:.3f}")
+            if summary_metrics["cost_tokens"] is not None:
+                parts.append(f"cost_tokens={int(summary_metrics['cost_tokens'])}")
+            if len(parts) > 1:
+                metrics_line = " ".join(parts)
+                print(metrics_line)
+                with open(log_path, "a", encoding="utf-8") as log_handle:
+                    log_handle.write(metrics_line + "\n")
+        except Exception as exc:
+            logger.debug(f"Failed to append METRICS line for {job_id}: {exc}")
+
+    try:
+        project_root = Path(__file__).resolve().parents[3]
+        artifacts_root = project_root / "artifacts"
+        manifests_dir = artifacts_root / "manifests"
+        job_manifest_dir = artifacts_root / job_id
+        manifests_dir.mkdir(parents=True, exist_ok=True)
+        job_manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_summary = {k: v for k, v in summary_metrics.items() if v is not None}
+        manifest_payload = {
+            "job_id": job_id,
+            "status": "SUCCEEDED",
+            "summary": manifest_summary,
+            "metrics": manifest_summary,
+            "generated_at": time.time(),
+            "overrides": overrides or {},
+        }
+
+        with open(job_manifest_dir / "manifest.json", "w", encoding="utf-8") as handle:
+            json.dump(manifest_payload, handle, indent=2, ensure_ascii=False)
+        with open(manifests_dir / f"{job_id}.json", "w", encoding="utf-8") as handle:
+            json.dump(manifest_payload, handle, indent=2, ensure_ascii=False)
+    except Exception as exc:
+        logger.debug(f"Failed to write manifest for {job_id}: {exc}")
 
 
 def _get_job_status(job_id: str) -> Optional[Dict[str, Any]]:

@@ -5,6 +5,8 @@ import WorkflowPanel from './WorkflowPanel';
 import RiskIndicator from './RiskIndicator';
 import './EvidencePane.css';
 
+const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 const EvidencePane = () => {
     // Subscribe to selection and graph data from the shared store
     const { selectedNodeId, graphData } = useGraphStore();
@@ -97,7 +99,7 @@ const EvidencePane = () => {
             setAiSummaryLoading(true);
             setAiSummaryData(null);
             try {
-                const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+                const apiBaseUrl = getApiBaseUrl();
                 const res = await fetch(`${apiBaseUrl}/api/v1/intelligence/summary/${encodeURIComponent(nodeId)}`);
                 if (!res.ok) throw new Error('Failed to load AI summary');
                 const data = await res.json();
@@ -181,7 +183,7 @@ const EvidencePane = () => {
         if (!selectedNode?.id || isLoading) return;
         setIsLoading(true);
         setAnalysis('');
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+        const apiBaseUrl = getApiBaseUrl();
         const es = new EventSource(`${apiBaseUrl}/api/v1/analyze-node/${encodeURIComponent(selectedNode.id)}`);
         es.onmessage = (event) => {
             if (event.data === '[DONE]') {
@@ -212,7 +214,7 @@ const EvidencePane = () => {
         setChatInput('');
         setIsChatting(true);
 
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+        const apiBaseUrl = getApiBaseUrl();
 
         // Start building the assistant's response in state
         const assistantMessage = {

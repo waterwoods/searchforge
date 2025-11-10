@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Tabs,
     Button,
@@ -34,6 +34,8 @@ import {
     CheckCircleFilled,
     CloseCircleFilled,
 } from '@ant-design/icons';
+import StewardChat from '../../components/chat/StewardChat';
+import { startPolling, rewritePollPath, normalizeStatus, TERMINAL_STATES } from '../../api/polling';
 
 const { Title } = Typography;
 
@@ -54,6 +56,53 @@ const withApiBase = (path = '') => {
     if (!path) return API_BASE;
     return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 };
+
+// ---- begin: run helpers ----
+const ALLOW_KEYS = new Set([
+    'preset', 'dataset', 'sample_size', 'top_k', 'rrf_k',
+    'rerank', 'detail', 'commit'
+]);
+
+const toPlainValue = (v) => {
+    // handle AntD select labelInValue or objects with { value }
+    if (v && typeof v === 'object') {
+        if ('value' in v) return v.value;
+        // arrays -> plain arrays
+        if (Array.isArray(v)) return v.map(toPlainValue);
+        // plain object -> keep only primitives
+        return Object.fromEntries(Object.entries(v)
+            .filter(([_, val]) => val !== undefined && typeof val !== 'function'));
+    }
+    if (typeof v === 'function') return undefined;
+    return v;
+};
+
+const buildRunPayload = (preset, overrides) => {
+    const merged = { preset, ...(overrides || {}) };
+    const cleaned = Object.fromEntries(
+        Object.entries(merged)
+            .filter(([k, v]) => ALLOW_KEYS.has(k) && v !== undefined && v !== null)
+            .map(([k, v]) => [k, toPlainValue(v)])
+    );
+    // enforce commit=true unless caller sets explicitly
+    if (!('commit' in cleaned)) cleaned.commit = true;
+    return cleaned;
+};
+
+const extractReadableError = async (response) => {
+    let msg = `HTTP ${response.status}`;
+    try {
+        const txt = await response.text();
+        try {
+            const j = JSON.parse(txt);
+            msg = (j?.detail ?? j?.error ?? j?.message ?? txt) || msg;
+        } catch {
+            msg = txt || msg;
+        }
+    } catch { }
+    return String(msg);
+};
+// ---- end: run helpers ----
 
 // ----------------------------------------------------
 // Mock API Calls (for frontend standalone development)
@@ -99,11 +148,16 @@ const STAGE_MAP = STAGES.reduce((acc, stage, index) => {
     acc[stage] = index;
     return acc;
 }, {});
+const SUCCESS_STATES = new Set(['SUCCEEDED', 'COMPLETED', 'DONE']);
+const FAILURE_STATES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'CANCELED', 'ABORTED', 'TIMEOUT']);
 
 const StewardDashboard = () => {
     const [runId, setRunId] = useState(null);
+    const [runPollUrl, setRunPollUrl] = useState(null);
+    const [lastJobMeta, setLastJobMeta] = useState(null);
+    const DEBUG_ON = (typeof window !== 'undefined') && window.localStorage?.getItem('DEBUG_STEWARD') === '1';
     const [currentStage, setCurrentStage] = useState(0);
-    const [runStatus, setRunStatus] = useState('idle'); // idle, running, success, failed
+    const [runStatus, setRunStatus] = useState(null);
     const [errorInfo, setErrorInfo] = useState(null);
     const [reportData, setReportData] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -111,23 +165,39 @@ const StewardDashboard = () => {
     const [reflections, setReflections] = useState([]);
     const [detailLevel, setDetailLevel] = useState('lite');
 
-    const pollIntervalRef = useRef(null);
+    const chatStopRef = useRef(null);
+    const latestRunIdRef = useRef(null);
+    const pollCtlRef = useRef(null);
+    const pollTimeoutRef = useRef(null);
+
+    const registerChatStop = useCallback((stopper) => {
+        chatStopRef.current = typeof stopper === 'function' ? stopper : null;
+    }, []);
+
+    const stopAllPolling = useCallback(() => {
+        if (pollCtlRef.current) {
+            try {
+                pollCtlRef.current.stop?.();
+            } catch {
+                // noop
+            }
+            pollCtlRef.current = null;
+        }
+        if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+        }
+        if (chatStopRef.current) {
+            chatStopRef.current();
+        }
+    }, []);
 
     // Cleanup polling
     useEffect(() => {
         return () => {
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
-            }
+            stopAllPolling();
         };
-    }, []);
-
-    const stopPolling = () => {
-        if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-        }
-    };
+    }, [stopAllPolling]);
 
     // 3. Handle report fetching
     const handleFetchReport = async (id) => {
@@ -142,111 +212,278 @@ const StewardDashboard = () => {
             setReportData(data);
             message.success({ content: 'Report loaded successfully!', key: 'report' });
         } catch (e) {
-            message.error({ content: 'Failed to fetch report', key: 'report' });
+            const msg = e?.message || (typeof e === 'string' ? e : 'Request failed');
+            message.error({ content: msg });
         } finally {
             setReportLoading(false);
         }
     };
 
-    // 2. Poll status
-    const handlePollStatus = (id) => {
-        stopPolling();
-        pollIntervalRef.current = setInterval(async () => {
-            try {
-                // Use real API with detail=lite
-                const data = await fetch(withApiBase(`/status?run_id=${id}&detail=${detailLevel}`)).then(res => res.json());
-                // Fallback to mock if API fails
-                // const data = await mockApi.status(id);
+    const applySnapshot = useCallback((snapshot) => {
+        if (!snapshot || typeof snapshot !== 'object') {
+            return;
+        }
 
-                const stageIndex = STAGE_MAP[data.stage];
-
-                if (stageIndex !== undefined) {
-                    setCurrentStage(stageIndex);
-                }
-
-                // Update reflections
-                if (data.reflections && Array.isArray(data.reflections)) {
-                    setReflections(data.reflections);
-                }
-
-                // Check failure status
-                if (data.stage === 'HEALTH_FAIL' || data.stage === 'RUNNER_TIMEOUT' || data.status === 'failed') {
-                    stopPolling();
-                    setRunStatus('failed');
-                    setErrorInfo(
-                        data.stage === 'HEALTH_FAIL' ? 'Health check failed (HEALTH_FAIL)' :
-                            data.stage === 'RUNNER_TIMEOUT' ? 'Runner timeout (RUNNER_TIMEOUT)' :
-                                'Pipeline run failed',
-                    );
-                    message.error('Pipeline run failed');
-                }
-
-                // Check success status (assuming PUBLISH is the final step)
-                if (data.stage === 'PUBLISH' || data.status === 'completed') {
-                    setCurrentStage(STAGES.length); // Mark all completed
-                    setRunStatus('success');
-                    stopPolling();
-                    message.success('Pipeline run successful!');
-                    handleFetchReport(id); // Automatically fetch report
-                }
-            } catch (e) {
-                console.error('Poll status error:', e);
-                // Don't fail on network errors, just log
+        const stage = snapshot.stage;
+        if (stage) {
+            const stageIndex = STAGE_MAP[stage];
+            if (stageIndex !== undefined) {
+                setCurrentStage(stageIndex);
             }
-        }, 5000); // Poll every 5 seconds
-    };
+        }
+
+        const reflectionList = Array.isArray(snapshot.reflections) ? snapshot.reflections : null;
+        if (reflectionList) {
+            setReflections(reflectionList);
+        }
+    }, []);
+
+    const applyPayloadSnapshot = useCallback(
+        (payload) => {
+            if (!payload || typeof payload !== 'object') return;
+            const snapshot = payload?.job ?? payload;
+            applySnapshot(snapshot);
+        },
+        [applySnapshot]
+    );
+
+    const handleTerminalStatus = useCallback(
+        (state, payload) => {
+            const snapshot = payload && typeof payload === 'object' ? payload?.job ?? payload : null;
+            if (snapshot) {
+                applySnapshot(snapshot);
+            }
+
+            const normalized = payload && typeof payload === 'object' ? normalizeStatus(payload) : { state };
+            setLastJobMeta((prev) => {
+                if (!prev || prev.id !== latestRunIdRef.current) return prev;
+                const targetPoll = prev.backendPoll || prev.pollUrl || (runId ? `/orchestrate/status/${runId}` : '');
+                return {
+                    ...prev,
+                    status: normalized.state || state,
+                    finishedAt: normalized.finishedAt ?? new Date().toISOString(),
+                    orchestratePath: rewritePollPath(targetPoll, detailLevel),
+                    detail: detailLevel,
+                };
+            });
+
+            if (SUCCESS_STATES.has(state)) {
+                setCurrentStage(STAGES.length);
+                setErrorInfo(null);
+                message.success('Pipeline run successful!');
+                if (latestRunIdRef.current) {
+                    handleFetchReport(latestRunIdRef.current);
+                }
+                return;
+            }
+
+            if (TERMINAL_STATES.has(state)) {
+                const reason =
+                    snapshot?.reason ||
+                    snapshot?.detail ||
+                    snapshot?.message ||
+                    (payload && typeof payload === 'object' ? payload?.error : null) ||
+                    `Pipeline run ended with status ${state}`;
+                setErrorInfo(reason);
+                message.error(reason);
+                return;
+            }
+
+            // non-terminal fallthrough (should not happen)
+            setErrorInfo(`Unexpected polling completion state: ${state || 'UNKNOWN'}`);
+        },
+        [applySnapshot, detailLevel, handleFetchReport, runId]
+    );
+
+    const startStatusPolling = useCallback(
+        (id, pollUrl, detail = 'lite') => {
+            if (pollCtlRef.current) {
+                try {
+                    pollCtlRef.current.stop?.();
+                } catch {
+                    // noop
+                }
+                pollCtlRef.current = null;
+            }
+
+            if (!id && !pollUrl) return;
+
+            if (pollTimeoutRef.current) {
+                clearTimeout(pollTimeoutRef.current);
+                pollTimeoutRef.current = null;
+            }
+
+            pollTimeoutRef.current = setTimeout(() => {
+                if (pollCtlRef.current) {
+                    try {
+                        pollCtlRef.current.stop?.();
+                    } catch {
+                        // noop
+                    }
+                    pollCtlRef.current = null;
+                }
+                setIsLoading(false);
+                setRunStatus('TIMEOUT');
+                setErrorInfo('Polling timed out after 20 minutes');
+                setLastJobMeta((prev) => {
+                    if (!prev || prev.id !== latestRunIdRef.current) return prev;
+                    return {
+                        ...prev,
+                        status: 'TIMEOUT',
+                        finishedAt: new Date().toISOString(),
+                    };
+                });
+                message.error('Polling timed out after 20 minutes');
+            }, 20 * 60 * 1000);
+
+            const resolved = pollUrl || `/orchestrate/status/${id}`;
+            latestRunIdRef.current = id;
+            pollCtlRef.current = startPolling({
+                pollPath: resolved,
+                intervalMs: 5000,
+                detail,
+                onUpdate: ({ state, payload }) => {
+                    if (state) {
+                        setRunStatus(state);
+                        if (!TERMINAL_STATES.has(state)) {
+                            setErrorInfo(null);
+                        }
+                    }
+                    applyPayloadSnapshot(payload);
+                },
+                onDone: (state, payload) => {
+                    if (pollTimeoutRef.current) {
+                        clearTimeout(pollTimeoutRef.current);
+                        pollTimeoutRef.current = null;
+                    }
+                    pollCtlRef.current = null;
+
+                    const normalizedState =
+                        payload && typeof payload === 'object' ? normalizeStatus(payload).state : state;
+                    const finalState = normalizedState || state || 'UNKNOWN';
+                    setRunStatus(finalState);
+                    setIsLoading(false);
+
+                    if (TERMINAL_STATES.has(finalState) || FAILURE_STATES.has(finalState) || SUCCESS_STATES.has(finalState)) {
+                        handleTerminalStatus(finalState, payload);
+                        return;
+                    }
+
+                    // fallback: treat as error
+                    handleTerminalStatus('ERROR', payload);
+                },
+            });
+        },
+        [applyPayloadSnapshot, handleTerminalStatus]
+    );
 
     // 1. Start run
     const handleRun = async (preset = 'smoke', overrides = {}) => {
-        stopPolling();
+        if (isLoading) return;
+        stopAllPolling();
         setIsLoading(true);
-        setRunStatus('running');
-        setRunId(null);
-        setReportData(null);
         setErrorInfo(null);
-        setCurrentStage(0);
-        setReflections([]);
-        message.loading({ content: 'Starting pipeline...', key: 'run' });
-
+        setReportData(null);
+        setRunPollUrl(null);
         try {
-            // Use real API
-            const payload = { preset, overrides };
+            const payload = buildRunPayload(preset, overrides);
+            message.loading({ content: 'Starting pipeline…', key: 'run' });
             const response = await fetch(withApiBase('/run?commit=true'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
-            const data = await response.json();
-
             if (!response.ok) {
-                throw new Error(data.detail || 'Failed to start pipeline');
+                const errMsg = await extractReadableError(response);
+                const friendlyMsg =
+                    response.status === 404
+                        ? `后端服务未运行或路径不存在 (${errMsg})。请检查后端服务是否在 localhost:8000 运行。`
+                        : errMsg;
+                message.error({ content: friendlyMsg, key: 'run', duration: 5 });
+                setErrorInfo(friendlyMsg);
+                setIsLoading(false);
+                setRunStatus('ERROR');
+                return;
+            }
+            const data = await response.json();
+            const id = data?.job_id ?? data?.jobId ?? data?.run_id ?? null;
+            const pollUrl = typeof data?.poll === 'string' ? data.poll : '';
+
+            if (!id) {
+                const msg = 'Missing job_id from backend response';
+                setErrorInfo(msg);
+                message.error({ content: msg });
+                setIsLoading(false);
+                setRunStatus('ERROR');
+                return;
             }
 
-            setRunId(data.run_id);
-            message.success({ content: `Started successfully! Run ID: ${data.run_id}`, key: 'run' });
-            handlePollStatus(data.run_id); // Start polling
+            const fallbackPoll = `/orchestrate/status/${id}`;
+            const resolvedPoll = pollUrl || fallbackPoll;
+            const orchestratePath = rewritePollPath(resolvedPoll, detailLevel);
+
+            setRunId(id);
+            setRunPollUrl(pollUrl || null);
+            const startedAt = new Date().toISOString();
+            const meta = {
+                id,
+                backendPoll: pollUrl || null,
+                pollUrl: resolvedPoll,
+                orchestratePath,
+                startedAt,
+                status: 'RUNNING',
+                detail: detailLevel,
+            };
+            setLastJobMeta(meta);
+            console.table([meta]);
+            message.success({ content: `Run started • job_id=${id}`, key: 'run', duration: 2 });
+            try {
+                document.title = `Steward · ${id.slice(0, 8)}…`;
+            } catch {
+                /* noop */
+            }
+
+            setRunStatus('RUNNING');
+            setCurrentStage(0);
+            setReflections([]);
+            startStatusPolling(id, pollUrl, detailLevel);
         } catch (e) {
-            setRunStatus('failed');
-            setErrorInfo(e.message || 'Failed to start pipeline');
-            message.error({ content: e.message || 'Failed to start pipeline', key: 'run' });
-        } finally {
+            const msg = e?.message || 'Request failed';
+            const friendlyMsg =
+                msg.includes('Failed to fetch') || msg.includes('NetworkError')
+                    ? '无法连接到后端服务。请检查后端服务是否在 localhost:8000 运行。'
+                    : msg;
+            message.error({ content: friendlyMsg, key: 'run', duration: 5 });
+            setErrorInfo(friendlyMsg);
+            setRunStatus('ERROR');
             setIsLoading(false);
         }
     };
 
     // 4. Retry/Abort
     const handleRetry = () => {
-        handleRun(); // Retry is just rerunning
+        handleRun('smoke'); // Retry is just rerunning
     };
 
     const handleAbort = async () => {
         if (!runId) return;
-        stopPolling();
+        stopAllPolling();
         // Switch to real API
         // await fetch(withApiBase(`/abort?run_id=${runId}`), { method: 'POST' });
         await mockApi.abort(runId);
-        setRunStatus('idle');
+        setRunStatus('ABORTED');
+        setIsLoading(false);
         setErrorInfo('Run aborted');
+        setRunPollUrl(null);
+        setLastJobMeta((prev) => {
+            if (!prev || prev.id !== runId) return prev;
+            return {
+                ...prev,
+                status: 'ABORTED',
+                finishedAt: new Date().toISOString(),
+            };
+        });
+        latestRunIdRef.current = null;
         message.warning('Run aborted');
     };
 
@@ -303,186 +540,256 @@ const StewardDashboard = () => {
     };
 
     // Tab 1: Start new task
-    const renderRunPipelineTab = () => (
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Button
-                type="primary"
-                size="large"
-                icon={<RobotOutlined />}
-                onClick={handleRun}
-                loading={isLoading || (runStatus === 'running' && !errorInfo)}
-            >
-                {runStatus === 'running' ? 'Pipeline running...' : 'Start New Evaluation'}
-            </Button>
+    const renderRunPipelineTab = () => {
+        const failure = runStatus ? FAILURE_STATES.has(runStatus) : false;
+        const success = runStatus ? SUCCESS_STATES.has(runStatus) : false;
+        const stepsStatus = failure ? 'error' : success ? 'finish' : 'process';
 
-            {runId && (
-                <>
-                    <Card title="Real-time Monitoring">
-                        <Steps
-                            current={currentStage}
-                            status={runStatus === 'failed' ? 'error' : 'process'}
-                        >
-                            {STAGES.map((stage) => (
-                                <Steps.Step key={stage} title={stage} />
-                            ))}
-                        </Steps>
+        const fallbackPollPath = runId ? `/orchestrate/status/${runId}` : '';
+        const debugPollPath = runId
+            ? rewritePollPath(runPollUrl || fallbackPollPath, detailLevel)
+            : lastJobMeta?.orchestratePath || '';
 
-                        {runStatus === 'failed' && (
-                            <Alert
-                                message="Run Failed"
-                                description={errorInfo || 'Unknown error'}
-                                type="error"
-                                showIcon
-                                action={
+        return (
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <Button
+                    type="primary"
+                    size="large"
+                    icon={<RobotOutlined />}
+                    onClick={() => handleRun('smoke')}
+                    loading={isLoading}
+                    disabled={isLoading}
+                >
+                    {isLoading ? 'Pipeline running…' : 'Start New Evaluation'}
+                </Button>
+
+                {runId && (
+                    <>
+                        <Card title="Real-time Monitoring">
+                            <Steps
+                                current={currentStage}
+                                status={stepsStatus}
+                            >
+                                {STAGES.map((stage) => (
+                                    <Steps.Step key={stage} title={stage} />
+                                ))}
+                            </Steps>
+
+                            {failure && (
+                                <Alert
+                                    message="Run Failed"
+                                    description={errorInfo || 'Unknown error'}
+                                    type="error"
+                                    showIcon
+                                    action={
+                                        <Space>
+                                            <Button onClick={() => handleRetry()} size="small" type="primary">
+                                                Retry
+                                            </Button>
+                                            <Button onClick={() => handleAbort()} size="small" danger>
+                                                Abort
+                                            </Button>
+                                        </Space>
+                                    }
+                                    style={{ marginTop: 24 }}
+                                />
+                            )}
+
+                            {success && (
+                                <Alert
+                                    message="Pipeline run successful"
+                                    type="success"
+                                    showIcon
+                                    style={{ marginTop: 24 }}
+                                />
+                            )}
+                        </Card>
+
+                        {/* Reflection Cards */}
+                        {reflections.length > 0 && (
+                            <Card
+                                title={
                                     <Space>
-                                        <Button onClick={handleRetry} size="small" type="primary">
-                                            Retry
-                                        </Button>
-                                        <Button onClick={handleAbort} size="small" danger>
-                                            Abort
-                                        </Button>
+                                        <span>Reflections</span>
+                                        <Switch
+                                            checkedChildren="Full"
+                                            unCheckedChildren="Lite"
+                                            checked={detailLevel === 'full'}
+                                            onChange={(checked) => {
+                                                const nextDetail = checked ? 'full' : 'lite';
+                                                setDetailLevel(nextDetail);
+                                                // Re-poll with new detail level
+                                                if (runId && runStatus && !TERMINAL_STATES.has(runStatus)) {
+                                                    startStatusPolling(runId, runPollUrl, nextDetail);
+                                                }
+                                                setLastJobMeta((prev) => {
+                                                    if (!prev) return prev;
+                                                    const targetPoll = runPollUrl || prev.pollUrl || (runId ? `/orchestrate/status/${runId}` : '');
+                                                    return {
+                                                        ...prev,
+                                                        orchestratePath: rewritePollPath(targetPoll, nextDetail),
+                                                        detail: nextDetail,
+                                                    };
+                                                });
+                                            }}
+                                        />
                                     </Space>
                                 }
-                                style={{ marginTop: 24 }}
-                            />
-                        )}
-
-                        {runStatus === 'success' && (
-                            <Alert
-                                message="Pipeline run successful"
-                                type="success"
-                                showIcon
-                                style={{ marginTop: 24 }}
-                            />
-                        )}
-                    </Card>
-
-                    {/* Reflection Cards */}
-                    {reflections.length > 0 && (
-                        <Card
-                            title={
-                                <Space>
-                                    <span>Reflections</span>
-                                    <Switch
-                                        checkedChildren="Full"
-                                        unCheckedChildren="Lite"
-                                        checked={detailLevel === 'full'}
-                                        onChange={(checked) => {
-                                            setDetailLevel(checked ? 'full' : 'lite');
-                                            // Re-poll with new detail level
-                                            if (runId) {
-                                                handlePollStatus(runId);
+                                style={{ marginTop: 16 }}
+                            >
+                                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                                    {reflections.map((reflection, idx) => (
+                                        <Card
+                                            key={idx}
+                                            title={`Reflection · ${reflection.stage}`}
+                                            size="small"
+                                            extra={
+                                                reflection.blocked && (
+                                                    <Tag color="orange">LLM cost cap reached · fallback to rules</Tag>
+                                                )
                                             }
-                                        }}
-                                    />
-                                </Space>
-                            }
-                            style={{ marginTop: 16 }}
-                        >
-                            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                                {reflections.map((reflection, idx) => (
-                                    <Card
-                                        key={idx}
-                                        title={`Reflection · ${reflection.stage}`}
-                                        size="small"
-                                        extra={
-                                            reflection.blocked && (
-                                                <Tag color="orange">LLM cost cap reached · fallback to rules</Tag>
-                                            )
-                                        }
-                                    >
-                                        {reflection.blocked && (
-                                            <Alert
-                                                message="LLM cost cap reached · fallback to rules"
-                                                type="warning"
-                                                showIcon
-                                                style={{ marginBottom: 16 }}
-                                            />
-                                        )}
-                                        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                            {/* Four Badges */}
-                                            <Space wrap>
-                                                <Badge
-                                                    count={reflection.cost_usd?.toFixed(4) || '0.0000'}
-                                                    showZero
-                                                    style={{ backgroundColor: '#52c41a' }}
-                                                >
-                                                    <Tag icon={<DollarOutlined />} color="green">
-                                                        Cost
-                                                    </Tag>
-                                                </Badge>
-                                                <Badge
-                                                    count={reflection.tokens || 0}
-                                                    showZero
-                                                    style={{ backgroundColor: '#1890ff' }}
-                                                >
-                                                    <Tag icon={<ThunderboltOutlined />} color="blue">
-                                                        Tokens
-                                                    </Tag>
-                                                </Badge>
-                                                <Tag
-                                                    icon={reflection.cache_hit ? <CheckCircleFilled /> : <CloseCircleFilled />}
-                                                    color={reflection.cache_hit ? 'green' : 'default'}
-                                                >
-                                                    {reflection.cache_hit ? 'HIT' : 'MISS'}
-                                                </Tag>
-                                                <Tag color={reflection.blocked ? 'orange' : 'green'}>
-                                                    {reflection.blocked ? 'BLOCKED' : 'OK'}
-                                                </Tag>
-                                            </Space>
-
-                                            {/* Rationale Summary */}
-                                            {reflection.rationale_md && (
-                                                <div style={{
-                                                    padding: '12px',
-                                                    background: '#f5f5f5',
-                                                    borderRadius: '4px',
-                                                    maxHeight: '200px',
-                                                    overflow: 'auto'
-                                                }}>
-                                                    <Typography.Text>
-                                                        {reflection.rationale_md}
-                                                    </Typography.Text>
-                                                </div>
+                                        >
+                                            {reflection.blocked && (
+                                                <Alert
+                                                    message="LLM cost cap reached · fallback to rules"
+                                                    type="warning"
+                                                    showIcon
+                                                    style={{ marginBottom: 16 }}
+                                                />
                                             )}
-
-                                            {/* Next Actions */}
-                                            {reflection.next_actions && reflection.next_actions.length > 0 && (
+                                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                                {/* Four Badges */}
                                                 <Space wrap>
-                                                    {reflection.next_actions.map((action, actIdx) => (
-                                                        <Button
-                                                            key={actIdx}
-                                                            type="primary"
-                                                            onClick={() => {
-                                                                // Extract preset from action id (e.g., "proceed_to_grid" -> "grid")
-                                                                const preset = action.id.replace('proceed_to_', '');
-                                                                handleRun(preset, {});
-                                                            }}
-                                                        >
-                                                            {action.label} {action.eta_min ? `(${action.eta_min}min)` : ''}
-                                                        </Button>
-                                                    ))}
+                                                    <Badge
+                                                        count={reflection.cost_usd?.toFixed(4) || '0.0000'}
+                                                        showZero
+                                                        style={{ backgroundColor: '#52c41a' }}
+                                                    >
+                                                        <Tag icon={<DollarOutlined />} color="green">
+                                                            Cost
+                                                        </Tag>
+                                                    </Badge>
+                                                    <Badge
+                                                        count={reflection.tokens || 0}
+                                                        showZero
+                                                        style={{ backgroundColor: '#1890ff' }}
+                                                    >
+                                                        <Tag icon={<ThunderboltOutlined />} color="blue">
+                                                            Tokens
+                                                        </Tag>
+                                                    </Badge>
+                                                    <Tag
+                                                        icon={reflection.cache_hit ? <CheckCircleFilled /> : <CloseCircleFilled />}
+                                                        color={reflection.cache_hit ? 'green' : 'default'}
+                                                    >
+                                                        {reflection.cache_hit ? 'HIT' : 'MISS'}
+                                                    </Tag>
+                                                    <Tag color={reflection.blocked ? 'orange' : 'green'}>
+                                                        {reflection.blocked ? 'BLOCKED' : 'OK'}
+                                                    </Tag>
                                                 </Space>
-                                            )}
 
-                                            {(!reflection.next_actions || reflection.next_actions.length === 0) && (
-                                                <Typography.Text type="secondary">
-                                                    (no reflection / rule-engine)
-                                                </Typography.Text>
-                                            )}
-                                        </Space>
-                                    </Card>
-                                ))}
-                            </Space>
-                        </Card>
-                    )}
-                </>
-            )}
+                                                {/* Rationale Summary */}
+                                                {reflection.rationale_md && (
+                                                    <div style={{
+                                                        padding: '12px',
+                                                        background: '#f5f5f5',
+                                                        borderRadius: '4px',
+                                                        maxHeight: '200px',
+                                                        overflow: 'auto'
+                                                    }}>
+                                                        <Typography.Text>
+                                                            {reflection.rationale_md}
+                                                        </Typography.Text>
+                                                    </div>
+                                                )}
 
-            {/* Report automatically displayed below after task completion */}
-            {runStatus === 'success' && renderReport(reportData)}
-        </Space>
-    );
+                                                {/* Next Actions */}
+                                                {reflection.next_actions && reflection.next_actions.length > 0 && (
+                                                    <Space wrap>
+                                                        {reflection.next_actions.map((action, actIdx) => (
+                                                            <Button
+                                                                key={actIdx}
+                                                                type="primary"
+                                                                onClick={() => {
+                                                                    // Extract preset from action id (e.g., "proceed_to_grid" -> "grid")
+                                                                    const preset = action.id.replace('proceed_to_', '');
+                                                                    handleRun(preset, {});
+                                                                }}
+                                                            >
+                                                                {action.label} {action.eta_min ? `(${action.eta_min}min)` : ''}
+                                                            </Button>
+                                                        ))}
+                                                    </Space>
+                                                )}
+
+                                                {(!reflection.next_actions || reflection.next_actions.length === 0) && (
+                                                    <Typography.Text type="secondary">
+                                                        (no reflection / rule-engine)
+                                                    </Typography.Text>
+                                                )}
+                                            </Space>
+                                        </Card>
+                                    ))}
+                                </Space>
+                            </Card>
+                        )}
+                    </>
+                )}
+
+                {/* Report automatically displayed below after task completion */}
+                {success && renderReport(reportData)}
+
+                {DEBUG_ON && lastJobMeta && (
+                    <div style={{
+                        marginTop: 12,
+                        padding: 10,
+                        border: '1px dashed #555',
+                        borderRadius: 8,
+                        display: 'flex',
+                        gap: 12,
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                    }}>
+                        <span style={{ opacity: 0.8 }}>Debug:</span>
+                        <span>job_id: <code>{lastJobMeta.id}</code></span>
+                        <button
+                            type="button"
+                            onClick={() => lastJobMeta.id && navigator.clipboard?.writeText(lastJobMeta.id)}
+                        >
+                            Copy ID
+                        </button>
+                        {debugPollPath && (
+                            <>
+                                <span>
+                                    poll:{' '}
+                                    <code>{debugPollPath}</code>
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => navigator.clipboard?.writeText(debugPollPath)}
+                                >
+                                    Copy poll
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => window.open(debugPollPath, '_blank')}
+                                >
+                                    Open status
+                                </button>
+                            </>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => console.table([lastJobMeta])}
+                        >
+                            Log
+                        </button>
+                    </div>
+                )}
+            </Space>
+        );
+    };
 
     // Tab 2: View reports
     const renderViewReportTab = () => (
@@ -523,6 +830,17 @@ const StewardDashboard = () => {
                             label: 'View Historical Reports',
                             key: '2',
                             children: renderViewReportTab(),
+                        },
+                        {
+                            label: 'Chat',
+                            key: '3',
+                            children: (
+                                <StewardChat
+                                    onBeforeStart={stopAllPolling}
+                                    onRegisterStop={registerChatStop}
+                                    onStop={() => registerChatStop(null)}
+                                />
+                            ),
                         },
                     ]}
                 />

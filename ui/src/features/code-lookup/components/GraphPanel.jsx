@@ -30,6 +30,8 @@ const LAYOUT_CONFIG = {
 
 const elk = new ELK();
 
+const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 // ELK Layout utility
 async function layoutWithElk(nodes, edges, {
     direction = LAYOUT_CONFIG.DIRECTION,
@@ -383,7 +385,7 @@ const GraphPanelInner = () => {
 
         try {
             setIsLoadingGoldenPath(true);
-            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+            const apiBaseUrl = getApiBaseUrl();
             const url = `${apiBaseUrl}/api/v1/graph/golden-path?entry=${encodeURIComponent(entryId)}`;
             console.log('[Golden Path] Fetching from:', url);
 

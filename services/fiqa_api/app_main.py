@@ -3,7 +3,7 @@ app_main.py - Clean Entry Point for SearchForge Main API
 ==========================================================
 Composed entry point with plugins, middlewares, and read-only routes.
 
-Default port: 8011 (configurable via MAIN_PORT)
+Default port: 8000 (configurable via MAIN_PORT)
 Prefix: /v3 (optional, for path-based routing)
 
 Features:
@@ -96,6 +96,7 @@ from services.fiqa_api.routes.code_graph import router as code_graph_router
 from services.fiqa_api.routes.best import router as best_router
 from services.fiqa_api.routes.health import router as qdrant_health_router
 from services.fiqa_api.routes.experiment import router as experiment_router
+from services.fiqa_api.routes.steward import router as steward_router
 from services.fiqa_api.health.ready import router as health_router
 
 # Import NetworkX engine for code graph analysis
@@ -119,7 +120,7 @@ from services.code_intelligence.graph_ranker import layer2_graph_ranking
 # ========================================
 
 # Load configuration from environment
-MAIN_PORT = settings.get_env_int("MAIN_PORT", 8011)
+MAIN_PORT = settings.get_env_int("MAIN_PORT", 8000)
 API_ENTRY = settings.get_env("API_ENTRY", "main")
 # ✅ Include common Vite development ports (5173, 5174) for frontend CORS
 CORS_ORIGINS = settings.get_env("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174").split(",")
@@ -697,6 +698,8 @@ app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*
 app.include_router(best_router)  # /api/best
 app.include_router(experiment_router, prefix="/api/experiment", tags=["experiment"])  # /api/experiment/*
+app.include_router(experiment_router, prefix="/orchestrate", tags=["orchestrate"])
+app.include_router(steward_router, prefix="/api/steward", tags=["steward"])
 
 # Mount existing routers with /api prefix (primary)
 app.include_router(create_api_router(ops_router, "/api"))
@@ -940,7 +943,7 @@ async def create_snapshot(request: Request):
         
         # Selected safe environment variables
         safe_env = {
-            "MAIN_PORT": os.getenv("MAIN_PORT", "8011"),
+            "MAIN_PORT": os.getenv("MAIN_PORT", "8000"),
             "QDRANT_HOST": os.getenv("QDRANT_HOST", "localhost"),
             "QDRANT_PORT": os.getenv("QDRANT_PORT", "6333"),
             "LAB_REDIS_TTL": os.getenv("LAB_REDIS_TTL", "86400"),

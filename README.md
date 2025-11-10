@@ -403,6 +403,22 @@ SearchForge 提供了带 SLA（Service Level Agreement）检查的安全切换�
 100.67.88.114  andy-wsl
 ```
 
+## Ops Checklist
+
+- **Environment notes**
+  - `/etc/hosts` keeps `andy-wsl` → current IP (presently `100.67.88.114`) as a fallback when Tailscale is unavailable.
+  - `/etc/wsl.conf` must contain:
+
+    ```
+    [boot]
+    systemd=true
+    ```
+
+    After editing run `wsl.exe --shutdown` in Windows PowerShell and re-open the distro.
+  - After any WSL reset, re-run `sudo systemctl enable --now ssh` and `sudo tailscale up --ssh --hostname=andy-wsl` on the remote to restore services.
+- Bootstrap SSH by running `scripts/setup_ssh_client.sh` locally, `scripts/setup_ssh_server.sh` remotely, and confirm with `scripts/verify_ssh.sh`.
+- Optional hardening: enable Tailscale SSH via `scripts/setup_tailscale_ssh.sh` and pin the host fingerprint (`ssh-keyscan -H andy-wsl >> ~/.ssh/known_hosts`).
+
 **手动配置：**
 
 复制环境配置文件并设置OpenAI API密钥：
