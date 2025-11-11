@@ -14,5 +14,5 @@ echo "   Dashboard: http://localhost:8080/demo"
 echo ""
 
 export AUTO_TRAFFIC=1
-uvicorn app:app --host 0.0.0.0 --port 8080
+uvicorn services.fiqa_api.app_main:app --host 0.0.0.0 --port 8080
 

@@ -24,7 +24,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply
+.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e
 
 # Default target: show help
 .DEFAULT_GOAL := help
@@ -340,8 +340,98 @@ smoke-fast: ## Run quick backend smoke test against local endpoints
 	@bash scripts/quick_backend_smoke.sh
 
 graph-smoke:
-	@BASE=$${BASE:-http://127.0.0.1:$${PORT:-8000}}; \
-	$(EXEC) sh -lc "curl -s -X POST \"$$BASE/api/steward/run\" -H 'content-type: application/json' --data '{\"job_id\":\"demo-123\"}'" | jq .
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	@HOST="$${HOST:-127.0.0.1}"; \
+	PORT="$${PORT:-8000}"; \
+	BASE="$${BASE:-}"; \
+	if [ -z "$$BASE" ]; then BASE="http://$$HOST:$$PORT"; fi; \
+	mkdir -p .runs; \
+	JOB_ID="$${JOB_ID:-}"; \
+	if [ -z "$$JOB_ID" ]; then JOB_ID="demo-$$(date +%s)"; fi; \
+	echo "[graph-smoke] job=$$JOB_ID hitting $$BASE"; \
+	RESP=$$(curl -sf -X POST "$$BASE/api/steward/run" -H "content-type: application/json" --data "{\"job_id\":\"$$JOB_ID\"}"); \
+	printf "%s\n" "$$RESP" | jq '.'; \
+	printf "%s\n" "$$JOB_ID" > .runs/graph_last_job.txt; \
+	printf "%s\n" "$$RESP" > .runs/graph_smoke.json; \
+	DRY=$$(printf "%s" "$$RESP" | jq -r '.dryrun_status // ""'); \
+	if [ -z "$$DRY" ]; then echo "❌ dryrun_status empty"; exit 1; fi; \
+	echo "✅ dryrun_status captured: $$DRY";
+
+graph-resume:
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	$(call ensure_tool,python3)
+	@test -f .runs/graph_last_job.txt || { echo "❌ missing .runs/graph_last_job.txt; run make graph-smoke first"; exit 1; }
+	@$(MAKE) --no-print-directory stop-api >/dev/null || true
+	@$(MAKE) --no-print-directory dev-api-bg >/dev/null
+	@set -e; \
+	HOST="$${HOST:-127.0.0.1}"; \
+	PORT="$${PORT:-8000}"; \
+	BASE="$${BASE:-}"; \
+	if [ -z "$$BASE" ]; then BASE="http://$$HOST:$$PORT"; fi; \
+	JOB_ID="$${JOB_ID:-}"; \
+	if [ -z "$$JOB_ID" ]; then JOB_ID="$$(cat .runs/graph_last_job.txt)"; fi; \
+	READY=0; \
+	for i in $$(seq 1 60); do \
+	  if curl -sf "$$BASE/health/ready" >/dev/null; then \
+	    READY=1; \
+	    break; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	if [ "$$READY" -ne 1 ]; then echo "❌ rag-api not ready at $$BASE"; exit 1; fi; \
+	RESP=$$(curl -sf -X POST "$$BASE/api/steward/run" -H "content-type: application/json" --data "{\"job_id\":\"$$JOB_ID\"}"); \
+	printf "%s\n" "$$RESP" | jq '.'; \
+	printf "%s\n" "$$RESP" > .runs/graph_resume.json
+	@python3 scripts/graph_resume_check.py
+	@JOB_OUT="$$(cat .runs/graph_last_job.txt)"; echo "✅ resume confirmed for $$JOB_OUT";
+
+graph-full:
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	$(call ensure_tool,python3)
+	@test -f .runs/graph_last_job.txt || { echo "❌ missing .runs/graph_last_job.txt; run make graph-smoke first"; exit 1; }
+	@set -e; \
+	HOST="$${HOST:-127.0.0.1}"; \
+	PORT="$${PORT:-8000}"; \
+	BASE="$${BASE:-}"; \
+	if [ -z "$$BASE" ]; then BASE="http://$$HOST:$$PORT"; fi; \
+	JOB_ID="$${JOB_ID:-}"; \
+	if [ -z "$$JOB_ID" ]; then JOB_ID="$$(cat .runs/graph_last_job.txt)"; fi; \
+	ART_ROOT="$${ARTIFACTS_PATH:-}"; \
+	if [ -z "$$ART_ROOT" ]; then ART_ROOT="artifacts"; fi; \
+	mkdir -p "$$ART_ROOT/$$JOB_ID"; \
+	MANIFEST_PATH="$$(ACCEPT_P95_MS=\"$${ACCEPT_P95_MS:-500}\" ACCEPT_ERR_RATE=\"$${ACCEPT_ERR_RATE:-0.05}\" MIN_RECALL10=\"$${MIN_RECALL10:-0.6}\" JOB_ID=\"$$JOB_ID\" ART_ROOT=\"$$ART_ROOT\" python3 scripts/graph_generate_manifest.py)"; \
+	printf "%s\n" "$$MANIFEST_PATH" > .runs/graph_manifest_path.txt; \
+	printf "%s\n" "$$JOB_ID" > .runs/graph_last_job.txt
+	@python3 scripts/graph_reset_thread.py "$$(cat .runs/graph_last_job.txt)"
+	@TMP_ENV=.runs/graph_env.current; \
+	([ -f .env.current ] && cat .env.current > $$TMP_ENV || :); \
+	printf "ACCEPT_P95_MS=%s\nACCEPT_ERR_RATE=%s\nMIN_RECALL10=%s\n" "$${ACCEPT_P95_MS:-500}" "$${ACCEPT_ERR_RATE:-0.05}" "$${MIN_RECALL10:-0.6}" >> $$TMP_ENV; \
+	$(COMPOSE) cp $$TMP_ENV $(SERVICE):/app/.env.current >/dev/null 2>&1
+	@$(COMPOSE) cp scripts/graph_reset_thread.py $(SERVICE):/tmp/graph_reset_thread.py >/dev/null 2>&1
+	@JOB_OUT="$$(cat .runs/graph_last_job.txt)"; \
+	$(COMPOSE) exec $(SERVICE) python /tmp/graph_reset_thread.py "$$JOB_OUT" >/dev/null 2>&1
+	@JOB_OUT="$$(cat .runs/graph_last_job.txt)"; MANIFEST="$$(cat .runs/graph_manifest_path.txt)"; \
+	$(COMPOSE) exec $(SERVICE) sh -lc "mkdir -p /app/artifacts/$$JOB_OUT" >/dev/null
+	@JOB_OUT="$$(cat .runs/graph_last_job.txt)"; MANIFEST="$$(cat .runs/graph_manifest_path.txt)"; \
+	$(COMPOSE) cp "$$MANIFEST" $(SERVICE):/app/artifacts/$$JOB_OUT/manifest.json >/dev/null
+	@HOST="$${HOST:-127.0.0.1}"; \
+	PORT="$${PORT:-8000}"; \
+	BASE="$${BASE:-}"; \
+	if [ -z "$$BASE" ]; then BASE="http://$$HOST:$$PORT"; fi; \
+	JOB_ID="$$(cat .runs/graph_last_job.txt)"; \
+	RESP=$$(curl -sf -X POST "$$BASE/api/steward/run" -H "content-type: application/json" --data "{\"job_id\":\"$$JOB_ID\"}"); \
+	printf "%s\n" "$$RESP" | jq '.'; \
+	printf "%s\n" "$$RESP" > .runs/graph_full.json
+	@JOB_OUT="$$(cat .runs/graph_last_job.txt)"; \
+	mkdir -p baselines; \
+	$(COMPOSE) cp $(SERVICE):/app/baselines/$$JOB_OUT.json baselines/ >/dev/null 2>&1 || true; \
+	$(COMPOSE) cp $(SERVICE):/app/baselines/latest.json baselines/latest.json >/dev/null 2>&1 || true
+	@python3 scripts/graph_full_check.py
+	@MANIFEST_PATH="$$(cat .runs/graph_manifest_path.txt)"; \
+	echo "✅ graph-full persisted baseline using $$MANIFEST_PATH";
 
 graph-e2e:
 	@bash scripts/graph_verify.sh

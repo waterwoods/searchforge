@@ -24,7 +24,7 @@ echo ""
 echo "[1/5] Checking service..."
 if ! curl -s -f "$API_URL/health" > /dev/null; then
     echo -e "${RED}FAIL${NC}: Service not running at $API_URL"
-    echo "Please start: cd services/fiqa_api && CORE_METRICS_ENABLED=1 uvicorn app:app --reload"
+    echo "Please start: cd services/fiqa_api && CORE_METRICS_ENABLED=1 uvicorn services.fiqa_api.app_main:app --reload"
     exit 1
 fi
 echo -e "${GREEN}PASS${NC}: Service is running"

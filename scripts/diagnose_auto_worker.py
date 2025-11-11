@@ -255,7 +255,7 @@ def main():
     if not check_api_health():
         print("❌ API is not responding")
         print(f"   Please ensure FastAPI is running on {BASE_URL}")
-        print(f"   Start command: cd services/fiqa_api && uvicorn app:app --port 8080")
+        print(f"   Start command: cd services/fiqa_api && uvicorn services.fiqa_api.app_main:app --port 8080")
         sys.exit(1)
     
     print("✅ API is healthy\n")

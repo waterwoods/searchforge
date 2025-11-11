@@ -17,7 +17,7 @@ def test_cache():
             return False
     except:
         print(f"❌ Cannot connect to {BASE_URL}")
-        print("   💡 Start API with: cd services/fiqa_api && uvicorn app:app --port 8080")
+        print("   💡 Start API with: cd services/fiqa_api && uvicorn services.fiqa_api.app_main:app --port 8080")
         return False
     
     # Test 1: First request (cache miss)

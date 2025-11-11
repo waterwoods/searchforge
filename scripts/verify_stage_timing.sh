@@ -18,7 +18,7 @@ echo ""
 echo "1. Checking if API is running..."
 if ! curl -s "${API_URL}/health" > /dev/null 2>&1; then
     echo "❌ API not running at ${API_URL}"
-    echo "   Start with: cd services/fiqa_api && uvicorn app:app --reload --port 8000"
+    echo "   Start with: cd services/fiqa_api && uvicorn services.fiqa_api.app_main:app --reload --port 8000"
     exit 1
 fi
 echo "✅ API is running"

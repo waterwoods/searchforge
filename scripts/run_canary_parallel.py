@@ -514,7 +514,7 @@ def main():
     except:
         if not args.quiet:
             print(f"❌ Cannot connect to {BASE_URL}")
-            print(f"   Make sure the API is running: cd services/fiqa_api && uvicorn app:app --port 8080")
+            print(f"   Make sure the API is running: cd services/fiqa_api && uvicorn services.fiqa_api.app_main:app --port 8080")
         return 1
     
     # Run paired canary

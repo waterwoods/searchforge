@@ -1,0 +1,10 @@
+{
+  "job_id": "\"demo-1762849547\"",
+  "generated_at": 1762849584,
+  "metrics": {
+    "p95_ms": 400.0,
+    "err_rate": 0.025,
+    "recall@10": 0.65,
+    "cost_tokens": 1024.0
+  }
+}

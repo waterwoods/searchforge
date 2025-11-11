@@ -23,7 +23,7 @@ echo ""
 echo "[1/5] Checking service health..."
 if ! curl -s -f "$API_URL/health" > /dev/null; then
     echo -e "${RED}FAIL${NC}: Service not running at $API_URL"
-    echo "Please start the service first: cd services/fiqa_api && uvicorn app:app"
+    echo "Please start the service first: cd services/fiqa_api && uvicorn services.fiqa_api.app_main:app"
     exit 1
 fi
 echo -e "${GREEN}PASS${NC}: Service is running"
