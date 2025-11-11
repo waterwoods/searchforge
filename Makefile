@@ -5,6 +5,11 @@ SSH_HOST ?= andy-wsl
 REMOTE ?= $(SSH_HOST)
 RDIR=~/searchforge
 
+# == Ports/Base ==
+HOST ?= 127.0.0.1
+PORT ?= 8000
+BASE ?= http://$(HOST):$(PORT)
+
 # Helper to detect current target
 TARGET ?= $(shell grep -E '^SEARCHFORGE_TARGET=' .env.current | cut -d= -f2 2>/dev/null || echo local)
 
@@ -108,8 +113,9 @@ export: ## Export dependencies to requirements.txt
 
 dev-api-bg:
 	@mkdir -p .runs
-	@RUNS_DIR=$(PWD)/.runs nohup poetry run uvicorn services.fiqa_api.app_main:app --host $${HOST:-127.0.0.1} --port $${PORT:-8000} > .runs/api.log 2>&1 & echo $$! > .runs/api.pid; \
-		echo "PID=$$(cat .runs/api.pid)"
+	@nohup poetry run uvicorn services.fiqa_api.app_main:app \
+	  --host $(HOST) --port $(PORT) > .runs/api.log 2>&1 & echo $$! > .runs/api.pid; \
+	  echo "PID=$$(cat .runs/api.pid) HOST=$(HOST) PORT=$(PORT)"
 
 stop-api:
 	@[ -f .runs/api.pid ] && kill $$(cat .runs/api.pid) || true
@@ -323,6 +329,15 @@ smoke-experiment: ## Run minimal experiment (sample=5) to verify setup
 
 smoke-fast: ## Run quick backend smoke test against local endpoints
 	@bash scripts/quick_backend_smoke.sh
+
+graph-smoke:
+	@BASE=$${BASE:-http://127.0.0.1:$${PORT:-8000}} \
+	  poetry run curl -s -X POST "$$BASE/api/steward/run" \
+	  -H 'content-type: application/json' \
+	  --data '{"job_id":"demo-123"}' | jq .
+
+graph-e2e:
+	@bash scripts/graph_verify.sh
 
 smoke-contract: ## Run experiment contract smoke checks (requires JOB=<job_id>)
 	@bash scripts/smoke_contract.sh
