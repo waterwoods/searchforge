@@ -341,11 +341,14 @@ async def lifespan(app: FastAPI):
     # Ensure runtime directories exist on first startup
     for label, path in (("runs", RUNS_PATH), ("artifacts", ARTIFACTS_PATH)):
         try:
+            existed = path.exists()
             path.mkdir(parents=True, exist_ok=True)
+            status = "ready" if existed else "created"
+            logger.info("[STARTUP] %s directory %s at %s", label.upper(), status, path.resolve())
         except Exception as exc:
             logger.warning(f"[STARTUP] Failed to ensure {label} dir {path}: {exc}")
 
-    logger.info(f"[PATHS] runs_dir={RUNS_PATH} artifacts_dir={ARTIFACTS_PATH}")
+    logger.info(f"[PATHS] runs_dir={RUNS_PATH.resolve()} artifacts_dir={ARTIFACTS_PATH.resolve()}")
 
     logger.info(f"Port: {MAIN_PORT}")
     logger.info(f"API Entry: {API_ENTRY}")

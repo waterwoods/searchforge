@@ -58,6 +58,7 @@ def main() -> None:
         "err_rate": thresholds.get("ACCEPT_ERR_RATE", 1.0) * 0.5,
         "recall@10": thresholds.get("MIN_RECALL10", 0.0) + 0.05,
         "cost_tokens": 1024.0,
+        "delta_recall": thresholds.get("MIN_DELTA", 0.0) + 0.001,
     }
     recall_target = thresholds.get("MIN_RECALL10", 0.0)
     metrics["recall@10"] = min(max(metrics["recall@10"], recall_target + 0.001), 1.0)

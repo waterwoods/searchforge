@@ -56,8 +56,7 @@
 ## INTEGRATION POINTS
 # Files that need modification to integrate AutoTuner
 # SmartSearchX → SearchForge
-# NOTE: These need to be modified, not copied
-/Users/nanxinli/Documents/dev/SmartSearchX/services/rag_api/app.py → /Users/nanxinli/Documents/dev/searchforge/services/rag_api/app.py (MODIFY)
+# NOTE: These need to be modified, not copied (use canonical services/fiqa_api/app_main.py)
 /Users/nanxinli/Documents/dev/SmartSearchX/docker-compose.yml → /Users/nanxinli/Documents/dev/searchforge/docker-compose.yml (MODIFY)
 
 ## MINIMAL MVP FILES (6-10 files for basic SLA auto-enable)
@@ -75,8 +74,7 @@
 # Service integration
 /Users/nanxinli/Documents/dev/SmartSearchX/services/auto_tuner/main.py → /Users/nanxinli/Documents/dev/searchforge/services/auto_tuner/main.py
 
-# API hooks (modify existing)
-/Users/nanxinli/Documents/dev/SmartSearchX/services/rag_api/app.py → /Users/nanxinli/Documents/dev/searchforge/services/rag_api/app.py (MODIFY)
+# API hooks (modify existing; canonical entry lives in services/fiqa_api/app_main.py)
 
 # Configuration
 /Users/nanxinli/Documents/dev/SmartSearchX/configs/autotuner_policy.yaml → /Users/nanxinli/Documents/dev/searchforge/configs/autotuner_policy.yaml

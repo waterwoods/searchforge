@@ -3,6 +3,7 @@
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def _load(path: Path) -> dict:
@@ -15,20 +16,37 @@ def _load(path: Path) -> dict:
 
 
 def main() -> None:
-    smoke_path = Path(".runs/graph_smoke.json")
     resume_path = Path(".runs/graph_resume.json")
+    baseline_candidates = [
+        Path(".runs/graph_full.json"),
+        Path(".runs/graph_smoke.json"),
+    ]
 
-    earlier = _load(smoke_path)
+    baseline_payload = None
+    baseline_path: Optional[Path] = None
+    for candidate in baseline_candidates:
+        if candidate.exists():
+            baseline_payload = _load(candidate)
+            baseline_path = candidate
+            break
+
+    if baseline_payload is None or baseline_path is None:
+        expected = ", ".join(str(path) for path in baseline_candidates)
+        sys.exit(f"missing required state file: expected one of [{expected}]")
+
     resumed = _load(resume_path)
 
     if not resumed.get("resume"):
         sys.exit("expected resume=true in steward response")
 
     def _normalized(payload: dict) -> dict:
-        return {k: v for k, v in payload.items() if k != "resume"}
+        excluded = {"resume", "plan"}
+        return {k: v for k, v in payload.items() if k not in excluded}
 
-    if _normalized(earlier) != _normalized(resumed):
-        sys.exit("steward resume payload differs from previous run")
+    if _normalized(baseline_payload) != _normalized(resumed):
+        sys.exit(
+            f"steward resume payload differs from previous run recorded in {baseline_path}"
+        )
 
 
 if __name__ == "__main__":

@@ -2,10 +2,10 @@
   "job_id": "demo-1762849547",
   "decision": "accept",
   "metrics": {
-    "p95_ms": 400.0,
+    "p95_ms": 40.0,
     "err_rate": 0.025,
     "recall@10": 0.65,
     "cost_tokens": 1024.0
   },
-  "persisted_at": 1762849585
+  "persisted_at": 1762851962
 }

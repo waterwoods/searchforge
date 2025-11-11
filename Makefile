@@ -24,7 +24,17 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e
+.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok
+volumes-ok:
+	$(call ensure_tool,docker)
+	@set -e; \
+	printf "🔍 Checking steward volumes inside container...\n"; \
+	$(COMPOSE) exec $(SERVICE) sh -lc 'set -e; \
+	for dir in /app/.runs /app/baselines; do \
+	  touch "$$dir/.volumes-ok-test" && rm -f "$$dir/.volumes-ok-test"; \
+	  printf "✅ %s writable (%s)\n" "$$dir" "$$(readlink -f $$dir)"; \
+	done'
+
 
 # Default target: show help
 .DEFAULT_GOAL := help
@@ -147,7 +157,7 @@ restart:  ## Restart backend service on remote
 
 rebuild: rebuild-api
 
-rebuild-fast:
+rebuild-fast: guard-no-legacy
 	DOCKER_BUILDKIT=1 docker compose build rag-api
 
 logs:
@@ -225,7 +235,7 @@ ui:
 		fi && \
 		npm run dev -- --port 5173 --open --host
 
-rebuild-api: export-reqs
+rebuild-api: guard-no-legacy export-reqs
 	@echo "🔨 Rebuilding rag-api service..."
 	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose build rag-api && docker compose up -d rag-api'
 	@echo "⏳ Waiting for service to be ready..."
@@ -256,6 +266,12 @@ embed-doctor: ## 检查 embedding 模型配置
 	@API_BASE=$$(curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1 && echo "http://127.0.0.1:8000" || echo "http://localhost:8000"); \
 	curl -fsS $$API_BASE/api/health/embeddings | python3 -c "import sys, json; d=json.load(sys.stdin); print(json.dumps(d, indent=2))" || (echo "❌ Embedding model check failed"; exit 1)
 	@echo "✅ Embedding model consistency check passed"
+
+guard-no-legacy:
+	@test ! -f services/rag_api/app.py || (echo "❌ legacy app.py exists"; exit 1)
+	@! grep -RInE 'services[./]rag_api[./]app(\.py)?|uvicorn .*app:app' --exclude=Makefile --exclude-dir=.git . \
+	  || (echo "❌ found legacy refs to rag_api/app or app:app"; exit 1)
+	@echo "✅ no legacy app.py or refs"
 
 win-fw-allow-8000: ## 打印 Windows 防火墙放行 8000 的 PowerShell 命令
 	@echo '以管理员 PowerShell 执行以下命令：'
@@ -402,13 +418,31 @@ graph-full:
 	ART_ROOT="$${ARTIFACTS_PATH:-}"; \
 	if [ -z "$$ART_ROOT" ]; then ART_ROOT="artifacts"; fi; \
 	mkdir -p "$$ART_ROOT/$$JOB_ID"; \
-	MANIFEST_PATH="$$(ACCEPT_P95_MS=\"$${ACCEPT_P95_MS:-500}\" ACCEPT_ERR_RATE=\"$${ACCEPT_ERR_RATE:-0.05}\" MIN_RECALL10=\"$${MIN_RECALL10:-0.6}\" JOB_ID=\"$$JOB_ID\" ART_ROOT=\"$$ART_ROOT\" python3 scripts/graph_generate_manifest.py)"; \
+	MANIFEST_PATH="$$(JOB_ID=$$JOB_ID ART_ROOT=$$ART_ROOT python3 scripts/graph_generate_manifest.py)"; \
 	printf "%s\n" "$$MANIFEST_PATH" > .runs/graph_manifest_path.txt; \
 	printf "%s\n" "$$JOB_ID" > .runs/graph_last_job.txt
 	@python3 scripts/graph_reset_thread.py "$$(cat .runs/graph_last_job.txt)"
 	@TMP_ENV=.runs/graph_env.current; \
 	([ -f .env.current ] && cat .env.current > $$TMP_ENV || :); \
-	printf "ACCEPT_P95_MS=%s\nACCEPT_ERR_RATE=%s\nMIN_RECALL10=%s\n" "$${ACCEPT_P95_MS:-500}" "$${ACCEPT_ERR_RATE:-0.05}" "$${MIN_RECALL10:-0.6}" >> $$TMP_ENV; \
+	VAL_ACCEPT_P95="$$(grep -E '^ACCEPT_P95_MS=' $$TMP_ENV | tail -1 | cut -d= -f2)"; \
+	VAL_ACCEPT_P95="$${VAL_ACCEPT_P95:-$${ACCEPT_P95_MS:-500}}"; \
+	VAL_ACCEPT_ERR="$$(grep -E '^ACCEPT_ERR_RATE=' $$TMP_ENV | tail -1 | cut -d= -f2)"; \
+	VAL_ACCEPT_ERR="$${VAL_ACCEPT_ERR:-$${ACCEPT_ERR_RATE:-0.05}}"; \
+	VAL_MIN_RECALL="$$(grep -E '^MIN_RECALL10=' $$TMP_ENV | tail -1 | cut -d= -f2)"; \
+	if [ -z "$$VAL_MIN_RECALL" ]; then \
+	  VAL_MIN_RECALL="$$(grep -E '^MIN_RECALL_AT_10=' $$TMP_ENV | tail -1 | cut -d= -f2)"; \
+	fi; \
+	VAL_MIN_RECALL="$${VAL_MIN_RECALL:-$${MIN_RECALL10:-0.6}}"; \
+	VAL_ACCEPT_RECALL="$$(grep -E '^ACCEPT_RECALL=' $$TMP_ENV | tail -1 | cut -d= -f2)"; \
+	VAL_ACCEPT_RECALL="$${VAL_ACCEPT_RECALL:-$${ACCEPT_RECALL:-0.9}}"; \
+	VAL_MIN_DELTA="$$(grep -E '^MIN_DELTA=' $$TMP_ENV | tail -1 | cut -d= -f2)"; \
+	VAL_MIN_DELTA="$${VAL_MIN_DELTA:-$${MIN_DELTA:-0.0}}"; \
+	printf "ACCEPT_P95_MS=%s\nACCEPT_ERR_RATE=%s\nMIN_RECALL10=%s\nACCEPT_RECALL=%s\nMIN_DELTA=%s\n" \
+	  "$$VAL_ACCEPT_P95" \
+	  "$$VAL_ACCEPT_ERR" \
+	  "$$VAL_MIN_RECALL" \
+	  "$$VAL_ACCEPT_RECALL" \
+	  "$$VAL_MIN_DELTA" >> $$TMP_ENV; \
 	$(COMPOSE) cp $$TMP_ENV $(SERVICE):/app/.env.current >/dev/null 2>&1
 	@$(COMPOSE) cp scripts/graph_reset_thread.py $(SERVICE):/tmp/graph_reset_thread.py >/dev/null 2>&1
 	@JOB_OUT="$$(cat .runs/graph_last_job.txt)"; \
@@ -431,7 +465,10 @@ graph-full:
 	$(COMPOSE) cp $(SERVICE):/app/baselines/latest.json baselines/latest.json >/dev/null 2>&1 || true
 	@python3 scripts/graph_full_check.py
 	@MANIFEST_PATH="$$(cat .runs/graph_manifest_path.txt)"; \
-	echo "✅ graph-full persisted baseline using $$MANIFEST_PATH";
+	DECISION="$$(jq -r '.decision // "unknown"' .runs/graph_full.json 2>/dev/null || echo unknown)"; \
+	THRESHOLDS="$$(jq -c '.thresholds // {}' .runs/graph_full.json 2>/dev/null || echo "{}")"; \
+	BASELINE_PATH="$$(jq -r '.baseline_path // ""' .runs/graph_full.json 2>/dev/null || echo "")"; \
+	echo "✅ graph-full done decision=$$DECISION thresholds=$$THRESHOLDS baseline_path=$$BASELINE_PATH (manifest $$MANIFEST_PATH)";
 
 graph-e2e:
 	@bash scripts/graph_verify.sh

@@ -87,9 +87,8 @@ def get_autotuner_instances():
         Tuple of (autotuner, state) or (None, None) if not available
     """
     try:
-        # Import from services/rag_api/app.py
-        sys.path.insert(0, str(project_root / "services" / "rag_api"))
-        from app import get_global_autotuner
+        # Import from canonical services/fiqa_api/app_main.py
+        from services.fiqa_api.app_main import get_global_autotuner
         
         autotuner, state = get_global_autotuner()
         if autotuner is None or state is None:

@@ -103,7 +103,7 @@ services:
       - ./reports:/app/reports
       - ./.runs:/app/.runs
       - ./baselines:/app/baselines
-      - ./.env:/app/.env:ro
+      - ./.env.current:/app/.env:ro
     # CPU-only service - no GPU runtime
   auto-tuner:
     build:

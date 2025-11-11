@@ -15,7 +15,6 @@ from langgraph.graph import END, StateGraph
 RUNS_DIR = os.path.join(os.getcwd(), ".runs")
 BLOB_DIR = os.path.join(RUNS_DIR, "blobs")
 BASELINES_DIR = os.path.join(os.getcwd(), "baselines")
-ENV_CURRENT_PATH = os.path.join(os.getcwd(), ".env.current")
 DEFAULT_ARTIFACTS_ROOT = os.getenv("ARTIFACTS_PATH", os.path.join(os.getcwd(), "artifacts"))
 
 os.makedirs(RUNS_DIR, exist_ok=True)
@@ -24,14 +23,21 @@ os.makedirs(BASELINES_DIR, exist_ok=True)
 
 _THRESHOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"env": "ACCEPT_P95_MS", "default": 500.0, "metric": "p95_ms", "comparison": "lte"},
-    {"env": "ACCEPT_RECALL", "default": 0.90, "metric": "recall@10", "comparison": "gte", "aliases": ("MIN_RECALL10",)},
+    {
+        "env": "ACCEPT_RECALL",
+        "default": 0.90,
+        "metric": "recall@10",
+        "comparison": "gte",
+        "aliases": ("MIN_RECALL10",),
+    },
     {"env": "MIN_DELTA", "default": 0.0, "metric": "delta_recall", "comparison": "gte"},
 )
-_DELTA_METRIC_KEYS: Tuple[str, ...] = (
-    "recall_delta",
-    "delta_recall",
-    "delta_recall_abs",
-)
+_DELTA_METRIC_KEYS: Tuple[str, ...] = ("recall_delta", "delta_recall", "delta_recall_abs")
+_METRIC_KEY_ALIASES = {
+    "p95_ms": ("p95_ms", "p95", "latency_p95_ms"),
+    "recall@10": ("recall@10", "recall_at10", "recall_at_10", "recall10"),
+    "delta_recall": _DELTA_METRIC_KEYS + ("delta_recall_pct",),
+}
 
 
 def put_blob(job_id: str, step: str, payload: Dict[str, Any]) -> str:
@@ -197,7 +203,7 @@ def _load_manifest(job_id: str) -> Tuple[Optional[Dict[str, Any]], List[str]]:
 
     metrics: Dict[str, Any] = {}
     for source in metrics_sources:
-        for key in ("p95_ms", "err_rate", "recall@10", "cost_tokens"):
+        for key in ("p95_ms", "err_rate", "recall@10", "cost_tokens", "delta_recall"):
             if key in source and key not in metrics:
                 metrics[key] = source[key]
 
@@ -207,7 +213,9 @@ def _load_manifest(job_id: str) -> Tuple[Optional[Dict[str, Any]], List[str]]:
         if coerced is not None:
             normalized_metrics[key] = coerced
 
-    missing_keys = [k for k in ("p95_ms", "err_rate", "recall@10", "cost_tokens") if k not in normalized_metrics]
+    missing_keys = [
+        k for k in ("p95_ms", "err_rate", "recall@10", "cost_tokens") if k not in normalized_metrics
+    ]
     if missing_keys:
         errors.append(f"evaluate: missing metrics {', '.join(missing_keys)} in manifest {manifest_path}")
 
@@ -215,46 +223,144 @@ def _load_manifest(job_id: str) -> Tuple[Optional[Dict[str, Any]], List[str]]:
 
 
 def _load_thresholds() -> Tuple[Dict[str, float], List[str]]:
-    errors: List[str] = []
     thresholds: Dict[str, float] = {}
+    errors: List[str] = []
 
-    if not os.path.exists(ENV_CURRENT_PATH):
-        errors.append(f"decide: thresholds file missing at {ENV_CURRENT_PATH}")
-        return thresholds, errors
+    for spec in _THRESHOLD_SPECS:
+        env_keys = (spec["env"],) + tuple(spec.get("aliases", ()))
+        value: Optional[float] = None
+        source = None
 
-    try:
-        with open(ENV_CURRENT_PATH, "r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                key = key.strip()
-                number = _coerce_number(value)
-                if number is None:
-                    continue
-                thresholds[key] = number
-    except OSError as exc:  # pragma: no cover - defensive filesystem error
-        errors.append(f"decide: failed to read thresholds: {exc}")
-        return thresholds, errors
+        for env_key in env_keys:
+            raw = os.getenv(env_key)
+            if raw is None:
+                continue
+            coerced = _coerce_number(raw)
+            if coerced is None:
+                fallback_msg = (
+                    f"decide: invalid threshold {env_key}={raw!r}; using default {spec['default']}"
+                )
+                logger.warning(fallback_msg)
+                errors.append(fallback_msg)
+                continue
+            value = coerced
+            source = env_key
+            break
 
-    required = {
-        "ACCEPT_P95_MS": "p95_ms",
-        "ACCEPT_ERR_RATE": "err_rate",
-        "MIN_RECALL10": "recall@10",
-    }
-    missing = [env_key for env_key in required if env_key not in thresholds]
-    if missing:
-        errors.append(f"decide: missing thresholds {', '.join(missing)} in {ENV_CURRENT_PATH}")
+        if value is None:
+            value = float(spec["default"])
+            source = "default"
+            logger.info(
+                "decide: threshold %s falling back to default %.3f",
+                spec["metric"],
+                value,
+            )
 
-    normalized = {}
-    for env_key, metric_key in required.items():
-        if env_key in thresholds:
-            normalized[metric_key] = thresholds[env_key]
+        thresholds[spec["metric"]] = value
+        logger.info(
+            "decide: threshold %s=%.3f source=%s",
+            spec["metric"],
+            value,
+            source,
+        )
 
-    return normalized, errors
+    return thresholds, errors
+
+
+def _extract_from_mapping(container: Dict[str, Any], keys: Tuple[str, ...]) -> Optional[Any]:
+    for key in keys:
+        if key in container:
+            return container[key]
+    return None
+
+
+def _resolve_metric(metrics: Dict[str, Any], metric_key: str) -> Optional[float]:
+    aliases = _METRIC_KEY_ALIASES.get(metric_key, (metric_key,))
+
+    value = _extract_from_mapping(metrics, aliases)
+    if value is None and "deltas" in metrics and isinstance(metrics["deltas"], dict):
+        value = _extract_from_mapping(metrics["deltas"], aliases)
+
+    if value is None and metric_key == "delta_recall":
+        for delta_key in _DELTA_METRIC_KEYS:
+            if delta_key in metrics:
+                value = metrics[delta_key]
+                break
+        if value is None and "deltas" in metrics and isinstance(metrics["deltas"], dict):
+            for delta_key in _DELTA_METRIC_KEYS:
+                if delta_key in metrics["deltas"]:
+                    value = metrics["deltas"][delta_key]
+                    break
+
+    if value is None:
+        return None
+
+    coerced = _coerce_number(value)
+    return coerced
+
+
+def _metric_satisfied(metric_value: float, threshold: float, comparison: str) -> bool:
+    if comparison == "lte":
+        return metric_value <= threshold
+    if comparison == "gte":
+        return metric_value >= threshold
+    raise ValueError(f"Unknown comparison {comparison}")
+
+
+def _build_threshold_summary(thresholds: Dict[str, float]) -> Dict[str, float]:
+    return {key: round(value, 6) for key, value in thresholds.items()}
+
+
+def _missing_metric_error(metric_key: str) -> str:
+    return f"decide: metric '{metric_key}' missing or invalid"
+
+
+def _normalize_metrics(metrics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(metrics, dict):
+        return {}
+    normalized: Dict[str, Any] = {}
+    for key, value in metrics.items():
+        if isinstance(value, dict):
+            normalized[key] = _normalize_metrics(value)
+        else:
+            normalized[key] = value
+    return normalized
+
+
+def _evaluate_thresholds(metrics: Dict[str, Any], thresholds: Dict[str, float]) -> Tuple[bool, List[str]]:
+    errors: List[str] = []
+    all_satisfied = True
+
+    normalized_metrics = _normalize_metrics(metrics)
+
+    for spec in _THRESHOLD_SPECS:
+        metric_key = spec["metric"]
+        metric_value = _resolve_metric(normalized_metrics, metric_key)
+        if metric_value is None:
+            errors.append(_missing_metric_error(metric_key))
+            all_satisfied = False
+            continue
+
+        threshold_value = thresholds.get(metric_key, spec["default"])
+        comparison = spec["comparison"]
+        satisfied = _metric_satisfied(metric_value, threshold_value, comparison)
+        logger.info(
+            "decide: metric %s=%.4f vs threshold %.4f (%s) -> %s",
+            metric_key,
+            metric_value,
+            threshold_value,
+            comparison,
+            "ok" if satisfied else "fail",
+        )
+
+        if not satisfied:
+            direction = "<=" if comparison == "lte" else ">="
+            errors.append(
+                f"decide: metric '{metric_key}'={metric_value:.4f} not {direction} threshold {threshold_value:.4f}"
+            )
+            all_satisfied = False
+
+    return all_satisfied, errors
 
 
 def review(state: GraphState) -> Dict[str, Any]:
@@ -312,6 +418,8 @@ def evaluate(state: GraphState) -> Dict[str, Any]:
     output: Dict[str, Any] = {"errors": merged_errors}
     if metrics:
         output["metrics"] = metrics
+    else:
+        merged_errors.append("evaluate: metrics unavailable")
     return output
 
 
@@ -322,20 +430,20 @@ def decide(state: GraphState) -> Dict[str, Any]:
     merged_errors = list(state.get("errors") or [])
     merged_errors.extend(threshold_errors)
 
-    decision = "reject"
-    details: Dict[str, Any] = {"thresholds": thresholds}
+    adopted_thresholds = _build_threshold_summary(thresholds)
 
-    if metrics and not threshold_errors:
-        p95_ok = metrics.get("p95_ms") is not None and thresholds.get("p95_ms") is not None and metrics["p95_ms"] <= thresholds["p95_ms"]
-        err_ok = metrics.get("err_rate") is not None and thresholds.get("err_rate") is not None and metrics["err_rate"] <= thresholds["err_rate"]
-        recall_ok = metrics.get("recall@10") is not None and thresholds.get("recall@10") is not None and metrics["recall@10"] >= thresholds["recall@10"]
-        if p95_ok and err_ok and recall_ok:
+    decision = "reject"
+    details: Dict[str, Any] = {"thresholds": adopted_thresholds}
+
+    if not metrics:
+        merged_errors.append("decide: metrics unavailable")
+    else:
+        satisfied, metric_errors = _evaluate_thresholds(metrics, thresholds)
+        merged_errors.extend(metric_errors)
+        if satisfied and not metric_errors:
             decision = "accept"
         else:
             merged_errors.append("decide: metrics did not meet acceptance thresholds")
-    else:
-        if not metrics:
-            merged_errors.append("decide: metrics unavailable")
 
     if decision == "reject":
         details["halt_reason"] = "reject"
@@ -358,8 +466,10 @@ def persist(state: GraphState) -> Dict[str, Any]:
 
     merged_errors = list(state.get("errors") or [])
     if decision != "accept":
-        merged_errors.append("persist: cannot persist without accepted decision")
-        return {"errors": merged_errors}
+        return {
+            "errors": merged_errors,
+            "resume": state.get("resume", False),
+        }
 
     if not job_id:
         merged_errors.append("persist: missing job_id")
@@ -379,22 +489,32 @@ def persist(state: GraphState) -> Dict[str, Any]:
     job_path = os.path.join(BASELINES_DIR, f"{job_id}.json")
     latest_path = os.path.join(BASELINES_DIR, "latest.json")
 
-    try:
-        os.makedirs(BASELINES_DIR, exist_ok=True)
-        with open(job_path, "w", encoding="utf-8") as handle:
-            json.dump(baseline_payload, handle, ensure_ascii=False, indent=2)
-        with open(latest_path, "w", encoding="utf-8") as handle:
-            json.dump(baseline_payload, handle, ensure_ascii=False, indent=2)
-    except OSError as exc:  # pragma: no cover - filesystem error handling
-        merged_errors.append(f"persist: failed to write baseline files: {exc}")
-        return {"errors": merged_errors}
+    os.makedirs(BASELINES_DIR, exist_ok=True)
 
-    return {
-        "baseline_path": job_path,
-        "baseline_latest_path": latest_path,
+    def _atomic_write(target_path: str) -> None:
+        tmp_path = f"{target_path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(baseline_payload, handle, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, target_path)
+
+    success_paths: Dict[str, str] = {}
+    for target in (job_path, latest_path):
+        try:
+            _atomic_write(target)
+            success_paths[target] = target
+        except (OSError, json.JSONDecodeError) as exc:
+            merged_errors.append(f"persist: failed to write {target}: {exc}")
+            logger.warning("persist: failed atomic write for %s: %s", target, exc)
+
+    result: Dict[str, Any] = {
         "errors": merged_errors,
         "resume": state.get("resume", False),
     }
+    if job_path in success_paths:
+        result["baseline_path"] = job_path
+    if latest_path in success_paths:
+        result["baseline_latest_path"] = latest_path
+    return result
 
 
 def notify(state: GraphState) -> Dict[str, Any]:

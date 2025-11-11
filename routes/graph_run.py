@@ -26,6 +26,7 @@ class StewardRunResponse(BaseModel):
     metrics: Optional[Dict[str, Any]] = None
     decision: Optional[str] = None
     baseline_path: Optional[str] = None
+    thresholds: Optional[Dict[str, Any]] = None
     errors: List[str] = []
 
 
@@ -57,6 +58,7 @@ async def run_steward_graph(request: StewardRunRequest) -> Dict[str, Any]:
         "metrics": state.get("metrics"),
         "decision": state.get("decision"),
         "baseline_path": state.get("baseline_path"),
+        "thresholds": state.get("thresholds"),
         "errors": state.get("errors", []),
     }
 
