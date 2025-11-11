@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Configuration
-BASE="${BASE:-http://localhost:8011}"
+BASE="${BASE:-http://localhost:8000}"
 CURL_TIMEOUT=10
 
 # Dependency checks

@@ -1,8 +1,19 @@
 PROJECT ?= searchforge
-COMPOSE = docker compose --env-file .env.current -p $(PROJECT)
+SERVICE ?= rag-api
+DC ?= docker compose
+DC_ARGS ?= --env-file .env.current -p $(PROJECT)
+COMPOSE := $(DC) $(DC_ARGS)
+EXEC := $(COMPOSE) exec $(SERVICE)
+RUN := $(COMPOSE) run --rm $(SERVICE)
 
-REMOTE=andy-wsl
+SSH_HOST ?= andy-wsl
+REMOTE ?= $(SSH_HOST)
 RDIR=~/searchforge
+
+# == Ports/Base ==
+HOST ?= 127.0.0.1
+PORT ?= 8000
+BASE ?= http://$(HOST):$(PORT)
 
 # Helper to detect current target
 TARGET ?= $(shell grep -E '^SEARCHFORGE_TARGET=' .env.current | cut -d= -f2 2>/dev/null || echo local)
@@ -13,7 +24,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu up-gpu down-gpu export-reqs lint-no-poetry cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b
+.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply
 
 # Default target: show help
 .DEFAULT_GOAL := help
@@ -22,6 +33,22 @@ help: ## 显示所有可用命令（默认命令）
 	@echo "=================================================="
 	@echo "  SearchForge Makefile 命令帮助"
 	@echo "=================================================="
+
+install: ## Build rag-api image (installs dependencies inside container)
+	$(COMPOSE) build $(SERVICE)
+
+dev-api: ## 本地启动 API（容器模式）
+	$(COMPOSE) up -d $(SERVICE)
+
+smoke: ## 健康检查冒烟
+	curl -sf http://127.0.0.1:8000/health/live
+	curl -sf http://127.0.0.1:8000/health/ready
+	@echo "SMOKE OK"
+
+export: ## Export dependencies snapshot from container
+	@echo "📦 Exporting dependency snapshot via pip freeze..."
+	$(COMPOSE) run --rm $(SERVICE) sh -lc "pip freeze --exclude-editable" > requirements.lock
+	@echo "✅ Snapshot written to requirements.lock"
 	@echo ""
 	@echo "📋 环境切换 (Environment Switching)"
 	@echo "  make whoami              - 查看当前目标环境"
@@ -93,37 +120,50 @@ help: ## 显示所有可用命令（默认命令）
 	@echo ""
 	@echo "=================================================="
 
+dev-api-bg:
+	$(COMPOSE) up -d $(SERVICE)
+	@echo "rag-api running in background via docker compose"
+
+stop-api:
+	$(COMPOSE) stop $(SERVICE)
+
 sync:
 	@rsync -avzP mini-d-files/ $(REMOTE):$(RDIR)/
 
+ssh-ok:
+	@ssh andy-wsl 'echo ok'
+
 up:
-	@ssh $(REMOTE) 'cd $(RDIR) && cp -n .env.sample .env || true && docker compose up -d --build'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && cp -n .env.sample .env || true && docker compose up -d --build'
 	@$(MAKE) health
 
 down:
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose down'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose down'
 
 restart:  ## Restart backend service on remote
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose restart rag-api || docker compose up -d rag-api'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose restart rag-api || docker compose up -d rag-api'
 	@sleep 5
 	@$(MAKE) health
 
 rebuild: rebuild-api
 
+rebuild-fast:
+	DOCKER_BUILDKIT=1 docker compose build rag-api
+
 logs:
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose logs -f --tail=200 api'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose logs -f --tail=200 api'
 
 ps:
-	@ssh $(REMOTE) 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
+	@ssh $(SSH_HOST) 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
 
 health:
-	@ssh $(REMOTE) 'curl -fsS http://localhost:8000/health && echo'
+	@ssh $(SSH_HOST) 'curl -fsS http://localhost:8000/health && echo'
 
 prune-safe:
-	@ssh $(REMOTE) 'docker system prune -af' # 不带 --volumes，避免误删数据卷
+	@ssh $(SSH_HOST) 'docker system prune -af' # 不带 --volumes，避免误删数据卷
 
 df:
-	@ssh $(REMOTE) 'docker system df -v'
+	@ssh $(SSH_HOST) 'docker system df -v'
 
 # 本机开一个隧道：访问 http://localhost:9999 查看 Dozzle
 tunnel-dozzle:
@@ -187,14 +227,14 @@ ui:
 
 rebuild-api: export-reqs
 	@echo "🔨 Rebuilding rag-api service..."
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose build rag-api && docker compose up -d rag-api'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose build rag-api && docker compose up -d rag-api'
 	@echo "⏳ Waiting for service to be ready..."
 	@sleep 5
 	@$(MAKE) health
 
 rebuild-api-cpu: ## 重建 CPU-only rag-api 并验证无 CUDA 包
 	@echo "🔨 Rebuilding CPU-only rag-api service..."
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose build --no-cache rag-api && docker compose up -d rag-api'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose build --no-cache rag-api && docker compose up -d rag-api'
 	@echo "⏳ Waiting for service to be ready..."
 	@for i in $$(seq 1 30); do \
 		echo "⏳ waiting ($$i/30)..."; \
@@ -223,21 +263,21 @@ win-fw-allow-8000: ## 打印 Windows 防火墙放行 8000 的 PowerShell 命令
 
 net-verify: ## 验证 rag-api 端口绑定与健康接口
 	@echo "🔎 Checking container port bindings (remote)..."
-	@ssh $(REMOTE) 'docker ps --format "table {{.Names}}\t{{.Ports}}" | grep rag-api || true'
+	@ssh $(SSH_HOST) 'docker ps --format "table {{.Names}}\t{{.Ports}}" | grep rag-api || true'
 	@echo "🔎 Curl health from inside container (127.0.0.1:${MAIN_PORT})..."
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose exec -T rag-api sh -lc "curl -fsS http://127.0.0.1:${MAIN_PORT}/health || curl -fsS http://127.0.0.1:8000/health"'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose exec -T rag-api sh -lc "curl -fsS http://127.0.0.1:${MAIN_PORT}/health || curl -fsS http://127.0.0.1:8000/health"'
 	@echo "🔎 Curl health from Mac (andy-wsl:8000)..."
 	@curl -fsS http://andy-wsl:8000/health || (sleep 2; curl -fsS http://andy-wsl:8000/health)
 	@echo "✅ Network verification done"
 
 up-gpu:
 	@echo "🚀 Starting GPU worker service..."
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d gpu-worker'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d gpu-worker'
 	@echo "✅ GPU worker started"
 
 down-gpu:
 	@echo "🛑 Stopping GPU worker service..."
-	@ssh $(REMOTE) 'cd $(RDIR) && docker compose -f docker-compose.yml -f docker-compose.gpu.yml down gpu-worker'
+	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose -f docker-compose.yml -f docker-compose.gpu.yml down gpu-worker'
 	@echo "✅ GPU worker stopped"
 
 # Repository cleanup targets (safe, reversible archiving)
@@ -256,23 +296,22 @@ cleanup-history: ## 清理 Git 历史中的大文件（需要 I_KNOW_WHAT_IM_DOI
 create-clean-repo: ## 创建干净的仓库快照并切换到新远程（需要 NEW_REPO_URL=<url>）
 	@bash tools/cleanup/create_clean_repo.sh
 
-export-reqs: ## Export Poetry dependencies to requirements.txt (dev-only)
-	@if [ -f "pyproject.toml" ] && command -v poetry >/dev/null 2>&1; then \
-		echo "📦 Exporting Poetry dependencies to requirements.txt..."; \
-		poetry export -f requirements.txt --without-hashes -o services/rag_api/requirements.txt || true; \
-		echo "✅ Exported to services/rag_api/requirements.txt"; \
-	else \
-		echo "⚠️  Poetry not available or pyproject.toml not found, skipping export"; \
-	fi
+export-reqs: ## Export dependencies snapshot for container builds
+	@echo "📦 Exporting dependency snapshot to services/rag_api/requirements.lock..."
+	$(COMPOSE) run --rm $(SERVICE) sh -lc "pip freeze --exclude-editable" > services/rag_api/requirements.lock
+	@echo "✅ Snapshot written to services/rag_api/requirements.lock"
 
-lint-no-poetry: ## Check that no 'poetry run' appears in runtime paths
-	@echo "🔍 Checking for 'poetry run' in runtime paths..."
-	@if git grep -nE 'poetry\s+run' -- 'services/**' 'tools/**' 'Makefile' '**/Dockerfile' 'docker-compose*.yml' >/dev/null 2>&1; then \
-		echo "❌ ERROR: 'poetry run' found in runtime paths:"; \
-		git grep -nE 'poetry\s+run' -- 'services/**' 'tools/**' 'Makefile' '**/Dockerfile' 'docker-compose*.yml'; \
+POETRY_RUN_PATTERN := poetry\s\+run
+
+lint-no-legacy-toolchain: ## Check that no legacy Poetry invocations remain
+	@echo "🔍 Checking for legacy Poetry invocations..."
+	@pattern='$(POETRY_RUN_PATTERN)'; \
+	if git grep -nE "$$pattern" -- 'services/**' 'tools/**' 'Makefile' '**/Dockerfile' 'docker-compose*.yml' >/dev/null 2>&1; then \
+		echo "❌ ERROR: legacy Poetry usage found:"; \
+		git grep -nE "$$pattern" -- 'services/**' 'tools/**' 'Makefile' '**/Dockerfile' 'docker-compose*.yml'; \
 		exit 1; \
 	else \
-		echo "✅ No 'poetry run' found in runtime paths"; \
+		echo "✅ No legacy Poetry usage detected"; \
 	fi
 
 # Experiment management targets
@@ -297,17 +336,41 @@ smoke-experiment: ## Run minimal experiment (sample=5) to verify setup
 		echo "📊 Check status: curl http://andy-wsl:8000/api/experiment/status/$$JOB_ID" && \
 		echo "📜 Check logs: curl http://andy-wsl:8000/api/experiment/logs/$$JOB_ID"
 
+smoke-fast: ## Run quick backend smoke test against local endpoints
+	@bash scripts/quick_backend_smoke.sh
+
+graph-smoke:
+	@BASE=$${BASE:-http://127.0.0.1:$${PORT:-8000}}; \
+	$(EXEC) sh -lc "curl -s -X POST \"$$BASE/api/steward/run\" -H 'content-type: application/json' --data '{\"job_id\":\"demo-123\"}'" | jq .
+
+graph-e2e:
+	@bash scripts/graph_verify.sh
+
+smoke-contract: ## Run experiment contract smoke checks (requires JOB=<job_id>)
+	@bash scripts/smoke_contract.sh
+
+smoke-review: ## Review contract smoke (requires JOB_ID=<job_id>)
+	@MODE=review bash scripts/smoke_review_llm.sh
+
+smoke-apply: ## Apply contract smoke (requires JOB_ID=<job_id>)
+	@MODE=apply bash scripts/smoke_review_llm.sh
+
+smoke-review: ## Run steward review/apply smoke check (requires JOB_ID=<job>)
+	@bash scripts/smoke_review_llm.sh
+
+smoke-metrics: ## Run metrics smoke check (ensures p95/log summary populated)
+	@bash scripts/smoke_metrics.sh
+
 fiqa-50k-stage-b: ## FiQA 50k Stage-B: Full Evaluation of Winners
-	$(call ensure_tool,poetry)
 	@echo "🔍 FiQA 50k Stage-B: Full Evaluation of Winners"
 	@echo "Step 1/2: Running full evaluation..."
-	@poetry run python experiments/run_50k_grid.py \
+	@$(EXEC) sh -lc "python experiments/run_50k_grid.py \
 		--suite experiments/suite_50k_stage_b.yaml \
 		--winners reports/fiqa_50k/winners.json \
-		--stage b
+		--stage b"
 	@echo ""
 	@echo "Step 2/2: Generating plots..."
-	@poetry run python experiments/plot_50k.py --in reports/fiqa_50k/stage_b --out reports/fiqa_50k/stage_b
+	@$(EXEC) sh -lc "python experiments/plot_50k.py --in reports/fiqa_50k/stage_b --out reports/fiqa_50k/stage_b"
 	@echo "✅ FiQA 50k Stage-B complete! Check reports/fiqa_50k/stage_b/"
 
 # ========================================

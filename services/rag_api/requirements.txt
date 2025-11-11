@@ -1,12 +1,12 @@
 # Core API dependencies
-fastapi==0.103.2 ; python_version >= "3.10" and python_version < "4.0"
-uvicorn[standard]==0.23.2 ; python_version >= "3.10" and python_version < "4.0"
-pydantic==2.5.0 ; python_version >= "3.10" and python_version < "4.0"
+fastapi==0.121.* ; python_version >= "3.10" and python_version < "4.0"
+uvicorn[standard]==0.30.* ; python_version >= "3.10" and python_version < "4.0"
+pydantic>=2.7.4,<3.0 ; python_version >= "3.10" and python_version < "4.0"
 python-multipart==0.0.6 ; python_version >= "3.10" and python_version < "4.0"
 httpx==0.25.2 ; python_version >= "3.10" and python_version < "4.0"
 python-dotenv==1.0.0 ; python_version >= "3.10" and python_version < "4.0"
 fastembed>=0.2.0 ; python_version >= "3.10" and python_version < "4.0"
-openai>=1.0.0 ; python_version >= "3.10" and python_version < "4.0"
+openai==1.46.0 ; python_version >= "3.10" and python_version < "4.0"
 onnxruntime>=1.18,<1.20 ; python_version >= "3.10" and python_version < "4.0"
 
 # Hybrid search (BM25 for RRF fusion)
@@ -28,6 +28,11 @@ orjson==3.10.15 ; python_version >= "3.10" and python_version < "4.0"
 
 # Graph processing (CPU-only)
 networkx==3.1 ; python_version >= "3.10" and python_version < "4.0"
+
+# LangGraph orchestration
+langgraph==1.* ; python_version >= "3.10" and python_version < "4.0"
+langchain-core==1.* ; python_version >= "3.10" and python_version < "4.0"
+langgraph-checkpoint-sqlite>=0.1.0 ; python_version >= "3.10" and python_version < "4.0"
 
 # Utilities
 redis==5.0.1 ; python_version >= "3.10" and python_version < "4.0"

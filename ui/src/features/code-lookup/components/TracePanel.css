@@ -1,0 +1,247 @@
+.trace-panel {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 10px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.trace-panel h3 {
+    margin: 0 0 20px 0;
+    color: #fff;
+    font-size: 1.5rem;
+    border-bottom: 2px solid #4a90e2;
+    padding-bottom: 10px;
+}
+
+.no-trace-message {
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+
+.trace-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.trace-section {
+    background: #252525;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 15px;
+}
+
+.trace-section h4 {
+    margin: 0 0 12px 0;
+    color: #ccc;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.trace-goal {
+    margin: 0;
+    padding: 10px;
+    background: #2a2a2a;
+    border-left: 4px solid #4a90e2;
+    border-radius: 4px;
+    color: #ccc;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.trace-steps {
+    margin: 0;
+    padding-left: 20px;
+    list-style: decimal;
+}
+
+.trace-step {
+    margin: 12px 0;
+    padding: 15px;
+    background: #2a2a2a;
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+
+.step-tool {
+    margin-bottom: 8px;
+    color: #4a90e2;
+    font-size: 0.95rem;
+}
+
+.step-tool strong {
+    color: #ccc;
+    margin-right: 5px;
+}
+
+.step-args {
+    margin-top: 8px;
+}
+
+.step-args strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #999;
+    font-size: 0.85rem;
+}
+
+.step-args pre {
+    margin: 0;
+    padding: 8px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #ccc;
+}
+
+.trace-stops {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.trace-stops li {
+    padding: 8px 0;
+    border-bottom: 1px solid #333;
+    color: #ccc;
+}
+
+.trace-stops li:last-child {
+    border-bottom: none;
+}
+
+.verdict-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 1rem;
+    text-align: center;
+}
+
+.verdict-pass {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.verdict-revise {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.no-data {
+    color: #666;
+    font-style: italic;
+    margin: 0;
+    padding: 10px;
+    text-align: center;
+}
+
+/* Action Log Styles */
+.action-log-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.action-log-event {
+    background: #252525;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.action-log-event:hover {
+    border-color: #4a90e2;
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.2);
+}
+
+.event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #333;
+}
+
+.event-type {
+    background: #4a90e2;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.event-step {
+    color: #999;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.event-tool,
+.event-observation,
+.event-cost {
+    margin: 8px 0;
+    color: #ccc;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.event-tool strong,
+.event-observation strong,
+.event-cost strong {
+    color: #4a90e2;
+    margin-right: 8px;
+}
+
+.event-observation {
+    background: #2a2a2a;
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 3px solid #4a90e2;
+}
+
+.event-cost {
+    color: #4CAF50;
+    font-weight: 500;
+}
+
+.event-timestamp {
+    margin-top: 8px;
+    text-align: right;
+}
+
+.event-timestamp small {
+    color: #666;
+    font-size: 0.8rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .trace-panel {
+        padding: 15px;
+    }
+
+    .trace-panel h3 {
+        font-size: 1.3rem;
+    }
+
+    .trace-section h4 {
+        font-size: 1rem;
+    }
+}

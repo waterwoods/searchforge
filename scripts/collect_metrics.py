@@ -11,14 +11,8 @@ from typing import Dict, List, Optional
 
 # Default paths (support both container and remote execution)
 import os
-RUNS_DIR = Path(os.getenv("RUNS_DIR", "/app/.runs"))
-if not RUNS_DIR.exists():
-    # Try relative path
-    RUNS_DIR = Path(".runs")
-REPORTS_DIR = Path(os.getenv("REPORTS_DIR", "/app/reports"))
-if not REPORTS_DIR.exists():
-    # Try relative path
-    REPORTS_DIR = Path("reports")
+RUNS_DIR = Path(os.getenv("RUNS_DIR", ".runs"))
+REPORTS_DIR = Path(os.getenv("REPORTS_DIR", "reports"))
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
 
@@ -134,7 +128,7 @@ def main():
     """Main entry point."""
     import argparse
     parser = argparse.ArgumentParser(description="Collect metrics and generate winners.json")
-    parser.add_argument("--runs-dir", help="Runs directory path (default: /app/.runs or .runs)")
+    parser.add_argument("--runs-dir", help="Runs directory path (default: .runs)")
     parser.add_argument("--out", default="reports/winners.json", help="Output winners.json path")
     args = parser.parse_args()
     

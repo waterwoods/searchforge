@@ -28,3 +28,43 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*"
 ]
+
+[project]
+name = "searchforge"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Andy",email = "linanxin@me.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+uvicorn = {version = "^0.30.0", extras = ["standard"]}
+fastapi = ">=0.121.1,<0.122.0"
+requests = ">=2.32.0,<3.0.0"
+python-dotenv = ">=1.0,<2.0"
+pyyaml = ">=6,<7"
+numpy = ">=2,<3"
+portalocker = ">=3,<4"
+networkx = ">=3.5,<4"
+openai = ">=2,<3"
+redis = ">=7,<8"
+langgraph = "^1.0.3"
+langchain-core = "^1.0.4"
+langgraph-checkpoint-sqlite = "^3.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+pytest-asyncio = "*"
+httpx = "*"
+ruff = ">=0.7,<0.8"
+mypy = ">=1.10,<2.0"
+

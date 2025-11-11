@@ -1,0 +1,10 @@
+{
+    "name": "searchforge-ui",
+    "version": "0.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "vite --host --port 5173",
+        "lint": "echo 'skip lint (scaffold only)'",
+        "typecheck": "echo 'skip typecheck (scaffold only)'"
+    }
+}

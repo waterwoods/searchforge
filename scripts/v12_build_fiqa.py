@@ -6,8 +6,8 @@ Builds frozen FIQA datasets by sampling from beir_fiqa_full_ta collection,
 creating new Qdrant collections, and writing corpus JSONL files.
 
 Usage:
-    poetry run python scripts/v12_build_fiqa.py --target-size 10000 --name-suffix v1
-    poetry run python scripts/v12_build_fiqa.py --target-size 50000 --name-suffix v1
+    docker compose exec rag-api python scripts/v12_build_fiqa.py --target-size 10000 --name-suffix v1
+    docker compose exec rag-api python scripts/v12_build_fiqa.py --target-size 50000 --name-suffix v1
 """
 
 import argparse

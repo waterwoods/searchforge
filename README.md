@@ -2,6 +2,15 @@
 
 > 一个由AI驱动的、能够分析、可视化并解释您代码库的智能体。
 
+## Quick Start
+
+1. `docker compose build rag-api`
+2. `docker compose up -d rag-api`
+3. `curl -sf http://localhost:8000/health/live && curl -sf http://localhost:8000/health/ready`
+4. `make smoke`
+5. `make export` *(可选，导出依赖快照到 requirements.lock)*
+- 生产将 `.env` 中 `ALLOW_ALL_CORS=0`，并把 `CORS_ORIGINS` 设为逗号分隔白名单（例：`https://app.example.com,https://admin.example.com`）。
+
 ## 项目概述
 
 代码查询智能体是一个专为开发者设计的智能代码分析工具，旨在解决理解复杂代码库的困难。通过结合AI技术和交互式可视化，它能够帮助开发者、架构师快速理解代码结构、函数关系以及系统架构。
@@ -20,6 +29,13 @@
 - **📋 基于证据的分析**: 遵循Vibe Coding原则，确保分析结果的可审计性和透明度
 - **⚡ 多种查询模式**: 支持概览、文件分析、函数分析等多种查询类型
 - **🔄 流式响应**: 实时展示分析进度，提升用户体验
+
+## 环境与常用命令
+
+- `docker compose build rag-api`
+- `make smoke`
+- `make test`
+- `make export`
 
 ## 系统架构
 
@@ -291,6 +307,8 @@ pip install -r requirements.txt
 
 SearchForge 使用 `.env.current` 作为当前活跃的环境配置文件，这是所有服务端点的单一来源。所有 Docker Compose 命令都会自动加载 `.env.current`。
 
+> Docker 提示：运行容器时若需自定义运行/产物目录，设置 `RUNS_DIR` 与 `ARTIFACTS_DIR` 环境变量并挂载对应路径即可；镜像不再依赖固定的 `/app`。
+
 **环境配置文件说明：**
 
 - `.env.local` - 本地开发环境配置（使用 `localhost` 作为服务地址）
@@ -402,6 +420,22 @@ SearchForge 提供了带 SLA（Service Level Agreement）检查的安全切换�
 # 格式: <IP地址>  <主机名>
 100.67.88.114  andy-wsl
 ```
+
+## Ops Checklist
+
+- **Environment notes**
+  - `/etc/hosts` keeps `andy-wsl` → current IP (presently `100.67.88.114`) as a fallback when Tailscale is unavailable.
+  - `/etc/wsl.conf` must contain:
+
+    ```
+    [boot]
+    systemd=true
+    ```
+
+    After editing run `wsl.exe --shutdown` in Windows PowerShell and re-open the distro.
+  - After any WSL reset, re-run `sudo systemctl enable --now ssh` and `sudo tailscale up --ssh --hostname=andy-wsl` on the remote to restore services.
+- Bootstrap SSH by running `scripts/setup_ssh_client.sh` locally, `scripts/setup_ssh_server.sh` remotely, and confirm with `scripts/verify_ssh.sh`.
+- Optional hardening: enable Tailscale SSH via `scripts/setup_tailscale_ssh.sh` and pin the host fingerprint (`ssh-keyscan -H andy-wsl >> ~/.ssh/known_hosts`).
 
 **手动配置：**
 

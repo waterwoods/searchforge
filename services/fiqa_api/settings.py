@@ -10,6 +10,17 @@ env_path = Path(__file__).parent.parent.parent / '.env'
 if env_path.exists():
     load_dotenv(env_path)
 
+# Repository root (one level above services/)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Runtime directories (configurable via environment variables)
+RUNS_DIR = os.getenv("RUNS_DIR", ".runs")
+ARTIFACTS_DIR = os.getenv("ARTIFACTS_DIR", ".runs/artifacts")
+
+# Resolved absolute paths
+RUNS_PATH = (REPO_ROOT / RUNS_DIR).resolve()
+ARTIFACTS_PATH = (REPO_ROOT / ARTIFACTS_DIR).resolve()
+
 # Rate Limiting (environment-configurable)
 # ⚙️ Raised rate limit to 1000 QPS for Black Swan test (temporary)
 # Previous value: 3 QPS (caused 429 errors during high-load tests)

@@ -47,6 +47,8 @@ COPY services/core/ /app/services/core/
 COPY services/plugins/ /app/services/plugins/
 COPY services/api/ /app/services/api/
 COPY services/routers/ /app/services/routers/
+COPY routes/ /app/routes/
+COPY orchestrators/ /app/orchestrators/
 COPY services/code_intelligence/ /app/services/code_intelligence/
 COPY services/black_swan/ /app/services/black_swan/
 COPY tools/ /app/tools/

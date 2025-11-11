@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Build rag-api image
+        run: docker compose build rag-api
+
+      - name: Start rag-api service
+        run: docker compose up -d rag-api
+
+      - name: Wait for API readiness
+        run: |
+          for i in {1..60}; do
+            if curl -sf http://127.0.0.1:8000/health/ready > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::API not ready in 120s"
+          docker compose logs rag-api
+          exit 1
+
+      - name: Smoke
+        run: make smoke
+
+      - name: Show rag-api logs on failure
+        if: failure()
+        run: docker compose logs rag-api
+
+      - name: Tear down services
+        if: always()
+        run: docker compose down
+

@@ -1,8 +1,11 @@
+# syntax=docker/dockerfile:1.7-labs
 FROM python:3.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=60 \
     PYTHONPATH=/app:${PYTHONPATH} \
     SENTENCE_TRANSFORMERS_HOME=/app/models \
     HF_HOME=/app/models \
@@ -32,7 +35,8 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
 
 # 2) 安装项目依赖（不包含 torch；如需 sbert/fastembed 在 requirements.txt 中）
 COPY services/rag_api/requirements.txt /app/requirements.txt
-RUN python -m pip install -U pip && \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip && \
     PIP_EXTRA_INDEX_URL="" \
     pip install --no-cache-dir --no-compile -r /app/requirements.txt
 
@@ -47,6 +51,8 @@ COPY services/core/ /app/services/core/
 COPY services/plugins/ /app/services/plugins/
 COPY services/api/ /app/services/api/
 COPY services/routers/ /app/services/routers/
+COPY routes/ /app/routes/
+COPY orchestrators/ /app/orchestrators/
 COPY services/code_intelligence/ /app/services/code_intelligence/
 COPY services/black_swan/ /app/services/black_swan/
 COPY tools/ /app/tools/

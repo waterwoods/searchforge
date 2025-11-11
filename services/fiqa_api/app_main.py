@@ -3,7 +3,7 @@ app_main.py - Clean Entry Point for SearchForge Main API
 ==========================================================
 Composed entry point with plugins, middlewares, and read-only routes.
 
-Default port: 8011 (configurable via MAIN_PORT)
+Default port: 8000 (configurable via MAIN_PORT)
 Prefix: /v3 (optional, for path-based routing)
 
 Features:
@@ -23,6 +23,7 @@ import time
 import json
 import logging
 import uuid
+import signal
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -36,12 +37,21 @@ load_dotenv()
 
 # ✅ OPENAI_API_KEY is optional - code_lookup will fall back to raw results if missing
 # Configure logging first before any logging calls
+API_LOG_LEVEL = os.getenv("API_LOG_LEVEL", "info")
+LOG_LEVEL = getattr(logging, API_LOG_LEVEL.upper(), logging.INFO)
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=LOG_LEVEL,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+HOST = os.getenv("HOST", "0.0.0.0")
+try:
+    PORT = int(os.getenv("PORT", "8000"))
+except ValueError:
+    PORT = 8000
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_API_KEY:
@@ -60,6 +70,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import asyncio
 
+from services.fiqa_api.settings import RUNS_PATH, ARTIFACTS_PATH, REPO_ROOT
+
 # ✅ Module-level heavy resource initialization moved to clients.py singleton pattern
 # Resources are now initialized lazily via lifespan event
 
@@ -71,6 +83,8 @@ if str(project_root) in sys.path:
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
+
+ARTIFACTS_DIR = ARTIFACTS_PATH
 
 # Import unified settings and plugins
 from services.core import settings
@@ -95,7 +109,14 @@ from services.fiqa_api.routes.agent_code_lookup import router as code_lookup_rou
 from services.fiqa_api.routes.code_graph import router as code_graph_router
 from services.fiqa_api.routes.best import router as best_router
 from services.fiqa_api.routes.health import router as qdrant_health_router
+from services.fiqa_api.routes.contract_v1 import router as contract_router
 from services.fiqa_api.routes.experiment import router as experiment_router
+from services.fiqa_api.routes.steward import router as steward_router
+try:
+    from routes.graph_run import router as graph_router
+except Exception as exc:  # pragma: no cover - optional dependency
+    graph_router = None
+    logger.warning("Failed to import routes.graph_run (steward graph disabled): %s", exc)
 from services.fiqa_api.health.ready import router as health_router
 
 # Import NetworkX engine for code graph analysis
@@ -119,10 +140,14 @@ from services.code_intelligence.graph_ranker import layer2_graph_ranking
 # ========================================
 
 # Load configuration from environment
-MAIN_PORT = settings.get_env_int("MAIN_PORT", 8011)
+MAIN_PORT = settings.get_env_int("MAIN_PORT", 8000)
 API_ENTRY = settings.get_env("API_ENTRY", "main")
-# ✅ Include common Vite development ports (5173, 5174) for frontend CORS
-CORS_ORIGINS = settings.get_env("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174").split(",")
+
+def _parse_origins(env_val: str) -> list[str]:
+    return [s.strip() for s in (env_val or "").split(",") if s.strip()]
+
+ALLOW_ALL_CORS = os.getenv("ALLOW_ALL_CORS", "1") in ("1", "true", "True", "yes")
+CORS_ORIGINS = _parse_origins(os.getenv("CORS_ORIGINS", ""))
 
 # Force override configuration
 force_config = settings.get_force_override_config()
@@ -288,6 +313,40 @@ async def lifespan(app: FastAPI):
         # Fallback if no loop (should not happen under uvicorn)
         pass
     
+    # Periodic readiness check: promote phase to "ready" when EMBED_READY and vector client are ready
+    async def _check_readiness_periodic():
+        """Periodic check to promote phase to 'ready' when conditions are met."""
+        global _READINESS, _PHASE
+        while True:
+            await asyncio.sleep(2)  # Check every 2 seconds
+            try:
+                from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+                
+                # Check if embedding is ready and vector client is reachable
+                if EMBED_READY:
+                    vector_ok = ensure_qdrant_connection()
+                    if vector_ok and _PHASE != "ready":
+                        _READINESS = True
+                        _PHASE = "ready"
+                        logger.info(f"[READY] Phase promoted to 'ready' (EMBED_READY=True, vector_ok=True)")
+            except Exception as e:
+                logger.debug(f"[READY] Periodic check error (non-critical): {e}")
+    
+    # Start periodic readiness check
+    try:
+        asyncio.get_running_loop().create_task(_check_readiness_periodic())
+    except RuntimeError:
+        pass
+    
+    # Ensure runtime directories exist on first startup
+    for label, path in (("runs", RUNS_PATH), ("artifacts", ARTIFACTS_PATH)):
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            logger.warning(f"[STARTUP] Failed to ensure {label} dir {path}: {exc}")
+
+    logger.info(f"[PATHS] runs_dir={RUNS_PATH} artifacts_dir={ARTIFACTS_PATH}")
+
     logger.info(f"Port: {MAIN_PORT}")
     logger.info(f"API Entry: {API_ENTRY}")
     logger.info(f"CORS Origins: {CORS_ORIGINS}")
@@ -313,6 +372,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+def _install_signal_handlers():
+    """Register basic signal handlers for graceful shutdown logging."""
+    def _wrap_handler(sig: int, previous):
+        sig_name = signal.Signals(sig).name
+
+        def handler(signum, frame):
+            logger.info(f"[SHUTDOWN] Received signal {sig_name}; shutting down gracefully.")
+            if callable(previous):
+                previous(signum, frame)
+        return handler
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            previous_handler = signal.getsignal(sig)
+            signal.signal(sig, _wrap_handler(sig, previous_handler))
+        except Exception as exc:
+            logger.debug(f"Failed to install signal handler for {sig}: {exc}")
+
+
+_install_signal_handlers()
+
 # ========================================
 # Static Files Mount (Reports Directory)
 # ========================================
@@ -320,11 +401,14 @@ app = FastAPI(
 # Mount reports/ directory as static files for artifact serving
 # Note: project_root is already defined above (line 67)
 # Try multiple possible locations for reports directory
-reports_dirs = [
+reports_dirs: list[Path] = []
+reports_env = os.getenv("REPORTS_DIR")
+if reports_env:
+    reports_dirs.append(Path(reports_env).resolve())
+reports_dirs.extend([
     project_root / "reports",
-    Path("/app/reports"),
-    Path("/app/services/fiqa_api/reports"),
-]
+    project_root / "services" / "fiqa_api" / "reports",
+])
 reports_dir = None
 for dir_candidate in reports_dirs:
     if dir_candidate.exists():
@@ -485,10 +569,12 @@ EXPOSE_HEADERS = [
     "X-Dataset", "X-Qrels", "X-Collection", "X-Search-MS", "X-Rerank-MS", "X-Total-MS",
     "X-Dim", "X-Trace-Id"
 ]
+_cors_allow_origins = ["*"] if ALLOW_ALL_CORS else CORS_ORIGINS
+_cors_allow_credentials = False if ALLOW_ALL_CORS else True
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
-    allow_credentials=True,
+    allow_origins=_cors_allow_origins,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=EXPOSE_HEADERS
@@ -618,22 +704,94 @@ def create_api_router(base_router: APIRouter, new_prefix: str) -> APIRouter:
 app.include_router(health_router)  # /healthz, /readyz
 app.include_router(qdrant_health_router, tags=["Health"])  # /api/health/qdrant
 
+# Lightweight health endpoints
+@app.get("/health/live")
+async def health_live():
+    """Liveness probe."""
+    return {"ok": True}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe that ensures critical routes and artifacts directory exist."""
+    routes_loaded = any(
+        getattr(route, "path", "").startswith("/api/v1/experiment")
+        for route in app.router.routes
+    )
+    artifacts_ok = ARTIFACTS_DIR.exists()
+    if routes_loaded and artifacts_ok:
+        return {"ok": True, "artifacts_dir": str(ARTIFACTS_DIR)}
+
+    return JSONResponse(
+        status_code=503,
+        content={
+            "ok": False,
+            "detail": {
+                "routes_loaded": routes_loaded,
+                "artifacts_dir_exists": artifacts_ok
+            }
+        },
+    )
+
 # Health and readiness endpoints (hardened semantics)
 @app.get("/health")
 async def health():
+    """Health endpoint: returns phase based on EMBED_READY and vector client."""
+    global _PHASE
+    try:
+        from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+        
+        # Check readiness: EMBED_READY and vector client must be OK
+        if EMBED_READY:
+            vector_ok = ensure_qdrant_connection()
+            if vector_ok and _PHASE != "ready":
+                _PHASE = "ready"
+        elif _PHASE == "ready":
+            # If EMBED_READY becomes False, demote to degraded
+            _PHASE = "degraded"
+    except Exception as e:
+        logger.debug(f"[HEALTH] Check error (non-critical): {e}")
+    
     return {"ok": True, "phase": _PHASE}
 
 @app.get("/ready")
 async def ready():
-    if _READINESS:
-        return {"ok": True, "phase": _PHASE}
-    raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE})
+    """Readiness endpoint: returns 200 only when EMBED_READY and vector client are ready."""
+    global _READINESS, _PHASE
+    try:
+        from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+        
+        # Check readiness: EMBED_READY and vector client must be OK
+        if EMBED_READY:
+            vector_ok = ensure_qdrant_connection()
+            if vector_ok:
+                _READINESS = True
+                if _PHASE != "ready":
+                    _PHASE = "ready"
+                return {"ok": True, "phase": _PHASE}
+        
+        # Not ready
+        _READINESS = False
+        if _PHASE == "ready":
+            _PHASE = "degraded"
+        raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"[READY] Check error: {e}")
+        _READINESS = False
+        raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE, "error": str(e)})
 app.include_router(search_router)  # /search
+app.include_router(contract_router)
 app.include_router(query_router, prefix="/api")  # /api/query
 app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*
 app.include_router(best_router)  # /api/best
 app.include_router(experiment_router, prefix="/api/experiment", tags=["experiment"])  # /api/experiment/*
+app.include_router(experiment_router, prefix="/orchestrate", tags=["orchestrate"])
+app.include_router(steward_router, prefix="/api/steward", tags=["steward"])
+if graph_router is not None:
+    app.include_router(graph_router, prefix="/api/steward", tags=["steward-graph"])
 
 # Mount existing routers with /api prefix (primary)
 app.include_router(create_api_router(ops_router, "/api"))
@@ -877,7 +1035,7 @@ async def create_snapshot(request: Request):
         
         # Selected safe environment variables
         safe_env = {
-            "MAIN_PORT": os.getenv("MAIN_PORT", "8011"),
+            "MAIN_PORT": os.getenv("MAIN_PORT", "8000"),
             "QDRANT_HOST": os.getenv("QDRANT_HOST", "localhost"),
             "QDRANT_PORT": os.getenv("QDRANT_PORT", "6333"),
             "LAB_REDIS_TTL": os.getenv("LAB_REDIS_TTL", "86400"),

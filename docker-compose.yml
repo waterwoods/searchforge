@@ -86,6 +86,7 @@ services:
       - FAST_STARTUP=1
       - INIT_TIMEOUT_SEC=30
       - QUERY_TIMEOUT_S=${QUERY_TIMEOUT_S:-45}
+      - ENV_FILE=/app/.env
     ports:
       - "8000:8000"
     depends_on: [ qdrant, milvus-standalone ]
@@ -99,6 +100,7 @@ services:
       - ./data:/app/data:ro
       - ./reports:/app/reports
       - rag_runs:/app/.runs
+      - ./.env:/app/.env:ro
     # CPU-only service - no GPU runtime
   auto-tuner:
     build:

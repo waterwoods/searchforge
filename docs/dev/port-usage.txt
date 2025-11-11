@@ -1,0 +1,189 @@
+scripts/README.md:26:- Sets default ports: Backend=8011, Frontend=5173, Qdrant=6333, Redis=6379
+scripts/README.md:73:BACKEND=8011
+scripts/README.md:83:1. Check if ports are available: `lsof -i :8011 -i :5173 -i :6333 -i :6379`
+scripts/README.md:90:   curl http://localhost:8011/readyz
+scripts/auto_rca.sh:61:BASE_URL="${BASE_URL:-${APP_DEMO_URL:-http://localhost:8001}}"
+scripts/auto_rca.sh:63:PORT=${PORT:-8001}
+scripts/auto_rca.sh:74:    echo -e "   ${GREEN}# Option 1: Start on port 8001 (for Black Swan Demo)${NC}"
+scripts/black_swan_backend_test.sh:13:API_BASE="${1:-http://localhost:8001}"
+scripts/black_swan_demo.sh:26:API_BASE="${API_BASE:-${APP_DEMO_URL:-http://localhost:8001}}"
+scripts/black_swan_fixpack_check.sh:10:API_BASE="${1:-http://localhost:8001}"
+scripts/black_swan_hard_mode_test.sh:7:API_BASE="http://localhost:8001"
+scripts/black_swan_validate.sh:15:API_BASE="${1:-http://localhost:8001}"
+scripts/check_qdrant_status.sh:3:BASE=${1:-http://localhost:8001}
+scripts/check_qdrant_status.sh:86:echo "  1. Start backend: cd services/fiqa_api && MAIN_PORT=8001 bash start_server.sh"
+scripts/demo_monitor.sh:4:API=http://127.0.0.1:8011
+scripts/demo_monitor_configurable.sh:4:API=http://127.0.0.1:8011
+scripts/demo_monitor_high_qps.sh:4:API=http://127.0.0.1:8011
+scripts/dev_app.sh:104:    if timeout 2 curl -sf http://localhost:8011/healthz >/dev/null 2>&1; then
+scripts/dev_app.sh:106:        echo -e "  ${GREEN}✓${NC} Backend: Responding on http://localhost:8011"
+scripts/dev_app.sh:109:        VERIFY_JSON=$(curl -s http://localhost:8011/ops/verify 2>/dev/null || echo "{}")
+scripts/dev_app.sh:224:2. Check backend:   http://localhost:8011/healthz
+scripts/dev_app.sh:225:3. Full verify:     http://localhost:8011/ops/verify
+scripts/dev_app.sh:6:# Starts: Redis + Qdrant + app_main(8011) + frontend(3000)
+scripts/dev_app.sh:78:# 2. Start Backend (app_main on port 8011)
+scripts/dev_probe_overrides.py:8:BASE = os.getenv("FIQA_API_BASE", "http://localhost:8011")
+scripts/endpoint_selfcheck.sh:4:# Example: ./scripts/endpoint_selfcheck.sh http://localhost:8001
+scripts/endpoint_selfcheck.sh:8:API_BASE="${1:-http://localhost:8001}"
+scripts/generate_lab_report.py:15:        response = requests.get("http://localhost:8011/ops/lab/status")
+scripts/get_latest_job_dataset.sh:4:API_URL="${API_URL:-http://localhost:8011}"
+scripts/health_check.sh:10:BACKEND=${BACKEND:-8011}
+scripts/lab_run_fiqa_fast.sh:7:BASE=${BASE:-http://localhost:8011}
+scripts/monitor_combo.sh:25:STATUS=$(curl -s http://localhost:8011/ops/lab/status 2>/dev/null)
+scripts/monitor_combo.sh:58:echo "  • 查看 API 状态: curl http://localhost:8011/ops/lab/status | jq"
+scripts/qa_feature_guard.sh:7:API_BASE=${1:-"http://localhost:8001"}
+scripts/refresh_monitor_dashboard.sh:11:API="http://127.0.0.1:8011"
+scripts/refresh_monitor_dashboard.sh:24:  echo "   Start with: cd services/fiqa_api && uvicorn app_main:app --port 8011"
+scripts/run_combo_20min.sh:156:        log_warning "Please ensure fiqa_api is running on port 8011"
+scripts/run_combo_20min.sh:15:#   - fiqa_api running on port 8011
+scripts/run_combo_20min.sh:28:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/run_lab_ablation.sh:130:base_url: "http://localhost:8011"
+scripts/run_lab_ablation.sh:157:base_url: "http://localhost:8011"
+scripts/run_lab_ablation.sh:184:base_url: "http://localhost:8011"
+scripts/run_lab_combo_autotune.py:805:    parser.add_argument("--base-url", default="http://localhost:8011", help="Base URL for API")
+scripts/run_lab_combo_with_load.py:352:    parser.add_argument("--base-url", default="http://localhost:8011", help="Base URL for API")
+scripts/run_lab_combo_with_load.py:47:        base_url: Base URL for API (e.g., http://localhost:8011)
+scripts/run_lab_headless.sh:19:#   - app_main running on port 8011
+scripts/run_lab_headless.sh:30:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/run_lab_headless.sh:414:        # Note: Use port 8000 for search endpoint, not 8011
+scripts/run_lab_headless.sh:454:            --base-url "http://localhost:8011"
+scripts/run_lab_headless.sh:496:            --base-url http://localhost:8011"
+scripts/run_lab_headless.sh:552:            --base-url "http://localhost:8011"
+scripts/run_lab_route_with_load.py:339:        default="http://localhost:8011",
+scripts/run_lab_route_with_load.py:340:        help="Base URL for API (default: http://localhost:8011 - app_main with routing)"
+scripts/run_mini_ab.sh:22:BASE_URL="http://localhost:8011"
+scripts/run_prewarm.sh:14:BASE_URL="http://localhost:8011"
+scripts/run_soak_60m.sh:36:BASE_URL="http://localhost:8011"
+scripts/self_test.sh:4:# MAIN_PORT configuration (default: 8011)
+scripts/self_test.sh:5:MAIN_PORT="${MAIN_PORT:-8011}"
+scripts/selfcheck_observability.sh:7:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/setup_soak_env.sh:34:echo "2️⃣  Checking service on port 8011..."
+scripts/setup_soak_env.sh:36:if lsof -ti:8011 >/dev/null 2>&1; then
+scripts/setup_soak_env.sh:37:  echo "  ✓ Service already running on port 8011"
+scripts/setup_soak_env.sh:38:  PID=$(lsof -ti:8011)
+scripts/setup_soak_env.sh:41:  echo "  ⚠️  No service on port 8011"
+scripts/setup_soak_env.sh:47:  nohup uvicorn app_main:app --port 8011 --reload > /tmp/fiqa_api_8011.log 2>&1 &
+scripts/setup_soak_env.sh:55:  if lsof -ti:8011 >/dev/null 2>&1; then
+scripts/setup_soak_env.sh:59:    echo "  Check logs: /tmp/fiqa_api_8011.log"
+scripts/setup_soak_env.sh:76:echo "  • Service: http://localhost:8011"
+scripts/smoke.sh:8:BASE="${BASE:-http://localhost:8011}"
+scripts/start-agent.sh:10:BACKEND_PORT="${BACKEND_PORT:-8001}"
+scripts/start_all.sh:11:BACKEND=${BACKEND:-8011}
+scripts/start_app_main.sh:19:# Check if port 8011 is already in use
+scripts/start_app_main.sh:20:if lsof -Pi :8011 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+scripts/start_app_main.sh:21:    echo -e "${YELLOW}⚠️  Port 8011 is already in use${NC}"
+scripts/start_app_main.sh:24:    echo "  lsof -ti:8011 | xargs kill -9"
+scripts/start_app_main.sh:46:echo -e "${BLUE}Starting app_main on port 8011...${NC}"
+scripts/start_app_main.sh:62:    echo "Port: 8011"
+scripts/start_app_main.sh:63:    echo "Health check: http://localhost:8011/healthz"
+scripts/start_app_main.sh:68:    echo "  lsof -ti:8011 | xargs kill -9"
+scripts/start_demo_app.sh:11:# Default port: 8001 (as required by Black Swan Demo)
+scripts/start_demo_app.sh:37:echo -e "${BLUE}║     SearchForge Demo App - Starting on Port 8001              ║${NC}"
+scripts/start_demo_app.sh:42:PORT="${PORT:-8001}"
+scripts/start_demo_app.sh:4:# Start SearchForge Demo App on Port 8001
+scripts/start_routing_app.sh:10:echo "Port: 8011"
+scripts/start_routing_app.sh:26:python -m uvicorn fiqa_api.app_main:app --host 0.0.0.0 --port 8011 --reload
+scripts/start_routing_app.sh:2:# Start app_main with FAISS routing on port 8011
+scripts/start_services.sh:17:uvicorn services.fiqa_api.app_main:app --reload --port 8001 &
+scripts/test_error_diagnostics.sh:23:API_BASE="${1:-${APP_DEMO_URL:-http://localhost:8001}}"
+scripts/test_frontend_fix.py:17:API_BASE = "http://localhost:8011"
+scripts/test_frontend_fix.py:231:        f.write(f"✅ No requests to port 8001 (v2)\n")
+scripts/test_frontend_fix.py:234:        f.write(f"✅ Frontend locked to app_main (8011)\n")
+scripts/test_metrics_quick.sh:13:API="${API:-http://127.0.0.1:8011}"
+scripts/test_metrics_quick.sh:183:# API: http://127.0.0.1:8011
+scripts/test_real_mode.sh:21:echo "  • App_v2 (8001): $app_v2"
+scripts/test_real_mode.sh:8:API_BASE="${API_BASE:-http://localhost:8001}"
+scripts/test_reconnect.sh:20:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/test_runid_gating.sh:16:API_BASE="${1:-${APP_DEMO_URL:-http://localhost:8001}}"
+scripts/test_tap_mode.sh:24:API_BASE="${API_BASE:-${APP_DEMO_URL:-http://localhost:8001}}"
+scripts/trace_black_swan_io.sh:23:API_BASE="${API_BASE:-${APP_DEMO_URL:-http://localhost:8001}}"
+scripts/trace_black_swan_io.sh:80:LOG_FILE="${LOGS_DIR}/backend_8001.log"
+scripts/validate_auto_rca.sh:182:    echo -e "   1. Start the Demo server (port 8001): ${GREEN}bash scripts/start_demo_app.sh${NC}"
+scripts/verify_adapters.sh:7:BASE_URL="http://localhost:8011"
+scripts/verify_agent_summary.sh:25:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_agent_v2.sh:17:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_agent_v2.sh:8:#   - Backend running on port 8011
+scripts/verify_agent_v3.sh:5:API=${API:-http://127.0.0.1:8011}
+scripts/verify_app_main.sh:15:API_URL="${API_URL:-http://localhost:8011}"
+scripts/verify_app_main_clean.sh:12:BASE_URL="${1:-http://localhost:8011}"
+scripts/verify_app_main_clean.sh:8:#   ./scripts/verify_app_main_clean.sh http://localhost:8011
+scripts/verify_app_main_click.sh:25:VERIFY_RESPONSE=$(curl -s http://localhost:8011/ops/verify)
+scripts/verify_app_main_click.sh:39:POST_RESPONSE=$(curl -s -X POST http://localhost:8011/ops/black_swan \
+scripts/verify_app_main_click.sh:60:    STATUS_RESPONSE=$(curl -s http://localhost:8011/ops/black_swan/status)
+scripts/verify_app_main_click.sh:61:    STATUS_CODE=$(curl -s -w "%{http_code}" -o /dev/null http://localhost:8011/ops/black_swan/status)
+scripts/verify_app_main_click.sh:79:TUNER_ENABLED_RESPONSE=$(curl -s -w "HTTP_STATUS:%{http_code}" http://localhost:8011/tuner/enabled)
+scripts/verify_app_main_click.sh:87:TUNER_TOGGLE_RESPONSE=$(curl -s -X POST -w "HTTP_STATUS:%{http_code}" http://localhost:8011/tuner/toggle)
+scripts/verify_black_swan_async.sh:24:API_URL="${API_URL:-http://localhost:8011}"
+scripts/verify_black_swan_async.sh:7:# 1. Starts app_main on port 8011
+scripts/verify_black_swan_main.sh:7:BASE_URL="http://localhost:8011"
+scripts/verify_combo.sh:14:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_effective_params.sh:16:API_BASE="${APP_DEMO_URL:-http://localhost:8001}"
+scripts/verify_entry_unification.sh:171:    if grep -q "target: 'http://localhost:8011'" "$VITE_CONFIG"; then
+scripts/verify_entry_unification.sh:172:        print_check "PASS" "Proxy target is http://localhost:8011"
+scripts/verify_entry_unification.sh:174:        print_check "WARN" "Proxy target may not be localhost:8011"
+scripts/verify_entry_unification.sh:20:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_entry_unification.sh:309:1. Start backend: cd services/fiqa_api && uvicorn app_main:app --port 8011
+scripts/verify_entry_unification.sh:361:        echo "  1. Start backend: cd services/fiqa_api && uvicorn app_main:app --port 8011"
+scripts/verify_entry_unification.sh:65:        echo -e "${YELLOW}Start backend with: cd services/fiqa_api && uvicorn app_main:app --port 8011${NC}"
+scripts/verify_entry_unification.sh:8:# 1. Checks Vite proxy configuration (/api → 8011)
+scripts/verify_env_ports.sh:103:# Check APP_DEMO_URL (port 8001)
+scripts/verify_env_ports.sh:104:if check_health "Demo App (8001)" "$APP_DEMO_URL" "/health"; then
+scripts/verify_env_sync.sh:86:    echo "   (Start with: cd services/fiqa_api && PORT=8001 uvicorn app_v2:app --port 8001)"
+scripts/verify_faiss_disabled.sh:14:BASE_URL="http://127.0.0.1:8011"
+scripts/verify_force_status.sh:21:API_BASE="${API_BASE:-http://localhost:8001}"
+scripts/verify_lab_backend.sh:18:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_lab_e2e.sh:7:BACKEND_URL="http://localhost:8011"
+scripts/verify_mini.sh:10:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_mode_b.sh:4:API_BASE="${API_BASE:-http://localhost:8001}"
+scripts/verify_monitor_endpoints.sh:72:echo "Next: Open http://localhost:8011/monitor"
+scripts/verify_monitor_endpoints.sh:8:API_BASE="${API_BASE:-http://127.0.0.1:8011}"
+scripts/verify_monitor_panel.sh:14:API_BASE="${API_BASE:-http://localhost:8011}"
+scripts/verify_monitor_panel.sh:81:echo "1. Open http://localhost:8011/monitor"
+scripts/verify_ports_consistency.sh:110:    echo "  • Ops/Metrics:   http://localhost:8001 (app_v2.py)"
+scripts/verify_ports_consistency.sh:21:    if [ "$APP_DEMO_URL" != "http://localhost:8001" ]; then
+scripts/verify_ports_consistency.sh:22:        echo "  ❌ FAIL: APP_DEMO_URL should be http://localhost:8001, got: $APP_DEMO_URL"
+scripts/verify_ports_consistency.sh:25:        echo "  ✅ PASS: APP_DEMO_URL=http://localhost:8001"
+scripts/verify_ports_consistency.sh:31:echo "✓ Check 2: Backend on port 8001"
+scripts/verify_ports_consistency.sh:32:if curl -s -f http://localhost:8001/ops/summary > /dev/null 2>&1; then
+scripts/verify_ports_consistency.sh:33:    echo "  ✅ PASS: Backend responding on port 8001"
+scripts/verify_ports_consistency.sh:35:    echo "  ❌ FAIL: Backend not responding on http://localhost:8001/ops/summary"
+scripts/verify_ports_consistency.sh:36:    echo "     → Start with: cd services/fiqa_api && PORT=8001 uvicorn app_v2:app --host 0.0.0.0 --port 8001"
+scripts/verify_ports_consistency.sh:67:    if [ "$VITE_API_BASE" != "http://localhost:8001" ]; then
+scripts/verify_ports_consistency.sh:68:        echo "  ❌ FAIL: VITE_API_BASE should be http://localhost:8001, got: $VITE_API_BASE"
+scripts/verify_ports_consistency.sh:71:        echo "  ✅ PASS: VITE_API_BASE=http://localhost:8001"
+scripts/verify_ports_consistency.sh:84:    if curl -s -f "http://localhost:8001/$endpoint" > /dev/null 2>&1; then
+scripts/verify_preflight.sh:7:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_refactor.sh:26:BASE_URL="${BASE_URL:-http://localhost:8011}"
+scripts/verify_reporter_alignment.sh:9:BASE_URL="http://127.0.0.1:8011"
+scripts/verify_routing.sh:23:BASE_URL="${BASE_URL:-http://localhost:8011}"  # app_main with FAISS routing
+scripts/verify_summary.sh:14:BACKEND_URL="${BACKEND_URL:-http://localhost:8011}"
+services/api/ops_routes.py:232:        "port": int(os.getenv("MAIN_PORT", "8011")),
+services/black_swan/runner.py:51:        self.target_url = target_url or os.getenv("FIQA_SEARCH_URL", "http://localhost:8011/search")
+services/fiqa_api/_deprecated/app_v2.py:1900:                "API_BASE": os.getenv("APP_DEMO_URL", os.getenv("API_BASE", "http://localhost:8001")),
+services/fiqa_api/app_main.py:122:MAIN_PORT = settings.get_env_int("MAIN_PORT", 8011)
+services/fiqa_api/app_main.py:6:Default port: 8011 (configurable via MAIN_PORT)
+services/fiqa_api/app_main.py:944:            "MAIN_PORT": os.getenv("MAIN_PORT", "8011"),
+services/fiqa_api/app_v2.py:1900:                "API_BASE": os.getenv("APP_DEMO_URL", os.getenv("API_BASE", "http://localhost:8001")),
+services/fiqa_api/models/experiment_models.py:31:    base_url: str = Field(default="http://localhost:8011", description="Base API URL")
+services/fiqa_api/preset_manager.py:114:                    "base_url": "http://localhost:8011",
+services/fiqa_api/preset_manager.py:160:                    "base_url": "http://localhost:8011",
+services/fiqa_api/preset_manager.py:57:                    "base_url": "http://localhost:8011",
+services/fiqa_api/preset_manager.py:85:                    "base_url": "http://localhost:8011",
+services/fiqa_api/routes/experiment.py:1339:        base_url = os.getenv("FIQA_API_BASE", "http://localhost:8011")
+services/fiqa_api/start_server.sh:5:export MAIN_PORT="${MAIN_PORT:-8011}"
+services/fiqa_api/test_v9_e2e.py:29:BASE_URL = os.getenv("BASE_URL", "http://localhost:8011")
+services/metrics.py:690:            "fiqa_search_url": os.getenv("FIQA_SEARCH_URL", "http://localhost:8011/search"),
+services/metrics.py:706:            "fiqa_search_url": "http://localhost:8011/search",
+services/ops_routes.py:232:        "port": int(os.getenv("MAIN_PORT", "8011")),
+services/overnight_test_runner.py:29:        api_base: str = "http://localhost:8011",
+services/overnight_test_runner.py:31:        black_swan_api: str = "http://localhost:8011"
+services/probe_cron/app.py:26:    start_http_server(8001)
+services/routers/metrics.py:690:            "fiqa_search_url": os.getenv("FIQA_SEARCH_URL", "http://localhost:8011/search"),
+services/routers/metrics.py:706:            "fiqa_search_url": "http://localhost:8011/search",
+services/routers/overnight_test_runner.py:29:        api_base: str = "http://localhost:8011",
+services/routers/overnight_test_runner.py:31:        black_swan_api: str = "http://localhost:8011"
+ui/src/features/code-lookup/components/EvidencePane.jsx:100:                const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+ui/src/features/code-lookup/components/EvidencePane.jsx:184:        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+ui/src/features/code-lookup/components/EvidencePane.jsx:215:        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+ui/src/features/code-lookup/components/GraphPanel.jsx:386:            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+ui/src/features/code-lookup/graphStore.js:19:        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
