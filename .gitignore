@@ -45,3 +45,4 @@ services/fiqa_api/logs/
 .runs/api.pid
 .runs/graph.db*
 .runs/blobs/
+.buildx-cache/
