@@ -7,12 +7,14 @@
 *.pyc
 .cache/
 .env
+.python-version
 .mypy_cache/
 .project_trash/
 .pytest_cache/
 .runs/
-.trash/
 .venv/
+artifacts/
+.trash/
 __pycache__/
 archives/*.tar.gz
 artifacts/tmp/
@@ -33,6 +35,7 @@ reports/tmp/
 archives/
 data/
 .env.*
+!.env.example
 *.zip
 *.tar.gz
 *.parquet

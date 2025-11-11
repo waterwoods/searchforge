@@ -14,7 +14,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu up-gpu down-gpu export-reqs lint-no-poetry cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast
+.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu up-gpu down-gpu export-reqs lint-no-poetry cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply
 
 # Default target: show help
 .DEFAULT_GOAL := help
@@ -23,6 +23,18 @@ help: ## 显示所有可用命令（默认命令）
 	@echo "=================================================="
 	@echo "  SearchForge Makefile 命令帮助"
 	@echo "=================================================="
+
+install: ## poetry 安装并同步
+	poetry install --no-interaction --sync
+
+dev-api: ## 本地启动 API（热重载）
+	RUNS_DIR=$(PWD)/.runs poetry run uvicorn services.fiqa_api.app_main:app --host $${HOST:-0.0.0.0} --port $${PORT:-8000} --reload
+
+smoke: ## 健康检查冒烟
+	bash scripts/quick_backend_smoke.sh
+
+export: ## Export dependencies to requirements.txt
+	poetry export -f requirements.txt -o requirements.txt --without-hashes
 	@echo ""
 	@echo "📋 环境切换 (Environment Switching)"
 	@echo "  make whoami              - 查看当前目标环境"
@@ -93,6 +105,14 @@ help: ## 显示所有可用命令（默认命令）
 	@echo "  N=150 C=10 WARMUP=10 TIMEOUT=3 make cutover-remote  - 自定义参数切换"
 	@echo ""
 	@echo "=================================================="
+
+dev-api-bg:
+	@mkdir -p .runs
+	@RUNS_DIR=$(PWD)/.runs nohup poetry run uvicorn services.fiqa_api.app_main:app --host $${HOST:-127.0.0.1} --port $${PORT:-8000} > .runs/api.log 2>&1 & echo $$! > .runs/api.pid; \
+		echo "PID=$$(cat .runs/api.pid)"
+
+stop-api:
+	@[ -f .runs/api.pid ] && kill $$(cat .runs/api.pid) || true
 
 sync:
 	@rsync -avzP mini-d-files/ $(REMOTE):$(RDIR)/
@@ -303,6 +323,15 @@ smoke-experiment: ## Run minimal experiment (sample=5) to verify setup
 
 smoke-fast: ## Run quick backend smoke test against local endpoints
 	@bash scripts/quick_backend_smoke.sh
+
+smoke-contract: ## Run experiment contract smoke checks (requires JOB=<job_id>)
+	@bash scripts/smoke_contract.sh
+
+smoke-review: ## Review contract smoke (requires JOB_ID=<job_id>)
+	@MODE=review bash scripts/smoke_review_llm.sh
+
+smoke-apply: ## Apply contract smoke (requires JOB_ID=<job_id>)
+	@MODE=apply bash scripts/smoke_review_llm.sh
 
 smoke-review: ## Run steward review/apply smoke check (requires JOB_ID=<job>)
 	@bash scripts/smoke_review_llm.sh

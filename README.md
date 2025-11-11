@@ -2,6 +2,15 @@
 
 > 一个由AI驱动的、能够分析、可视化并解释您代码库的智能体。
 
+## Quick Start
+
+1. `poetry install --no-interaction --sync`
+2. `make dev-api`
+3. `curl -sf http://localhost:8000/health/live && curl -sf http://localhost:8000/health/ready`
+4. `make smoke`
+5. `make export` *(可选)*
+- 生产将 `.env` 中 `ALLOW_ALL_CORS=0`，并把 `CORS_ORIGINS` 设为逗号分隔白名单（例：`https://app.example.com,https://admin.example.com`）。
+
 ## 项目概述
 
 代码查询智能体是一个专为开发者设计的智能代码分析工具，旨在解决理解复杂代码库的困难。通过结合AI技术和交互式可视化，它能够帮助开发者、架构师快速理解代码结构、函数关系以及系统架构。
@@ -20,6 +29,13 @@
 - **📋 基于证据的分析**: 遵循Vibe Coding原则，确保分析结果的可审计性和透明度
 - **⚡ 多种查询模式**: 支持概览、文件分析、函数分析等多种查询类型
 - **🔄 流式响应**: 实时展示分析进度，提升用户体验
+
+## 环境与常用命令
+
+- `poetry env use 3.11 && poetry install`
+- `make smoke`
+- `make test`
+- `make export`
 
 ## 系统架构
 
