@@ -1,7 +1,7 @@
 # Core API dependencies
 fastapi==0.121.* ; python_version >= "3.10" and python_version < "4.0"
 uvicorn[standard]==0.30.* ; python_version >= "3.10" and python_version < "4.0"
-pydantic==2.5.0 ; python_version >= "3.10" and python_version < "4.0"
+pydantic>=2.7.4,<3.0 ; python_version >= "3.10" and python_version < "4.0"
 python-multipart==0.0.6 ; python_version >= "3.10" and python_version < "4.0"
 httpx==0.25.2 ; python_version >= "3.10" and python_version < "4.0"
 python-dotenv==1.0.0 ; python_version >= "3.10" and python_version < "4.0"

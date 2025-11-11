@@ -111,7 +111,7 @@ echo ""
 # Change to AgentService directory and start service
 cd "$AGENTSERVICE_DIR"
 
-# Start service with poetry (foreground)
+# Start service with the system Python (foreground)
 # Use --timeout-keep-alive for SSE stability
-poetry run uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120
+python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120
 

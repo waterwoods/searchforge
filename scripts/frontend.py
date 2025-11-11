@@ -134,7 +134,7 @@ def build_frontend():
 def main():
     """Main entry point"""
     if len(sys.argv) < 2:
-        print("Usage: poetry run frontend-<command>")
+        print("Usage: python scripts/frontend.py <command>")
         print("Available commands:")
         print("  dev     - Start development server")
         print("  build   - Build for production")

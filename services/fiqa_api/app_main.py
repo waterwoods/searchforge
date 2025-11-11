@@ -70,6 +70,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import asyncio
 
+from services.fiqa_api.settings import RUNS_PATH, ARTIFACTS_PATH, REPO_ROOT
+
 # ✅ Module-level heavy resource initialization moved to clients.py singleton pattern
 # Resources are now initialized lazily via lifespan event
 
@@ -82,12 +84,7 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-_artifacts_candidates = [
-    project_root / "artifacts",
-    Path("/app/artifacts"),
-    Path.cwd() / "artifacts",
-]
-ARTIFACTS_DIR = next((candidate for candidate in _artifacts_candidates if candidate.exists()), _artifacts_candidates[0])
+ARTIFACTS_DIR = ARTIFACTS_PATH
 
 # Import unified settings and plugins
 from services.core import settings
@@ -115,6 +112,11 @@ from services.fiqa_api.routes.health import router as qdrant_health_router
 from services.fiqa_api.routes.contract_v1 import router as contract_router
 from services.fiqa_api.routes.experiment import router as experiment_router
 from services.fiqa_api.routes.steward import router as steward_router
+try:
+    from routes.graph_run import router as graph_router
+except Exception as exc:  # pragma: no cover - optional dependency
+    graph_router = None
+    logger.warning("Failed to import routes.graph_run (steward graph disabled): %s", exc)
 from services.fiqa_api.health.ready import router as health_router
 
 # Import NetworkX engine for code graph analysis
@@ -336,11 +338,14 @@ async def lifespan(app: FastAPI):
     except RuntimeError:
         pass
     
-    # Ensure artifacts directory exists on first startup
-    try:
-        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        logger.warning(f"[STARTUP] Failed to ensure artifacts dir {ARTIFACTS_DIR}: {exc}")
+    # Ensure runtime directories exist on first startup
+    for label, path in (("runs", RUNS_PATH), ("artifacts", ARTIFACTS_PATH)):
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            logger.warning(f"[STARTUP] Failed to ensure {label} dir {path}: {exc}")
+
+    logger.info(f"[PATHS] runs_dir={RUNS_PATH} artifacts_dir={ARTIFACTS_PATH}")
 
     logger.info(f"Port: {MAIN_PORT}")
     logger.info(f"API Entry: {API_ENTRY}")
@@ -396,11 +401,14 @@ _install_signal_handlers()
 # Mount reports/ directory as static files for artifact serving
 # Note: project_root is already defined above (line 67)
 # Try multiple possible locations for reports directory
-reports_dirs = [
+reports_dirs: list[Path] = []
+reports_env = os.getenv("REPORTS_DIR")
+if reports_env:
+    reports_dirs.append(Path(reports_env).resolve())
+reports_dirs.extend([
     project_root / "reports",
-    Path("/app/reports"),
-    Path("/app/services/fiqa_api/reports"),
-]
+    project_root / "services" / "fiqa_api" / "reports",
+])
 reports_dir = None
 for dir_candidate in reports_dirs:
     if dir_candidate.exists():
@@ -782,6 +790,8 @@ app.include_router(best_router)  # /api/best
 app.include_router(experiment_router, prefix="/api/experiment", tags=["experiment"])  # /api/experiment/*
 app.include_router(experiment_router, prefix="/orchestrate", tags=["orchestrate"])
 app.include_router(steward_router, prefix="/api/steward", tags=["steward"])
+if graph_router is not None:
+    app.include_router(graph_router, prefix="/api/steward", tags=["steward-graph"])
 
 # Mount existing routers with /api prefix (primary)
 app.include_router(create_api_router(ops_router, "/api"))

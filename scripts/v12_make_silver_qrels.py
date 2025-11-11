@@ -5,8 +5,8 @@ v12_make_silver_qrels.py - Generate silver qrels for FIQA datasets
 Generates silver qrels using BM25 + vector retrieval with thresholding.
 
 Usage:
-    poetry run python scripts/v12_make_silver_qrels.py --dataset fiqa_10k_v1
-    poetry run python scripts/v12_make_silver_qrels.py --dataset fiqa_50k_v1
+    docker compose exec rag-api python scripts/v12_make_silver_qrels.py --dataset fiqa_10k_v1
+    docker compose exec rag-api python scripts/v12_make_silver_qrels.py --dataset fiqa_50k_v1
 """
 
 import argparse

@@ -6,7 +6,7 @@ Updates points in a Qdrant collection to add abstract field where missing.
 Sets abstract = text for points that don't have abstract in their payload.
 
 Usage:
-    poetry run python scripts/v12_backfill_abstract.py --collection fiqa_10k_v1
+    docker compose exec rag-api python scripts/v12_backfill_abstract.py --collection fiqa_10k_v1
 """
 
 import argparse

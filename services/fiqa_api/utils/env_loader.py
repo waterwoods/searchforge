@@ -2,7 +2,9 @@ import os
 import re
 import pathlib
 
-ENV_FILE_DEFAULT = "/app/.env"
+from services.fiqa_api.settings import REPO_ROOT
+
+ENV_FILE_DEFAULT = str((REPO_ROOT / ".env").resolve())
 
 
 def _parse_line(line: str):

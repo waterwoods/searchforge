@@ -4,11 +4,11 @@
 
 ## Quick Start
 
-1. `poetry install --no-interaction --sync`
-2. `make dev-api`
+1. `docker compose build rag-api`
+2. `docker compose up -d rag-api`
 3. `curl -sf http://localhost:8000/health/live && curl -sf http://localhost:8000/health/ready`
 4. `make smoke`
-5. `make export` *(可选)*
+5. `make export` *(可选，导出依赖快照到 requirements.lock)*
 - 生产将 `.env` 中 `ALLOW_ALL_CORS=0`，并把 `CORS_ORIGINS` 设为逗号分隔白名单（例：`https://app.example.com,https://admin.example.com`）。
 
 ## 项目概述
@@ -32,7 +32,7 @@
 
 ## 环境与常用命令
 
-- `poetry env use 3.11 && poetry install`
+- `docker compose build rag-api`
 - `make smoke`
 - `make test`
 - `make export`
@@ -306,6 +306,8 @@ pip install -r requirements.txt
 **重要：`.env.current` 是服务端点的单一来源**
 
 SearchForge 使用 `.env.current` 作为当前活跃的环境配置文件，这是所有服务端点的单一来源。所有 Docker Compose 命令都会自动加载 `.env.current`。
+
+> Docker 提示：运行容器时若需自定义运行/产物目录，设置 `RUNS_DIR` 与 `ARTIFACTS_DIR` 环境变量并挂载对应路径即可；镜像不再依赖固定的 `/app`。
 
 **环境配置文件说明：**
 

@@ -325,81 +325,20 @@ def generate_report(output_file: Path):
             "",
             "**Status:** ✅ torchvision has been removed from dependencies.",
             "",
-            "> Run `poetry install --no-cache` to sync the environment if needed.",
+            "> Run `docker compose build rag-api` to rebuild the API container if needed.",
         ])
     else:
         lines.extend([
             "✅ **torchvision is NOT used in the codebase**",
             "",
-            "**Recommendation:** Can be safely removed with `poetry remove torchvision`",
+            "**Recommendation:** Remove torchvision from container dependencies and rebuild.",
+            "",
+            "Suggested steps:",
+            "- `docker compose exec rag-api pip uninstall -y torchvision`",
+            "- Remove any `torchvision` lines from `services/rag_api/requirements.txt`",
+            "- `docker compose build rag-api`",
             "",
         ])
-        # Try to remove torchvision
-        try:
-            result = subprocess.run(
-                ['poetry', 'remove', 'torchvision', '--no-interaction'],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            if result.returncode == 0:
-                torchvision_removed = True
-                lines.append("> ✅ **Status:** torchvision has been removed from dependencies.")
-                lines.append("")
-                lines.append("> Run `poetry install --no-cache` to sync the environment.")
-            else:
-                # If poetry remove fails, try manually editing pyproject.toml
-                pyproject_path = project_root / 'pyproject.toml'
-                if pyproject_path.exists():
-                    try:
-                        content = pyproject_path.read_text(encoding='utf-8')
-                        # Remove torchvision line
-                        original_lines = content.splitlines(keepends=True) if '\n' in content or '\r' in content else content.split('\n')
-                        new_lines = []
-                        found_torchvision = False
-                        for line in original_lines:
-                            # Skip lines that contain torchvision assignment
-                            stripped = line.strip()
-                            if stripped.startswith('torchvision') and '=' in stripped:
-                                found_torchvision = True
-                                continue
-                            new_lines.append(line)
-                        
-                        if found_torchvision:
-                            # Join lines back, preserving original line endings
-                            if '\r\n' in content:
-                                new_content = ''.join(new_lines)
-                            elif '\n' in content:
-                                new_content = ''.join(new_lines)
-                            else:
-                                new_content = '\n'.join(new_lines) + '\n' if new_lines else ''
-                            
-                            if new_content != content:
-                                pyproject_path.write_text(new_content, encoding='utf-8')
-                                torchvision_removed = True
-                                lines.append("> ✅ **Status:** torchvision has been removed from pyproject.toml.")
-                                lines.append("")
-                                lines.append("> Run `poetry install --no-cache` to sync the environment.")
-                        else:
-                            lines.append(f"> ⚠️ **Status:** Failed to remove torchvision automatically.")
-                            lines.append(f"> Poetry error: {result.stderr[:200]}")
-                            lines.append("")
-                            lines.append("> You can manually remove 'torchvision = \"*\"' from pyproject.toml")
-                    except Exception as e2:
-                        lines.append(f"> ⚠️ **Status:** Failed to remove torchvision automatically.")
-                        lines.append(f"> Poetry error: {result.stderr[:200]}")
-                        lines.append(f"> Manual removal error: {e2}")
-                        lines.append("")
-                        lines.append("> You can manually remove 'torchvision = \"*\"' from pyproject.toml")
-                else:
-                    lines.append(f"> ⚠️ **Status:** Failed to remove torchvision automatically.")
-                    lines.append(f"> Error: {result.stderr[:200]}")
-                    lines.append("")
-                    lines.append("> You can manually run: `poetry remove torchvision`")
-        except Exception as e:
-            lines.append(f"> ⚠️ **Status:** Error attempting to remove torchvision: {e}")
-            lines.append("")
-            lines.append("> You can manually remove 'torchvision = \"*\"' from pyproject.toml")
     
     lines.extend([
         "",
@@ -449,7 +388,7 @@ def generate_report(output_file: Path):
     else:
         if torchvision_removed:
             print(f"✅ torchvision not used - removed from dependencies")
-            print(f"   Run 'poetry install --no-cache' to sync the environment")
+            print(f"   Run 'docker compose build rag-api' to rebuild the API container")
         else:
             print(f"⚠️  torchvision not used but removal failed - check report for details")
 

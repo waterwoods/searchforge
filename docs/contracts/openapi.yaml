@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: Experiment Operations API
+  version: "1.0.0"
+  description: >
+    Versioned contract for experiment status, logs, review, and apply operations.
+    Legacy aliases under /api/experiment/* proxy these endpoints while preserving schema compatibility.
+paths:
+  /api/v1/experiment/status/{job_id}:
+    get:
+      summary: Fetch experiment job status
+      operationId: getExperimentStatus
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Experiment job identifier.
+          schema:
+            $ref: "#/components/schemas/JobId"
+      responses:
+        "200":
+          description: Job status located.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "502":
+          $ref: "#/components/responses/Error502"
+        "503":
+          $ref: "#/components/responses/Error503"
+  /api/v1/experiment/logs/{job_id}:
+    get:
+      summary: Fetch experiment job log tail
+      operationId: getExperimentLogs
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Experiment job identifier.
+          schema:
+            $ref: "#/components/schemas/JobId"
+        - name: tail
+          in: query
+          required: false
+          description: Number of lines to return (1-1000, default 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 200
+      responses:
+        "200":
+          description: Log tail returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogsResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "502":
+          $ref: "#/components/responses/Error502"
+        "503":
+          $ref: "#/components/responses/Error503"
+  /api/v1/experiment/review:
+    get:
+      summary: Retrieve experiment review summary
+      operationId: getExperimentReview
+      parameters:
+        - name: job_id
+          in: query
+          required: true
+          description: Experiment job identifier.
+          schema:
+            $ref: "#/components/schemas/JobId"
+        - name: suggest
+          in: query
+          required: false
+          description: Toggle suggestion metadata (0 or 1).
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+      responses:
+        "200":
+          description: Review payload assembled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "502":
+          $ref: "#/components/responses/Error502"
+        "503":
+          $ref: "#/components/responses/Error503"
+  /api/v1/experiment/apply:
+    post:
+      summary: Apply preset or change set to launch a new experiment
+      operationId: applyExperimentChanges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyRequest"
+      responses:
+        "200":
+          description: New experiment job started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "408":
+          $ref: "#/components/responses/Error408"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "502":
+          $ref: "#/components/responses/Error502"
+        "503":
+          $ref: "#/components/responses/Error503"
+components:
+  schemas:
+    JobId:
+      type: string
+      pattern: "^[a-f0-9]{6,}$"
+    ReviewSummary:
+      type: object
+      properties:
+        p95_ms:
+          type: number
+          nullable: true
+        err_rate:
+          type: number
+          nullable: true
+        recall_at_10:
+          type: number
+          nullable: true
+        cost_tokens:
+          type: integer
+          nullable: true
+      additionalProperties: false
+    ReviewBaseline:
+      type: object
+      properties:
+        summary:
+          $ref: "#/components/schemas/ReviewSummary"
+        source:
+          type: string
+          nullable: true
+      additionalProperties: true
+    ReviewMeta:
+      type: object
+      properties:
+        poll:
+          type: string
+        logs:
+          type: string
+        manifest_path:
+          type: string
+          nullable: true
+        baseline_path:
+          type: string
+          nullable: true
+        suggest_enabled:
+          type: boolean
+          nullable: true
+        job_status:
+          type: object
+          properties:
+            status:
+              type: string
+            rc:
+              type: integer
+              nullable: true
+            started:
+              type: number
+              nullable: true
+            ended:
+              type: number
+              nullable: true
+          additionalProperties: true
+      additionalProperties: true
+    ReviewResponse:
+      type: object
+      required:
+        - job_id
+        - summary
+      properties:
+        job_id:
+          $ref: "#/components/schemas/JobId"
+        summary:
+          $ref: "#/components/schemas/ReviewSummary"
+        baseline:
+          $ref: "#/components/schemas/ReviewBaseline"
+        meta:
+          $ref: "#/components/schemas/ReviewMeta"
+      additionalProperties: false
+    ApplyRequest:
+      type: object
+      required:
+        - job_id
+      properties:
+        job_id:
+          $ref: "#/components/schemas/JobId"
+        preset:
+          type: string
+          nullable: true
+        changes:
+          type: object
+          nullable: true
+          description: Free-form overrides applied to the follow-up job.
+          additionalProperties: true
+      additionalProperties: false
+    ApplyResponse:
+      type: object
+      required:
+        - job_id
+        - poll
+        - logs
+        - started_at
+        - source_job_id
+      properties:
+        job_id:
+          $ref: "#/components/schemas/JobId"
+        poll:
+          type: string
+        logs:
+          type: string
+        started_at:
+          type: number
+          nullable: true
+        preset:
+          type: string
+          nullable: true
+        overrides:
+          type: object
+          nullable: true
+          additionalProperties: true
+        source_job_id:
+          $ref: "#/components/schemas/JobId"
+      additionalProperties: false
+    StatusResponse:
+      type: object
+      required:
+        - job_id
+        - status
+        - poll
+        - logs
+      properties:
+        job_id:
+          $ref: "#/components/schemas/JobId"
+        status:
+          type: string
+        rc:
+          type: integer
+          nullable: true
+        started:
+          type: number
+          nullable: true
+        ended:
+          type: number
+          nullable: true
+        poll:
+          type: string
+        logs:
+          type: string
+      additionalProperties: false
+    LogsResponse:
+      type: object
+      required:
+        - job_id
+      properties:
+        job_id:
+          $ref: "#/components/schemas/JobId"
+        tail:
+          type: string
+          nullable: true
+        lines:
+          type: integer
+          nullable: true
+      additionalProperties: false
+    Error:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        detail:
+          type: string
+          nullable: true
+      additionalProperties: false
+  responses:
+    Error400:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error404:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error408:
+      description: Upstream timeout.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error429:
+      description: Rate limited.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error502:
+      description: Experiment service unreachable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error503:
+      description: Experiment service busy.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+

@@ -31,6 +31,19 @@ from services.fiqa_api.utils.gitinfo import get_git_sha
 from services.fiqa_api.preset_manager import get_preset_manager
 from services.fiqa_api.clients import get_qdrant_client
 from services.fiqa_api.utils.metrics_loader import parse_metrics_from_log
+from services.fiqa_api.settings import RUNS_PATH, ARTIFACTS_PATH, REPO_ROOT
+from services.fiqa_api.routes.contract_v1 import (
+    ApplyRequest as ContractApplyRequest,
+    ApplyResponse as ContractApplyResponse,
+    ContractApiError,
+    LogsResponse as ContractLogsResponse,
+    ReviewResponse as ContractReviewResponse,
+    StatusResponse as ContractStatusResponse,
+    apply_handler as contract_apply_handler,
+    logs_handler as contract_logs_handler,
+    review_handler as contract_review_handler,
+    status_handler as contract_status_handler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +54,7 @@ logger = logging.getLogger(__name__)
 _EXEC = ThreadPoolExecutor(max_workers=int(os.getenv("RUNNER_WORKERS", "2")))
 _JOBS: Dict[str, Dict[str, Any]] = {}  # {job_id: {"status": "QUEUED|RUNNING|SUCCEEDED|FAILED", "rc": int|None, "started": ts, "ended": ts|None, "log": path}}
 _LOCK = threading.Lock()
-_RUNS_DIR = Path(os.getenv("RUNS_DIR", "/app/.runs"))
+_RUNS_DIR = RUNS_PATH
 _RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========================================
@@ -145,7 +158,7 @@ def enqueue_run(config_file: Optional[str], overrides: dict | None = None) -> st
     
     # Log payload and command for debugging
     logger.info("[PAYLOAD] %s", json.dumps(params, indent=2))
-    logger.info("[CMD] %s  [CWD=/app]", " ".join(cmd))
+    logger.info("[CMD] %s  [CWD=%s]", " ".join(cmd), REPO_ROOT)
     
     created_at = datetime.now().isoformat()
     meta = JobMeta(
@@ -177,7 +190,7 @@ def enqueue_run(config_file: Optional[str], overrides: dict | None = None) -> st
 
 def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path: str):
     """Background job execution function."""
-    root = Path("/app")  # Explicitly set to /app
+    root = REPO_ROOT
     # 以模块方式运行，确保包导入正常：python -m experiments.fiqa_suite_runner
     cmd = [sys.executable, "-u", "-m", "experiments.fiqa_suite_runner"]
     
@@ -224,7 +237,7 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
     
     proc = subprocess.Popen(
         cmd,
-        cwd="/app",  # Explicitly set working directory to /app
+        cwd=str(REPO_ROOT),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -233,7 +246,7 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
     )
     
     with open(log_path, "w", encoding="utf-8", errors="ignore") as lf:
-        lf.write(f"[CMD] {' '.join(cmd)}  [CWD=/app]\n")
+        lf.write(f"[CMD] {' '.join(cmd)}  [CWD={REPO_ROOT}]\n")
         lf.flush()
         if proc.stdout:
             for line in proc.stdout:
@@ -277,8 +290,6 @@ def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
     job_dir.mkdir(parents=True, exist_ok=True)
     metrics_file = job_dir / "metrics.json"
     
-    project_root = Path(__file__).resolve().parents[3]
-
     metrics: Dict[str, Any] = {
         "job_id": job_id,
         "schema_version": 11,
@@ -309,8 +320,7 @@ def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
     summary_path = job_dir / "summary.json"
     summary_candidates = [
         summary_path,
-        Path("/app/artifacts") / job_id / "summary.json",
-        project_root / "artifacts" / job_id / "summary.json",
+        ARTIFACTS_PATH / job_id / "summary.json",
     ]
 
     summary_data: Optional[Dict[str, Any]] = None
@@ -338,7 +348,8 @@ def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
 
     # 2) fallback to manifests if summary missing any key
     manifest_candidates = [
-        Path("/app/artifacts/manifests") / f"{job_id}.json",
+        ARTIFACTS_PATH / "manifests" / f"{job_id}.json",
+        ARTIFACTS_PATH / job_id / "manifest.json",
         job_dir / "manifest.json",
     ]
     for candidate in manifest_candidates:
@@ -411,8 +422,7 @@ def _write_metrics_json(job_id: str, overrides: dict, log_path: str) -> None:
             logger.debug(f"Failed to append METRICS line for {job_id}: {exc}")
 
     try:
-        project_root = Path(__file__).resolve().parents[3]
-        artifacts_root = project_root / "artifacts"
+        artifacts_root = ARTIFACTS_PATH
         manifests_dir = artifacts_root / "manifests"
         job_manifest_dir = artifacts_root / job_id
         manifests_dir.mkdir(parents=True, exist_ok=True)
@@ -643,7 +653,7 @@ def _get_versioned_presets() -> Dict[str, Any]:
         Dictionary with version and presets list
     """
     # Try to load from configs/presets_v10.json
-    presets_v10_path = Path("/app/configs/presets_v10.json")
+    presets_v10_path = REPO_ROOT / "configs" / "presets_v10.json"
     loaded_presets = []
     
     if presets_v10_path.exists():
@@ -999,19 +1009,55 @@ async def run_experiment(request: RunRequest):
 @router.get("/status/{job_id}")
 async def get_status_simple(job_id: str):
     """Get job status."""
-    meta = _get_job_status(job_id)
-    if not meta:
-        raise HTTPException(status_code=404, detail="job_not_found")
-    return {"ok": True, "job": meta}
+    try:
+        contract_status: ContractStatusResponse = await contract_status_handler(job_id)
+    except ContractApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+    job_meta = {
+        "status": contract_status.status,
+        "rc": contract_status.rc,
+        "started": contract_status.started,
+        "ended": contract_status.ended,
+        "poll": contract_status.poll,
+        "logs": contract_status.logs,
+        "log": contract_status.logs,
+    }
+    return {"ok": True, "job": job_meta}
 
 
 @router.get("/logs/{job_id}")
 async def get_logs_simple(job_id: str, tail: int = Query(200, ge=1, le=1000)):
     """Get log tail for a job."""
-    data = _get_job_log_tail(job_id, tail)
-    if data is None:
-        raise HTTPException(status_code=404, detail="job_not_found")
-    return data
+    try:
+        contract_logs: ContractLogsResponse = await contract_logs_handler(job_id, tail)
+    except ContractApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+    lines = contract_logs.tail.splitlines() if contract_logs.tail else []
+    return {"job_id": contract_logs.job_id, "lines": lines}
+
+
+@router.get("/review")
+async def get_experiment_review(job_id: str = Query(...), suggest: int = Query(0)):
+    try:
+        contract_review: ContractReviewResponse = await contract_review_handler(job_id, suggest)
+    except ContractApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+    return contract_review.model_dump(exclude_none=True)
+
+
+class LegacyApplyRequest(ContractApplyRequest):
+    model_config = ConfigDict(extra="allow")
+
+
+@router.post("/apply")
+async def apply_experiment(request: LegacyApplyRequest):
+    try:
+        contract_response: ContractApplyResponse = await contract_apply_handler(request)
+    except ContractApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+    return contract_response.model_dump(exclude_none=True)
 
 
 @router.get("/debug/registry")

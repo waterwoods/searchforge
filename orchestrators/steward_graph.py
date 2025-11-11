@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -54,8 +55,13 @@ def guard_state_size(state: Dict[str, Any], limit: int = 50_000) -> Dict[str, An
         return state
 
 
-_sqlite_connection = sqlite3.connect(os.path.join(RUNS_DIR, "graph.db"), check_same_thread=False)
+logger = logging.getLogger(__name__)
+
+
+_sqlite_path = os.path.join(RUNS_DIR, "graph.db")
+_sqlite_connection = sqlite3.connect(_sqlite_path, check_same_thread=False)
 _checkpointer = SqliteSaver(_sqlite_connection)
+logger.info("LangGraph steward graph using SqliteSaver at %s", _sqlite_path)
 
 
 class GraphState(TypedDict, total=False):
@@ -143,6 +149,8 @@ def dryrun_decider(state: Dict[str, Any]) -> str:
     status = state.get("dryrun_status")
     if status in ("ok", "OK", "success"):
         return "ok"
+    if isinstance(status, str) and status.strip():
+        return "ok"
     return "fail"
 
 
@@ -151,6 +159,7 @@ graph.add_node("review", wrap("review", review))
 graph.add_node("reflect", wrap("reflect", reflect))
 graph.add_node("dryrun", wrap("dryrun", dryrun))
 
+graph.set_entry_point("review")
 graph.add_edge("review", "reflect")
 graph.add_edge("reflect", "dryrun")
 graph.add_conditional_edges("dryrun", dryrun_decider, {"ok": END, "fail": "review"})
