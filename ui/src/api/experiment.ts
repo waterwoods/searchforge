@@ -106,6 +106,7 @@ export interface JobMeta {
   return_code?: number | null;
   params: Record<string, any>;
   cmd?: string[] | null;
+  obs_url?: string;
 }
 
 export interface CancelResponse {
@@ -310,6 +311,7 @@ export interface JobDetailResponse {
   config?: any;  // V10: Optional experiment config
   params?: any;  // Job parameters (dataset_name, qrels_name, etc.)
   last_update_at?: string;
+  obs_url?: string;
 }
 
 /**

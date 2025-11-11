@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 
+from services.fiqa_api import obs
 
 RUNS_DIR = os.path.join(os.getcwd(), ".runs")
 BLOB_DIR = os.path.join(RUNS_DIR, "blobs")
@@ -108,6 +109,8 @@ class GraphState(TypedDict, total=False):
     baseline_path: Optional[str]
     baseline_latest_path: Optional[str]
     resume: bool
+    obs_ctx: Dict[str, Any]
+    obs_url: str
 
 
 def _execute_with_timeout(fn: Callable[[], Dict[str, Any]], label: str, timeout: float = 5.0) -> Dict[str, Any]:
@@ -139,16 +142,71 @@ def _ensure_errors(state: Dict[str, Any]) -> None:
 def wrap(name: str, fn: Callable[[GraphState], Dict[str, Any]]) -> Callable[[GraphState], Dict[str, Any]]:
     def _inner(state: GraphState) -> Dict[str, Any]:
         _ensure_errors(state)
-        try:
-            out = fn(state) or {}
-        except Exception as exc:
-            errs = list(state.get("errors") or [])
-            errs.append(f"{name}: {exc}")
-            out = {"errors": errs}
+        job_id = state.get("job_id")
+        obs_ctx = state.get("obs_ctx")
+
+        if job_id and not state.get("obs_url"):
+            state["obs_url"] = obs.build_obs_url(job_id)
+        if obs_ctx is None:
+            state["obs_ctx"] = {}
+            obs_ctx = state["obs_ctx"]
+
+        attrs: Dict[str, Any] = {"node": name}
+        if job_id:
+            attrs["job_id"] = job_id
+        metrics = state.get("metrics") if isinstance(state.get("metrics"), dict) else {}
+        for metric_key in ("p95_ms", "recall@10", "err_rate"):
+            metric_value = metrics.get(metric_key)
+            if metric_value is not None:
+                attrs[metric_key] = metric_value
+
+        span_state = dict(state)
+        span_state.pop("obs_ctx", None)
+        span_input = obs.redact(span_state)
+
+        with obs.span(obs_ctx, f"steward.{name}", attrs=attrs, input=span_input) as guard:
+            try:
+                out = fn(state) or {}
+            except Exception as exc:
+                errs = list(state.get("errors") or [])
+                errs.append(f"{name}: {exc}")
+                out = {"errors": errs}
+                if guard.active:
+                    guard.add_metadata({"status": "error"})
+                guard.set_output(out)
+                merged_error_state: Dict[str, Any] = {**state, **(out or {})}
+                _ensure_errors(merged_error_state)
+                obs_ctx_value = merged_error_state.pop("obs_ctx", obs_ctx)
+                sanitized_error = guard_state_size(merged_error_state)
+                sanitized_error["obs_ctx"] = obs_ctx_value
+                _ensure_errors(sanitized_error)
+                return sanitized_error
+
+        # Update span metadata/output on success path
+        if guard.active:
+            metrics_sources = []
+            if isinstance(out, dict):
+                potential_metrics = out.get("metrics")
+                if isinstance(potential_metrics, dict):
+                    metrics_sources.append(potential_metrics)
+            if isinstance(metrics, dict):
+                metrics_sources.append(metrics)
+
+            metric_updates: Dict[str, Any] = {}
+            for metric_key in ("p95_ms", "recall@10", "err_rate"):
+                for source in metrics_sources:
+                    if source and source.get(metric_key) is not None:
+                        metric_updates[metric_key] = source[metric_key]
+                        break
+            if metric_updates:
+                guard.add_metadata(metric_updates)
+            guard.set_output(out)
 
         merged: Dict[str, Any] = {**state, **(out or {})}
         _ensure_errors(merged)
+        obs_ctx_value = merged.pop("obs_ctx", obs_ctx)
         sanitized = guard_state_size(merged)
+        sanitized["obs_ctx"] = obs_ctx_value
         _ensure_errors(sanitized)
         return sanitized
 

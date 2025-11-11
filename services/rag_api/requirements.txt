@@ -60,3 +60,4 @@ transformers>=4.40.0 ; python_version >= "3.10" and python_version < "4.0"
 # Note: torch is installed separately in Dockerfile from CPU-only index.
 # DO NOT ADD: torch, torch-cuda, nvidia-* packages here.
 # If embeddings are needed with GPU, use a separate GPU-enabled service.
+langfuse>=2.0.0,<3.0.0 ; python_version >= "3.10" and python_version < "4.0"

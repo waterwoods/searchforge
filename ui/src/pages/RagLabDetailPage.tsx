@@ -181,6 +181,17 @@ export const RagLabDetailPage = () => {
                                     </Text>
                                 </div>
 
+                                <div>
+                                    <Text strong>Observability: </Text>
+                                    {jobDetail.obs_url ? (
+                                        <Button type="link" href={jobDetail.obs_url} target="_blank" rel="noreferrer">
+                                            Open in Langfuse
+                                        </Button>
+                                    ) : (
+                                        <Text type="secondary">—</Text>
+                                    )}
+                                </div>
+
                                 {/* Dataset Badge */}
                                 <div>
                                     <Text strong>Dataset: </Text>

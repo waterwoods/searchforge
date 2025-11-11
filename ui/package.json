@@ -2,9 +2,46 @@
     "name": "searchforge-ui",
     "version": "0.0.0",
     "private": true,
+    "engines": {
+        "node": ">=20 <21"
+    },
     "scripts": {
         "dev": "vite --host --port 5173",
         "lint": "echo 'skip lint (scaffold only)'",
-        "typecheck": "echo 'skip typecheck (scaffold only)'"
+        "typecheck": "echo 'skip typecheck (scaffold only)'",
+        "clean": "npx rimraf node_modules",
+        "ci": "npm ci",
+        "verify:deps": "node ../scripts/ui_depcheck.mjs"
+    },
+    "devDependencies": {
+        "@types/react": "^19.2.3",
+        "@types/react-dom": "^19.2.2",
+        "@types/svg-pan-zoom": "^3.3.0",
+        "@vitejs/plugin-react": "^5.1.0",
+        "depcheck": "^1.4.3",
+        "rimraf": "^5.0.7",
+        "typescript": "^5.9.3",
+        "vite": "^7.2.2"
+    },
+    "dependencies": {
+        "@ant-design/icons": "^6.1.0",
+        "antd": "^5.28.1",
+        "axios": "^1.7.7",
+        "elkjs": "^0.9.0",
+        "mermaid": "^10.9.1",
+        "react": "^18.3.1",
+        "react-copy-to-clipboard": "^5.1.0",
+        "react-dom": "^18.3.1",
+        "react-markdown": "^10.1.0",
+        "react-router-dom": "^7.9.5",
+        "react-syntax-highlighter": "^16.1.0",
+        "reactflow": "^11.11.4",
+        "recharts": "^2.12.7",
+        "remark-breaks": "^3.0.0",
+        "remark-gfm": "^4.0.0",
+        "nanoid": "^5.0.7",
+        "svg-pan-zoom": "^3.6.2",
+        "zod": "^3.23.8",
+        "zustand": "^5.0.8"
     }
 }

@@ -6,6 +6,7 @@ type StewardResponse = {
     plan?: string;
     dryrun_status?: string;
     errors?: string[];
+    obs_url?: string;
 };
 
 const STORAGE_KEY = 'steward:lastJobId';
@@ -136,6 +137,11 @@ export const RunStewardCard = () => {
                                         <Typography.Text strong>Errors: </Typography.Text>
                                         <Typography.Text type="secondary">[]</Typography.Text>
                                     </Typography.Paragraph>
+                                )}
+                                {response.obs_url && (
+                                    <Button type="link" href={response.obs_url} target="_blank" rel="noreferrer">
+                                        Open in Langfuse
+                                    </Button>
                                 )}
                                 <Typography.Paragraph>
                                     <Typography.Text strong>Raw JSON</Typography.Text>

@@ -146,6 +146,15 @@ export const RagLabHistoryPage = () => {
                                     >
                                         View Details
                                     </Button>,
+                                    job.obs_url ? (
+                                        <a key="obs" href={job.obs_url} target="_blank" rel="noreferrer">
+                                            Open in Langfuse
+                                        </a>
+                                    ) : (
+                                        <Text key="obs-disabled" type="secondary">
+                                            —
+                                        </Text>
+                                    ),
                                 ]}
                             >
                                 <List.Item.Meta
@@ -205,6 +214,18 @@ export const RagLabHistoryPage = () => {
                                                     </Text>
                                                 </div>
                                             )}
+                                            <div>
+                                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                    Observability:{' '}
+                                                    {job.obs_url ? (
+                                                        <a href={job.obs_url} target="_blank" rel="noreferrer">
+                                                            Open in Langfuse
+                                                        </a>
+                                                    ) : (
+                                                        '—'
+                                                    )}
+                                                </Text>
+                                            </div>
                                         </Space>
                                     }
                                 />

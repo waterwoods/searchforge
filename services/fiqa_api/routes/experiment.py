@@ -32,6 +32,7 @@ from services.fiqa_api.preset_manager import get_preset_manager
 from services.fiqa_api.clients import get_qdrant_client
 from services.fiqa_api.utils.metrics_loader import parse_metrics_from_log
 from services.fiqa_api.settings import RUNS_PATH, ARTIFACTS_PATH, REPO_ROOT
+from services.fiqa_api import obs
 from services.fiqa_api.routes.contract_v1 import (
     ApplyRequest as ContractApplyRequest,
     ApplyResponse as ContractApplyResponse,
@@ -70,6 +71,7 @@ class JobMeta(BaseModel):
     return_code: Optional[int] = None
     params: Dict[str, Any] = {}  # sample, repeats, fast_mode, config_file
     cmd: Optional[List[str]] = None
+    obs_url: str = ""
 
 # In-memory registry
 _JOB_REGISTRY: Dict[str, JobMeta] = {}  # {job_id: JobMeta}
@@ -77,6 +79,7 @@ _HISTORY: collections.deque = collections.deque(maxlen=500)  # Most recent 500 j
 
 def _save_job_meta(meta: JobMeta):
     """Persist job metadata to disk."""
+    meta.obs_url = obs.build_obs_url(meta.job_id)
     meta_file = _RUNS_DIR / f"{meta.job_id}.json"
     try:
         _RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -166,7 +169,8 @@ def enqueue_run(config_file: Optional[str], overrides: dict | None = None) -> st
         status="QUEUED",
         created_at=created_at,
         params=params,
-        cmd=cmd
+        cmd=cmd,
+        obs_url=obs.build_obs_url(job_id),
     )
     
     with _LOCK:
@@ -276,6 +280,7 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
             meta.status = final_status
             meta.finished_at = finished_at
             meta.return_code = rc
+            meta.obs_url = obs.build_obs_url(job_id)
             # Persist updated meta
             logger.info(f"[HISTORY] job {job_id} status updated to {final_status}")
             _save_job_meta(meta)
@@ -637,6 +642,7 @@ class JobDetailResponse(BaseModel):
     params: Optional[dict] = None  # Job parameters (dataset_name, qrels_name, etc.)
     metrics: Optional[dict] = None  # Metrics from metrics.json (overall, hard, latency_breakdown_ms, config)
     last_update_at: Optional[str] = None
+    obs_url: str = ""
 
 
 # ========================================
@@ -1135,7 +1141,11 @@ async def get_history(limit: int = Query(50, ge=1, le=500)):
     logger.info(f"[HISTORY] returning {len(result)} jobs (limit={limit}): {status_counts}")
     
     # Return as list of dicts (includes all states: QUEUED, RUNNING, SUCCEEDED, FAILED)
-    return [meta.model_dump() for meta in result]
+    payload: List[Dict[str, Any]] = []
+    for meta in result:
+        meta.obs_url = obs.build_obs_url(meta.job_id)
+        payload.append(meta.model_dump())
+    return payload
 
 
 @router.post("/cancel/{job_id}", response_model=CancelResponse)
@@ -1248,7 +1258,8 @@ async def get_job_detail(job_id: str):
                 config=meta.params if meta.params else None,
                 params=meta.params if meta.params else None,  # Also expose as params for frontend compatibility
                 metrics=metrics,
-                last_update_at=meta.finished_at or meta.created_at
+                last_update_at=meta.finished_at or meta.created_at,
+                obs_url=obs.build_obs_url(meta.job_id),
             )
     
     # Try loading from disk
@@ -1268,7 +1279,8 @@ async def get_job_detail(job_id: str):
             config=meta.params if meta.params else None,
             params=meta.params if meta.params else None,  # Also expose as params for frontend compatibility
             metrics=metrics,
-            last_update_at=meta.finished_at or meta.created_at
+            last_update_at=meta.finished_at or meta.created_at,
+            obs_url=obs.build_obs_url(meta.job_id),
         )
     
     # Fallback to old JobManager system
@@ -1278,7 +1290,10 @@ async def get_job_detail(job_id: str):
         
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-        
+
+        if "obs_url" not in job or not job["obs_url"]:
+            job["obs_url"] = obs.build_obs_url(job_id)
+
         return JobDetailResponse(**job)
     except Exception as e:
         logger.warning(f"JobManager lookup failed for {job_id}: {e}")

@@ -112,6 +112,7 @@ from services.fiqa_api.routes.health import router as qdrant_health_router
 from services.fiqa_api.routes.contract_v1 import router as contract_router
 from services.fiqa_api.routes.experiment import router as experiment_router
 from services.fiqa_api.routes.steward import router as steward_router
+from services.fiqa_api import obs
 try:
     from routes.graph_run import router as graph_router
 except Exception as exc:  # pragma: no cover - optional dependency
@@ -735,6 +736,15 @@ async def health_ready():
             }
         },
     )
+
+
+@app.get("/obs/ping")
+def obs_ping():
+    """Emit a noop Langfuse trace for connectivity validation."""
+    trace_id = f"ping-{uuid.uuid4().hex[:8]}"
+    trace = obs.trace_start(trace_id, name="obs.ping", input={"ts": time.time()})
+    obs.trace_end(trace, output={"ok": True})
+    return {"ok": True, "trace_id": trace_id}
 
 # Health and readiness endpoints (hardened semantics)
 @app.get("/health")

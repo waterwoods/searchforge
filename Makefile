@@ -24,7 +24,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok
+.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok
 volumes-ok:
 	$(call ensure_tool,docker)
 	@set -e; \
@@ -224,16 +224,15 @@ baseline-save:
 		$(MAKE) baseline-save-local; \
 	fi
 
-ui:
-	@echo "🚀 Starting Vite dev server (ui)..."
-	@echo "📍 API base: http://andy-wsl:8000"
-	@echo "🌐 Dev server: http://localhost:5173"
-	@cd ui && \
-		if [ ! -d "node_modules" ]; then \
-			echo "📦 Installing dependencies..."; \
-			npm install; \
-		fi && \
-		npm run dev -- --port 5173 --open --host
+ui-reset:
+	@cd ui && if [ -d "node_modules" ]; then npm run clean; else echo "node_modules already removed"; fi
+	@cd ui && npm run ci
+
+ui-verify:
+	@cd ui && npm run verify:deps
+
+ui: ui-reset ui-verify
+	@cd ui && npm run dev
 
 rebuild-api: guard-no-legacy export-reqs
 	@echo "🔨 Rebuilding rag-api service..."
