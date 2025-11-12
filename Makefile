@@ -14,6 +14,7 @@ RDIR=~/searchforge
 HOST ?= 127.0.0.1
 PORT ?= 8000
 BASE ?= http://$(HOST):$(PORT)
+PROXY_BASE ?= http://127.0.0.1:7070
 
 # Helper to detect current target
 TARGET ?= $(shell grep -E '^SEARCHFORGE_TARGET=' .env.current | cut -d= -f2 2>/dev/null || echo local)
@@ -24,7 +25,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok
+.PHONY: help install lint type test export smoke obs-verify up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test
 volumes-ok:
 	$(call ensure_tool,docker)
 	@set -e; \
@@ -54,6 +55,87 @@ smoke: ## 健康检查冒烟
 	curl -sf http://127.0.0.1:8000/health/live
 	curl -sf http://127.0.0.1:8000/health/ready
 	@echo "SMOKE OK"
+
+up-proxy: ## 启动检索代理及其依赖
+	$(call ensure_tool,docker)
+	$(COMPOSE) up -d qdrant retrieval-proxy
+
+smoke-proxy: ## 检查检索代理健康与预算控制
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	@BASE="$${RETRIEVAL_PROXY_BASE:-$(PROXY_BASE)}"; \
+	echo "🔍 Proxy health @ $$BASE"; \
+	curl -sf "$$BASE/healthz" >/dev/null || { echo "❌ /healthz failed"; exit 1; }; \
+	curl -sf "$$BASE/readyz" >/dev/null || { echo "❌ /readyz failed"; exit 1; }; \
+	RESP=$$(curl -sf "$$BASE/v1/search?q=proxy+smoke&k=3&budget_ms=600"); \
+	printf "%s\n" "$$RESP" | jq '.'; \
+	TOTAL=$$(printf "%s" "$$RESP" | jq -r '.timings.total_ms // 0'); \
+	if [ "$$TOTAL" -gt 650 ]; then \
+		echo "❌ total_ms=$$TOTAL exceeded budget gate (650)"; \
+		exit 1; \
+	fi; \
+	echo "✅ Proxy smoke passed (total_ms=$$TOTAL)"
+
+degrade-test: ## 模拟上游降级，确保代理降级返回且不报错
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	@BASE="$${RETRIEVAL_PROXY_BASE:-$(PROXY_BASE)}"; \
+	echo "🛑 Stopping qdrant to simulate degradation..."; \
+	$(COMPOSE) stop qdrant >/dev/null; \
+	sleep 2; \
+	TMP=$$(mktemp); \
+	HTTP=$$(curl -sS -w '%{http_code}' -o "$$TMP" "$$BASE/v1/search?q=proxy+degrade&k=3&budget_ms=400"); \
+	printf "%s\n" "$$(cat "$$TMP")" | jq '.'; \
+	if [ "$$HTTP" -ge 500 ]; then \
+		echo "❌ expected non-5xx status, got $$HTTP"; \
+		rm -f "$$TMP"; \
+		$(COMPOSE) start qdrant >/dev/null; \
+		exit 1; \
+	fi; \
+	DEG=$$(jq -r '.degraded' "$$TMP"); \
+	if [ "$$DEG" != "true" ]; then \
+		echo "❌ degraded flag not set (value=$$DEG)"; \
+		rm -f "$$TMP"; \
+		$(COMPOSE) start qdrant >/dev/null; \
+		exit 1; \
+	fi; \
+	TRACE=$$(jq -r '.trace_url // ""' "$$TMP"); \
+	echo "Trace URL: $$TRACE"; \
+	rm -f "$$TMP"; \
+	echo "✅ Degrade path verified"; \
+	echo "🚀 Restarting qdrant..."; \
+	$(COMPOSE) start qdrant >/dev/null
+
+obs-verify: ## 验证 Langfuse OBS 连通性并打印最新 obs_url
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	@curl -sf http://127.0.0.1:8000/obs/ping | jq .
+	@echo "OBS URL:"
+	@if [ -f .runs/obs_url.txt ]; then cat .runs/obs_url.txt; else echo "  (missing .runs/obs_url.txt)"; fi
+	@echo "TRACE ID:"
+	@if [ -f .runs/trace_id.txt ]; then cat .runs/trace_id.txt; else echo "  (missing .runs/trace_id.txt)"; fi
+	@BASE="$${RETRIEVAL_PROXY_BASE:-$(PROXY_BASE)}"; \
+	if curl -sf "$$BASE/metrics" >/tmp/retrieval_proxy_metrics.$$; then \
+		if ! grep -q 'retrieval_proxy_source_latency_ms' /tmp/retrieval_proxy_metrics.$$; then \
+			echo "❌ missing retrieval_proxy_source_latency_ms metric"; \
+			rm -f /tmp/retrieval_proxy_metrics.$$; \
+			exit 1; \
+		fi; \
+		if ! grep -q 'retrieval_proxy_source_error_rate' /tmp/retrieval_proxy_metrics.$$; then \
+			echo "❌ missing retrieval_proxy_source_error_rate metric"; \
+			rm -f /tmp/retrieval_proxy_metrics.$$; \
+			exit 1; \
+		fi; \
+		if ! grep -q 'retrieval_proxy_budget_hit_total' /tmp/retrieval_proxy_metrics.$$; then \
+			echo "❌ missing retrieval_proxy_budget_hit_total metric"; \
+			rm -f /tmp/retrieval_proxy_metrics.$$; \
+			exit 1; \
+		fi; \
+		echo "✅ Proxy metrics contain latency, error rate, and budget gauges"; \
+		rm -f /tmp/retrieval_proxy_metrics.$$; \
+	else \
+		echo "⚠️  Failed to query proxy metrics (proxy not running?)"; \
+	fi
 
 export: ## Export dependencies snapshot from container
 	@echo "📦 Exporting dependency snapshot via pip freeze..."

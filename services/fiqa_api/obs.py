@@ -3,10 +3,14 @@ from __future__ import annotations
 import os
 import threading
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Set
+
+import logging
 
 _client_lock = threading.Lock()
 _client: Optional["Langfuse"] = None
+logger = logging.getLogger(__name__)
 
 _REDACTION_KEYS: Set[str] = {"api_key", "authorization", "input_text", "raw_prompt"}
 _REDACTED_VALUE = "[REDACTED]"
@@ -237,3 +241,59 @@ def span(
             except Exception:
                 pass
 
+
+def persist_trace_id(trace_id: Optional[str]) -> None:
+    if not trace_id:
+        return
+    runs_dir = Path(".runs")
+    try:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        (runs_dir / "trace_id.txt").write_text(f"{trace_id}\n", encoding="utf-8")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("failed to persist trace_id.txt: %s", exc)
+
+
+def persist_obs_url(obs_url: Optional[str]) -> None:
+    if not obs_url:
+        return
+    runs_dir = Path(".runs")
+    try:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        (runs_dir / "obs_url.txt").write_text(f"{obs_url}\n", encoding="utf-8")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("failed to persist obs_url.txt: %s", exc)
+
+
+def finalize_root(ctx: Optional[Dict[str, Any]], meta: Optional[Dict[str, Any]] = None) -> None:
+    ctx = ctx or {}
+    if meta:
+        ctx.setdefault("metadata", {}).update(meta)
+
+    trace_id = ctx.get("trace_id")
+    if trace_id and not isinstance(trace_id, str):
+        trace_id = str(trace_id)
+
+    if not trace_id:
+        root = ctx.get("trace") or ctx.get("span")
+        if root is not None:
+            trace_id = getattr(root, "id", None) or getattr(root, "trace_id", None)
+            if trace_id and not isinstance(trace_id, str):
+                trace_id = str(trace_id)
+            if trace_id:
+                ctx["trace_id"] = trace_id
+    job_id = ctx.get("job_id")
+    if not trace_id and isinstance(job_id, str):
+        trace_id = job_id
+        ctx["trace_id"] = trace_id
+
+    obs_url = ""
+    if isinstance(ctx.get("trace_url"), str) and ctx["trace_url"]:
+        obs_url = ctx["trace_url"]
+    else:
+        obs_url = build_obs_url(trace_id)
+
+    if obs_url:
+        ctx["trace_url"] = obs_url
+        persist_obs_url(obs_url)
+    if trace_id:
+        persist_trace_id(trace_id)
