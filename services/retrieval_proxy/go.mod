@@ -4,9 +4,11 @@ go 1.22
 
 require (
 	github.com/go-chi/chi/v5 v5.0.10
+	github.com/google/uuid v1.5.0
 	github.com/prometheus/client_golang v1.19.0
 	go.opentelemetry.io/otel v1.26.0
 	go.opentelemetry.io/otel/sdk v1.26.0
+	golang.org/x/text v0.17.0
 )
 
 require (
