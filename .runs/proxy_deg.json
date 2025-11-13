@@ -1,1 +1,1 @@
-{"items":null,"timings":{"total_ms":50,"per_source_ms":{"qdrant":0},"cache_hit":false},"ret_code":"UPSTREAM_TIMEOUT","degraded":true,"trace_url":"https://us.cloud.langfuse.com/project/cmhv0qzf9005lad08g1320v4g/traces?query=fd1194025d4db361a10bbd879631bad2"}
+{"items":null,"timings":{"total_ms":50,"per_source_ms":{"qdrant":0},"cache_hit":false},"ret_code":"UPSTREAM_TIMEOUT","degraded":true,"trace_url":"https://us.cloud.langfuse.com/project/cmhv0qzf9005lad08g1320v4g/traces?query=ddee41e7b101366b5a3e6826a77750fd"}

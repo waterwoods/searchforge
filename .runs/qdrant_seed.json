@@ -1,1 +1,1 @@
-{"created": true, "collection": "fiqa_50k_v1", "upserts": 16}
+{"created": false, "collection": "fiqa_50k_v1", "upserts": 16, "vector_dim": 384, "distance": "Cosine", "forced": false}
