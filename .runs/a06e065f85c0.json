@@ -1,0 +1,25 @@
+{
+  "job_id": "a06e065f85c0",
+  "status": "SUCCEEDED",
+  "created_at": "2025-11-12T00:48:28.851015",
+  "finished_at": "2025-11-12T00:48:36.389657",
+  "return_code": 0,
+  "params": {
+    "sample": 200,
+    "repeats": 1,
+    "fast_mode": false
+  },
+  "cmd": [
+    "/usr/local/bin/python",
+    "-u",
+    "-m",
+    "experiments.fiqa_suite_runner",
+    "--base",
+    "http://localhost:8000",
+    "--sample",
+    "200",
+    "--repeats",
+    "1"
+  ],
+  "obs_url": "https://us.cloud.langfuse.com/project/e4a0273c-001a-434b-a193-74bcf0fc9c60/traces?query=a06e065f85c0"
+}

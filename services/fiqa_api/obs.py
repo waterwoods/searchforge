@@ -8,6 +8,8 @@ from typing import Any, Dict, Iterable, Optional, Set
 
 import logging
 
+# mvp-5
+
 _client_lock = threading.Lock()
 _client: Optional["Langfuse"] = None
 logger = logging.getLogger(__name__)

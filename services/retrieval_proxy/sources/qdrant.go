@@ -1,5 +1,7 @@
 package sources
 
+// mvp-5
+
 import (
 	"bytes"
 	"context"
@@ -22,6 +24,7 @@ const (
 	maxBackoff       = 2 * time.Second
 	qdrantSearchPath = "/collections/%s/points/search"
 	contentTypeJSON  = "application/json"
+	pingPath         = "/collections"
 )
 
 // HTTPClient represents a minimal http client.
@@ -219,6 +222,24 @@ func (s *QdrantSource) execute(ctx context.Context, query Query) (json.RawMessag
 
 func (s *QdrantSource) String() string {
 	return fmt.Sprintf("qdrant_source{base=%s,retry_max=%d}", s.baseURL, s.retryMax)
+}
+
+// Ping verifies Qdrant readiness.
+// mvp-5
+func (s *QdrantSource) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+pingPath, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		return fmt.Errorf("qdrant ping failed: %s", resp.Status)
+	}
+	return nil
 }
 
 func parseDurationFromEnv(key string, fallback time.Duration) time.Duration {

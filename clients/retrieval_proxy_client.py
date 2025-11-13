@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 import requests
 
+# mvp-5
+
 DEFAULT_BASE = "http://retrieval-proxy:7070"
 
 BASE_URL = os.getenv("RETRIEVAL_PROXY_URL", DEFAULT_BASE)

@@ -1,37 +1,54 @@
 package policy
 
+// mvp-5
+
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/searchforge/retrieval_proxy/obs"
 )
 
 // RateLimitConfig configures the token bucket limiter.
+// mvp-5
 type RateLimitConfig struct {
 	Capacity     int
 	RefillTokens int
 	RefillEvery  time.Duration
 }
 
-// SourceConfig configures the per-source policy controls.
-type SourceConfig struct {
-	Name     string
-	Timeout  time.Duration
-	Rate     RateLimitConfig
-	Circuit  CircuitBreakerConfig
+// CircuitConfig provides minimal circuit-breaker tuning knobs.
+// mvp-5
+type CircuitConfig struct {
+	FailureThreshold   int
+	HalfOpenSuccesses  int
+	Cooldown           time.Duration
 }
 
-// SourcePolicy applies timeout, rate limiting, and circuit breaking policies for a source.
+// SourceConfig configures timeout, rate limit, and circuit breaker behaviour.
+// mvp-5
+type SourceConfig struct {
+	Name    string
+	Timeout time.Duration
+	Rate    RateLimitConfig
+	Circuit CircuitConfig
+}
+
+// SourcePolicy applies timeout, rate limiting, and circuit breakers per upstream.
+// mvp-5
 type SourcePolicy struct {
 	name    string
 	timeout time.Duration
 	rate    *TokenBucket
-	circuit *CircuitBreaker
-	metrics *Metrics
+	breaker *lightBreaker
 }
 
-// NewSourcePolicy constructs a SourcePolicy with the provided configuration.
-func NewSourcePolicy(cfg SourceConfig, metrics *Metrics) (*SourcePolicy, error) {
+// NewSourcePolicy constructs a SourcePolicy with sane defaults.
+// mvp-5
+func NewSourcePolicy(cfg SourceConfig) (*SourcePolicy, error) {
 	if cfg.Name == "" {
 		return nil, errors.New("source name required")
 	}
@@ -44,32 +61,28 @@ func NewSourcePolicy(cfg SourceConfig, metrics *Metrics) (*SourcePolicy, error) 
 		bucket = NewTokenBucket(cfg.Rate.Capacity, cfg.Rate.RefillTokens, cfg.Rate.RefillEvery)
 	}
 
-	cbCfg := normalizeCircuitConfig(cfg.Circuit)
-	cb := NewCircuitBreaker(cfg.Name, cbCfg, metrics)
+	breaker := newLightBreaker(cfg.Name, cfg.Circuit)
 
 	return &SourcePolicy{
 		name:    cfg.Name,
 		timeout: cfg.Timeout,
 		rate:    bucket,
-		circuit: cb,
-		metrics: metrics,
+		breaker: breaker,
 	}, nil
 }
 
-// Execute wraps a source call applying timeout, rate limiting, and circuit breaker checks.
+// Execute applies the policy controls to fn.
+// mvp-5
 func (s *SourcePolicy) Execute(parent context.Context, fn func(context.Context) error) error {
 	if parent == nil {
 		parent = context.Background()
 	}
 
-	now := time.Now()
-
-	if !s.circuit.Allow(now) {
-		s.metrics.ObserveSource(s.name, 0, ErrCircuitOpen)
+	if !s.breaker.Allow() {
 		return ErrCircuitOpen
 	}
 
-	if s.rate != nil && !s.rate.Allow(now) {
+	if s.rate != nil && !s.rate.Allow(time.Now()) {
 		return ErrRateLimited
 	}
 
@@ -78,29 +91,142 @@ func (s *SourcePolicy) Execute(parent context.Context, fn func(context.Context) 
 
 	start := time.Now()
 	err := fn(ctx)
-	latency := time.Since(start)
-	s.metrics.ObserveSource(s.name, latency, err)
+	duration := time.Since(start)
 
-	s.circuit.Record(time.Now(), err == nil)
+	if err != nil {
+		s.breaker.Fail()
+		obs.RecordSourceError(s.name, classifyError(err))
+	} else {
+		s.breaker.Success()
+	}
+
+	obs.RecordSourceDuration(s.name, duration)
 	return err
 }
 
-func normalizeCircuitConfig(cfg CircuitBreakerConfig) CircuitBreakerConfig {
-	if cfg.Window <= 0 {
-		cfg.Window = 10 * time.Second
+// classifyError maps errors to metric codes.
+// mvp-5
+func classifyError(err error) string {
+	if err == nil {
+		return "ok"
 	}
-	if cfg.FailureRateThreshold <= 0 {
-		cfg.FailureRateThreshold = 0.5
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
 	}
-	if cfg.MinSamples <= 0 {
-		cfg.MinSamples = 5
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
 	}
-	if cfg.Cooldown <= 0 {
-		cfg.Cooldown = 5 * time.Second
-	}
-	if cfg.HalfOpenMaxCalls <= 0 {
-		cfg.HalfOpenMaxCalls = 1
-	}
-	return cfg
+	return sanitize(err.Error())
 }
 
+func sanitize(msg string) string {
+	if msg == "" {
+		return "unknown"
+	}
+	msg = strings.ToLower(msg)
+	if idx := strings.IndexByte(msg, ' '); idx > 0 {
+		msg = msg[:idx]
+	}
+	msg = strings.Trim(msg, ":.")
+	if msg == "" {
+		msg = "error"
+	}
+	return msg
+}
+
+type breakerState string
+
+const (
+	stateClosed   breakerState = "closed"
+	stateOpen     breakerState = "open"
+	stateHalfOpen breakerState = "half-open"
+)
+
+type lightBreaker struct {
+	source            string
+	mu                sync.Mutex
+	state             breakerState
+	failures          int
+	successes         int
+	cfg               CircuitConfig
+	lastStateChange   time.Time
+}
+
+func newLightBreaker(source string, cfg CircuitConfig) *lightBreaker {
+	if cfg.FailureThreshold <= 0 {
+		cfg.FailureThreshold = 3
+	}
+	if cfg.HalfOpenSuccesses <= 0 {
+		cfg.HalfOpenSuccesses = 1
+	}
+	if cfg.Cooldown <= 0 {
+		cfg.Cooldown = 2 * time.Second
+	}
+	b := &lightBreaker{
+		source: source,
+		state:  stateClosed,
+		cfg:    cfg,
+	}
+	obs.SetCircuitState(source, string(stateClosed))
+	return b
+}
+
+func (b *lightBreaker) Allow() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	switch b.state {
+	case stateOpen:
+		if time.Since(b.lastStateChange) >= b.cfg.Cooldown {
+			b.transition(stateHalfOpen)
+			return true
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+func (b *lightBreaker) Fail() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.failures++
+	switch b.state {
+	case stateHalfOpen:
+		b.transition(stateOpen)
+	case stateClosed:
+		if b.failures >= b.cfg.FailureThreshold {
+			b.transition(stateOpen)
+		}
+	}
+}
+
+func (b *lightBreaker) Success() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.failures = 0
+	switch b.state {
+	case stateHalfOpen:
+		b.successes++
+		if b.successes >= b.cfg.HalfOpenSuccesses {
+			b.transition(stateClosed)
+		}
+	case stateOpen:
+		// ignored
+	default:
+		obs.SetCircuitState(b.source, string(stateClosed))
+	}
+}
+
+func (b *lightBreaker) transition(next breakerState) {
+	if b.state == next {
+		return
+	}
+	b.state = next
+	b.failures = 0
+	b.successes = 0
+	b.lastStateChange = time.Now()
+	obs.SetCircuitState(b.source, string(next))
+}

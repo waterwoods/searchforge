@@ -1,14 +1,16 @@
 package controller
 
+// mvp-5
+
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/searchforge/retrieval_proxy/fuse"
 	"github.com/searchforge/retrieval_proxy/internal/api"
@@ -16,205 +18,230 @@ import (
 	"github.com/searchforge/retrieval_proxy/sources"
 )
 
-const (
-	defaultTraceHost = "us.cloud.langfuse.com"
+var (
+	// ErrUpstreamTimeout indicates an upstream call exceeded its deadline.
+	// mvp-5
+	ErrUpstreamTimeout = errors.New("upstream timeout")
+	// ErrBadRequest indicates the request was invalid.
+	// mvp-5
+	ErrBadRequest = errors.New("bad request")
 )
 
+// Request captures the validated inputs used by the controller.
+// mvp-5
+type Request struct {
+	Query       string
+	K           int
+	BudgetMS    int
+	TraceID     string
+	TraceParent string
+}
+
+// Validate checks request bounds.
+// mvp-5
+func (r Request) Validate(maxK int) error {
+	if r.Query == "" {
+		return fmt.Errorf("q required")
+	}
+	if r.K <= 0 {
+		return fmt.Errorf("k must be positive")
+	}
+	if maxK > 0 && r.K > maxK {
+		return fmt.Errorf("k exceeds max (%d)", maxK)
+	}
+	if r.BudgetMS <= 0 {
+		return fmt.Errorf("budget_ms must be positive")
+	}
+	return nil
+}
+
 // Source defines the behaviour required by upstream retrieval sources.
+// mvp-5
 type Source interface {
 	Search(ctx context.Context, queries []sources.Query) sources.Result
+	Ping(ctx context.Context) error
 }
 
-// Config groups necessary controller parameters.
+// Config groups controller dependencies.
+// mvp-5
 type Config struct {
-	SourceName         string
-	Collection         string
-	DefaultK           int
-	TopKMax            int
-	Fuse               fuse.CombineConfig
-	SourcePolicy       policy.SourceConfig
-	Metrics            *policy.Metrics
-	LangfuseProjectID  string
-	LangfuseHost       string
-	FallbackOnError    bool
+	SourceName      string
+	Collection      string
+	Policy          policy.SourceConfig
+	Fuse            fuse.CombineConfig
+	CacheTTL        time.Duration
+	PolicyVersion   string
+	LangfuseHost    string
+	LangfuseProject string
 }
 
-// Controller orchestrates policy enforcement, source querying, and result fusion.
+// Controller coordinates policy, caching, and fusion.
+// mvp-5
 type Controller struct {
-	source     Source
-	config     Config
-	metrics    *policy.Metrics
-	projectID  string
-	traceHost  string
-	topKMax    int
-	defaultK   int
+	source      Source
+	sourceName  string
+	collection  string
+	policy      *policy.SourcePolicy
+	fuseConfig  fuse.CombineConfig
+	cache       *Cache
+	policyHash  string
+	host        string
+	project     string
 }
 
-// New constructs a Controller instance.
-func New(source Source, cfg Config) (*Controller, error) {
-	if source == nil {
-		return nil, fmt.Errorf("source is required")
+// New constructs a controller.
+// mvp-5
+func New(src Source, cfg Config) (*Controller, error) {
+	if src == nil {
+		return nil, fmt.Errorf("source required")
 	}
+
 	if cfg.SourceName == "" {
 		cfg.SourceName = "qdrant"
 	}
 	if cfg.Collection == "" {
 		cfg.Collection = os.Getenv("QDRANT_COLLECTION")
 	}
-	if cfg.DefaultK <= 0 {
-		cfg.DefaultK = 10
-	}
-	if cfg.TopKMax <= 0 {
-		cfg.TopKMax = fuse.DefaultCombineConfig().TopKMax
-	}
-	if cfg.Metrics == nil {
-		cfg.Metrics = policy.NewMetrics()
-	}
-	if cfg.Fuse.RRFK <= 0 {
-		cfg.Fuse.RRFK = fuse.DefaultCombineConfig().RRFK
-	}
-	if cfg.Fuse.TopKInit <= 0 {
-		cfg.Fuse.TopKInit = fuse.DefaultCombineConfig().TopKInit
-	}
-	if cfg.Fuse.TopKMax <= 0 {
-		cfg.Fuse.TopKMax = cfg.TopKMax
-	}
-	if cfg.Fuse.TopKMax > cfg.TopKMax {
-		cfg.Fuse.TopKMax = cfg.TopKMax
+
+	policyConfig := cfg.Policy
+	policyConfig.Name = cfg.SourceName
+	if policyConfig.Timeout <= 0 {
+		policyConfig.Timeout = 300 * time.Millisecond
 	}
 
-	traceHost := cfg.LangfuseHost
-	if traceHost == "" {
-		traceHost = defaultTraceHost
+	sourcePolicy, err := policy.NewSourcePolicy(policyConfig)
+	if err != nil {
+		return nil, err
 	}
+
+	fuseCfg := cfg.Fuse
+	if fuseCfg.RRFK <= 0 {
+		fuseCfg = fuse.DefaultCombineConfig()
+	}
+	if fuseCfg.TopKMax <= 0 {
+		fuseCfg.TopKMax = fuse.DefaultCombineConfig().TopKMax
+	}
+	if fuseCfg.TopKInit <= 0 {
+		fuseCfg.TopKInit = fuse.DefaultCombineConfig().TopKInit
+	}
+
+	cache := NewCache(cfg.CacheTTL)
 
 	return &Controller{
-		source:    source,
-		config:    cfg,
-		metrics:   cfg.Metrics,
-		projectID: cfg.LangfuseProjectID,
-		traceHost: traceHost,
-		topKMax:   cfg.TopKMax,
-		defaultK:  cfg.DefaultK,
+		source:     src,
+		sourceName: cfg.SourceName,
+		collection: cfg.Collection,
+		policy:     sourcePolicy,
+		fuseConfig: fuseCfg,
+		cache:      cache,
+		policyHash: cfg.PolicyVersion,
+		host:       cfg.LangfuseHost,
+		project:    cfg.LangfuseProject,
 	}, nil
 }
 
-// TopKMax exposes the configured cap for K.
-func (c *Controller) TopKMax() int {
-	return c.topKMax
-}
-
-// DefaultK returns the default K value.
-func (c *Controller) DefaultK() int {
-	return c.defaultK
-}
-
 // Search executes the retrieval pipeline.
-func (c *Controller) Search(ctx context.Context, req api.SearchRequest) (api.SearchResponse, error) {
-	response := api.SearchResponse{
-		Timings: api.TimingInfo{
-			PerSource: map[string]int64{},
-		},
-		TraceID: req.TraceID,
+// mvp-5
+func (c *Controller) Search(ctx context.Context, req Request) (api.ResponseV1, string, error) {
+	var resp api.ResponseV1
+	resp.Timings.PerSource = make(map[string]int64)
+	resp.RetCode = "OK"
+	resp.TraceURL = c.BuildTraceURL(req.TraceID)
+
+	if err := req.Validate(int(c.fuseConfig.TopKMax)); err != nil {
+		resp.RetCode = "BAD_REQUEST"
+		return resp, "BAD_REQUEST", ErrBadRequest
 	}
 
-	if err := req.Validate(c.topKMax); err != nil {
-		return response, err
+	cacheKey := BuildCacheKey(req.Query, req.K, c.sourceName, c.fuseConfig, c.policyHash)
+	if entry, ok := c.cache.Get(cacheKey); ok {
+		resp.Items = cloneItems(entry.Items)
+		resp.Timings.TotalMS = entry.TotalMS
+		resp.Timings.PerSource = cloneTiming(entry.PerSource)
+		resp.Timings.CacheHit = true
+		resp.Degraded = entry.Degraded
+		resp.RetCode = entry.RetCode
+		return resp, resp.RetCode, nil
 	}
-
-	traceID := req.TraceID
-	if traceID == "" {
-		traceID = c.generateTraceID()
-	}
-	response.TraceID = traceID
-	response.TraceURL = c.buildTraceURL(traceID)
 
 	start := time.Now()
+	result, err := c.callSource(ctx, req)
+	totalMs := time.Since(start).Milliseconds()
+	resp.Timings.TotalMS = totalMs
+	resp.Timings.PerSource[c.sourceName] = result.TookMs
 
-	ctrl, err := policy.NewController(ctx, policy.ControllerConfig{
-		BudgetMs: req.BudgetMS,
-		Sources: []policy.SourceConfig{
-			c.config.SourcePolicy,
-		},
-	}, c.metrics)
 	if err != nil {
-		return response, fmt.Errorf("policy controller: %w", err)
-	}
-
-	budgetCtx := api.ContextWithTraceID(ctrl.Budget().Context(), traceID)
-
-	sourcePolicy, ok := ctrl.Source(c.config.SourceName)
-	if !ok {
-		return response, fmt.Errorf("source %s not registered", c.config.SourceName)
-	}
-
-	var (
-		result    sources.Result
-		sourceErr error
-	)
-
-	err = sourcePolicy.Execute(budgetCtx, func(ctx context.Context) error {
-		result = c.source.Search(ctx, []sources.Query{
-			{
-				Collection: c.config.Collection,
-				Payload:    c.buildPayload(req),
-			},
-		})
-		sourceErr = result.Err
-		response.Timings.PerSource[c.config.SourceName] = result.TookMs
-		if result.Err != nil {
-			return result.Err
+		if errors.Is(err, context.DeadlineExceeded) {
+			resp.RetCode = "UPSTREAM_TIMEOUT"
+			resp.Degraded = true
+			return resp, resp.RetCode, ErrUpstreamTimeout
 		}
-		return nil
+		resp.RetCode = "DEGRADED"
+		resp.Degraded = true
+		return resp, resp.RetCode, err
+	}
+
+	resp.Items = fuseToAPI(c.applyFuse(req.K, result.Items))
+	resp.Timings.CacheHit = false
+	resp.RetCode = "OK"
+	resp.Degraded = false
+
+	c.cache.Set(cacheKey, CacheEntry{
+		Items:     cloneItems(resp.Items),
+		PerSource: cloneTiming(resp.Timings.PerSource),
+		TotalMS:   resp.Timings.TotalMS,
+		Degraded:  resp.Degraded,
+		RetCode:   resp.RetCode,
 	})
 
-	degraded := false
-	if err != nil {
-		degraded = true
-		if !c.config.FallbackOnError {
-			return response, err
-		}
-		sourceErr = nil
-	}
-
-	items := c.combineResults(req, result)
-
-	response.Items = items
-	response.Degraded = degraded
-	response.Timings.TotalMs = time.Since(start).Milliseconds()
-
-	return response, sourceErr
+	return resp, resp.RetCode, nil
 }
 
-func (c *Controller) combineResults(req api.SearchRequest, result sources.Result) []fuse.FusedItem {
-	if len(result.Items) == 0 {
-		return []fuse.FusedItem{}
+func (c *Controller) callSource(ctx context.Context, req Request) (sources.Result, error) {
+	var result sources.Result
+	err := c.policy.Execute(ctx, func(callCtx context.Context) error {
+		result = c.source.Search(callCtx, []sources.Query{
+			{
+				Collection: c.collection,
+				Payload:    c.buildPayload(req.K),
+			},
+		})
+		return result.Err
+	})
+	if err != nil {
+		return result, err
 	}
+	return result, nil
+}
 
-	cfg := c.config.Fuse
-	if req.K > cfg.TopKInit {
-		cfg.TopKInit = req.K
+func (c *Controller) applyFuse(k int, raw []json.RawMessage) []fuse.FusedItem {
+	if len(raw) == 0 {
+		return nil
+	}
+	sourceItems := []fuse.SourceResult{
+		{
+			Source: c.sourceName,
+			Items:  c.decodeItems(raw[0]),
+		},
+	}
+	cfg := c.fuseConfig
+	if k > cfg.TopKInit {
+		cfg.TopKInit = k
 	}
 	if cfg.TopKInit > cfg.TopKMax {
 		cfg.TopKInit = cfg.TopKMax
 	}
 
-	sourceResult := fuse.SourceResult{
-		Source: c.config.SourceName,
-		Items:  c.parseQdrantItems(result.Items[0]),
+	items := fuse.RRFCombine(sourceItems, cfg)
+	if k < len(items) {
+		return items[:k]
 	}
-
-	fused := fuse.RRFCombine([]fuse.SourceResult{sourceResult}, cfg)
-
-	if req.K < len(fused) {
-		return fused[:req.K]
-	}
-	return fused
+	return items
 }
 
-func (c *Controller) parseQdrantItems(raw json.RawMessage) []fuse.Item {
+func (c *Controller) decodeItems(raw json.RawMessage) []fuse.Item {
 	if len(raw) == 0 {
-		return []fuse.Item{}
+		return nil
 	}
 
 	type point struct {
@@ -225,35 +252,38 @@ func (c *Controller) parseQdrantItems(raw json.RawMessage) []fuse.Item {
 	var payload struct {
 		Result []point `json:"result"`
 	}
-
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return []fuse.Item{}
+		return nil
 	}
 
 	items := make([]fuse.Item, 0, len(payload.Result))
 	for _, pt := range payload.Result {
-		id := fmt.Sprintf("%v", pt.ID)
-		var body any
+		item := fuse.Item{
+			ID:    fmt.Sprintf("%v", pt.ID),
+			Score: pt.Score,
+		}
 		if len(pt.Payload) > 0 {
-			if err := json.Unmarshal(pt.Payload, &body); err != nil {
-				body = string(pt.Payload)
+			var payloadAny interface{}
+			if err := json.Unmarshal(pt.Payload, &payloadAny); err == nil {
+				item.Payload = payloadAny
+			} else {
+				item.Payload = string(pt.Payload)
 			}
 		}
-		items = append(items, fuse.Item{
-			ID:      id,
-			Score:   pt.Score,
-			Payload: body,
-		})
+		items = append(items, item)
 	}
 	return items
 }
 
-func (c *Controller) buildPayload(req api.SearchRequest) any {
-	// TODO: hook into embedding pipeline. Minimal stub to satisfy interface.
-	limit := max(req.K, c.config.Fuse.TopKInit)
-	if limit > c.config.Fuse.TopKMax {
-		limit = c.config.Fuse.TopKMax
+func (c *Controller) buildPayload(k int) any {
+	limit := k
+	if limit < c.fuseConfig.TopKInit {
+		limit = c.fuseConfig.TopKInit
 	}
+	if limit > c.fuseConfig.TopKMax {
+		limit = c.fuseConfig.TopKMax
+	}
+
 	return map[string]any{
 		"limit":         limit,
 		"with_payload":  true,
@@ -263,21 +293,52 @@ func (c *Controller) buildPayload(req api.SearchRequest) any {
 	}
 }
 
-func (c *Controller) buildTraceURL(traceID string) string {
-	if c.projectID == "" || traceID == "" {
+// BuildTraceURL builds a Langfuse trace if configured.
+// mvp-5
+func (c *Controller) BuildTraceURL(traceID string) string {
+	if c.host == "" || c.project == "" || traceID == "" {
 		return ""
 	}
-	return fmt.Sprintf("https://%s/project/%s/traces?query=%s", c.traceHost, c.projectID, url.QueryEscape(traceID))
+	base := strings.TrimSuffix(c.host, "/")
+	return fmt.Sprintf("%s/project/%s/traces?query=%s", base, c.project, url.QueryEscape(traceID))
 }
 
-func (c *Controller) generateTraceID() string {
-	return uuid.NewString()
+// Ping validates upstream readiness.
+// mvp-5
+func (c *Controller) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	return c.source.Ping(ctx)
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
+func cloneItems(items []api.Item) []api.Item {
+	if len(items) == 0 {
+		return nil
 	}
-	return b
+	out := make([]api.Item, len(items))
+	copy(out, items)
+	return out
 }
 
+func cloneTiming(in map[string]int64) map[string]int64 {
+	out := make(map[string]int64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func fuseToAPI(items []fuse.FusedItem) []api.Item {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]api.Item, 0, len(items))
+	for _, it := range items {
+		out = append(out, api.Item{
+			ID:      it.ID,
+			Score:   it.Score,
+			Payload: it.Payload,
+		})
+	}
+	return out
+}

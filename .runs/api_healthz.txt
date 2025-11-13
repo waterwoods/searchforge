@@ -1,0 +1,1 @@
+{"ok":true,"version":"v11","status":"healthy","embedding_ready":true,"service":"app_main","timestamp":"2025-11-13T01:31:32Z"}

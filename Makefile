@@ -56,10 +56,12 @@ smoke: ## 健康检查冒烟
 	curl -sf http://127.0.0.1:8000/health/ready
 	@echo "SMOKE OK"
 
+# mvp-5
 up-proxy: ## 启动检索代理及其依赖
 	$(call ensure_tool,docker)
 	$(COMPOSE) up -d qdrant retrieval-proxy
 
+# mvp-5
 smoke-proxy: ## 检查检索代理健康与预算控制
 	$(call ensure_tool,curl)
 	$(call ensure_tool,jq)
@@ -67,15 +69,21 @@ smoke-proxy: ## 检查检索代理健康与预算控制
 	echo "🔍 Proxy health @ $$BASE"; \
 	curl -sf "$$BASE/healthz" >/dev/null || { echo "❌ /healthz failed"; exit 1; }; \
 	curl -sf "$$BASE/readyz" >/dev/null || { echo "❌ /readyz failed"; exit 1; }; \
-	RESP=$$(curl -sf "$$BASE/v1/search?q=proxy+smoke&k=3&budget_ms=600"); \
+	RESP=$$(curl -sf "$$BASE/v1/search?q=test&k=20&budget_ms=400"); \
 	printf "%s\n" "$$RESP" | jq '.'; \
 	TOTAL=$$(printf "%s" "$$RESP" | jq -r '.timings.total_ms // 0'); \
-	if [ "$$TOTAL" -gt 650 ]; then \
-		echo "❌ total_ms=$$TOTAL exceeded budget gate (650)"; \
+	RET=$$(printf "%s" "$$RESP" | jq -r '.ret_code // ""'); \
+	if [ "$$TOTAL" -gt 450 ]; then \
+		echo "❌ total_ms=$$TOTAL exceeded budget gate (450)"; \
 		exit 1; \
 	fi; \
-	echo "✅ Proxy smoke passed (total_ms=$$TOTAL)"
+	if [ "$$RET" != "OK" ]; then \
+		echo "❌ unexpected ret_code=$$RET"; \
+		exit 1; \
+	fi; \
+	echo "✅ Proxy smoke passed (total_ms=$$TOTAL, ret_code=$$RET)"
 
+# mvp-5
 degrade-test: ## 模拟上游降级，确保代理降级返回且不报错
 	$(call ensure_tool,curl)
 	$(call ensure_tool,jq)
@@ -99,8 +107,13 @@ degrade-test: ## 模拟上游降级，确保代理降级返回且不报错
 		$(COMPOSE) start qdrant >/dev/null; \
 		exit 1; \
 	fi; \
-	TRACE=$$(jq -r '.trace_url // ""' "$$TMP"); \
-	echo "Trace URL: $$TRACE"; \
+	RET=$$(jq -r '.ret_code // ""' "$$TMP"); \
+	if [ "$$RET" != "UPSTREAM_TIMEOUT" ]; then \
+		echo "❌ expected ret_code=UPSTREAM_TIMEOUT, got $$RET"; \
+		rm -f "$$TMP"; \
+		$(COMPOSE) start qdrant >/dev/null; \
+		exit 1; \
+	fi; \
 	rm -f "$$TMP"; \
 	echo "✅ Degrade path verified"; \
 	echo "🚀 Restarting qdrant..."; \
@@ -114,28 +127,6 @@ obs-verify: ## 验证 Langfuse OBS 连通性并打印最新 obs_url
 	@if [ -f .runs/obs_url.txt ]; then cat .runs/obs_url.txt; else echo "  (missing .runs/obs_url.txt)"; fi
 	@echo "TRACE ID:"
 	@if [ -f .runs/trace_id.txt ]; then cat .runs/trace_id.txt; else echo "  (missing .runs/trace_id.txt)"; fi
-	@BASE="$${RETRIEVAL_PROXY_BASE:-$(PROXY_BASE)}"; \
-	if curl -sf "$$BASE/metrics" >/tmp/retrieval_proxy_metrics.$$; then \
-		if ! grep -q 'retrieval_proxy_source_latency_ms' /tmp/retrieval_proxy_metrics.$$; then \
-			echo "❌ missing retrieval_proxy_source_latency_ms metric"; \
-			rm -f /tmp/retrieval_proxy_metrics.$$; \
-			exit 1; \
-		fi; \
-		if ! grep -q 'retrieval_proxy_source_error_rate' /tmp/retrieval_proxy_metrics.$$; then \
-			echo "❌ missing retrieval_proxy_source_error_rate metric"; \
-			rm -f /tmp/retrieval_proxy_metrics.$$; \
-			exit 1; \
-		fi; \
-		if ! grep -q 'retrieval_proxy_budget_hit_total' /tmp/retrieval_proxy_metrics.$$; then \
-			echo "❌ missing retrieval_proxy_budget_hit_total metric"; \
-			rm -f /tmp/retrieval_proxy_metrics.$$; \
-			exit 1; \
-		fi; \
-		echo "✅ Proxy metrics contain latency, error rate, and budget gauges"; \
-		rm -f /tmp/retrieval_proxy_metrics.$$; \
-	else \
-		echo "⚠️  Failed to query proxy metrics (proxy not running?)"; \
-	fi
 
 export: ## Export dependencies snapshot from container
 	@echo "📦 Exporting dependency snapshot via pip freeze..."

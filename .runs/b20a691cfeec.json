@@ -1,0 +1,31 @@
+{
+  "job_id": "b20a691cfeec",
+  "status": "SUCCEEDED",
+  "created_at": "2025-11-12T03:12:58.189619",
+  "finished_at": "2025-11-12T03:13:18.964515",
+  "return_code": 0,
+  "params": {
+    "sample": 300,
+    "repeats": 2,
+    "fast_mode": false,
+    "dataset_name": "fiqa_50k_v1",
+    "qrels_name": "fiqa_qrels_50k_v1"
+  },
+  "cmd": [
+    "/usr/local/bin/python",
+    "-u",
+    "-m",
+    "experiments.fiqa_suite_runner",
+    "--base",
+    "http://localhost:8000",
+    "--sample",
+    "300",
+    "--repeats",
+    "2",
+    "--dataset-name",
+    "fiqa_50k_v1",
+    "--qrels-name",
+    "fiqa_qrels_50k_v1"
+  ],
+  "obs_url": "https://us.cloud.langfuse.com/project/cmhv0qzf9005lad08g1320v4g/traces?query=b20a691cfeec"
+}
