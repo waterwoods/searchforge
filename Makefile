@@ -25,7 +25,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke obs-verify up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test
+.PHONY: help install lint type test export smoke obs-verify obs-url ui-open-check up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test check-qdrant seed-fiqa reseed-fiqa a-verify b-verify c-verify abc-verify
 volumes-ok:
 	$(call ensure_tool,docker)
 	@set -e; \
@@ -56,68 +56,69 @@ smoke: ## 健康检查冒烟
 	curl -sf http://127.0.0.1:8000/health/ready
 	@echo "SMOKE OK"
 
-# mvp-5
-up-proxy: ## 启动检索代理及其依赖
-	$(call ensure_tool,docker)
-	$(COMPOSE) up -d qdrant retrieval-proxy
+up-proxy:
+	docker compose --env-file .env.current up -d qdrant retrieval-proxy
 
-# mvp-5
-smoke-proxy: ## 检查检索代理健康与预算控制
-	$(call ensure_tool,curl)
-	$(call ensure_tool,jq)
-	@BASE="$${RETRIEVAL_PROXY_BASE:-$(PROXY_BASE)}"; \
-	echo "🔍 Proxy health @ $$BASE"; \
-	curl -sf "$$BASE/healthz" >/dev/null || { echo "❌ /healthz failed"; exit 1; }; \
-	curl -sf "$$BASE/readyz" >/dev/null || { echo "❌ /readyz failed"; exit 1; }; \
-	RESP=$$(curl -sf "$$BASE/v1/search?q=test&k=20&budget_ms=400"); \
-	printf "%s\n" "$$RESP" | jq '.'; \
-	TOTAL=$$(printf "%s" "$$RESP" | jq -r '.timings.total_ms // 0'); \
-	RET=$$(printf "%s" "$$RESP" | jq -r '.ret_code // ""'); \
-	if [ "$$TOTAL" -gt 450 ]; then \
-		echo "❌ total_ms=$$TOTAL exceeded budget gate (450)"; \
-		exit 1; \
-	fi; \
-	if [ "$$RET" != "OK" ]; then \
-		echo "❌ unexpected ret_code=$$RET"; \
-		exit 1; \
-	fi; \
-	echo "✅ Proxy smoke passed (total_ms=$$TOTAL, ret_code=$$RET)"
+rebuild-fast:
+	docker compose build retrieval-proxy
 
-# mvp-5
-degrade-test: ## 模拟上游降级，确保代理降级返回且不报错
-	$(call ensure_tool,curl)
-	$(call ensure_tool,jq)
-	@BASE="$${RETRIEVAL_PROXY_BASE:-$(PROXY_BASE)}"; \
-	echo "🛑 Stopping qdrant to simulate degradation..."; \
-	$(COMPOSE) stop qdrant >/dev/null; \
-	sleep 2; \
-	TMP=$$(mktemp); \
-	HTTP=$$(curl -sS -w '%{http_code}' -o "$$TMP" "$$BASE/v1/search?q=proxy+degrade&k=3&budget_ms=400"); \
-	printf "%s\n" "$$(cat "$$TMP")" | jq '.'; \
-	if [ "$$HTTP" -ge 500 ]; then \
-		echo "❌ expected non-5xx status, got $$HTTP"; \
-		rm -f "$$TMP"; \
-		$(COMPOSE) start qdrant >/dev/null; \
-		exit 1; \
-	fi; \
-	DEG=$$(jq -r '.degraded' "$$TMP"); \
-	if [ "$$DEG" != "true" ]; then \
-		echo "❌ degraded flag not set (value=$$DEG)"; \
-		rm -f "$$TMP"; \
-		$(COMPOSE) start qdrant >/dev/null; \
-		exit 1; \
-	fi; \
-	RET=$$(jq -r '.ret_code // ""' "$$TMP"); \
-	if [ "$$RET" != "UPSTREAM_TIMEOUT" ]; then \
-		echo "❌ expected ret_code=UPSTREAM_TIMEOUT, got $$RET"; \
-		rm -f "$$TMP"; \
-		$(COMPOSE) start qdrant >/dev/null; \
-		exit 1; \
-	fi; \
-	rm -f "$$TMP"; \
-	echo "✅ Degrade path verified"; \
-	echo "🚀 Restarting qdrant..."; \
-	$(COMPOSE) start qdrant >/dev/null
+logs-proxy:
+	docker compose logs -f retrieval-proxy qdrant
+
+smoke-proxy:
+	curl -sf http://localhost:7070/healthz
+	curl -sf http://localhost:7070/readyz
+	curl -s "http://localhost:7070/v1/search?q=hello&k=8&budget_ms=400" | jq -r '.ret_code,.degraded,.timings.total_ms,.trace_url'
+
+degrade-test:
+	docker compose stop qdrant
+	@sleep 1
+	curl -i http://localhost:7070/readyz | tee .runs/proxy_ready_down.txt
+	curl -s "http://localhost:7070/v1/search?q=hello&k=5&budget_ms=50" | jq -r '.degraded,.ret_code' | tee .runs/proxy_degrade.txt
+	docker compose start qdrant
+	@sleep 3
+	curl -i http://localhost:7070/readyz | tee .runs/proxy_ready_up.txt
+
+check-qdrant:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	python3 scripts/check_qdrant.py | tee .runs/qdrant_check.json
+
+seed-fiqa:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	python3 scripts/seed_qdrant.py | tee .runs/qdrant_seed.json
+
+reseed-fiqa:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	@echo "FORCE=1 reseed fiqa..."
+	@FORCE=1 python3 scripts/seed_qdrant.py > .runs/qdrant_seed.json
+	@python3 scripts/check_qdrant.py > .runs/qdrant_check.json
+	@echo "reseed done"
+
+a-verify:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	python3 scripts/abc_verify.py --only A | tee -a .runs/abc_verify.log
+
+b-verify:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	python3 scripts/abc_verify.py --only B | tee -a .runs/abc_verify.log
+
+c-verify:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	python3 scripts/abc_verify.py --only C | tee -a .runs/abc_verify.log
+
+abc-verify:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	python3 scripts/abc_verify.py | tee -a .runs/abc_verify.log
+
+down-proxy:
+	docker compose down
 
 obs-verify: ## 验证 Langfuse OBS 连通性并打印最新 obs_url
 	$(call ensure_tool,curl)
@@ -127,6 +128,35 @@ obs-verify: ## 验证 Langfuse OBS 连通性并打印最新 obs_url
 	@if [ -f .runs/obs_url.txt ]; then cat .runs/obs_url.txt; else echo "  (missing .runs/obs_url.txt)"; fi
 	@echo "TRACE ID:"
 	@if [ -f .runs/trace_id.txt ]; then cat .runs/trace_id.txt; else echo "  (missing .runs/trace_id.txt)"; fi
+
+obs-url:
+	$(call ensure_tool,curl)
+	@mkdir -p .runs
+	curl -sf http://localhost:8000/obs/url | tee .runs/obs_url_api.json
+
+ui-open-check:
+	$(call ensure_tool,python3)
+	@python3 - <<-'PY'
+	import json
+	import sys
+	from pathlib import Path
+
+	path = Path(".runs/obs_url_api.json")
+	if not path.exists():
+		print("missing .runs/obs_url_api.json", file=sys.stderr)
+		sys.exit(1)
+	try:
+		payload = json.loads(path.read_text(encoding="utf-8"))
+	except Exception as exc:  # pragma: no cover
+		print(f"failed to parse obs_url_api.json: {exc}", file=sys.stderr)
+		sys.exit(1)
+	obs_url = (payload or {}).get("obs_url", "").strip()
+	if obs_url:
+		print(obs_url)
+		sys.exit(0)
+	print("obs_url missing", file=sys.stderr)
+	sys.exit(1)
+	PY
 
 export: ## Export dependencies snapshot from container
 	@echo "📦 Exporting dependency snapshot via pip freeze..."

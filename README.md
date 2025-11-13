@@ -11,6 +11,23 @@
 5. `make export` *(可选，导出依赖快照到 requirements.lock)*
 - 生产将 `.env` 中 `ALLOW_ALL_CORS=0`，并把 `CORS_ORIGINS` 设为逗号分隔白名单（例：`https://app.example.com,https://admin.example.com`）。
 
+## Data readiness
+
+本地或新环境需要先准备 Qdrant 数据集合：
+
+```bash
+make seed-fiqa      # 创建 demo collection 并写入少量文档
+make check-qdrant   # 验证集合/搜索是否可用（输出写入 .runs/qdrant_check.json）
+```
+
+A 阶段以健康检查结果为准，集合存在即可 PASS；如需演示“首次创建”流程，可执行 `make reseed-fiqa` 强制重建后再运行验证。
+
+## How to open the latest trace
+
+1. 触发任意一次查询（例如调用 `/api/query`）以刷新 `.runs/obs_url.txt` 和 `.runs/trace_id.txt`。
+2. 运行 `make obs-url` 将最新的追踪信息写入 `.runs/obs_url_api.json`（同时验证后端 `/obs/url` 接口可用）。
+3. 可选：执行 `make ui-open-check` 打印可打开的 Langfuse 链接，然后在前端 JobHistory 列表中点击 “Open in Langfuse” 按钮（若无最新追踪则会显示禁用状态和 “No recent trace” 提示）。
+
 ## 项目概述
 
 代码查询智能体是一个专为开发者设计的智能代码分析工具，旨在解决理解复杂代码库的困难。通过结合AI技术和交互式可视化，它能够帮助开发者、架构师快速理解代码结构、函数关系以及系统架构。

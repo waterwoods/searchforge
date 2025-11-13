@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Set
 
+import io as py_io
+import json
 import logging
 
 # mvp-5
@@ -67,7 +69,7 @@ def _get_client():
 
 
 def build_obs_url(job_id: Optional[str]) -> str:
-    if not job_id or not _enabled():
+    if not job_id:
         return ""
     host = (os.getenv("LANGFUSE_HOST") or "https://cloud.langfuse.com").rstrip("/")
     return f"{host}/traces?query={job_id}"
@@ -244,58 +246,116 @@ def span(
                 pass
 
 
-def persist_trace_id(trace_id: Optional[str]) -> None:
+def _runs_dir() -> Path:
+    path = Path(".runs")
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def persist_trace_id(job_or_trace: Optional[str], trace_id: Optional[str] = None) -> None:
+    if trace_id is None:
+        trace_id = job_or_trace
     if not trace_id:
         return
-    runs_dir = Path(".runs")
     try:
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        (runs_dir / "trace_id.txt").write_text(f"{trace_id}\n", encoding="utf-8")
+        (_runs_dir() / "trace_id.txt").write_text(f"{trace_id}\n", encoding="utf-8")
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("failed to persist trace_id.txt: %s", exc)
 
 
 def persist_obs_url(obs_url: Optional[str]) -> None:
-    if not obs_url:
-        return
-    runs_dir = Path(".runs")
     try:
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        (runs_dir / "obs_url.txt").write_text(f"{obs_url}\n", encoding="utf-8")
+        (_runs_dir() / "obs_url.txt").write_text(f"{(obs_url or '')}\n", encoding="utf-8")
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("failed to persist obs_url.txt: %s", exc)
 
 
-def finalize_root(ctx: Optional[Dict[str, Any]], meta: Optional[Dict[str, Any]] = None) -> None:
-    ctx = ctx or {}
-    if meta:
-        ctx.setdefault("metadata", {}).update(meta)
+def finalize_root(*args, **kwargs) -> Dict[str, Any] | None:
+    """
+    Backward-compatible finalize helper.
 
-    trace_id = ctx.get("trace_id")
-    if trace_id and not isinstance(trace_id, str):
-        trace_id = str(trace_id)
+    - Existing callers may pass (ctx: dict, meta: dict)
+    - New usage can pass keyword arguments (job_id=..., trace_id=..., trace_url=..., plan=..., decision=...)
+    """
+    if args and isinstance(args[0], dict):
+        ctx: Dict[str, Any] = args[0] or {}
+        meta: Optional[Dict[str, Any]] = args[1] if len(args) > 1 else None
+        if meta:
+            ctx.setdefault("metadata", {}).update(meta)
 
-    if not trace_id:
-        root = ctx.get("trace") or ctx.get("span")
-        if root is not None:
-            trace_id = getattr(root, "id", None) or getattr(root, "trace_id", None)
-            if trace_id and not isinstance(trace_id, str):
-                trace_id = str(trace_id)
+        trace_id = ctx.get("trace_id")
+        if trace_id and not isinstance(trace_id, str):
+            trace_id = str(trace_id)
+
+        if not trace_id:
+            root = ctx.get("trace") or ctx.get("span")
+            if root is not None:
+                trace_id = getattr(root, "id", None) or getattr(root, "trace_id", None)
+                if trace_id and not isinstance(trace_id, str):
+                    trace_id = str(trace_id)
+                if trace_id:
+                    ctx["trace_id"] = trace_id
+        job_id = ctx.get("job_id")
+        if not trace_id and isinstance(job_id, str):
+            trace_id = job_id
+            ctx["trace_id"] = trace_id
+
+        trace_url = ""
+        if isinstance(ctx.get("trace_url"), str) and ctx["trace_url"]:
+            trace_url = ctx["trace_url"]
+        else:
+            trace_url = build_obs_url(trace_id)
+
+        if trace_url:
+            ctx["trace_url"] = trace_url
+        try:
             if trace_id:
-                ctx["trace_id"] = trace_id
-    job_id = ctx.get("job_id")
-    if not trace_id and isinstance(job_id, str):
-        trace_id = job_id
-        ctx["trace_id"] = trace_id
+                persist_trace_id(trace_id)
+            persist_obs_url(trace_url)
+        except Exception:
+            pass
+        return ctx
 
-    obs_url = ""
-    if isinstance(ctx.get("trace_url"), str) and ctx["trace_url"]:
-        obs_url = ctx["trace_url"]
-    else:
-        obs_url = build_obs_url(trace_id)
+    job_id = kwargs.get("job_id") or ""
+    trace_id = kwargs.get("trace_id") or job_id or ""
+    trace_url = kwargs.get("trace_url") or build_obs_url(trace_id)
+    payload = {
+        "job_id": job_id,
+        "plan": kwargs.get("plan") or "",
+        "decision": kwargs.get("decision") or "",
+        "trace_id": trace_id,
+        "trace_url": trace_url,
+    }
+    if kwargs.get("metrics") is not None:
+        payload["metrics"] = kwargs["metrics"]
+    try:
+        if trace_id:
+            persist_trace_id(job_id or trace_id, trace_id=trace_id)
+        persist_obs_url(trace_url or "")
+        buffer = py_io.StringIO()
+        json.dump(payload, buffer, ensure_ascii=False)
+        (_runs_dir() / "finalize.json").write_text(buffer.getvalue(), encoding="utf-8")
+    except Exception:
+        pass
+    return payload
 
-    if obs_url:
-        ctx["trace_url"] = obs_url
-        persist_obs_url(obs_url)
-    if trace_id:
-        persist_trace_id(trace_id)
+
+def io(span_or_ctx: Any, *, input: Any = None, output: Any = None) -> None:
+    """Safe helper for recording span I/O without raising."""
+    try:
+        guard = span_or_ctx
+        if guard is None:
+            return
+        if input is not None:
+            data = {"input": redact(input)}
+            if hasattr(guard, "add_metadata"):
+                guard.add_metadata(data)
+            elif isinstance(guard, dict):
+                guard.setdefault("metadata", {}).update(data)
+        if output is not None:
+            if hasattr(guard, "set_output"):
+                guard.set_output(output if isinstance(output, dict) else {"value": output})
+            elif isinstance(guard, dict):
+                guard["output"] = redact(output)
+    except Exception:
+        pass
