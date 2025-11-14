@@ -8,7 +8,8 @@ import {
     DatabaseOutlined,
     ThunderboltOutlined,
     NodeIndexOutlined,
-    ToolOutlined
+    ToolOutlined,
+    BarChartOutlined
 } from '@ant-design/icons';
 import { Menu } from 'antd';
 import { Link, useLocation } from 'react-router-dom';
@@ -44,6 +45,11 @@ const menuItems = [
                 key: '/rag-lab/history',
                 icon: <SearchOutlined />,
                 label: <Link to="/rag-lab/history">Job History</Link>,
+            },
+            {
+                key: '/lab/metrics',
+                icon: <BarChartOutlined />,
+                label: <Link to="/lab/metrics">Metrics Hub (beta)</Link>,
             },
             {
                 key: '/rag-lab/steward',

@@ -22,6 +22,7 @@ import { RagLabRunPage } from './pages/RagLabRunPage';
 import { RagLabHistoryPage } from './pages/RagLabHistoryPage';
 import { RagLabDetailPage } from './pages/RagLabDetailPage';
 import StewardDashboard from './pages/StewardDashboard';
+import { MetricsHub } from './pages/lab/MetricsHub';
 
 function App() {
     return (
@@ -81,6 +82,9 @@ function App() {
                         <Route path="rag-lab/history/:jobId" element={<RagLabDetailPage />} />
                         <Route path="rag-lab/steward" element={<StewardDashboard />} />
                         <Route path="rag-lab" element={<RagLabRunPage />} />
+
+                        {/* Metrics Hub Route */}
+                        <Route path="lab/metrics" element={<MetricsHub />} />
                     </Route>
                 </Routes>
             </AntdApp>
