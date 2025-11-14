@@ -17,6 +17,7 @@ import {
     Timeline,
     List,
     Collapse,
+    Tooltip,
 } from 'antd';
 import {
     TrophyOutlined,
@@ -32,6 +33,16 @@ import * as experimentApi from '../api/experiment';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
+
+const fallbackObsUrl = (traceId?: string) => {
+    const host = import.meta.env.VITE_LANGFUSE_HOST?.replace(/\/+$/, '') ?? '';
+    const proj = import.meta.env.VITE_LANGFUSE_PROJECT_ID ?? '';
+    if (!host || !proj || !traceId) {
+        return '';
+    }
+    const q = encodeURIComponent(traceId);
+    return `${host}/project/${proj}/traces?query=${q}`;
+};
 
 export const RagLabDetailPage = () => {
     const { jobId } = useParams<{ jobId: string }>();
@@ -183,13 +194,30 @@ export const RagLabDetailPage = () => {
 
                                 <div>
                                     <Text strong>Observability: </Text>
-                                    {jobDetail.obs_url ? (
-                                        <Button type="link" href={jobDetail.obs_url} target="_blank" rel="noreferrer">
-                                            Open in Langfuse
-                                        </Button>
-                                    ) : (
-                                        <Text type="secondary">—</Text>
-                                    )}
+                                    {(() => {
+                                        const fallbackUrl = jobDetail?.trace_id ? fallbackObsUrl(jobDetail.trace_id) : '';
+                                        const openObsUrl = jobDetail?.obs_url || fallbackUrl;
+                                        const tooltipTitle = openObsUrl ? 'Open in Langfuse' : 'trace pending';
+                                        const handleOpen = () => {
+                                            if (openObsUrl) {
+                                                window.open(openObsUrl, '_blank', 'noopener');
+                                            }
+                                        };
+                                        return (
+                                            <Tooltip title={tooltipTitle}>
+                                                <span>
+                                                    <Button
+                                                        type="link"
+                                                        disabled={!openObsUrl}
+                                                        onClick={handleOpen}
+                                                        style={{ padding: 0, height: 'auto' }}
+                                                    >
+                                                        Open in Langfuse
+                                                    </Button>
+                                                </span>
+                                            </Tooltip>
+                                        );
+                                    })()}
                                 </div>
 
                                 {/* Dataset Badge */}

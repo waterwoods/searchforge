@@ -11,6 +11,12 @@
 5. `make export` *(可选，导出依赖快照到 requirements.lock)*
 - 生产将 `.env` 中 `ALLOW_ALL_CORS=0`，并把 `CORS_ORIGINS` 设为逗号分隔白名单（例：`https://app.example.com,https://admin.example.com`）。
 
+### Direct Query API
+
+- `POST /api/query` with JSON `{"question": "...", "budget_ms": 400}`（`q` 也是合法别名）
+- 兼容 `GET /api/query?q=...&budget_ms=400` 查询字符串形式
+- 响应包含 `items`/`sources` 阵列，便于直连校验脚本统计结果条数
+
 ## Data readiness
 
 本地或新环境需要先准备 Qdrant 数据集合：
@@ -21,6 +27,48 @@ make check-qdrant   # 验证集合/搜索是否可用（输出写入 .runs/qdran
 ```
 
 A 阶段以健康检查结果为准，集合存在即可 PASS；如需演示“首次创建”流程，可执行 `make reseed-fiqa` 强制重建后再运行验证。
+
+## 回归与指标检查
+
+- `make ci`：一键跑策略冒烟、最小化 e2e、成对大样本对照以及 Pareto 汇总，自动校验 `.runs/real_large_report.json` 与 `.runs/pareto.json` 中的 `ok`、`success_rate`、`bounds_ok`、`stable_detune`、`p95_down`。报告会附带默认参数（`--paired`、`--warmup 10`、`--no-cache`、`--no-rerank`、`--trim-pct 5`、`--budgets 400,800,1200`）以及当前 git 提交。
+- `make e2e-mini && make tuner-smoke`：快速验证直连/代理连通性与小样本调参，终端应出现 `E2E MINI PASS` 与 `TUNER SMALL PASS`，并可查看 `.runs/tuner_small_report.json` 中的 `bounds_ok`、`stable_detune`、`p95_down`。
+- `make tuner-ab`：代理 ON/OFF 对照跑 80 批次，判定 `TUNER AB PASS`，详细指标同样记录在 `.runs/tuner_small_report.json`。
+- 可单独执行 `make real-large-paired` 复跑成对采样；所有指标会落盘到 `.runs/real_large_paired_{budget}.json`、`.runs/real_large_report.json` 和 `.runs/pareto.json`，并在 `.runs/obs_url.txt` 追加最新 trace URL。
+
+### ABC One-Shot Verify
+
+```bash
+set -euo pipefail
+
+echo ">>> 0) 显示关键环境："
+grep -E '^(USE_PROXY|PROXY_URL|DEFAULT_BUDGET_MS|DEFAULT_QDRANT_COLLECTION)=' ./.env.current || true
+echo
+
+echo ">>> 1) 启动依赖服务（qdrant / proxy / rag-api）…"
+docker compose up -d qdrant retrieval-proxy rag-api
+
+echo ">>> 2) 数据就绪检查（Phase A 预热＋健康校验）…"
+make seed-fiqa
+make check-qdrant
+
+echo ">>> 3) 跑 ABC 三段验收…"
+make abc-verify
+
+echo ">>> 4) 汇总结果：A/B/C 是否通过 + 原因摘要"
+for p in a b c; do
+  printf "Phase %s -> " "$p"
+  test -f ".runs/${p}_verify.json" || { echo "no .runs/${p}_verify.json"; continue; }
+  jq -r '"ok=\(.ok) reason=\(.reason // "n/a")"' ".runs/${p}_verify.json"
+done
+echo "---- 最近日志片段 ----"
+grep -E 'A PASS|B PASS|C PASS|ABC' ./.runs/abc_verify.log | tail -20 || true
+echo "---- 最新 Langfuse trace 链接（可能返回 204 表示暂无） ----"
+curl -sf "http://localhost:8000/obs/url?format=txt" || echo "No recent trace (204 OK)"
+
+echo
+echo ">>> 验收标准：需满足 .runs/{a,b,c}_verify.json 中 ok=true 且日志含 'ABC PASS'"
+echo "若 A 为 false，可执行：  make reseed-fiqa && make a-verify && make abc-verify"
+```
 
 ## How to open the latest trace
 

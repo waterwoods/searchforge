@@ -21,7 +21,14 @@ _TRACE_ID_FILE = _RUNS_DIR / "trace_id.txt"
 
 def _read_runs_file(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8").strip()
+        if not path.exists():
+            return ""
+        content = path.read_text(encoding="utf-8").splitlines()
+        for line in reversed(content):
+            line = line.strip()
+            if line:
+                return line
+        return ""
     except FileNotFoundError:
         return ""
     except OSError:

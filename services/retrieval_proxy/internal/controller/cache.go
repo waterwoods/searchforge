@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/searchforge/retrieval_proxy/fuse"
-	"github.com/searchforge/retrieval_proxy/internal/api"
+	"github.com/searchforge/retrieval_proxy/internal/contract"
 )
 
 // CacheEntry captures cached response pieces.
 // mvp-5
 type CacheEntry struct {
-	Items     []api.Item
+	Items     []contract.Item
 	PerSource map[string]int64
 	TotalMS   int64
 	Degraded  bool

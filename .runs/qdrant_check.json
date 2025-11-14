@@ -1,1 +1,1 @@
-{"collection": "fiqa_50k_v1", "vector_dim": 384, "points": 16, "hits": 1, "search_latency_ms": 2.31, "status": "ok"}
+{"collection": "fiqa_50k_v1", "vector_dim": 384, "points": 16, "hits": 1, "search_latency_ms": 3.66, "status": "ok"}

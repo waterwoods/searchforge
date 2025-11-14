@@ -9,31 +9,23 @@ This module implements a comprehensive A/B evaluation system with:
 - Autotuner action monitoring
 """
 
-import os
-import sys
-import json
-import time
-import random
 import asyncio
+import json
 import logging
-import argparse
-import statistics
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from pathlib import Path
+import os
+import random
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
-# from modules.search.search_pipeline import search_with_explain  # Using HTTP calls instead
-from modules.autotune.controller import AutoTuner
-from modules.autotune.state import TuningState
+from clients.retrieval_proxy_client import DEFAULT_BUDGET_MS, search as proxy_search
+from modules.autotune import AutoTuner, TuningState
+from modules.autotune.selector import select_strategy
+from services.fiqa_api import obs
 
 logger = logging.getLogger(__name__)
 
@@ -315,8 +307,8 @@ class EnhancedABEvaluator:
         try:
             import sys
             import os
-            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'services', 'rag_api'))
-            from app import get_global_autotuner
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'services', 'fiqa_api'))
+            from autotuner_global import get_global_autotuner  # type: ignore
             
             global_autotuner, global_autotuner_state = get_global_autotuner()
             if global_autotuner and global_autotuner_state:
@@ -330,7 +322,7 @@ class EnhancedABEvaluator:
         # Fallback to creating local instance
         self.autotuner_state = TuningState()
         self.autotuner = AutoTuner(
-            engine="ivf",
+            engine="hnsw",
             policy="Balanced",
             target_p95_ms=config.get("target_p95_ms", 30.0),
             target_recall=config.get("target_recall", 0.95)
@@ -360,49 +352,49 @@ class EnhancedABEvaluator:
         if random.random() < (loss_rate / 100.0):
             return False, 0.0, {"error": "packet_loss"}
         
-        # Execute the actual query via HTTP
+        # Execute the actual query via proxy-aware client
         start_time = time.time()
         try:
-            # Build RAG API URL from environment variable, config, or default
-            base_url = os.environ.get("RAG_API_URL")
-            if not base_url:
-                base_url = config.get("rag_api", {}).get("base_url", "http://localhost:8000")
-            rag_api_url = f"{base_url}/search"
-            
-            payload = {
-                "query": query,
-                "top_k": config.get("rag_api", {}).get("initial_topk", 50),
-                "algorithm": config.get("reranker_type", "llm"),
-                "enable_bm25": False,
-                "ab_test_mode": True
-            }
-            
-            print(f"[Evaluator] Query: {query}, top_k: {payload['top_k']}")
-            
-            response = requests.post(rag_api_url, json=payload, timeout=10)
-            response.raise_for_status()
-            
-            result_data = response.json()
-            results = result_data.get("results", [])
-            
-            latency = (time.time() - start_time) * 1000.0  # Convert to ms
-            
-            # Check if response is valid but has no results
+            top_k = config.get("rag_api", {}).get("initial_topk", 50)
+            budget_ms = int(config.get("rag_api", {}).get("budget_ms", DEFAULT_BUDGET_MS))
+            trace_id = str(uuid.uuid4())
+            obs.persist_trace_id(trace_id)
+
+            items, timings, degraded, trace_url = proxy_search(
+                query=query,
+                k=top_k,
+                budget_ms=budget_ms,
+                trace_id=trace_id,
+            )
+
+            latency = timings.get("total_ms")
+            if latency is None:
+                latency = (time.time() - start_time) * 1000.0
+
+            if trace_url:
+                obs.persist_obs_url(trace_url)
+
+            results = list(items)
             if not results:
                 return False, 0.0, {"error": "no_results"}
-            
-            # Update autotuner if enabled
+
             tuner_actions = 0
             if self.autotuner and results:
-                tuner_actions = self._update_autotuner(query, results, latency)
-            
-            # Shadow evaluation
+                tuner_actions = self._update_autotuner(query, results, float(latency))
+
             self._record_shadow_result(query, results, config)
-            
-            return True, latency, {"results": results, "tuner_actions": tuner_actions}
-            
+
+            payload = {
+                "results": results,
+                "tuner_actions": tuner_actions,
+                "trace_url": trace_url,
+                "timings": timings,
+                "degraded": degraded,
+            }
+            return True, float(latency), payload
+
         except Exception as e:
-            return False, 0.0, {"error": f"http_failed: {type(e).__name__}"}
+            return False, 0.0, {"error": f"proxy_failed: {type(e).__name__}"}
     
     def _update_autotuner(self, query: str, results: List[Dict], latency: float) -> int:
         """Update autotuner with query results and return action count."""
@@ -644,41 +636,45 @@ class EnhancedABEvaluator:
         final_metrics = self.calculate_metrics()
         
         # Save results
+        metrics_payload = {
+            "p95_ms": final_metrics.p95_ms,
+            "p99_ms": final_metrics.p99_ms,
+            "jitter_ms": final_metrics.jitter_ms,
+            "mean_latency_ms": final_metrics.mean_latency_ms,
+            "recall_at_10": final_metrics.recall_at_10,
+            "cost_per_1k_queries": final_metrics.cost_per_1k_queries,
+            "violation_rate": final_metrics.violation_rate,
+            "recovery_events": [
+                {
+                    "chaos_window_start": event.chaos_window_start,
+                    "chaos_window_end": event.chaos_window_end,
+                    "recovery_time_sec": event.recovery_time_sec,
+                    "baseline_p95": event.baseline_p95,
+                    "peak_p95": event.peak_p95,
+                    "stable_p95": event.stable_p95,
+                    "tuner_actions": event.tuner_actions_during_recovery,
+                    "status": event.status
+                } for event in final_metrics.recovery_events
+            ],
+            "recovery_time_histogram": final_metrics.recovery_time_histogram,
+            "recovery_violation_rate": final_metrics.recovery_violation_rate,
+            "autotuner_actions_count": final_metrics.autotuner_actions_count,
+            "autotuner_param_deltas": final_metrics.autotuner_param_deltas,
+            "autotuner_actions_per_chaos_window": final_metrics.autotuner_actions_per_chaos_window,
+            "shadow_divergence_rate": final_metrics.shadow_divergence_rate,
+            "total_queries": final_metrics.total_queries,
+            "successful_queries": final_metrics.successful_queries,
+            "runtime_seconds": final_metrics.runtime_seconds,
+            "start_time": final_metrics.start_time.isoformat(),
+            "end_time": final_metrics.end_time.isoformat(),
+        }
+        arm = select_strategy(metrics_payload)
+        metrics_payload["arm"] = arm
+
         results = {
             "run_name": run_name,
             "config": config,
-            "metrics": {
-                "p95_ms": final_metrics.p95_ms,
-                "p99_ms": final_metrics.p99_ms,
-                "jitter_ms": final_metrics.jitter_ms,
-                "mean_latency_ms": final_metrics.mean_latency_ms,
-                "recall_at_10": final_metrics.recall_at_10,
-                "cost_per_1k_queries": final_metrics.cost_per_1k_queries,
-                "violation_rate": final_metrics.violation_rate,
-                "recovery_events": [
-                    {
-                        "chaos_window_start": event.chaos_window_start,
-                        "chaos_window_end": event.chaos_window_end,
-                        "recovery_time_sec": event.recovery_time_sec,
-                        "baseline_p95": event.baseline_p95,
-                        "peak_p95": event.peak_p95,
-                        "stable_p95": event.stable_p95,
-                        "tuner_actions": event.tuner_actions_during_recovery,
-                        "status": event.status
-                    } for event in final_metrics.recovery_events
-                ],
-                "recovery_time_histogram": final_metrics.recovery_time_histogram,
-                "recovery_violation_rate": final_metrics.recovery_violation_rate,
-                "autotuner_actions_count": final_metrics.autotuner_actions_count,
-                "autotuner_param_deltas": final_metrics.autotuner_param_deltas,
-                "autotuner_actions_per_chaos_window": final_metrics.autotuner_actions_per_chaos_window,
-                "shadow_divergence_rate": final_metrics.shadow_divergence_rate,
-                "total_queries": final_metrics.total_queries,
-                "successful_queries": final_metrics.successful_queries,
-                "runtime_seconds": final_metrics.runtime_seconds,
-                "start_time": final_metrics.start_time.isoformat(),
-                "end_time": final_metrics.end_time.isoformat()
-            },
+            "metrics": metrics_payload,
             "timeline_metrics": [
                 {
                     "timestamp": tm.timestamp,
@@ -696,7 +692,8 @@ class EnhancedABEvaluator:
             ],
             "timeline": timeline,  # Add timeline data for A/B/C plotting
             "latency_samples": self.latency_samples[:1000],  # Limit samples for storage
-            "shadow_results": self.shadow_results[:100]  # Limit shadow results
+            "shadow_results": self.shadow_results[:100],  # Limit shadow results
+            "arm": arm,
         }
         
         with open(output_file, 'w') as f:

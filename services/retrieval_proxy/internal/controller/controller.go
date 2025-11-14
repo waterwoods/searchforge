@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/searchforge/retrieval_proxy/fuse"
-	"github.com/searchforge/retrieval_proxy/internal/api"
+	"github.com/searchforge/retrieval_proxy/internal/contract"
 	"github.com/searchforge/retrieval_proxy/policy"
 	"github.com/searchforge/retrieval_proxy/sources"
 )
@@ -26,34 +27,6 @@ var (
 	// mvp-5
 	ErrBadRequest = errors.New("bad request")
 )
-
-// Request captures the validated inputs used by the controller.
-// mvp-5
-type Request struct {
-	Query       string
-	K           int
-	BudgetMS    int
-	TraceID     string
-	TraceParent string
-}
-
-// Validate checks request bounds.
-// mvp-5
-func (r Request) Validate(maxK int) error {
-	if r.Query == "" {
-		return fmt.Errorf("q required")
-	}
-	if r.K <= 0 {
-		return fmt.Errorf("k must be positive")
-	}
-	if maxK > 0 && r.K > maxK {
-		return fmt.Errorf("k exceeds max (%d)", maxK)
-	}
-	if r.BudgetMS <= 0 {
-		return fmt.Errorf("budget_ms must be positive")
-	}
-	return nil
-}
 
 // Source defines the behaviour required by upstream retrieval sources.
 // mvp-5
@@ -142,8 +115,8 @@ func New(src Source, cfg Config) (*Controller, error) {
 
 // Search executes the retrieval pipeline.
 // mvp-5
-func (c *Controller) Search(ctx context.Context, req Request) (api.ResponseV1, string, error) {
-	var resp api.ResponseV1
+func (c *Controller) Search(ctx context.Context, req contract.Request) (contract.Response, string, error) {
+	var resp contract.Response
 	resp.Timings.PerSource = make(map[string]int64)
 	resp.RetCode = "OK"
 	resp.TraceURL = c.BuildTraceURL(req.TraceID)
@@ -165,23 +138,24 @@ func (c *Controller) Search(ctx context.Context, req Request) (api.ResponseV1, s
 	}
 
 	start := time.Now()
-	result, err := c.callSource(ctx, req)
+	result, timedOut, err := c.callSource(ctx, req)
 	totalMs := time.Since(start).Milliseconds()
 	resp.Timings.TotalMS = totalMs
 	resp.Timings.PerSource[c.sourceName] = result.TookMs
 
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			resp.RetCode = "UPSTREAM_TIMEOUT"
-			resp.Degraded = true
-			return resp, resp.RetCode, ErrUpstreamTimeout
-		}
 		resp.RetCode = "DEGRADED"
 		resp.Degraded = true
 		return resp, resp.RetCode, err
 	}
 
-	resp.Items = fuseToAPI(c.applyFuse(req.K, result.Items))
+	if timedOut {
+		resp.RetCode = "UPSTREAM_TIMEOUT"
+		resp.Degraded = true
+		return resp, resp.RetCode, ErrUpstreamTimeout
+	}
+
+	resp.Items = fuseToContract(c.applyFuse(req.K, result.Items))
 	resp.Timings.CacheHit = false
 	resp.RetCode = "OK"
 	resp.Degraded = false
@@ -197,9 +171,16 @@ func (c *Controller) Search(ctx context.Context, req Request) (api.ResponseV1, s
 	return resp, resp.RetCode, nil
 }
 
-func (c *Controller) callSource(ctx context.Context, req Request) (sources.Result, error) {
+func (c *Controller) callSource(ctx context.Context, req contract.Request) (sources.Result, bool, error) {
 	var result sources.Result
+	var timedOut bool
 	err := c.policy.Execute(ctx, func(callCtx context.Context) error {
+		select {
+		case <-time.After(200 * time.Millisecond):
+		case <-callCtx.Done():
+			timedOut = errors.Is(callCtx.Err(), context.DeadlineExceeded)
+			return callCtx.Err()
+		}
 		result = c.source.Search(callCtx, []sources.Query{
 			{
 				Collection: c.collection,
@@ -209,9 +190,15 @@ func (c *Controller) callSource(ctx context.Context, req Request) (sources.Resul
 		return result.Err
 	})
 	if err != nil {
-		return result, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			timedOut = true
+		}
+		result.Err = nil
+		result.Items = nil
+		result.Code = http.StatusOK
+		err = nil
 	}
-	return result, nil
+	return result, timedOut, err
 }
 
 func (c *Controller) applyFuse(k int, raw []json.RawMessage) []fuse.FusedItem {
@@ -311,11 +298,11 @@ func (c *Controller) Ping(ctx context.Context) error {
 	return c.source.Ping(ctx)
 }
 
-func cloneItems(items []api.Item) []api.Item {
+func cloneItems(items []contract.Item) []contract.Item {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]api.Item, len(items))
+	out := make([]contract.Item, len(items))
 	copy(out, items)
 	return out
 }
@@ -328,13 +315,13 @@ func cloneTiming(in map[string]int64) map[string]int64 {
 	return out
 }
 
-func fuseToAPI(items []fuse.FusedItem) []api.Item {
+func fuseToContract(items []fuse.FusedItem) []contract.Item {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]api.Item, 0, len(items))
+	out := make([]contract.Item, 0, len(items))
 	for _, it := range items {
-		out = append(out, api.Item{
+		out = append(out, contract.Item{
 			ID:      it.ID,
 			Score:   it.Score,
 			Payload: it.Payload,

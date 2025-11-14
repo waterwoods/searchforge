@@ -1,3 +1,5 @@
+//go:build !nometrics
+
 package obs
 
 // mvp-5
@@ -51,8 +53,15 @@ var (
 
 // ObserveProxyRequest records proxy-level metrics.
 // mvp-5
-func ObserveProxyRequest(code string, duration time.Duration) {
+func ObserveProxyRequest(code string, duration time.Duration, traceID string) {
 	proxyRequests.WithLabelValues(code).Inc()
+	if eo, ok := proxyDuration.(prometheus.ExemplarObserver); ok && traceID != "" {
+		eo.ObserveWithExemplar(
+			float64(duration.Milliseconds()),
+			prometheus.Labels{"trace_id": traceID},
+		)
+		return
+	}
 	proxyDuration.Observe(float64(duration.Milliseconds()))
 }
 

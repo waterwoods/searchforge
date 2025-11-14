@@ -72,6 +72,7 @@ class JobMeta(BaseModel):
     params: Dict[str, Any] = {}  # sample, repeats, fast_mode, config_file
     cmd: Optional[List[str]] = None
     obs_url: str = ""
+    trace_id: Optional[str] = None
 
 # In-memory registry
 _JOB_REGISTRY: Dict[str, JobMeta] = {}  # {job_id: JobMeta}
@@ -79,7 +80,10 @@ _HISTORY: collections.deque = collections.deque(maxlen=500)  # Most recent 500 j
 
 def _save_job_meta(meta: JobMeta):
     """Persist job metadata to disk."""
-    meta.obs_url = obs.build_obs_url(meta.job_id)
+    trace_identifier = meta.trace_id or meta.job_id
+    meta.obs_url = obs.build_obs_url(trace_identifier)
+    if not meta.trace_id and trace_identifier:
+        meta.trace_id = trace_identifier
     meta_file = _RUNS_DIR / f"{meta.job_id}.json"
     try:
         _RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -88,6 +92,21 @@ def _save_job_meta(meta: JobMeta):
         logger.info(f"[HISTORY] saved meta: {meta_file} status={meta.status}")
     except Exception as e:
         logger.error(f"Failed to save job meta for {meta.job_id}: {e}", exc_info=True)
+
+
+def _read_latest_obs_url(default: str) -> str:
+    obs_file = RUNS_PATH / "obs_url.txt"
+    try:
+        if obs_file.exists():
+            lines = obs_file.read_text(encoding="utf-8").splitlines()
+            for line in reversed(lines):
+                line = line.strip()
+                if line:
+                    return line
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("[HISTORY] failed to read obs_url.txt: %s", exc)
+    return default
+
 
 def _load_job_meta(job_id: str) -> Optional[JobMeta]:
     """Load job metadata from disk."""
@@ -171,6 +190,7 @@ def enqueue_run(config_file: Optional[str], overrides: dict | None = None) -> st
         params=params,
         cmd=cmd,
         obs_url=obs.build_obs_url(job_id),
+        trace_id=job_id,
     )
     
     with _LOCK:
@@ -238,6 +258,10 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
     env = os.environ.copy()
     env["BASE"] = base_url
     env["JOB_ID"] = job_id  # Pass job_id to runner for metrics.json writing
+    trace_for_job = job_id
+    if job_id in _JOB_REGISTRY and _JOB_REGISTRY[job_id].trace_id:
+        trace_for_job = _JOB_REGISTRY[job_id].trace_id  # Preserve explicit trace if set
+    env["TRACE_ID"] = trace_for_job
     
     proc = subprocess.Popen(
         cmd,
@@ -280,7 +304,10 @@ def _run_job(job_id: str, config_file: Optional[str], overrides: dict, log_path:
             meta.status = final_status
             meta.finished_at = finished_at
             meta.return_code = rc
-            meta.obs_url = obs.build_obs_url(job_id)
+            trace_identifier = meta.trace_id or job_id
+            meta.trace_id = trace_identifier
+            default_obs_url = obs.build_obs_url(trace_identifier)
+            meta.obs_url = _read_latest_obs_url(default_obs_url)
             # Persist updated meta
             logger.info(f"[HISTORY] job {job_id} status updated to {final_status}")
             _save_job_meta(meta)
@@ -643,6 +670,7 @@ class JobDetailResponse(BaseModel):
     metrics: Optional[dict] = None  # Metrics from metrics.json (overall, hard, latency_breakdown_ms, config)
     last_update_at: Optional[str] = None
     obs_url: str = ""
+    trace_id: Optional[str] = None
 
 
 # ========================================
@@ -1143,7 +1171,10 @@ async def get_history(limit: int = Query(50, ge=1, le=500)):
     # Return as list of dicts (includes all states: QUEUED, RUNNING, SUCCEEDED, FAILED)
     payload: List[Dict[str, Any]] = []
     for meta in result:
-        meta.obs_url = obs.build_obs_url(meta.job_id)
+        trace_identifier = meta.trace_id or meta.job_id
+        meta.obs_url = obs.build_obs_url(trace_identifier)
+        if not meta.trace_id and trace_identifier:
+            meta.trace_id = trace_identifier
         payload.append(meta.model_dump())
     return payload
 
@@ -1259,7 +1290,8 @@ async def get_job_detail(job_id: str):
                 params=meta.params if meta.params else None,  # Also expose as params for frontend compatibility
                 metrics=metrics,
                 last_update_at=meta.finished_at or meta.created_at,
-                obs_url=obs.build_obs_url(meta.job_id),
+                obs_url=obs.build_obs_url(meta.trace_id or meta.job_id),
+                trace_id=meta.trace_id or meta.job_id,
             )
     
     # Try loading from disk
@@ -1280,7 +1312,8 @@ async def get_job_detail(job_id: str):
             params=meta.params if meta.params else None,  # Also expose as params for frontend compatibility
             metrics=metrics,
             last_update_at=meta.finished_at or meta.created_at,
-            obs_url=obs.build_obs_url(meta.job_id),
+            obs_url=obs.build_obs_url(meta.trace_id or meta.job_id),
+            trace_id=meta.trace_id or meta.job_id,
         )
     
     # Fallback to old JobManager system
@@ -1292,7 +1325,9 @@ async def get_job_detail(job_id: str):
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
         if "obs_url" not in job or not job["obs_url"]:
-            job["obs_url"] = obs.build_obs_url(job_id)
+            job["obs_url"] = obs.build_obs_url(job.get("trace_id") or job_id)
+        if "trace_id" not in job or not job["trace_id"]:
+            job["trace_id"] = job_id
 
         return JobDetailResponse(**job)
     except Exception as e:

@@ -533,7 +533,7 @@ def _warmup_embedding_background():
     Background thread function to warm up embedding model.
     Sets EMBED_READY flag when complete after self-check.
     """
-    global EMBED_READY, _embedder
+    global EMBED_READY, _embedder, _clients_initialized
     import time as time_module
     
     try:
@@ -576,6 +576,8 @@ def _warmup_embedding_background():
             EMBED_READY = True
             ready_ts = time_module.strftime("%Y-%m-%d %H:%M:%S", time_module.gmtime())
             logger.info(f"[READY] flip true at {ready_ts} (backend={backend}, model={model_name})")
+        with _lock:
+            _clients_initialized = True
         
     except Exception as e:
         logger.error(f"[WARMUP] Embedding warmup failed: {e}", exc_info=True)

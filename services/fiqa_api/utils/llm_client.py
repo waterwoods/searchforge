@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
+from services.fiqa_api import obs
+
 
 class LLMDisabled(Exception):
     """Raised when LLM reflections are disabled or unavailable."""
@@ -84,6 +86,7 @@ def reflect_with_llm(
     suggestion: Dict[str, Any],
     baseline: Optional[Dict[str, Any]],
     max_tokens: int = 256,
+    obs_ctx: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     api_key = conf.get("api_key")
     model = conf.get("model")
@@ -93,9 +96,16 @@ def reflect_with_llm(
     client = OpenAI(api_key=api_key)
 
     prompt = _render_prompt(summary, suggestion, baseline)
+    if obs_ctx is None:
+        ctx_candidate = conf.get("obs_ctx")
+        if isinstance(ctx_candidate, dict):
+            obs_ctx = ctx_candidate
 
-    response = client.chat.completions.create(
+    response = obs.llm_call(
+        obs_ctx,
         model=model,
+        provider="openai",
+        call_fn=client.chat.completions.create,
         messages=[
             {
                 "role": "system",

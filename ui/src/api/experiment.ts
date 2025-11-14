@@ -107,6 +107,7 @@ export interface JobMeta {
   params: Record<string, any>;
   cmd?: string[] | null;
   obs_url?: string;
+  trace_id?: string;
 }
 
 export interface CancelResponse {
@@ -131,9 +132,9 @@ export interface QueueResponse {
 export async function runExperiment(data: RunRequest): Promise<RunResponse> {
   console.info("[RUN PAYLOAD]", JSON.stringify(data, null, 2));
   try {
-    const response = await request.post<RunResponse | { ok: boolean; job_id: string; status?: string }>('/api/experiment/run', data);
+    const response = await request.post<RunResponse | { ok: boolean; job_id: string; status?: string }>('/experiment/run', data);
     console.info("[RUN RESPONSE]", response.status, response.data);
-    
+
     // Handle 202 Accepted response
     if (response.status === 202) {
       const body = response.data;
@@ -144,12 +145,12 @@ export async function runExperiment(data: RunRequest): Promise<RunResponse> {
       }
       return { job_id: jobId };
     }
-    
+
     // Fallback for non-202 responses
     if (response.data && typeof (response.data as any).job_id === 'string') {
       return { job_id: (response.data as any).job_id };
     }
-    
+
     throw new Error('Invalid response format: missing job_id');
   } catch (error: any) {
     console.error("[RUN ERROR]", error);
@@ -173,8 +174,8 @@ export async function runExperiment(data: RunRequest): Promise<RunResponse> {
  * Returns status with state field
  */
 export async function getJobStatus(jobId: string): Promise<StatusResponse> {
-  const response = await request.get<{ ok: boolean; job: any } | StatusResponse>(`/api/experiment/status/${jobId}`);
-  
+  const response = await request.get<{ ok: boolean; job: any } | StatusResponse>(`/experiment/status/${jobId}`);
+
   // Backend may return {"ok": true, "job": {...}} or direct status object
   if ((response.data as any).ok && (response.data as any).job) {
     const job = (response.data as any).job;
@@ -189,13 +190,13 @@ export async function getJobStatus(jobId: string): Promise<StatusResponse> {
       last_update_at: job.last_update_at,
     };
   }
-  
+
   // Direct status response format
   const data = response.data as StatusResponse;
   if (data.state) {
     return data;
   }
-  
+
   // Legacy format with status field
   if ((data as any).status) {
     return {
@@ -209,7 +210,7 @@ export async function getJobStatus(jobId: string): Promise<StatusResponse> {
       last_update_at: data.last_update_at,
     };
   }
-  
+
   throw new Error('Invalid status response format');
 }
 
@@ -223,10 +224,10 @@ export const getExperimentStatus = getJobStatus;
  * Returns logs as string
  */
 export async function getJobLogs(jobId: string, tail: number = 50): Promise<string> {
-  const response = await request.get<{ lines: string[] } | LogResponse>(`/api/experiment/logs/${jobId}`, {
+  const response = await request.get<{ lines: string[] } | LogResponse>(`/experiment/logs/${jobId}`, {
     params: { tail },
   });
-  
+
   // Backend may return {"lines": [...]} or {"tail": [...]}
   const data = response.data;
   if (Array.isArray((data as any).lines)) {
@@ -235,7 +236,7 @@ export async function getJobLogs(jobId: string, tail: number = 50): Promise<stri
   if (Array.isArray((data as any).tail)) {
     return (data as any).tail.join('\n');
   }
-  
+
   return '';
 }
 
@@ -248,7 +249,7 @@ export const getExperimentLogs = getJobLogs;
  * Get experiment job history
  */
 export async function getExperimentHistory(limit: number = 100): Promise<JobMeta[]> {
-  const response = await request.get<JobMeta[]>(`/api/experiment/history`, {
+  const response = await request.get<JobMeta[]>(`/experiment/history`, {
     params: { limit },
   });
   return response.data;
@@ -258,7 +259,7 @@ export async function getExperimentHistory(limit: number = 100): Promise<JobMeta
  * Cancel a running job
  */
 export async function cancelJob(jobId: string): Promise<CancelResponse> {
-  const response = await request.post<CancelResponse>(`/api/experiment/cancel/${jobId}`);
+  const response = await request.post<CancelResponse>(`/experiment/cancel/${jobId}`);
   return response.data;
 }
 
@@ -266,7 +267,7 @@ export async function cancelJob(jobId: string): Promise<CancelResponse> {
  * Get current queue status
  */
 export async function getQueueStatus(): Promise<QueueResponse> {
-  const response = await request.get<QueueResponse>('/api/experiment/queue');
+  const response = await request.get<QueueResponse>('/experiment/queue');
   return response.data;
 }
 
@@ -312,6 +313,7 @@ export interface JobDetailResponse {
   params?: any;  // Job parameters (dataset_name, qrels_name, etc.)
   last_update_at?: string;
   obs_url?: string;
+  trace_id?: string;
 }
 
 /**
@@ -334,7 +336,7 @@ export async function getJobArtifacts(jobId: string): Promise<ArtifactsResponse>
  * List all jobs
  */
 export async function listJobs(limit: number = 100): Promise<JobsListResponse> {
-  const response = await request.get<JobsListResponse>('/api/experiment/jobs', {
+  const response = await request.get<JobsListResponse>('/experiment/jobs', {
     params: { limit },
   });
   return response.data;
@@ -344,7 +346,7 @@ export async function listJobs(limit: number = 100): Promise<JobsListResponse> {
  * Get detailed information for a specific job
  */
 export async function getJobDetail(jobId: string): Promise<JobDetailResponse> {
-  const response = await request.get<JobDetailResponse>(`/api/experiment/job/${jobId}`);
+  const response = await request.get<JobDetailResponse>(`/experiment/job/${jobId}`);
   return response.data;
 }
 
@@ -356,7 +358,7 @@ export async function getJobDetail(jobId: string): Promise<JobDetailResponse> {
  * V11: Get versioned presets (with version and full configs)
  */
 export async function getPresets(): Promise<VersionedPresetsResponse> {
-  const response = await request.get<VersionedPresetsResponse>('/api/experiment/presets');
+  const response = await request.get<VersionedPresetsResponse>('/experiment/presets');
   return response.data;
 }
 
@@ -364,7 +366,7 @@ export async function getPresets(): Promise<VersionedPresetsResponse> {
  * V10: List all available presets (legacy, for backward compatibility)
  */
 export async function listPresets(): Promise<{ presets: Record<string, PresetMetadata> }> {
-  const response = await request.get<{ presets: Record<string, PresetMetadata> }>('/api/experiment/presets');
+  const response = await request.get<{ presets: Record<string, PresetMetadata> }>('/experiment/presets');
   return response.data;
 }
 
@@ -372,7 +374,7 @@ export async function listPresets(): Promise<{ presets: Record<string, PresetMet
  * Get a preset by name
  */
 export async function getPreset(presetName: string): Promise<PresetResponse> {
-  const response = await request.get<PresetResponse>(`/api/experiment/presets/${presetName}`);
+  const response = await request.get<PresetResponse>(`/experiment/presets/${presetName}`);
   return response.data;
 }
 
@@ -385,7 +387,7 @@ export async function createPreset(
   description: string = ''
 ): Promise<{ ok: boolean; name: string }> {
   const response = await request.post<{ ok: boolean; name: string }>(
-    '/api/experiment/presets',
+    '/experiment/presets',
     config,
     {
       params: { preset_name: presetName, description },
@@ -399,7 +401,7 @@ export async function createPreset(
  */
 export async function deletePreset(presetName: string): Promise<{ ok: boolean; name: string }> {
   const response = await request.delete<{ ok: boolean; name: string }>(
-    `/api/experiment/presets/${presetName}`
+    `/experiment/presets/${presetName}`
   );
   return response.data;
 }
@@ -442,7 +444,7 @@ export interface DiffError {
  * Compare two jobs (V11 Diff API)
  */
 export async function diffJobs(jobIdA: string, jobIdB: string): Promise<DiffResponse> {
-  const response = await request.get<DiffResponse>('/api/experiment/diff', {
+  const response = await request.get<DiffResponse>('/experiment/diff', {
     params: { A: jobIdA, B: jobIdB },
   });
 

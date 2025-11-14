@@ -1,4 +1,4 @@
-FROM searchforge-base:py310
+FROM searchforge-base:py311
 WORKDIR /app
 ENV PIP_NO_CACHE_DIR=1
 

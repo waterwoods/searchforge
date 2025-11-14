@@ -100,6 +100,7 @@ logger.info("LangGraph steward graph using SqliteSaver at %s", _sqlite_path)
 
 class GraphState(TypedDict, total=False):
     job_id: str
+    trace_id: str
     plan: Optional[Any]
     dryrun_status: Optional[str]
     errors: List[str]
@@ -143,13 +144,30 @@ def wrap(name: str, fn: Callable[[GraphState], Dict[str, Any]]) -> Callable[[Gra
     def _inner(state: GraphState) -> Dict[str, Any]:
         _ensure_errors(state)
         job_id = state.get("job_id")
-        obs_ctx = state.get("obs_ctx")
-
-        if job_id and not state.get("obs_url"):
-            state["obs_url"] = obs.build_obs_url(job_id)
-        if obs_ctx is None:
-            state["obs_ctx"] = {}
-            obs_ctx = state["obs_ctx"]
+        raw_obs_ctx = state.get("obs_ctx")
+        obs_ctx_dict: Dict[str, Any] = {}
+        obs_ctx_key: Optional[str] = None
+        if isinstance(raw_obs_ctx, str) and raw_obs_ctx:
+            obs_ctx_key = raw_obs_ctx
+            obs_ctx_dict = obs.get_registered_ctx(obs_ctx_key) or {}
+        elif isinstance(raw_obs_ctx, dict):
+            obs_ctx_dict = raw_obs_ctx
+            obs_ctx_key = job_id and f"steward:{job_id}" or None
+            if obs_ctx_key and obs_ctx_dict:
+                obs.register_ctx(obs_ctx_key, obs_ctx_dict)
+            state["obs_ctx"] = obs_ctx_key or ""
+        else:
+            obs_ctx_key = job_id and f"steward:{job_id}" or None
+            obs_ctx_dict = obs.get_registered_ctx(obs_ctx_key) or {}
+            state["obs_ctx"] = obs_ctx_key or ""
+        if job_id:
+            obs_ctx_dict.setdefault("job_id", job_id)
+        if not state.get("obs_url"):
+            state["obs_url"] = obs_ctx_dict.get("obs_url", state.get("obs_url", ""))
+        if not state.get("trace_id"):
+            trace_id_value = obs_ctx_dict.get("trace_id")
+            if trace_id_value:
+                state["trace_id"] = trace_id_value
 
         attrs: Dict[str, Any] = {"node": name}
         if job_id:
@@ -164,26 +182,30 @@ def wrap(name: str, fn: Callable[[GraphState], Dict[str, Any]]) -> Callable[[Gra
         span_state.pop("obs_ctx", None)
         span_input = obs.redact(span_state)
 
-        with obs.span(obs_ctx, f"steward.{name}", attrs=attrs, input=span_input) as guard:
+        with obs.span(obs_ctx_dict, f"steward.{name}", attrs=attrs) as span_obj:
+            if span_obj:
+                obs.io(span_obj, input=span_input)
             try:
                 out = fn(state) or {}
             except Exception as exc:
                 errs = list(state.get("errors") or [])
                 errs.append(f"{name}: {exc}")
                 out = {"errors": errs}
-                if guard.active:
-                    guard.add_metadata({"status": "error"})
-                guard.set_output(out)
+                if span_obj:
+                    try:
+                        span_obj.update(metadata={"status": "error"})
+                        obs.io(span_obj, output=out)
+                    except Exception:
+                        pass
                 merged_error_state: Dict[str, Any] = {**state, **(out or {})}
                 _ensure_errors(merged_error_state)
-                obs_ctx_value = merged_error_state.pop("obs_ctx", obs_ctx)
+                obs_ctx_value = merged_error_state.pop("obs_ctx", obs_ctx_key or "")
                 sanitized_error = guard_state_size(merged_error_state)
-                sanitized_error["obs_ctx"] = obs_ctx_value
+                sanitized_error["obs_ctx"] = obs_ctx_value or ""
                 _ensure_errors(sanitized_error)
                 return sanitized_error
 
-        # Update span metadata/output on success path
-        if guard.active:
+        if span_obj:
             metrics_sources = []
             if isinstance(out, dict):
                 potential_metrics = out.get("metrics")
@@ -198,15 +220,18 @@ def wrap(name: str, fn: Callable[[GraphState], Dict[str, Any]]) -> Callable[[Gra
                     if source and source.get(metric_key) is not None:
                         metric_updates[metric_key] = source[metric_key]
                         break
-            if metric_updates:
-                guard.add_metadata(metric_updates)
-            guard.set_output(out)
+            try:
+                if metric_updates:
+                    span_obj.update(metadata=metric_updates)
+                obs.io(span_obj, output=out)
+            except Exception:
+                pass
 
         merged: Dict[str, Any] = {**state, **(out or {})}
         _ensure_errors(merged)
-        obs_ctx_value = merged.pop("obs_ctx", obs_ctx)
+        obs_ctx_value = merged.pop("obs_ctx", obs_ctx_key or "")
         sanitized = guard_state_size(merged)
-        sanitized["obs_ctx"] = obs_ctx_value
+        sanitized["obs_ctx"] = obs_ctx_value or ""
         _ensure_errors(sanitized)
         return sanitized
 

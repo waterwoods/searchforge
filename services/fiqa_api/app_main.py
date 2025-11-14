@@ -105,6 +105,7 @@ from services.routers.autotuner_router import router as autotuner_router
 # ✅ Import new refactored routers
 from services.fiqa_api.routes.search import router as search_router
 from services.fiqa_api.routes.query import router as query_router
+from services.fiqa_api.routes.debug import router as debug_router
 from services.fiqa_api.routes.agent_code_lookup import router as code_lookup_router
 from services.fiqa_api.routes.code_graph import router as code_graph_router
 from services.fiqa_api.routes.best import router as best_router
@@ -743,6 +744,8 @@ def obs_ping():
     """Emit a noop Langfuse trace for connectivity validation."""
     trace_id = f"ping-{uuid.uuid4().hex[:8]}"
     trace = obs.trace_start(trace_id, name="obs.ping", input={"ts": time.time()})
+    ctx = {"trace": trace, "root": trace, "trace_id": trace_id, "job_id": trace_id}
+    obs.finalize_root(ctx)
     obs.trace_end(trace, output={"ok": True})
     return {"ok": True, "trace_id": trace_id}
 
@@ -794,6 +797,7 @@ async def ready():
         logger.debug(f"[READY] Check error: {e}")
         _READINESS = False
         raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE, "error": str(e)})
+app.include_router(debug_router)  # /debug/trace
 app.include_router(search_router)  # /search
 app.include_router(contract_router)
 app.include_router(query_router, prefix="/api")  # /api/query

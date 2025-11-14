@@ -19,6 +19,8 @@ from typing import Dict, List, Any, Tuple, Optional
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
+from services.fiqa_api import obs
+
 logger = logging.getLogger(__name__)
 
 # ========================================
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Collection mapping
 COLLECTION_MAP = {
-    "fiqa": "beir_fiqa_full_ta",
+    "fiqa": os.getenv("DEFAULT_QDRANT_COLLECTION", "fiqa_50k_v1"),
     "beir_fiqa_full_ta": "beir_fiqa_full_ta",
     "fiqa_10k_v1": "fiqa_10k_v1",
     "fiqa_50k_v1": "fiqa_50k_v1",
@@ -252,7 +254,8 @@ def perform_search(
     rerank_top_k: int = 20,
     rerank_if_margin_below: Optional[float] = None,
     max_rerank_trigger_rate: float = 0.25,
-    rerank_budget_ms: int = 25
+    rerank_budget_ms: int = 25,
+    obs_ctx: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Execute search with unified routing (FAISS/Qdrant/Milvus).
@@ -324,18 +327,46 @@ def perform_search(
         logger.info(f"[SEARCH] Using unified router with VECTOR_BACKEND=milvus")
         unified_router = get_router()
         
-        # Search using unified router
-        search_results, debug_info = unified_router.search(
-            query=query,
-            collection_name=actual_collection,
-            top_k=top_k,
-            force_backend=manual_backend,
-            trace_id=None,
-            with_fallback=True
-        )
-        
-        route_used = debug_info.get("routed_to", "unknown")
-        logger.info(f"[SEARCH] Router decision: {route_used}, results: {len(search_results)}")
+        retriever_attrs = {
+            "strategy": "router",
+            "manual_backend": manual_backend,
+            "collection": actual_collection,
+            "top_k": top_k,
+        }
+        with obs.span(obs_ctx, "retriever", retriever_attrs) as span_obj:
+            obs.io(
+                span_obj,
+                input={
+                    "query": query,
+                    "collection": actual_collection,
+                    "top_k": top_k,
+                    "force_backend": manual_backend,
+                },
+            )
+            search_results, debug_info = unified_router.search(
+                query=query,
+                collection_name=actual_collection,
+                top_k=top_k,
+                force_backend=manual_backend,
+                trace_id=None,
+                with_fallback=True
+            )
+            route_used = debug_info.get("routed_to", "unknown")
+            logger.info(f"[SEARCH] Router decision: {route_used}, results: {len(search_results)}")
+            doc_preview = []
+            try:
+                for item in search_results[:20]:
+                    doc_preview.append(str(getattr(item, "id", None) or item.get("id")))
+            except Exception:
+                doc_preview = []
+            obs.io(
+                span_obj,
+                output={
+                    "route": route_used,
+                    "doc_ids": doc_preview,
+                    "count": len(search_results),
+                },
+            )
         
         # Format results
         results = []
@@ -380,7 +411,36 @@ def perform_search(
                 query_vector = encoder.encode(query)
                 
                 # Search FAISS
-                faiss_results = faiss_engine.search(query_vector, topk=top_k)
+                with obs.span(
+                    obs_ctx,
+                    "retriever",
+                    {
+                        "backend": "faiss",
+                        "top_k": top_k,
+                        "collection": actual_collection,
+                    },
+                ) as span_obj:
+                    obs.io(
+                        span_obj,
+                        input={
+                            "query": query,
+                            "top_k": top_k,
+                            "collection": actual_collection,
+                        },
+                    )
+                    faiss_results = faiss_engine.search(query_vector, topk=top_k)
+                    try:
+                        preview_pairs = list(faiss_results)[:20]
+                    except TypeError:
+                        preview_pairs = []
+                    doc_ids = [str(doc_id) for doc_id, _ in preview_pairs]
+                    obs.io(
+                        span_obj,
+                        output={
+                            "doc_ids": doc_ids,
+                            "count": len(faiss_results) if hasattr(faiss_results, "__len__") else None,
+                        },
+                    )
                 
                 # Format results (ensure doc_id is string)
                 for doc_id, score in faiss_results:
@@ -433,12 +493,42 @@ def perform_search(
                     raise
                 # Non-fatal: continue if dimension check fails
             
-            # Search Qdrant
-            qdrant_results = client.search(
-                collection_name=actual_collection,
-                query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
-                limit=top_k
-            )
+            with obs.span(
+                obs_ctx,
+                "retriever",
+                {
+                    "backend": "qdrant",
+                    "collection": actual_collection,
+                    "top_k": top_k,
+                },
+            ) as span_obj:
+                obs.io(
+                    span_obj,
+                    input={
+                        "query": query,
+                        "collection": actual_collection,
+                        "top_k": top_k,
+                    },
+                )
+                qdrant_results = client.search(
+                    collection_name=actual_collection,
+                    query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
+                    limit=top_k
+                )
+                doc_ids = []
+                try:
+                    for item in qdrant_results[:20]:
+                        payload = getattr(item, "payload", None) or {}
+                        doc_ids.append(str(payload.get("doc_id", getattr(item, "id", None))))
+                except Exception:
+                    doc_ids = []
+                obs.io(
+                    span_obj,
+                    output={
+                        "doc_ids": doc_ids,
+                        "count": len(qdrant_results) if hasattr(qdrant_results, "__len__") else None,
+                    },
+                )
             
             # Format results (ensure doc_id is string)
             for r in qdrant_results:
@@ -479,7 +569,38 @@ def perform_search(
                 
                 def _bm25_search_hybrid():
                     """Helper to execute BM25 search."""
-                    return bm25_search(query, top_k=bm25_k)
+                    with obs.span(
+                        obs_ctx,
+                        "retriever",
+                        {
+                            "backend": "bm25",
+                            "top_k": bm25_k,
+                            "collection": actual_collection,
+                        },
+                    ) as span_obj:
+                        obs.io(
+                            span_obj,
+                            input={
+                                "query": query,
+                                "top_k": bm25_k,
+                                "collection": actual_collection,
+                            },
+                        )
+                        hits = bm25_search(query, top_k=bm25_k)
+                        doc_ids = []
+                        try:
+                            for hit in hits[:20]:
+                                doc_ids.append(str(hit.get("doc_id") or hit.get("id")))
+                        except Exception:
+                            doc_ids = []
+                        obs.io(
+                            span_obj,
+                            output={
+                                "doc_ids": doc_ids,
+                                "count": len(hits) if hasattr(hits, "__len__") else None,
+                            },
+                        )
+                        return hits
                 
                 # Execute dense and BM25 searches in parallel
                 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -563,12 +684,41 @@ def perform_search(
                     def _rerank_worker():
                         nonlocal rerank_result, rerank_error
                         try:
-                            rerank_result = rerank_passages(
-                                query=query,
-                                passages=candidate_texts,
-                                top_k=min(top_k, len(candidate_texts)),
-                                timeout_ms=rerank_budget_ms
-                            )
+                            with obs.span(
+                                obs_ctx,
+                                "reranker",
+                                {
+                                    "top_k": top_k,
+                                    "rerank_top_k": rerank_top_k,
+                                    "budget_ms": rerank_budget_ms,
+                                },
+                            ) as span_obj:
+                                obs.io(
+                                    span_obj,
+                                    input={
+                                        "query": query,
+                                        "candidate_count": len(candidate_texts),
+                                        "top_k": top_k,
+                                    },
+                                )
+                                rerank_result = rerank_passages(
+                                    query=query,
+                                    passages=candidate_texts,
+                                    top_k=min(top_k, len(candidate_texts)),
+                                    timeout_ms=rerank_budget_ms
+                                )
+                                try:
+                                    reranked_texts, rerank_latency_ms, rerank_model = rerank_result
+                                    obs.io(
+                                        span_obj,
+                                        output={
+                                            "model": rerank_model,
+                                            "latency_ms": rerank_latency_ms,
+                                            "returned": len(reranked_texts or []),
+                                        },
+                                    )
+                                except Exception:
+                                    obs.io(span_obj, output="[unstructured]")
                         except Exception as e:
                             rerank_error = e
                     

@@ -1,355 +1,150 @@
-"""
-AutoTuner Router
-================
-FastAPI endpoints for AutoTuner control and status.
+"""Lightweight AutoTuner API backed by the global singleton."""
 
-Endpoints:
-- GET /api/autotuner/status - Get current tuner status
-- POST /api/autotuner/start - Start tuning job
-- POST /api/autotuner/stop - Stop tuning job
-- GET /api/autotuner/recommendations - Get tuning recommendations
-"""
+from __future__ import annotations
 
-import sys
-import time
-import logging
-import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from typing import Any, Dict
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent.resolve()
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+from fastapi import APIRouter, HTTPException, Request
 
-logger = logging.getLogger(__name__)
+from services.fiqa_api import obs
+from services.fiqa_api.autotuner_global import (
+    clear_autotuner_state,
+    get_global_autotuner,
+    get_state_summary as get_global_state_summary,
+    persist_state_snapshot,
+    reset_global_autotuner,
+    set_policy as set_global_policy,
+)
 
-router = APIRouter(prefix="/api/autotuner", tags=["AutoTuner"])
-
-
-# ========================================
-# Pydantic Models
-# ========================================
-
-class AutoTunerStatus(BaseModel):
-    """AutoTuner status response model."""
-    ok: bool
-    job_id: str
-    status: str = Field(..., description="Tuning status: 'idle', 'running', 'completed', 'error'")
-    current_params: Dict[str, Any] = Field(default_factory=dict)
-    progress: Optional[int] = Field(None, description="Progress 0-100")
-    last_update: str = Field(..., description="ISO timestamp of last update")
+router = APIRouter(prefix="/api/autotuner", tags=["autotuner"])
 
 
-class EstimatedImpact(BaseModel):
-    """Estimated impact of parameter change."""
-    delta_p95_ms: Optional[float] = None
-    delta_recall_pct: Optional[float] = None
+def _ensure_global():
+    tuner, state = get_global_autotuner()
+    if tuner is None or state is None:
+        raise HTTPException(status_code=503, detail="autotuner_unavailable")
+    return tuner, state
 
 
-class AutoTunerRecommendation(BaseModel):
-    """AutoTuner recommendation model."""
-    params: Dict[str, Any]
-    estimated_impact: EstimatedImpact
-    reason: str
-    timestamp: str
+def _serialize_state(tuner, state) -> Dict[str, Any]:
+    params = state.get_current_params()
+    params.update(state.get_convergence_status())
+    history = list(getattr(state, "parameter_history", []))
+    return {
+        "params": params,
+        "history_len": len(history),
+        "parameter_history": history,
+        "metrics": state.get_smoothed_metrics(),
+        "policy": getattr(tuner, "policy_name", getattr(getattr(tuner, "policy", None), "name", None)),
+    }
 
 
-class ApiAutoTunerRecommendationsResponse(BaseModel):
-    """AutoTuner recommendations response."""
-    ok: bool
-    job_id: str
-    recommendations: List[AutoTunerRecommendation]
-
-
-class StartJobResponse(BaseModel):
-    """Start job response."""
-    ok: bool
-    job_id: str
-
-
-class StopJobResponse(BaseModel):
-    """Stop job response."""
-    ok: bool
-
-
-# ========================================
-# Helper Functions
-# ========================================
-
-def get_autotuner_instances():
-    """
-    Get global AutoTuner instances from rag_api.
-    
-    Returns:
-        Tuple of (autotuner, state) or (None, None) if not available
-    """
+def _append_obs_line(trace_url: str) -> None:
+    if not trace_url:
+        return
     try:
-        # Import from canonical services/fiqa_api/app_main.py
-        from services.fiqa_api.app_main import get_global_autotuner
-        
-        autotuner, state = get_global_autotuner()
-        if autotuner is None or state is None:
-            logger.warning("⚠️ AutoTuner not initialized")
-            return None, None
-        
-        return autotuner, state
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to get AutoTuner instances: {e}")
-        return None, None
+        runs_dir = Path(".runs")
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with (runs_dir / "obs_url.txt").open("a", encoding="utf-8") as handle:
+            handle.write(f"{timestamp} {trace_url.strip()}\n")
+    except OSError:
+        pass
 
 
-def generate_job_id() -> str:
-    """Generate a unique job ID."""
-    timestamp = int(time.time())
-    return f"tuner_job_{timestamp}_{str(uuid.uuid4())[:8]}"
+@router.get("/status")
+async def autotuner_status(request: Request) -> Dict[str, Any]:
+    tuner, state = _ensure_global()
+    trace_id = request.headers.get("X-Trace-Id")
+    if trace_id:
+        obs.persist_trace_id(trace_id)
+        trace_url = obs.build_obs_url(trace_id)
+        if trace_url:
+            obs.persist_obs_url(trace_url)
+            _append_obs_line(trace_url)
+    payload = _serialize_state(tuner, state)
+    summary = get_global_state_summary()
+    payload["history_len"] = summary["history_len"]
+    payload["last_params"] = summary["last_params"]
+    payload["state_file_mtime"] = summary["file_mtime"]
+    payload["ok"] = True
+    return payload
 
 
-# ========================================
-# Endpoints
-# ========================================
+@router.post("/suggest")
+async def autotuner_suggest(request: Request, body: Dict[str, Any]) -> Dict[str, Any]:
+    tuner, state = _ensure_global()
 
-@router.get("/status", response_model=AutoTunerStatus)
-async def get_status():
-    """
-    Get current AutoTuner status.
-    
-    Returns:
-        AutoTunerStatus with current state and parameters
-    """
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="invalid_metrics_payload")
+
+    trace_id = request.headers.get("X-Trace-Id") or body.get("trace_id")
+    if trace_id:
+        obs.persist_trace_id(trace_id)
+
     try:
-        autotuner, state = get_autotuner_instances()
-        
-        if autotuner is None or state is None:
-            raise HTTPException(
-                status_code=503,
-                detail="AutoTuner not available or not initialized"
-            )
-        
-        # Generate job ID based on tuning state
-        if state.is_tuning:
-            job_id = f"tuner_job_{int(state.last_tuning_time)}"
-        else:
-            job_id = "idle"
-        
-        # Determine status
-        if state.is_tuning:
-            status = "running"
-        else:
-            status = "idle"
-        
-        # Get current parameters
-        current_params = state.get_current_params()
-        
-        # Calculate progress (simplified - could be enhanced)
-        progress = None
-        if state.is_tuning and state.tuning_count > 0:
-            # Simple progress based on tuning iterations
-            progress = min(100, state.tuning_count * 10)
-        
-        # Last update timestamp
-        last_update = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-        
-        return AutoTunerStatus(
-            ok=True,
-            job_id=job_id,
-            status=status,
-            current_params=current_params,
-            progress=progress,
-            last_update=last_update
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error getting AutoTuner status: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get AutoTuner status: {str(e)}"
-        )
+        next_params = tuner.suggest(body)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    trace_url = body.get("trace_url") or obs.build_obs_url(trace_id)
+    finalized_url = trace_url
+    try:  # best-effort finalize
+        result = obs.finalize_root(trace_id=trace_id, trace_url=trace_url)
+        if isinstance(result, dict):
+            finalized_url = result.get("trace_url") or finalized_url
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    if finalized_url:
+        _append_obs_line(finalized_url)
+
+    payload = {
+        "ok": True,
+        "next_params": next_params,
+    }
+    payload.update(_serialize_state(tuner, state))
+    persist_state_snapshot(tuner, state)
+    summary = get_global_state_summary()
+    payload["history_len"] = summary["history_len"]
+    payload["last_params"] = summary["last_params"]
+    payload["state_file_mtime"] = summary["file_mtime"]
+    return payload
 
 
-@router.post("/start", response_model=StartJobResponse)
-async def start_tuning():
-    """
-    Start a new tuning job.
-    
-    Returns:
-        StartJobResponse with job_id
-    """
+@router.get("/state")
+async def autotuner_state() -> Dict[str, Any]:
+    summary = get_global_state_summary()
+    summary["ok"] = True
+    return summary
+
+
+@router.post("/reset")
+async def autotuner_reset() -> Dict[str, Any]:
+    clear_autotuner_state()
+    tuner, state = reset_global_autotuner(clear_file=False)
+    payload = _serialize_state(tuner, state)
+    summary = get_global_state_summary()
+    payload["history_len"] = summary["history_len"]
+    payload["last_params"] = summary["last_params"]
+    payload["state_file_mtime"] = summary["file_mtime"]
+    payload["ok"] = True
+    return payload
+
+
+@router.post("/set_policy")
+async def autotuner_set_policy(body: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="invalid_payload")
+    policy_name = body.get("policy")
+    if not policy_name:
+        raise HTTPException(status_code=400, detail="policy_required")
     try:
-        autotuner, state = get_autotuner_instances()
-        
-        if autotuner is None or state is None:
-            raise HTTPException(
-                status_code=503,
-                detail="AutoTuner not available or not initialized"
-            )
-        
-        # Check if already running
-        if state.is_tuning:
-            logger.warning("⚠️ Tuning job already running")
-            job_id = f"tuner_job_{int(state.last_tuning_time)}"
-            return StartJobResponse(ok=True, job_id=job_id)
-        
-        # Start tuning
-        state.start_tuning()
-        job_id = f"tuner_job_{int(state.last_tuning_time)}"
-        
-        logger.info(f"✅ Started tuning job: {job_id}")
-        
-        return StartJobResponse(ok=True, job_id=job_id)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error starting tuning job: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to start tuning job: {str(e)}"
-        )
-
-
-@router.post("/stop", response_model=StopJobResponse)
-async def stop_tuning():
-    """
-    Stop the current tuning job.
-    
-    Returns:
-        StopJobResponse
-    """
-    try:
-        autotuner, state = get_autotuner_instances()
-        
-        if autotuner is None or state is None:
-            raise HTTPException(
-                status_code=503,
-                detail="AutoTuner not available or not initialized"
-            )
-        
-        # Check if tuning is running
-        if not state.is_tuning:
-            logger.warning("⚠️ No tuning job is running")
-            return StopJobResponse(ok=True)
-        
-        # Stop tuning
-        state.stop_tuning()
-        
-        logger.info("✅ Stopped tuning job")
-        
-        return StopJobResponse(ok=True)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error stopping tuning job: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to stop tuning job: {str(e)}"
-        )
-
-
-@router.get("/recommendations", response_model=ApiAutoTunerRecommendationsResponse)
-async def get_recommendations():
-    """
-    Get AutoTuner recommendations.
-    
-    For now, returns mock recommendations. Can be enhanced to return
-    real recommendations from the AutoTuner's decision history.
-    
-    Returns:
-        ApiAutoTunerRecommendationsResponse with recommendations list
-    """
-    try:
-        autotuner, state = get_autotuner_instances()
-        
-        if autotuner is None or state is None:
-            raise HTTPException(
-                status_code=503,
-                detail="AutoTuner not available or not initialized"
-            )
-        
-        # Generate job ID
-        job_id = "mock_job" if not state.is_tuning else f"tuner_job_{int(state.last_tuning_time)}"
-        
-        # Get current params to generate contextual recommendations
-        current_params = state.get_current_params()
-        current_ef = current_params.get("ef_search", 128)
-        current_rerank = current_params.get("rerank_k", 200)
-        
-        # Create mock recommendations based on current state
-        # These are simplified recommendations for initial integration
-        recommendations = []
-        
-        # Recommendation 1: Increase ef_search for better recall
-        if current_ef < 200:
-            recommendations.append(
-                AutoTunerRecommendation(
-                    params={
-                        "ef_search": min(current_ef + 32, 256),
-                        "rerank_k": current_rerank
-                    },
-                    estimated_impact=EstimatedImpact(
-                        delta_p95_ms=15.0,
-                        delta_recall_pct=2.5
-                    ),
-                    reason="low_recall_with_latency_margin",
-                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                )
-            )
-        
-        # Recommendation 2: Decrease ef_search for lower latency
-        if current_ef > 96:
-            recommendations.append(
-                AutoTunerRecommendation(
-                    params={
-                        "ef_search": max(current_ef - 32, 64),
-                        "rerank_k": current_rerank
-                    },
-                    estimated_impact=EstimatedImpact(
-                        delta_p95_ms=-20.0,
-                        delta_recall_pct=-1.5
-                    ),
-                    reason="high_latency_with_recall_redundancy",
-                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                )
-            )
-        
-        # If no recommendations, provide a balanced option
-        if not recommendations:
-            recommendations.append(
-                AutoTunerRecommendation(
-                    params={
-                        "ef_search": 128,
-                        "rerank_k": 200
-                    },
-                    estimated_impact=EstimatedImpact(
-                        delta_p95_ms=0.0,
-                        delta_recall_pct=0.0
-                    ),
-                    reason="balanced_baseline",
-                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                )
-            )
-        
-        logger.info(f"✅ Generated {len(recommendations)} recommendations")
-        
-        return ApiAutoTunerRecommendationsResponse(
-            ok=True,
-            job_id=job_id,
-            recommendations=recommendations
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error getting recommendations: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get recommendations: {str(e)}"
-        )
-
+        tuner, state = set_global_policy(policy_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    persist_state_snapshot(tuner, state)
+    return {"ok": True, "policy": getattr(tuner, "policy_name", policy_name)}
 

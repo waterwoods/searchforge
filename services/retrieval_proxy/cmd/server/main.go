@@ -12,9 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/searchforge/retrieval_proxy/fuse"
 	"github.com/searchforge/retrieval_proxy/internal/api"
 	"github.com/searchforge/retrieval_proxy/internal/controller"
@@ -88,20 +85,18 @@ func main() {
 		log.Fatalf("controller init: %v", err)
 	}
 
-	root := chi.NewRouter()
-	root.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	root.Get("/readyz", health.Readyz(ctrl))
-	root.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/readyz", health.Readyz(ctrl))
 
-	apiRouter := api.NewRouter(ctrl, cfg.DefaultK, cfg.BudgetMS, cfg.TopKMax)
-	root.Mount("/", apiRouter)
+	mux.Handle("/v1/search", api.NewHandler(ctrl, cfg.DefaultK, cfg.BudgetMS, cfg.TopKMax))
 
 	server := &http.Server{
 		Addr:         ":" + strconv.Itoa(cfg.Port),
-		Handler:      root,
+		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

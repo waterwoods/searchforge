@@ -1,4 +1,4 @@
-FROM searchforge-base:py310
+FROM searchforge-base:py311
 WORKDIR /app
 
 COPY services/probe_cron/requirements.txt /app/requirements.txt

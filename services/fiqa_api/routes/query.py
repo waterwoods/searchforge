@@ -12,10 +12,11 @@ import asyncio
 import json
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 
 # Collection name mapping (dataset_name -> collection_name)
 COLLECTION_MAP = {
+    "fiqa": "fiqa_50k_v1",
     "fiqa_10k_v1": "fiqa_10k_v1",
     "fiqa_50k_v1": "fiqa_50k_v1",
     "fiqa_para_50k": "fiqa_para_50k",
@@ -24,10 +25,24 @@ COLLECTION_MAP = {
 }
 
 
-from fastapi import APIRouter, Response, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request, Response, Query as FastAPIQuery
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, root_validator
 
+try:
+    from clients.retrieval_proxy_client import (
+        DEFAULT_BUDGET_MS as PROXY_DEFAULT_BUDGET_MS,
+        USE_PROXY as USE_RETRIEVAL_PROXY,
+        search as proxy_search,
+    )
+except ModuleNotFoundError:  # pragma: no cover - container fallback
+    PROXY_DEFAULT_BUDGET_MS = 400
+    USE_RETRIEVAL_PROXY = False
+
+    def proxy_search(*args, **kwargs):
+        raise RuntimeError("retrieval proxy client unavailable")
+
+from services.fiqa_api import obs
 from services.fiqa_api.services.search_core import perform_search
 
 logger = logging.getLogger(__name__)
@@ -65,13 +80,30 @@ def get_default_metrics() -> dict:
     }
 
 
+def _item_to_source(item: Dict[str, Any]) -> Dict[str, Any]:
+    payload = item.get("payload") if isinstance(item, dict) else {}
+    if not isinstance(payload, dict):
+        payload = {}
+    doc_id = payload.get("doc_id") or item.get("id") or payload.get("id") or "unknown"
+    title = payload.get("title") or item.get("title", "")
+    url = payload.get("url") or ""
+    score = item.get("score", 0.0)
+    return {
+        "doc_id": doc_id,
+        "title": title,
+        "url": url,
+        "score": score,
+    }
+
+
 # ========================================
 # Request/Response Models
 # ========================================
 
 class QueryRequest(BaseModel):
     """Query request model (frontend format)."""
-    question: str
+    question: str = Field(..., alias="question")
+    budget_ms: Optional[int] = Field(default=None, alias="budget_ms")
     top_k: int = Field(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description=f"Number of results (default: {DEFAULT_TOP_K}, max: {MAX_TOP_K})")
     collection: Optional[str] = Field(default="fiqa", description="Collection name (e.g., 'fiqa', 'fiqa_50k_v1', 'fiqa_10k_v1')")
     rerank: bool = Field(default=False, description="Whether to rerank results")
@@ -82,13 +114,31 @@ class QueryRequest(BaseModel):
     max_rerank_trigger_rate: float = Field(default=0.25, ge=0.0, le=1.0, description="Max rerank trigger rate")
     rerank_budget_ms: int = Field(default=25, ge=1, le=1000, description="Rerank budget in milliseconds")
 
+    @root_validator(pre=True)
+    def _alias_q(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if "question" not in values:
+            alias_val = values.pop("q", None)
+            if alias_val:
+                values["question"] = alias_val
+        if "budget_ms" not in values and "budget" in values:
+            values["budget_ms"] = values.get("budget")
+        return values
+
+    class Config:
+        allow_population_by_field_name = True
+        allow_population_by_alias = True
+
 
 # ========================================
 # Route Handler
 # ========================================
 
-@router.post("/query")
-async def query(request: QueryRequest, response: Response):
+async def _execute_query(
+    request_model: QueryRequest,
+    response: Response,
+    raw_request: Request,
+    x_trace_id: Optional[str] = None,
+):
     """
     Query endpoint with frontend-friendly format.
     
@@ -120,15 +170,133 @@ async def query(request: QueryRequest, response: Response):
     Response headers:
         X-Trace-Id: Request trace ID for correlation
     """
+    request = request_model
     # Performance tracking
     start = time.perf_counter()
     
-    # Generate trace_id
-    trace_id = str(uuid.uuid4())
+    # Generate or reuse trace_id
+    trace_id_candidate = (x_trace_id or "").strip()
+    trace_id = trace_id_candidate or str(uuid.uuid4())
     
     # Set trace_id in response headers for correlation
     response.headers["X-Trace-Id"] = trace_id
+    raw_request.state.trace_id = trace_id
+    obs_ctx = {"trace_id": trace_id, "job_id": trace_id}
+    raw_request.state.obs_ctx = obs_ctx
     
+    cleaned_question = request.question.strip() if request.question else ""
+    if not cleaned_question:
+        logger.warning(f"level=WARN trace_id={trace_id} status=INVALID_INPUT msg='Empty question provided'")
+        raise HTTPException(
+            status_code=400,
+            detail="question cannot be empty"
+        )
+    
+    collection_name = request.collection if request.collection else "fiqa"
+    actual_collection = COLLECTION_MAP.get(collection_name, collection_name)
+    
+    if USE_RETRIEVAL_PROXY:
+        try:
+            proxy_budget = request.budget_ms if request.budget_ms is not None else PROXY_DEFAULT_BUDGET_MS
+            items, timings, degraded, trace_url = proxy_search(
+                query=cleaned_question,
+                k=request.top_k,
+                budget_ms=proxy_budget,
+                trace_id=trace_id,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "level=WARN trace_id=%s status=PROXY_FALLBACK error='%s'",
+                trace_id,
+                exc,
+            )
+        else:
+            latency_ms = timings.get("total_ms")
+            if latency_ms is None:
+                latency_ms = (time.perf_counter() - start) * 1000
+            latency_ms = float(latency_ms)
+            ret_code = timings.get("ret_code") or "OK"
+            route_used = timings.get("route") or "retrieval_proxy"
+            cache_hit = bool(timings.get("cache_hit"))
+            per_source = timings.get("per_source_ms") or {}
+            response.headers["X-Backend"] = route_used
+            response.headers["X-Top-K"] = str(request.top_k)
+            response.headers["X-Mode"] = "fast" if getattr(request, "fast_mode", False) else "normal"
+            response.headers["X-Hybrid"] = "true" if request.use_hybrid else "false"
+            response.headers["X-Rerank"] = "true" if request.rerank else "false"
+            response.headers["X-Dataset"] = collection_name
+            response.headers["X-Qrels"] = "unknown"
+            response.headers["X-Collection"] = actual_collection
+            response.headers["X-Search-MS"] = f"{latency_ms:.1f}"
+            response.headers["X-Rerank-MS"] = "0.0"
+            response.headers["X-Total-MS"] = f"{latency_ms:.1f}"
+            response.headers["X-Embed-Model"] = "retrieval-proxy"
+            response.headers["X-Proxy-RetCode"] = ret_code
+            if per_source:
+                response.headers["X-Proxy-Sources"] = json.dumps(per_source)
+            if trace_url:
+                response.headers["X-Langfuse-Trace-Url"] = trace_url
+            sources = [_item_to_source(item) for item in items]
+            base_metrics = get_default_metrics()
+            base_metrics["total"] = len(sources)
+            base_metrics["proxy_ret_code"] = ret_code
+            base_metrics["proxy_cache_hit"] = cache_hit
+            base_metrics["proxy_degraded"] = degraded
+            observability_metrics = {
+                "fusion_overlap": 0,
+                "rrf_candidates": 0,
+                "rerank_triggered": False,
+                "rerank_timeout": False,
+                "proxy_cache_hit": cache_hit,
+                "proxy_degraded": degraded,
+            }
+            log_payload = {
+                "trace_id": trace_id,
+                "status": "SUCCESS",
+                "route": route_used,
+                "latency_total_ms": round(latency_ms, 1),
+                "top_k": request.top_k,
+                "hybrid": request.use_hybrid,
+                "rerank": request.rerank,
+                "ret_code": ret_code,
+                "cache_hit": cache_hit,
+                "degraded": degraded,
+            }
+            logger.info("level=INFO %s", json.dumps(log_payload))
+            try:
+                obs.finalize_root(
+                    job_id=trace_id,
+                    trace_id=trace_id,
+                    trace_url=trace_url or "",
+                    metrics=base_metrics,
+                    decision=route_used,
+                )
+                if trace_url:
+                    raw_request.state.trace_url = trace_url
+            except Exception:
+                pass
+            return {
+                "ok": True,
+                "trace_id": trace_id,
+                "question": cleaned_question,
+                "answer": "",
+                "latency_ms": latency_ms,
+                "route": route_used,
+                "params": {
+                    "top_k": request.top_k,
+                    "rerank": request.rerank,
+                    "use_hybrid": request.use_hybrid,
+                    "rrf_k": request.rrf_k if request.use_hybrid else None,
+                },
+                "sources": sources,
+                "items": sources,
+                "metrics": base_metrics,
+                "observability_metrics": observability_metrics,
+                "reranker_triggered": False,
+                "degraded": bool(degraded),
+                "budget_ms": request.budget_ms,
+                "ts": datetime.utcnow().isoformat() + "Z",
+            }
     try:
         # Check embedding readiness (cold-start warmup)
         from services.fiqa_api.clients import EMBED_READY, EmbeddingUnreadyError, get_embedder
@@ -177,19 +345,6 @@ async def query(request: QueryRequest, response: Response):
         else:
             # Set header anyway
             response.headers["X-Embed-Model"] = embed_model
-        
-        # Clean and validate input
-        cleaned_question = request.question.strip() if request.question else ""
-        if not cleaned_question:
-            logger.warning(f"level=WARN trace_id={trace_id} status=INVALID_INPUT msg='Empty question provided'")
-            raise HTTPException(
-                status_code=400,
-                detail="question cannot be empty"
-            )
-        
-        # Get collection name and map to actual collection
-        collection_name = request.collection if request.collection else "fiqa"
-        actual_collection = COLLECTION_MAP.get(collection_name, collection_name)
         
         # Check Qdrant collection dimension
         try:
@@ -260,7 +415,8 @@ async def query(request: QueryRequest, response: Response):
                     rerank_top_k=rerank_top_k,
                     rerank_if_margin_below=request.rerank_if_margin_below,
                     max_rerank_trigger_rate=request.max_rerank_trigger_rate,
-                    rerank_budget_ms=request.rerank_budget_ms
+                    rerank_budget_ms=request.rerank_budget_ms,
+                    obs_ctx=obs_ctx,
                 ),
                 timeout=QUERY_TIMEOUT_SEC
             )
@@ -361,7 +517,7 @@ async def query(request: QueryRequest, response: Response):
         base_metrics["rerank_timeout"] = observability_metrics.get("rerank_timeout", False)
         
         # Return frontend-friendly response with all required fields
-        return {
+        payload = {
             "ok": True,
             "trace_id": trace_id,
             "question": cleaned_question,
@@ -372,23 +528,108 @@ async def query(request: QueryRequest, response: Response):
                 "top_k": request.top_k,
                 "rerank": request.rerank,
                 "use_hybrid": request.use_hybrid,
-                "rrf_k": request.rrf_k if request.use_hybrid else None
+                "rrf_k": request.rrf_k if request.use_hybrid else None,
             },
             "sources": sources,
+            "items": sources,
             "metrics": base_metrics,
             "reranker_triggered": reranker_triggered,
-            "ts": datetime.utcnow().isoformat() + "Z"
+            "degraded": bool(search_result.get("fallback", False)),
+            "budget_ms": request.budget_ms,
+            "ts": datetime.utcnow().isoformat() + "Z",
         }
+        try:
+            trace_url = search_result.get("trace_url") or obs.build_obs_url(trace_id)
+            raw_request.state.trace_url = trace_url
+            obs.finalize_root(
+                job_id=trace_id,
+                trace_id=trace_id,
+                trace_url=trace_url,
+                metrics=base_metrics,
+                decision=route_used,
+            )
+        except Exception:
+            pass
+        return payload
         
     except HTTPException as http_ex:
         # Re-raise HTTP exceptions (4xx/5xx) - FastAPI will handle status code
         elapsed = (time.perf_counter() - start) * 1000
         logger.warning(f"level=WARN trace_id={trace_id} status=HTTP_{http_ex.status_code} latency_ms={elapsed:.1f} error='{http_ex.detail}'")
+        try:
+            trace_url = obs.build_obs_url(trace_id)
+            raw_request.state.trace_url = trace_url
+            obs.finalize_root(
+                job_id=trace_id,
+                trace_id=trace_id,
+                trace_url=trace_url,
+                decision=f"HTTP_{http_ex.status_code}",
+            )
+        except Exception:
+            pass
         raise
     except Exception as e:
         # Log error with structured fields
         elapsed = (time.perf_counter() - start) * 1000
         logger.error(f"level=ERROR trace_id={trace_id} status=ERROR route='error' latency_ms={elapsed:.1f} error_type={type(e).__name__} error='{str(e)}'")
+        
+        error_text = str(e)
+        not_found_markers = (
+            "StatusCode.NOT_FOUND",
+            "doesn't exist",
+            "Collection",
+            "NOT_FOUND",
+        )
+        if any(marker in error_text for marker in not_found_markers):
+            message = f"Collection '{actual_collection}' not found in Qdrant. Run `make seed-fiqa` to seed demo vectors."
+            friendly_payload = {
+                "ok": False,
+                "ret_code": "DATASET_MISSING",
+                "trace_id": trace_id,
+                "question": cleaned_question if "cleaned_question" in locals() else "",
+                "answer": "",
+                "message": message,
+                "latency_ms": elapsed,
+                "route": "dataset_missing",
+                "params": {
+                    "top_k": request.top_k if request else 0,
+                    "rerank": request.rerank if request else False,
+                    "use_hybrid": request.use_hybrid if request else False,
+                },
+                "sources": [],
+                "items": [],
+                "metrics": get_default_metrics(),
+                "reranker_triggered": False,
+                "ts": datetime.utcnow().isoformat() + "Z",
+            }
+            try:
+                trace_url = obs.build_obs_url(trace_id)
+                raw_request.state.trace_url = trace_url
+                obs.finalize_root(
+                    job_id=trace_id,
+                    trace_id=trace_id,
+                    trace_url=trace_url,
+                    decision="dataset_missing",
+                )
+            except Exception:
+                pass
+            return JSONResponse(
+                status_code=200,
+                headers={"X-Trace-Id": trace_id},
+                content=friendly_payload,
+            )
+        
+        try:
+            trace_url = obs.build_obs_url(trace_id)
+            raw_request.state.trace_url = trace_url
+            obs.finalize_root(
+                job_id=trace_id,
+                trace_id=trace_id,
+                trace_url=trace_url,
+                decision="exception",
+            )
+        except Exception:
+            pass
         
         # Return error response with all required fields and proper status code
         return JSONResponse(
@@ -407,9 +648,33 @@ async def query(request: QueryRequest, response: Response):
                     "rerank": request.rerank if request else False
                 },
                 "sources": [],
+                "items": [],
                 "metrics": get_default_metrics(),  # Structured metrics even in error
                 "reranker_triggered": False,
+                "degraded": False,
+                "budget_ms": request.budget_ms if request else None,
                 "ts": datetime.utcnow().isoformat() + "Z"
             }
         )
 
+
+@router.post("/query")
+async def query(
+    request: QueryRequest,
+    response: Response,
+    raw_request: Request,
+    x_trace_id: Optional[str] = Header(None),
+):
+    return await _execute_query(request, response, raw_request, x_trace_id)
+
+
+@router.get("/query")
+async def query_get(
+    raw_request: Request,
+    response: Response,
+    q: Optional[str] = FastAPIQuery(None),
+    budget_ms: Optional[int] = FastAPIQuery(None),
+    x_trace_id: Optional[str] = Header(None),
+):
+    payload = QueryRequest(q=q, budget_ms=budget_ms)
+    return await _execute_query(payload, response, raw_request, x_trace_id)

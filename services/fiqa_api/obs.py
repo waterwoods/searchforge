@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Set
 
@@ -265,7 +266,12 @@ def persist_trace_id(job_or_trace: Optional[str], trace_id: Optional[str] = None
 
 def persist_obs_url(obs_url: Optional[str]) -> None:
     try:
-        (_runs_dir() / "obs_url.txt").write_text(f"{(obs_url or '')}\n", encoding="utf-8")
+        runs_dir = _runs_dir()
+        timestamp = datetime.now(timezone.utc).isoformat()
+        value = (obs_url or "").strip()
+        line = f"{timestamp} {value}\n" if value else f"{timestamp}\n"
+        with (runs_dir / "obs_url.txt").open("a", encoding="utf-8") as handle:
+            handle.write(line)
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("failed to persist obs_url.txt: %s", exc)
 

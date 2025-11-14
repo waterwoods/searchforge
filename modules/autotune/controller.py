@@ -1,8 +1,7 @@
 """
 SLA-aware autotuner controller with closed-loop control.
 """
-from typing import Dict, Any, Optional, Tuple
-import numpy as np
+from typing import Dict, Any, Optional, Tuple, Union
 import logging
 import collections
 from .state import TuningState
@@ -14,14 +13,15 @@ logger = logging.getLogger(__name__)
 class AutoTuner:
     """SLA-aware autotuner with closed-loop control."""
     
-    def __init__(self, engine: str, policy: str = "Balanced",
+    def __init__(self, engine: str, policy: Union[str, TuningPolicy] = "Balanced",
                  hnsw_ef_range: tuple = (4, 256), rerank_range: tuple = (100, 1200), 
                  ema_alpha: float = 0.2, target_p95_ms: float = 30, target_recall: float = 0.95,
                  latency_hi: float = 1.2, latency_lo: float = 0.9, 
                  recall_margin: float = 0.02, min_batches: int = 160,
                  guard_recall_margin: float = 0.01, guard_recall_batches: int = 8,
                  cooldown_decrease_batches: int = 10,
-                 step_up: int = 32, step_down: int = 16):
+                 step_up: int = 32, step_down: int = 16,
+                 state: Optional[TuningState] = None):
         """
         Initialize autotuner.
         
@@ -43,13 +43,18 @@ class AutoTuner:
             step_up: Step size for increasing hnsw_ef parameter
             step_down: Step size for decreasing hnsw_ef parameter
         """
-        self.engine = engine.lower()
+        engine_name = engine.lower()
+        if engine_name != "hnsw":
+            logger.warning(f"AutoTuner only supports HNSW; forcing engine to 'hnsw' (was '{engine}')")
+            engine_name = "hnsw"
+        self.engine = engine_name
         
         # Engine-aware default policy
-        if policy == "Balanced" and engine.lower() == "hnsw":
-            policy = "RecallFirst"
-        
-        self.policy = get_policy(policy)
+        if isinstance(policy, TuningPolicy):
+            self.policy = policy
+        else:
+            self.policy = get_policy(policy)
+        self.policy_name = getattr(self.policy, "name", str(policy))
         self.target_p95_ms = target_p95_ms
         self.target_recall = target_recall
         
@@ -71,26 +76,28 @@ class AutoTuner:
         self.min_batches = min_batches
         
         # Initialize state
-        self.state = TuningState(
+        provided_state = state is not None
+        self.state = state or TuningState(
             hnsw_ef_range=hnsw_ef_range,
             rerank_range=rerank_range,
             ema_alpha=ema_alpha
         )
+        self.state.hnsw_ef_range = hnsw_ef_range
+        self.state.rerank_range = rerank_range
+        self.state.ema_alpha = ema_alpha
         
-        # Set initial parameters based on engine
-        if self.engine == "hnsw":
+        # Set initial parameters based on engine when state not provided
+        if not provided_state:
             self.state.ef_search = max(128, 64)  # Enforce quality floor for HNSW
             # Ensure search ceiling for better recall
             if self.state.hnsw_ef_range[1] < 256:
                 self.state.hnsw_ef_range = (self.state.hnsw_ef_range[0], 256)
-        else:
-            raise ValueError(f"Unsupported engine: {engine}")
-        
-        self.state.rerank_k = max(1000, 400)  # Enforce quality floor; was 900
-        
-        # Optional: For HNSW, if rerank floor < 500, set rerank_k to at least 500
-        if self.engine == "hnsw" and self.state.rerank_k < 500:
-            self.state.rerank_k = max(self.state.rerank_k, 500)
+            
+            self.state.rerank_k = max(1000, 400)  # Enforce quality floor; was 900
+            
+            # Optional: For HNSW, if rerank floor < 500, set rerank_k to at least 500
+            if self.state.rerank_k < 500:
+                self.state.rerank_k = max(self.state.rerank_k, 500)
         
         # Initialize decrease guard counters
         self.state.batches_since_decrease = 0
@@ -101,7 +108,7 @@ class AutoTuner:
         self.rescue_ef = 16  # HNSW equivalent of rescue_nprobe
         self.rescue_rerank = 200
         
-        logger.info(f"Initialized {self.engine.upper()} autotuner with {policy} policy")
+        logger.info(f"Initialized {self.engine.upper()} autotuner with {self.policy_name} policy")
         logger.info(f"Targets: p95={target_p95_ms}ms, recall={target_recall}")
         logger.info(f"Hysteresis: latency_hi={latency_hi}, latency_lo={latency_lo}, recall_margin={recall_margin}")
         logger.info(f"Decrease guard: margin={guard_recall_margin}, batches={guard_recall_batches}, cooldown={cooldown_decrease_batches}")
@@ -121,7 +128,7 @@ class AutoTuner:
         Returns:
             Dictionary with next parameters
         """
-        # Update state with new metrics
+        # Update state with new metrics (raw + EMA)
         self.state.update_metrics(
             p95_ms=last_metrics.get("p95_ms", 0.0),
             recall_at_10=last_metrics.get("recall_at_10", 0.0),
@@ -157,8 +164,8 @@ class AutoTuner:
         if recent_dip and self.engine == "hnsw":
             cp = self.state.get_current_params()
             rescue = {
-              "ef_search": min(cp["ef_search"] + self.rescue_ef, self.state.hnsw_ef_range[1]),
-              "rerank_k": min(cp["rerank_k"] + self.rescue_rerank, self.state.rerank_range[1])
+              "ef_search": self._clamp(cp["ef_search"] + self.rescue_ef, *self.state.hnsw_ef_range),
+              "rerank_k": self._clamp(cp["rerank_k"] + self.rescue_rerank, *self.state.rerank_range)
             }
             self.state.update_params(**rescue)
             logger.info(f"HNSW rescue bump applied: {rescue}")
@@ -173,6 +180,16 @@ class AutoTuner:
         # Calculate parameter adjustments
         new_params = self._calculate_parameter_adjustments(step_sizes, smoothed_metrics)
         
+        # Clamp parameters to configured ranges
+        new_params["ef_search"] = self._clamp(
+            new_params.get("ef_search", self.state.ef_search),
+            *self.state.hnsw_ef_range
+        )
+        new_params["rerank_k"] = self._clamp(
+            new_params.get("rerank_k", self.state.rerank_k),
+            *self.state.rerank_range
+        )
+        
         # Apply decrease guard to prevent premature decreases
         current_params = self.state.get_current_params()
         new_params = self._apply_decrease_guard(new_params, current_params)
@@ -180,17 +197,8 @@ class AutoTuner:
         # Apply adjustments to state
         self.state.update_params(**new_params)
         
-        # Record combo snapshot
-        self.state.recent_metrics.append({
-            "p95_ms": self.state.p95_ms,
-            "recall_at_10": self.state.recall_at_10,
-            "coverage": self.state.coverage,
-            "ef_search": self.state.ef_search,
-            "rerank_k": self.state.rerank_k
-        })
-        
         # Check if we should exit emergency mode
-        if (self.state.emergency_mode and 
+        if (self.state.is_emergency_mode and 
             smoothed_metrics["p95_ms"] < self.target_p95_ms * 1.5):
             logger.info("Exiting emergency mode")
             self.state.set_emergency_mode(False)
@@ -198,6 +206,9 @@ class AutoTuner:
         
         logger.info(f"Suggested params: {new_params}")
         return new_params
+    
+    def _clamp(self, value: int, lower: int, upper: int) -> int:
+        return max(lower, min(upper, int(value)))
     
     def _calculate_parameter_adjustments(self, step_sizes: Dict[str, float], 
                                       metrics: Dict[str, float]) -> Dict[str, int]:
@@ -243,47 +254,41 @@ class AutoTuner:
     
     def _apply_decrease_guard(self, new_params: Dict[str, int], current_params: Dict[str, int]) -> Dict[str, int]:
         """Apply decrease guard to prevent premature parameter decreases."""
-        # Check if any parameters are being decreased
-        decreases_detected = False
-        
+        decrease_attempted = False
+
         if self.engine == "hnsw" and "ef_search" in new_params:
             if new_params["ef_search"] < current_params["ef_search"]:
-                decreases_detected = True
-        
+                decrease_attempted = True
+
         if "rerank_k" in new_params and new_params["rerank_k"] < current_params["rerank_k"]:
-            decreases_detected = True
-        
-        if decreases_detected:
-            # Check decrease guard conditions
-            guard_conditions_met = (
-                len(self.state.recent_recall_queue) == self.guard_recall_batches and
-                min(self.state.recent_recall_queue) >= (self.target_recall + self.guard_recall_margin) and
-                self.state.batches_since_decrease >= self.cooldown_decrease_batches
-            )
-            
-            if not guard_conditions_met:
-                # Block decreases - keep current values
-                logger.info(f"Decrease blocked by guard: recall_queue_len={len(self.state.recent_recall_queue)}, "
-                          f"min_recall={min(self.state.recent_recall_queue) if self.state.recent_recall_queue else 'N/A'}, "
-                          f"batches_since_decrease={self.state.batches_since_decrease}")
-                
-                if self.engine == "hnsw" and "ef_search" in new_params:
-                    new_params["ef_search"] = current_params["ef_search"]
-                
-                if "rerank_k" in new_params:
-                    new_params["rerank_k"] = current_params["rerank_k"]
-                
-                # Increment counter since decrease was blocked
-                self.state.batches_since_decrease += 1
-            else:
-                # Decrease allowed - reset counter
+            decrease_attempted = True
+
+        if decrease_attempted:
+            if self._decrease_allowed():
                 logger.info("Decrease guard conditions met - allowing decrease")
                 self.state.batches_since_decrease = 0
+            else:
+                logger.info(
+                    "Decrease blocked by guard: recall_queue_len=%s, min_recall=%s, batches_since_decrease=%s",
+                    len(self.state.recent_recall_queue),
+                    min(self.state.recent_recall_queue) if self.state.recent_recall_queue else "N/A",
+                    self.state.batches_since_decrease,
+                )
+                new_params = current_params.copy()
+                # Do not change cooldown counter when guard blocks decrease
         else:
-            # No decreases - increment counter
-            self.state.batches_since_decrease += 1
-        
+            self.state.batches_since_decrease = min(
+                self.state.batches_since_decrease + 1, self.cooldown_decrease_batches
+            )
+
         return new_params
+
+    def _decrease_allowed(self) -> bool:
+        queue = getattr(self.state, "recent_recall_queue", [])
+        full = len(queue) == self.guard_recall_batches
+        recall_ok = full and min(queue) >= (self.target_recall + self.guard_recall_margin)
+        cooldown_ok = self.state.batches_since_decrease >= self.cooldown_decrease_batches
+        return full and recall_ok and cooldown_ok
     
     def _emergency_adjustment(self) -> Dict[str, int]:
         """Apply emergency parameter adjustments."""
@@ -291,11 +296,17 @@ class AutoTuner:
         current_params = self.state.get_current_params()
         
         new_params = {}
-        
+
         if self.engine == "hnsw":
-            new_params["ef_search"] = int(current_params["ef_search"] * emergency_adjustments["ef_search"])
+            new_params["ef_search"] = self._clamp(
+                current_params["ef_search"] * emergency_adjustments["ef_search"],
+                *self.state.hnsw_ef_range
+            )
         
-        new_params["rerank_k"] = int(current_params["rerank_k"] * emergency_adjustments["rerank_k"])
+        new_params["rerank_k"] = self._clamp(
+            current_params["rerank_k"] * emergency_adjustments["rerank_k"],
+            *self.state.rerank_range
+        )
         
         # Apply to state
         self.state.update_params(**new_params)
@@ -307,7 +318,7 @@ class AutoTuner:
         """Get current autotuner state."""
         return {
             "engine": self.engine,
-            "policy": self.policy.name,
+            "policy": self.policy_name,
             "targets": {
                 "p95_ms": self.target_p95_ms,
                 "recall": self.target_recall
@@ -348,6 +359,10 @@ class AutoTuner:
         # Reset rescue mechanism
         if hasattr(self.state, "recent_recalls"):
             self.state.recent_recalls.clear()
+        else:
+            self.state.recent_recalls = collections.deque(maxlen=self.rescue_window)
+        
+        self.state.set_emergency_mode(False)
         
         logger.info("Reset autotuner to initial state")
     

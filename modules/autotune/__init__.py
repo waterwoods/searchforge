@@ -2,6 +2,6 @@
 
 from .controller import AutoTuner
 from .state import TuningState
-from .policies import get_policy, TuningPolicy
+from .policies import POLICY_NAMES, get_policy, TuningPolicy
 
-__all__ = ["AutoTuner", "TuningState", "get_policy", "TuningPolicy"] 
+__all__ = ["AutoTuner", "TuningState", "get_policy", "TuningPolicy", "POLICY_NAMES"]

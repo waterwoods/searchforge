@@ -1,11 +1,14 @@
 """
 Tuning policies for SLA-aware autotuner.
 """
-from typing import Dict, Any, Tuple
-import numpy as np
+from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _clamp_fraction(value: float) -> float:
+    return max(0.05, min(0.30, float(value)))
 
 
 class TuningPolicy:
@@ -22,6 +25,7 @@ class TuningPolicy:
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Get emergency parameter adjustments."""
         raise NotImplementedError
+
 
 
 class LatencyFirstPolicy(TuningPolicy):
@@ -56,7 +60,7 @@ class LatencyFirstPolicy(TuningPolicy):
                 step_sizes["ef_search"] *= 0.8
                 step_sizes["rerank_k"] *= 1.2
         
-        return step_sizes
+        return {k: _clamp_fraction(v) for k, v in step_sizes.items()}
     
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Emergency adjustments for latency-first policy."""
@@ -97,7 +101,7 @@ class RecallFirstPolicy(TuningPolicy):
             step_sizes["rerank_k"] *= 1.5
             step_sizes["ef_search"] *= 0.8
         
-        return step_sizes
+        return {k: _clamp_fraction(v) for k, v in step_sizes.items()}
     
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Emergency adjustments for recall-first policy."""
@@ -142,7 +146,7 @@ class BalancedPolicy(TuningPolicy):
             step_sizes["ef_search"] *= 1.3
             step_sizes["rerank_k"] *= 1.1
         
-        return step_sizes
+        return {k: _clamp_fraction(v) for k, v in step_sizes.items()}
     
     def get_emergency_adjustments(self) -> Dict[str, float]:
         """Emergency adjustments for balanced policy."""
@@ -154,14 +158,17 @@ class BalancedPolicy(TuningPolicy):
 
 def get_policy(policy_name: str) -> TuningPolicy:
     """Factory function to get tuning policy."""
-    policies = {
-        "LatencyFirst": LatencyFirstPolicy,
-        "RecallFirst": RecallFirstPolicy,
-        "Balanced": BalancedPolicy
-    }
-    
-    if policy_name not in policies:
-        logger.warning(f"Unknown policy '{policy_name}', using Balanced")
-        policy_name = "Balanced"
-    
-    return policies[policy_name]() 
+    key = str(policy_name).strip().lower()
+    policy_cls = _POLICY_REGISTRY.get(key)
+    if policy_cls is None:
+        raise ValueError(f"Unknown policy '{policy_name}'")
+    return policy_cls()
+
+
+_POLICY_CLASSES = {
+    "LatencyFirst": LatencyFirstPolicy,
+    "RecallFirst": RecallFirstPolicy,
+    "Balanced": BalancedPolicy,
+}
+_POLICY_REGISTRY = {name.lower(): policy_cls for name, policy_cls in _POLICY_CLASSES.items()}
+POLICY_NAMES = list(_POLICY_CLASSES.keys())

@@ -30,6 +30,7 @@ class StewardRunResponse(BaseModel):
     thresholds: Optional[Dict[str, Any]] = None
     errors: List[str] = []
     obs_url: str = ""
+    trace_id: Optional[str] = None
 
 
 @router.post("/run", response_model=StewardRunResponse)
@@ -44,8 +45,6 @@ async def run_steward_graph(request: StewardRunRequest) -> Dict[str, Any]:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to inspect steward graph state for job %s: %s", request.job_id, exc)
 
-    obs_url = obs.build_obs_url(request.job_id)
-
     trace = obs.trace_start(
         request.job_id,
         name="steward.run",
@@ -53,23 +52,36 @@ async def run_steward_graph(request: StewardRunRequest) -> Dict[str, Any]:
         metadata={"job_id": request.job_id},
         force_sample=True,
     )
-    obs_ctx = {"trace": trace, "trace_id": request.job_id} if trace else {}
+    ctx_key = f"steward:{request.job_id}"
+    trace_identifier = request.job_id
+    if trace:
+        trace_identifier = getattr(trace, "id", None) or getattr(trace, "trace_id", None) or request.job_id
+    obs_ctx = {
+        "job_id": request.job_id,
+        "trace_id": trace_identifier,
+    }
+    if trace:
+        obs_ctx["trace"] = trace
+        obs_ctx["root"] = trace
+    obs.register_ctx(ctx_key, obs_ctx)
+    obs_ctx_state_value = ctx_key
 
     try:
         state = app.invoke(
             {
                 "job_id": request.job_id,
                 "resume": resume,
-                "obs_ctx": obs_ctx,
-                "obs_url": obs_url,
+                "obs_ctx": obs_ctx_state_value,
+                "obs_url": "",
             },
             config={"configurable": {"thread_id": request.job_id}},
         )
     except Exception as exc:
         obs.trace_end(trace, output=obs.redact({"decision": "", "errors": [str(exc)]}))
+        obs.unregister_ctx(ctx_key)
         raise HTTPException(status_code=500, detail=f"Failed to run steward graph: {exc}") from exc
 
-    response = {
+    response: Dict[str, Any] = {
         "job_id": request.job_id,
         "resume": bool(state.get("resume") or resume),
         "plan": state.get("plan"),
@@ -79,7 +91,6 @@ async def run_steward_graph(request: StewardRunRequest) -> Dict[str, Any]:
         "baseline_path": state.get("baseline_path"),
         "thresholds": state.get("thresholds"),
         "errors": state.get("errors", []),
-        "obs_url": obs_url,
     }
 
     scores: Dict[str, float] = {}
@@ -95,11 +106,43 @@ async def run_steward_graph(request: StewardRunRequest) -> Dict[str, Any]:
     except Exception:
         pass
 
+    metrics_payload = state.get("metrics") if isinstance(state, dict) else None
+    finalize_ctx = obs.get_registered_ctx(ctx_key) or {}
+    finalize_ctx.setdefault("job_id", request.job_id)
+    finalize_ctx.setdefault("trace_id", trace_identifier)
+
+    finalize_meta = None
+    if isinstance(metrics_payload, dict):
+        finalize_meta = {
+            "p95_ms": metrics_payload.get("p95_ms"),
+            "recall@10": metrics_payload.get("recall@10"),
+            "err_rate": metrics_payload.get("err_rate"),
+            "delta_recall": metrics_payload.get("delta_recall"),
+        }
+
+    finalize_error: Optional[HTTPException] = None
+    try:
+        obs.finalize_root(finalize_ctx, meta=finalize_meta)
+    except HTTPException as exc:
+        finalize_error = exc
+
+    obs_url = finalize_ctx.get("obs_url", "")
+    if isinstance(state, dict):
+        state["obs_url"] = obs_url
+    response["obs_url"] = obs_url
+    response["trace_id"] = finalize_ctx.get("trace_id", trace_identifier)
+    if isinstance(state, dict):
+        state["trace_id"] = response["trace_id"]
+
     obs.trace_end(
         trace,
         output=obs.redact(response),
         scores=scores,
     )
+    obs.unregister_ctx(ctx_key)
+
+    if finalize_error:
+        raise finalize_error
 
     return response
 

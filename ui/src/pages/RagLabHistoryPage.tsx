@@ -2,7 +2,7 @@
  * RAG Lab History Page - V8
  * Job history list page
  */
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Card,
@@ -14,6 +14,7 @@ import {
     Spin,
     Empty,
     Alert,
+    Tooltip,
 } from 'antd';
 import {
     HistoryOutlined,
@@ -33,6 +34,32 @@ export const RagLabHistoryPage = () => {
     const { history, loadHistory } = useRagLabStore();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [latestObs, setLatestObs] = useState<{ obs_url: string; trace_id: string } | null>(null);
+
+    const fetchLatestObs = async () => {
+        try {
+            const response = await fetch('/obs/url');
+            if (response.status === 204) {
+                setLatestObs(null);
+                return;
+            }
+            if (!response.ok) {
+                setLatestObs(null);
+                return;
+            }
+            const payload = await response.json();
+            if (payload?.obs_url && payload?.trace_id) {
+                setLatestObs({
+                    obs_url: payload.obs_url as string,
+                    trace_id: payload.trace_id as string,
+                });
+            } else {
+                setLatestObs(null);
+            }
+        } catch {
+            setLatestObs(null);
+        }
+    };
 
     const fetchJobs = async () => {
         setLoading(true);
@@ -43,6 +70,7 @@ export const RagLabHistoryPage = () => {
         } catch (err: any) {
             setError(err.response?.data?.detail || err.message || 'Failed to fetch jobs');
         } finally {
+            await fetchLatestObs();
             setLoading(false);
         }
     };
@@ -135,102 +163,120 @@ export const RagLabHistoryPage = () => {
                 ) : (
                     <List
                         dataSource={history}
-                        renderItem={(job: JobMeta) => (
-                            <List.Item
-                                actions={[
-                                    <Button
-                                        key="view"
-                                        type="link"
-                                        icon={<EyeOutlined />}
-                                        onClick={() => navigate(`/rag-lab/history/${job.job_id}`)}
-                                    >
-                                        View Details
-                                    </Button>,
-                                    job.obs_url ? (
-                                        <a key="obs" href={job.obs_url} target="_blank" rel="noreferrer">
+                        renderItem={(job: JobMeta) => {
+                            const openUrl = latestObs?.obs_url ?? '';
+                            const tooltipTitle = openUrl ? 'Open in Langfuse' : 'No recent trace';
+                            const openLangfuse = () => {
+                                if (openUrl) {
+                                    window.open(openUrl, '_blank', 'noopener');
+                                }
+                            };
+                            const obsButton = (
+                                <Tooltip key="obs" title={tooltipTitle}>
+                                    <span>
+                                        <Button type="link" disabled={!openUrl} onClick={openLangfuse}>
                                             Open in Langfuse
-                                        </a>
-                                    ) : (
-                                        <Text key="obs-disabled" type="secondary">
-                                            —
-                                        </Text>
-                                    ),
-                                ]}
-                            >
-                                <List.Item.Meta
-                                    avatar={
-                                        <Tag
-                                            color={getStatusColor(job.status)}
-                                            icon={getStatusIcon(job.status)}
+                                        </Button>
+                                    </span>
+                                </Tooltip>
+                            );
+                            const obsInline = (
+                                <Tooltip title={tooltipTitle}>
+                                    <span>
+                                        <Button
+                                            type="link"
+                                            disabled={!openUrl}
+                                            onClick={openLangfuse}
+                                            style={{ padding: 0, height: 'auto' }}
                                         >
-                                            {job.status}
-                                        </Tag>
-                                    }
-                                    title={
-                                        <Space>
-                                            <Text code style={{ fontSize: '12px' }}>
-                                                {job.job_id.substring(0, 8)}...
-                                            </Text>
-                                            {/* Show refresh indicator for RUNNING/QUEUED jobs */}
-                                            {(job.status === 'RUNNING' || job.status === 'QUEUED') && (
-                                                <Tag color="blue" icon={<ReloadOutlined spin />}>
-                                                    Active
-                                                </Tag>
-                                            )}
-                                        </Space>
-                                    }
-                                    description={
-                                        <Space direction="vertical" size="small">
-                                            <div>
-                                                <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                    Created: {formatTimestamp(job.created_at)}
+                                            Open in Langfuse
+                                        </Button>
+                                    </span>
+                                </Tooltip>
+                            );
+                            return (
+                                <List.Item
+                                    actions={[
+                                        <Button
+                                            key="view"
+                                            type="link"
+                                            icon={<EyeOutlined />}
+                                            onClick={() => navigate(`/rag-lab/history/${job.job_id}`)}
+                                        >
+                                            View Details
+                                        </Button>,
+                                        obsButton,
+                                    ]}
+                                >
+                                    <List.Item.Meta
+                                        avatar={
+                                            <Tag
+                                                color={getStatusColor(job.status)}
+                                                icon={getStatusIcon(job.status)}
+                                            >
+                                                {job.status}
+                                            </Tag>
+                                        }
+                                        title={
+                                            <Space>
+                                                <Text code style={{ fontSize: '12px' }}>
+                                                    {job.job_id.substring(0, 8)}...
                                                 </Text>
-                                            </div>
-                                            {job.finished_at && (
+                                                {/* Show refresh indicator for RUNNING/QUEUED jobs */}
+                                                {(job.status === 'RUNNING' || job.status === 'QUEUED') && (
+                                                    <Tag color="blue" icon={<ReloadOutlined spin />}>
+                                                        Active
+                                                    </Tag>
+                                                )}
+                                            </Space>
+                                        }
+                                        description={
+                                            <Space direction="vertical" size="small">
                                                 <div>
                                                     <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                        Finished: {formatTimestamp(job.finished_at)}
+                                                        Created: {formatTimestamp(job.created_at)}
                                                     </Text>
                                                 </div>
-                                            )}
-                                            {job.return_code !== null && job.return_code !== undefined && (
+                                                {job.finished_at && (
+                                                    <div>
+                                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                            Finished: {formatTimestamp(job.finished_at)}
+                                                        </Text>
+                                                    </div>
+                                                )}
+                                                {job.return_code !== null && job.return_code !== undefined && (
+                                                    <div>
+                                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                            Return Code: {job.return_code}
+                                                        </Text>
+                                                    </div>
+                                                )}
+                                                {job.params && Object.keys(job.params).length > 0 && (
+                                                    <div>
+                                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                            Dataset: {job.params?.dataset_name ?? 'unknown'}
+                                                        </Text>
+                                                    </div>
+                                                )}
+                                                {job.params && Object.keys(job.params).length > 0 && (
+                                                    <div>
+                                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                            Params: {JSON.stringify(job.params)}
+                                                        </Text>
+                                                    </div>
+                                                )}
                                                 <div>
                                                     <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                        Return Code: {job.return_code}
+                                                        Observability:{' '}
+                                                        {obsInline}
                                                     </Text>
                                                 </div>
-                                            )}
-                                            {job.params && Object.keys(job.params).length > 0 && (
-                                                <div>
-                                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                        Dataset: {job.params?.dataset_name ?? 'unknown'}
-                                                    </Text>
-                                                </div>
-                                            )}
-                                            {job.params && Object.keys(job.params).length > 0 && (
-                                                <div>
-                                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                        Params: {JSON.stringify(job.params)}
-                                                    </Text>
-                                                </div>
-                                            )}
-                                            <div>
-                                                <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                    Observability:{' '}
-                                                    {job.obs_url ? (
-                                                        <a href={job.obs_url} target="_blank" rel="noreferrer">
-                                                            Open in Langfuse
-                                                        </a>
-                                                    ) : (
-                                                        '—'
-                                                    )}
-                                                </Text>
-                                            </div>
-                                        </Space>
-                                    }
-                                />
-                            </List.Item>
-                        )}
+                                            </Space>
+                                        }
+                                    />
+                                </List.Item>
+                            );
+                        }}
                     />
                 )}
             </Card>

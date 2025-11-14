@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Space, Typography, Spin, Alert } from 'antd';
+import { Button, Card, Space, Typography, Spin, Alert, Tooltip } from 'antd';
 
 type StewardResponse = {
     job_id: string;
@@ -7,6 +7,7 @@ type StewardResponse = {
     dryrun_status?: string;
     errors?: string[];
     obs_url?: string;
+    trace_id?: string;
 };
 
 const STORAGE_KEY = 'steward:lastJobId';
@@ -25,6 +26,15 @@ const setStoredJobId = (jobId: string) => {
         return;
     }
     window.localStorage.setItem(STORAGE_KEY, jobId);
+};
+
+const fallbackObsUrl = (traceId?: string) => {
+    const host = import.meta.env.VITE_LANGFUSE_HOST?.replace(/\/+$/, '') ?? '';
+    const proj = import.meta.env.VITE_LANGFUSE_PROJECT_ID ?? '';
+    if (!host || !proj || !traceId) {
+        return '';
+    }
+    return `${host}/project/${proj}/traces?query=${encodeURIComponent(traceId)}`;
 };
 
 export const RunStewardCard = () => {
@@ -138,11 +148,24 @@ export const RunStewardCard = () => {
                                         <Typography.Text type="secondary">[]</Typography.Text>
                                     </Typography.Paragraph>
                                 )}
-                                {response.obs_url && (
-                                    <Button type="link" href={response.obs_url} target="_blank" rel="noreferrer">
-                                        Open in Langfuse
-                                    </Button>
-                                )}
+                                {(() => {
+                                    const obsUrl = response?.obs_url || fallbackObsUrl(response?.trace_id);
+                                    const tooltipTitle = obsUrl ? 'Open in Langfuse' : 'trace pending';
+                                    const handleOpen = () => {
+                                        if (obsUrl) {
+                                            window.open(obsUrl, '_blank', 'noopener');
+                                        }
+                                    };
+                                    return (
+                                        <Tooltip title={tooltipTitle}>
+                                            <span>
+                                                <Button type="link" disabled={!obsUrl} onClick={handleOpen}>
+                                                    Open in Langfuse
+                                                </Button>
+                                            </span>
+                                        </Tooltip>
+                                    );
+                                })()}
                                 <Typography.Paragraph>
                                     <Typography.Text strong>Raw JSON</Typography.Text>
                                 </Typography.Paragraph>

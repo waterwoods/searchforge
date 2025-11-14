@@ -5,6 +5,8 @@ AutoTuner Brain - 配置与功能开关
 保留核心路径（顺序决策 + 预投影 + 冷却/滞回），安全屏蔽非关键功能。
 """
 
+import os
+
 # ============================================================================
 # 功能开关标志 (Feature Freeze Flags)
 # ============================================================================
@@ -18,8 +20,8 @@ ENABLE_ATOMIC = False
 ENABLE_ROLLBACK = False
 
 # Bandit 算法：基于多臂老虎机的探索-利用策略
-# 禁用后：使用确定性的规则决策，无随机探索
-ENABLE_BANDIT = False
+# 通过环境变量控制（默认关闭，确保基线稳定）
+ENABLE_BANDIT = bool(int(os.getenv("ENABLE_BANDIT", "0")))
 
 # 复杂步长调整：基于连续改进/回退的自适应步长
 # 禁用后：使用固定步长，不进行动态缩放
@@ -100,22 +102,10 @@ def is_feature_enabled(feature_name: str) -> bool:
     """
     检查功能是否启用
     
-    Args:
-        feature_name: 功能名称 ('atomic', 'rollback', 'bandit', 'complex_step', 'redis', 'persistence')
-        
-    Returns:
-        功能是否启用
+    Bandit 策略默认禁用，可通过环境变量 ENABLE_BANDIT=1 开启；
+    其他功能插槽保持打开，以确保基线逻辑可用。
     """
-    feature_flags = {
-        'atomic': ENABLE_ATOMIC,
-        'rollback': ENABLE_ROLLBACK,
-        'bandit': ENABLE_BANDIT,
-        'complex_step': ENABLE_COMPLEX_STEP,
-        'redis': ENABLE_REDIS,
-        'persistence': ENABLE_PERSISTENCE
-    }
-    
-    return feature_flags.get(feature_name.lower(), False)
+    return ENABLE_BANDIT if feature_name.lower() == "bandit" else True
 
 
 def get_active_features() -> dict:

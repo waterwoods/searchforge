@@ -595,6 +595,11 @@ def call_query_api(
     max_retries = 1
     backoff_ms = 200
     
+    headers = {"Content-Type": "application/json"}
+    trace_header = os.getenv("TRACE_ID") or os.getenv("JOB_ID")
+    if trace_header:
+        headers["X-Trace-Id"] = trace_header
+
     for attempt in range(max_retries + 1):
         start_time = time.perf_counter()
         try:
@@ -602,7 +607,7 @@ def call_query_api(
                 url,
                 json=payload,
                 timeout=timeout,
-                headers={"Content-Type": "application/json"}
+                headers=headers,
             )
             latency_ms = (time.perf_counter() - start_time) * 1000
             

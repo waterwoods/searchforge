@@ -4,55 +4,52 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-	"golang.org/x/text/unicode/norm"
-
+	"github.com/searchforge/retrieval_proxy/internal/contract"
 	"github.com/searchforge/retrieval_proxy/internal/controller"
 	"github.com/searchforge/retrieval_proxy/obs"
 	"github.com/searchforge/retrieval_proxy/policy"
 )
 
-const traceIDHeader = "X-Trace-Id"
-
-// Router wires the HTTP endpoints for the retrieval proxy.
-// mvp-5
-type Router struct {
+type handler struct {
 	ctrl          *controller.Controller
 	defaultK      int
 	defaultBudget int
 	topKMax       int
 }
 
-// NewRouter builds the chi router with /v1/search.
+// NewHandler returns an http.Handler for /v1/search.
 // mvp-5
-func NewRouter(ctrl *controller.Controller, defaultK, defaultBudget, topKMax int) *chi.Mux {
-	r := &Router{
+func NewHandler(ctrl *controller.Controller, defaultK, defaultBudget, topKMax int) http.Handler {
+	return &handler{
 		ctrl:          ctrl,
 		defaultK:      defaultK,
 		defaultBudget: defaultBudget,
 		topKMax:       topKMax,
 	}
-
-	mux := chi.NewRouter()
-	mux.Get("/v1/search", r.handleSearch)
-	return mux
 }
 
-func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
+func (h *handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+
 	start := time.Now()
 	traceID, traceParent := readTrace(req)
-	w.Header().Set(traceIDHeader, traceID)
+	w.Header().Set(contract.TraceIDHeader, traceID)
 
-	searchReq, err := r.buildRequest(req, traceID, traceParent)
+	searchReq, err := h.buildRequest(req, traceID, traceParent)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -60,9 +57,9 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 
 	ctx, cancel, budget := policy.BudgetArbiter(req.Context(), searchReq.BudgetMS)
 	defer cancel()
-	ctx = ContextWithTraceID(ctx, traceID)
+	ctx = contract.WithTraceID(ctx, traceID)
 
-	resp, retCode, callErr := r.ctrl.Search(ctx, searchReq)
+	resp, retCode, callErr := h.ctrl.Search(ctx, searchReq)
 	duration := time.Since(start)
 
 	if budget.Hit() {
@@ -92,22 +89,23 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	obs.ObserveProxyRequest(resp.RetCode, duration)
+	obs.ObserveProxyRequest(resp.RetCode, duration, traceID)
+	log.Printf("trace_id=%s route=proxy ret_code=%s degraded=%t duration_ms=%d status=%d", traceID, resp.RetCode, resp.Degraded, duration.Milliseconds(), status)
 	writeJSON(w, status, resp)
 }
 
-func (r *Router) buildRequest(req *http.Request, traceID, traceParent string) (controller.Request, error) {
+func (h *handler) buildRequest(req *http.Request, traceID, traceParent string) (contract.Request, error) {
 	values := req.URL.Query()
 
 	query := normalizeQuery(values.Get("q"))
 	if query == "" {
-		return controller.Request{}, fmt.Errorf("q required")
+		return contract.Request{}, fmt.Errorf("q required")
 	}
 
-	k := parseInt(values.Get("k"), r.defaultK)
-	budget := parseInt(values.Get("budget_ms"), r.defaultBudget)
+	k := parseInt(values.Get("k"), h.defaultK)
+	budget := parseInt(values.Get("budget_ms"), h.defaultBudget)
 
-	searchReq := controller.Request{
+	searchReq := contract.Request{
 		Query:       query,
 		K:           k,
 		BudgetMS:    budget,
@@ -115,14 +113,14 @@ func (r *Router) buildRequest(req *http.Request, traceID, traceParent string) (c
 		TraceParent: traceParent,
 	}
 
-	if err := searchReq.Validate(r.topKMax); err != nil {
-		return controller.Request{}, err
+	if err := searchReq.Validate(h.topKMax); err != nil {
+		return contract.Request{}, err
 	}
 	return searchReq, nil
 }
 
 func readTrace(req *http.Request) (string, string) {
-	traceID := req.Header.Get(traceIDHeader)
+	traceID := req.Header.Get(contract.TraceIDHeader)
 	if traceID == "" {
 		traceID = req.URL.Query().Get("trace_id")
 	}
@@ -140,10 +138,18 @@ func readTrace(req *http.Request) (string, string) {
 	}
 
 	if traceID == "" {
-		traceID = uuid.NewString()
+		traceID = generateTraceID()
 	}
 
 	return traceID, traceParent
+}
+
+func generateTraceID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func normalizeQuery(q string) string {
@@ -151,7 +157,6 @@ func normalizeQuery(q string) string {
 	if q == "" {
 		return q
 	}
-	q = norm.NFKC.String(q)
 	return strings.Join(strings.Fields(q), " ")
 }
 
@@ -177,4 +182,3 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
-

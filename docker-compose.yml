@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/base/Dockerfile
-    image: searchforge-base:py310
+    image: searchforge-base:py311
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -11,10 +11,28 @@ services:
     command: redis-server --appendonly yes
     volumes: [ "redis_data:/data" ]
   qdrant:
-    image: qdrant/qdrant:v1.15.0
+    image: qdrant/qdrant:latest
+    ports: [ "6333:6333" ]
     restart: unless-stopped
-    ports: [ "6333:6333", "6334:6334" ]
-    volumes: [ "qdrant_data:/qdrant/storage" ]
+  retrieval-proxy:
+    build:
+      context: .
+      dockerfile: services/retrieval_proxy/Dockerfile
+    env_file:
+      - .env.current
+    environment:
+      - PORT=7070
+      - QDRANT_URL=http://qdrant:6333
+      # TIMEOUT_MS=400
+      # BUDGET_MS=400
+      # RRF_K=60
+      # TOPK_INIT=24
+      # TOPK_MAX=64
+      # CACHE_TTL=60
+    depends_on:
+      - qdrant
+    ports: [ "7070:7070" ]
+    restart: unless-stopped
   milvus-etcd:
     image: quay.io/coreos/etcd:v3.5.5
     restart: unless-stopped
@@ -58,10 +76,12 @@ services:
   rag-api:
     build:
       context: .
-      dockerfile: services/rag_api/Dockerfile
+      dockerfile: services/fiqa_api/Dockerfile
       args:
         MAIN_PORT: ${MAIN_PORT:-8000}
     restart: unless-stopped
+    env_file:
+      - .env.current
     environment:
       - MAIN_PORT=8000
       - UVICORN_WORKERS=1

@@ -1,10 +1,14 @@
 PROJECT ?= searchforge
 SERVICE ?= rag-api
-DC ?= docker compose
-DC_ARGS ?= --env-file .env.current -p $(PROJECT)
-COMPOSE := $(DC) $(DC_ARGS)
+ENV_FILE ?= .env.current
+COMPOSE ?= docker compose --env-file $(ENV_FILE) -p $(PROJECT)
 EXEC := $(COMPOSE) exec $(SERVICE)
 RUN := $(COMPOSE) run --rm $(SERVICE)
+PY ?= python3
+FORCE_BASE ?= 0
+NO_CACHE ?= 0
+OBS_ENABLED ?= 0
+export OBS_ENABLED
 
 SSH_HOST ?= andy-wsl
 REMOTE ?= $(SSH_HOST)
@@ -25,7 +29,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke obs-verify obs-url ui-open-check up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu rebuild-fast up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test check-qdrant seed-fiqa reseed-fiqa a-verify b-verify c-verify abc-verify
+.PHONY: help install lint type test export smoke obs-verify obs-url ui-open-check up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test check-qdrant seed-fiqa reseed-fiqa a-verify b-verify c-verify abc-verify realcheck-up realcheck-on realcheck-off realcheck tuner-smoke tuner-ab policy-smoke real-large-on real-large-off real-large-paired real-pareto real-plot ci wait-ready
 volumes-ok:
 	$(call ensure_tool,docker)
 	@set -e; \
@@ -59,9 +63,6 @@ smoke: ## 健康检查冒烟
 up-proxy:
 	docker compose --env-file .env.current up -d qdrant retrieval-proxy
 
-rebuild-fast:
-	docker compose build retrieval-proxy
-
 logs-proxy:
 	docker compose logs -f retrieval-proxy qdrant
 
@@ -78,6 +79,118 @@ degrade-test:
 	docker compose start qdrant
 	@sleep 3
 	curl -i http://localhost:7070/readyz | tee .runs/proxy_ready_up.txt
+
+realcheck-up:
+	@docker compose up -d qdrant retrieval-proxy rag-api
+
+realcheck-on: realcheck-up
+	@sed -i.bak -E 's/^USE_PROXY=.*/USE_PROXY=true/' .env.current || true
+	@docker compose restart rag-api
+	@sleep 2
+	@USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+	  REALCHECK_N=$${REALCHECK_N:-80} REALCHECK_BUDGET_MS=$${REALCHECK_BUDGET_MS:-400} \
+	  python3 scripts/realcheck_small.py proxy_on .runs/realcheck_proxy_on.json | tee .runs/realcheck.log
+
+realcheck-off: realcheck-up
+	@sed -i.bak -E 's/^USE_PROXY=.*/USE_PROXY=false/' .env.current || true
+	@docker compose restart rag-api
+	@sleep 2
+	@USE_PROXY=false RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+	  REALCHECK_N=$${REALCHECK_N:-80} REALCHECK_BUDGET_MS=$${REALCHECK_BUDGET_MS:-400} \
+	  python3 scripts/realcheck_small.py proxy_off .runs/realcheck_proxy_off.json | tee -a .runs/realcheck.log
+
+realcheck: realcheck-on realcheck-off
+	@python3 -c 'import json, os; on=json.load(open(".runs/realcheck_proxy_on.json")); off=json.load(open(".runs/realcheck_proxy_off.json")); arm=on.get("arm") or off.get("arm") or "baseline"; report={"arm": arm, "p95_on_ms": on.get("p95_ms"), "p95_off_ms": off.get("p95_ms"), "mean_on_ms": on.get("mean_ms"), "mean_off_ms": off.get("mean_ms"), "succ_on": on.get("success_rate"), "succ_off": off.get("success_rate"), "degraded_on": on.get("degraded_rate"), "degraded_off": off.get("degraded_rate"), "p95_improvement_ms": (off.get("p95_ms") - on.get("p95_ms")) if (on.get("p95_ms") and off.get("p95_ms")) else None, "pass_simple": bool(on.get("p95_ms") and off.get("p95_ms") and on.get("p95_ms") <= off.get("p95_ms")), "notes": "PASS means proxy p95 <= direct p95. This is a lightweight sanity check."}; os.makedirs(".runs", exist_ok=True); json.dump(report, open(".runs/realcheck_report.json","w"), indent=2); print(json.dumps(report, indent=2))'
+	@echo "Artifacts written to .runs/: realcheck_proxy_on.json, realcheck_proxy_off.json, realcheck_report.json"
+
+# --- E2E mini: direct compat + proxy on/off ---
+e2e-direct:
+	@$(MAKE) wait-ready
+	@python3 scripts/e2e_direct.py
+
+e2e-mini: realcheck-up seed-fiqa e2e-direct
+	@# run proxy ON/OFF sampler (produces *_on/off.json + report.json)
+	@$(MAKE) realcheck
+	@# synthesize final verdict
+	@python3 scripts/e2e_summary.py
+
+tuner-smoke: realcheck-up
+	@USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+		N=$${N:-50} BUDGET_MS=$${BUDGET_MS:-400} python3 scripts/tuner_real_small.py
+
+tuner-smoke-%: realcheck-up
+	@POLICY=$* USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+		N=$${N:-50} BUDGET_MS=$${BUDGET_MS:-400} python3 scripts/tuner_real_small.py
+
+tuner-ab: realcheck-up
+	@USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+		N=80 BUDGET_MS=$${BUDGET_MS:-400} python3 scripts/tuner_real_small.py
+	@python3 -c "import json, pathlib, sys; r=json.loads(pathlib.Path('.runs/tuner_small_report.json').read_text()); ok=r.get('ok', False); print('TUNER AB PASS' if ok else 'TUNER AB FAIL'); sys.exit(0 if ok else 1)"
+
+wait-ready:
+	@echo "Waiting for /healthz ..."
+	@until curl -sf http://localhost:8000/healthz >/dev/null; do sleep 1; done
+	@echo "Waiting for /readyz (clients_ready=true) ..."
+	@until curl -sf http://localhost:8000/readyz | jq -e '.clients_ready==true' >/dev/null; do sleep 1; done
+	@echo "Backend ready."
+
+policy-smoke: wait-ready
+	@rm -f .runs/policy_*.json .runs/policy_summary.json
+	@set -e; \
+	status=0; \
+	for policy in LatencyFirst RecallFirst Balanced; do \
+		echo ">>> policy-smoke $$policy"; \
+		if ! python3 scripts/tuner_real_small.py --policy $$policy; then \
+			status=1; \
+		fi; \
+		slug=$$(python3 -c "import sys; name=sys.argv[1]; print(''.join(ch.lower() for ch in name if ch.isalnum() or ch in '-_'))" $$policy); \
+		if [ -f ".runs/tuner_small_$${slug}.json" ]; then \
+			cp ".runs/tuner_small_$${slug}.json" ".runs/policy_$${slug}.json"; \
+		else \
+			echo "{}" > ".runs/policy_$${slug}.json"; \
+			status=1; \
+		fi; \
+	done; \
+	jq -s '{ok:(map(.ok)|all), runs:.}' .runs/policy_*.json | tee .runs/policy_summary.json; \
+	if [ "$$(jq -r '.ok' .runs/policy_summary.json)" != "true" ]; then \
+		status=1; \
+	fi; \
+	exit $$status
+
+.PHONY: rebuild
+rebuild:
+	@echo ">> build base py311 (cache $(if $(NO_CACHE),off,on); force $(FORCE_BASE))"
+	@if [ "$(FORCE_BASE)" = "1" ]; then \
+	  DOCKER_BUILDKIT=0 $(COMPOSE) build --no-cache base; \
+	fi
+	@echo ">> build services (cache $(if $(NO_CACHE),off,on))"
+	@DOCKER_BUILDKIT=0 $(COMPOSE) build $(if $(NO_CACHE),--no-cache,) rag-api retrieval-proxy
+	@$(COMPOSE) up -d rag-api retrieval-proxy
+
+real-large-on: realcheck-up
+	@USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+		MODES=proxy_on N=$${N:-1000} python3 scripts/realcheck_large.py --no-paired
+
+real-large-off: realcheck-up
+	@USE_PROXY=false PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+		MODES=proxy_off N=$${N:-1000} python3 scripts/realcheck_large.py --no-paired
+
+real-large-paired:
+	@python3 scripts/realcheck_large.py --paired --warmup 10 --no-cache --no-rerank --trim-pct 5 --samples 2000 --budgets '200,400,800,1000,1200'
+
+real-pareto: real-large-paired
+	@python3 scripts/realcheck_pareto.py --aggregate
+
+real-plot:
+	@python3 scripts/realcheck_large.py --plot-only
+	@test -s .runs/real_large_trilines.csv
+	@test -s .runs/real_large_trilines.png
+
+ci: policy-smoke e2e-mini real-large-paired real-pareto real-plot
+	@jq -e '.success_rate>=0.99 and .bounds_ok and .stable_detune and .p95_down' .runs/real_large_report.json >/dev/null
+	@jq -e '.ok==true' .runs/pareto.json >/dev/null
+	@test -s .runs/real_large_trilines.csv && test -s .runs/real_large_trilines.png
+	@python3 scripts/check_autotuner_persistence.py
 
 check-qdrant:
 	$(call ensure_tool,python3)
@@ -257,11 +370,6 @@ restart:  ## Restart backend service on remote
 	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose restart rag-api || docker compose up -d rag-api'
 	@sleep 5
 	@$(MAKE) health
-
-rebuild: rebuild-api
-
-rebuild-fast: guard-no-legacy
-	DOCKER_BUILDKIT=1 docker compose build rag-api
 
 logs:
 	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose logs -f --tail=200 api'
@@ -584,9 +692,6 @@ smoke-review: ## Review contract smoke (requires JOB_ID=<job_id>)
 smoke-apply: ## Apply contract smoke (requires JOB_ID=<job_id>)
 	@MODE=apply bash scripts/smoke_review_llm.sh
 
-smoke-review: ## Run steward review/apply smoke check (requires JOB_ID=<job>)
-	@bash scripts/smoke_review_llm.sh
-
 smoke-metrics: ## Run metrics smoke check (ensures p95/log summary populated)
 	@bash scripts/smoke_metrics.sh
 
@@ -746,3 +851,6 @@ gold-update-presets: ## Update presets with gold qrels mappings
 	  --dataset-name $$DATASET_NAME \
 	  --collection $$COLLECTION || (echo "❌ Failed to update presets"; exit 1)
 	@echo "✅ Presets updated. Gold presets available with qrels_name: $${QRELS_NAME:-fiqa_qrels_50k_v1_gold}"
+
+bandit-audit:
+	python3 scripts/audit_bandit.py

@@ -1,4 +1,4 @@
-FROM searchforge-base:py310
+FROM searchforge-base:py311
 WORKDIR /app
 
 COPY services/shadow_proxy/requirements.txt /app/requirements.txt
