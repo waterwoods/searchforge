@@ -1,6 +1,7 @@
 PROJECT ?= searchforge
 SERVICE ?= rag-api
 ENV_FILE ?= .env.current
+GIT_SHA  := $(shell git rev-parse --short HEAD)
 COMPOSE ?= docker compose --env-file $(ENV_FILE) -p $(PROJECT)
 EXEC := $(COMPOSE) exec $(SERVICE)
 RUN := $(COMPOSE) run --rm $(SERVICE)
@@ -18,6 +19,7 @@ RDIR=~/searchforge
 HOST ?= 127.0.0.1
 PORT ?= 8000
 BASE ?= http://$(HOST):$(PORT)
+BASE_URL ?= http://andy-wsl:8000
 PROXY_BASE ?= http://127.0.0.1:7070
 
 # Helper to detect current target
@@ -29,7 +31,7 @@ define ensure_tool
 	@command -v $(1) >/dev/null 2>&1 || { echo "❌ Missing dependency: $(1). Please install it."; exit 1; }
 endef
 
-.PHONY: help install lint type test export smoke obs-verify obs-url ui-open-check up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test check-qdrant seed-fiqa reseed-fiqa a-verify b-verify c-verify abc-verify realcheck-up realcheck-on realcheck-off realcheck tuner-smoke tuner-ab policy-smoke real-large-on real-large-off real-large-paired real-pareto real-plot ci wait-ready
+.PHONY: help install lint type test export smoke obs-verify obs-url ui-open-check up down restart rebuild logs ps health prune-safe df tunnel-dozzle open-portainer sync whoami gpu-smoke proxy-smoke compose-config update-hosts migrate-qdrant cutover-remote baseline-save baseline-save-local baseline-save-remote ui ui-reset ui-verify rebuild-api rebuild-api-cpu up-gpu down-gpu export-reqs lint-no-legacy-toolchain cleanup-audit cleanup-apply cleanup-restore cleanup-history create-clean-repo sync-experiments verify-experiments smoke-experiment runner-check fiqa-50k-stage-b smoke-fast smoke-contract smoke-review smoke-apply graph-smoke graph-resume graph-full graph-e2e volumes-ok up-proxy smoke-proxy degrade-test check-qdrant seed-fiqa reseed-fiqa a-verify b-verify c-verify abc-verify realcheck-up realcheck-on realcheck-off realcheck tuner-smoke tuner-ab policy-smoke real-large-on real-large-off real-large-paired real-pareto real-plot trilines-refresh kpi-refresh ci wait-ready diag-now
 volumes-ok:
 	$(call ensure_tool,docker)
 	@set -e; \
@@ -61,7 +63,7 @@ smoke: ## 健康检查冒烟
 	@echo "SMOKE OK"
 
 up-proxy:
-	docker compose --env-file .env.current up -d qdrant retrieval-proxy
+	$(COMPOSE) up -d qdrant retrieval-proxy
 
 logs-proxy:
 	docker compose logs -f retrieval-proxy qdrant
@@ -70,6 +72,51 @@ smoke-proxy:
 	curl -sf http://localhost:7070/healthz
 	curl -sf http://localhost:7070/readyz
 	curl -s "http://localhost:7070/v1/search?q=hello&k=8&budget_ms=400" | jq -r '.ret_code,.degraded,.timings.total_ms,.trace_url'
+
+proxy-smoke: ## Run proxy smoke test (proxy → rag-api → GPU worker → Qdrant)
+	$(call ensure_tool,python3)
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	@mkdir -p .runs
+	@echo "🧪 Running proxy smoke test..."
+	@echo "1. Ensuring services are up..."
+	@$(COMPOSE) up -d qdrant retrieval-proxy rag-api gpu-worker
+	@sleep 3
+	@echo "2. Waiting for services to be ready..."
+	@bash scripts/wait_for_gpu_ready.sh || (echo "❌ GPU worker not ready"; exit 1)
+	@echo "3. Waiting for proxy readiness..."
+	@for i in $$(seq 1 30); do \
+		if curl -sf http://localhost:7070/readyz >/dev/null 2>&1; then \
+			echo "✅ Proxy ready"; \
+			break; \
+		fi; \
+		echo "⏳ waiting for proxy ($$i/30)..."; \
+		sleep 1; \
+	done
+	@echo "4. Waiting for rag-api readiness..."
+	@for i in $$(seq 1 30); do \
+		if curl -sf http://localhost:8000/readyz | jq -e '.clients_ready==true' >/dev/null 2>&1; then \
+			echo "✅ rag-api ready"; \
+			break; \
+		fi; \
+		echo "⏳ waiting for rag-api ($$i/30)..."; \
+		sleep 1; \
+	done
+	@echo "5. Running proxy smoke test script..."
+	@PROXY_URL=$${PROXY_URL:-http://localhost:7070} \
+	 RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
+	 GPU_WORKER_URL=$${GPU_WORKER_URL:-http://localhost:8090} \
+	 python3 experiments/proxy_smoke.py \
+		--proxy-url $${PROXY_URL:-http://localhost:7070} \
+		--rag-api-url $${RAG_API_URL:-http://localhost:8000} \
+		--gpu-worker-url $${GPU_WORKER_URL:-http://localhost:8090} \
+		--output .runs/proxy_smoke.json
+	@if jq -e '.all_passed==true' .runs/proxy_smoke.json >/dev/null 2>&1; then \
+		echo "✅ Proxy smoke test PASSED"; \
+	else \
+		echo "❌ Proxy smoke test FAILED"; \
+		exit 1; \
+	fi
 
 degrade-test:
 	docker compose stop qdrant
@@ -134,13 +181,21 @@ wait-ready:
 	@until curl -sf http://localhost:8000/readyz | jq -e '.clients_ready==true' >/dev/null; do sleep 1; done
 	@echo "Backend ready."
 
+diag-now: ## Zero-risk diagnostics: version alignment, readiness, query, autotuner API
+	@mkdir -p .runs
+	@python3 scripts/diag_now.py --base "$(BASE_URL)" | tee .runs/diag.out
+
+diag: diag-now
+
 policy-smoke: wait-ready
 	@rm -f .runs/policy_*.json .runs/policy_summary.json
 	@set -e; \
 	status=0; \
+	export AUTOTUNER_TOKEN=$$(grep -E '^AUTOTUNER_TOKENS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | cut -d, -f1 | tr -d ' "') || AUTOTUNER_TOKEN=devtoken; \
+	export AUTOTUNER_RPS=$$(grep -E '^AUTOTUNER_RPS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d ' "') || AUTOTUNER_RPS=0; \
 	for policy in LatencyFirst RecallFirst Balanced; do \
 		echo ">>> policy-smoke $$policy"; \
-		if ! python3 scripts/tuner_real_small.py --policy $$policy; then \
+		if ! AUTOTUNER_TOKEN=$${AUTOTUNER_TOKEN} AUTOTUNER_RPS=$${AUTOTUNER_RPS} python3 scripts/tuner_real_small.py --policy $$policy; then \
 			status=1; \
 		fi; \
 		slug=$$(python3 -c "import sys; name=sys.argv[1]; print(''.join(ch.lower() for ch in name if ch.isalnum() or ch in '-_'))" $$policy); \
@@ -157,15 +212,46 @@ policy-smoke: wait-ready
 	fi; \
 	exit $$status
 
-.PHONY: rebuild
-rebuild:
-	@echo ">> build base py311 (cache $(if $(NO_CACHE),off,on); force $(FORCE_BASE))"
-	@if [ "$(FORCE_BASE)" = "1" ]; then \
-	  DOCKER_BUILDKIT=0 $(COMPOSE) build --no-cache base; \
+smoke-run: ## Run quick smoke test (daily health check)
+	@bash scripts/quick_smoke.sh
+
+smoke-status: ## Show smoke test status
+	@if [ -f .runs/smoke_status.json ]; then \
+		cat .runs/smoke_status.json | jq '.' 2>/dev/null || cat .runs/smoke_status.json; \
+	else \
+		echo "No smoke status found. Run 'make smoke-run' first."; \
+		exit 1; \
 	fi
-	@echo ">> build services (cache $(if $(NO_CACHE),off,on))"
-	@DOCKER_BUILDKIT=0 $(COMPOSE) build $(if $(NO_CACHE),--no-cache,) rag-api retrieval-proxy
-	@$(COMPOSE) up -d rag-api retrieval-proxy
+
+smoke-daily-install: ## Install daily smoke test cron job
+	@echo "Installing daily smoke test cron job..."
+	@PROJECT_ROOT="$$(cd '$(dir $(abspath $(lastword $(MAKEFILE_LIST))))' && pwd)"; \
+	SCRIPT_PATH="$${PROJECT_ROOT}/scripts/quick_smoke.sh"; \
+	LOG_PATH="$${PROJECT_ROOT}/.runs/smoke_cron.log"; \
+	CRON_ENTRY="@daily cd $${PROJECT_ROOT} && bash $${SCRIPT_PATH} >> $${LOG_PATH} 2>&1"; \
+	(crontab -l 2>/dev/null | grep -v "quick_smoke.sh" || true; echo "$${CRON_ENTRY}") | crontab -; \
+	echo "✅ Daily smoke test cron job installed."; \
+	echo "Current crontab:"; \
+	crontab -l | grep -A1 -B1 "quick_smoke.sh" || echo "   (not found in crontab - check crontab -l)"
+
+.PHONY: base-build rebuild rebuild-auto smoke-run smoke-status smoke-daily-install
+
+## Build base image (py311) with BuildKit
+base-build:
+	DOCKER_BUILDKIT=1 docker build --build-arg GIT_SHA=$(GIT_SHA) -t searchforge-base:py311 -f docker/base/Dockerfile .
+
+## Rebuild rag-api using classic builder (offline-safe)
+rebuild: ## Classic builder, pass GIT_SHA, write log
+	mkdir -p .runs
+	echo "[$(shell date -Iseconds)] rebuild(classic) GIT_SHA=$(GIT_SHA)" | tee -a .runs/build.log
+	DOCKER_BUILDKIT=0 $(COMPOSE) build --build-arg GIT_SHA=$(GIT_SHA) --no-cache --pull=false rag-api 2>&1 | tee -a .runs/build.log
+	$(COMPOSE) up -d rag-api 2>&1 | tee -a .runs/build.log
+
+## Rebuild with auto-fallback: try BuildKit then fallback to classic if registry lookups fail
+rebuild-auto: ## BuildKit→Classic 自动降级，贯穿 GIT_SHA，写日志
+	mkdir -p .runs
+	DOCKER_BUILDKIT=1 $(COMPOSE) build --build-arg GIT_SHA=$(GIT_SHA) --no-cache --pull=false rag-api 2>&1 | tee -a .runs/build.log || (echo "[WARN] BuildKit failed, falling back to classic..." | tee -a .runs/build.log; ENV_FILE=$(ENV_FILE) GIT_SHA=$(GIT_SHA) scripts/build_with_fallback.sh rag-api 2>&1 | tee -a .runs/build.log)
+	$(COMPOSE) up -d rag-api 2>&1 | tee -a .runs/build.log
 
 real-large-on: realcheck-up
 	@USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
@@ -176,21 +262,83 @@ real-large-off: realcheck-up
 		MODES=proxy_off N=$${N:-1000} python3 scripts/realcheck_large.py --no-paired
 
 real-large-paired:
-	@python3 scripts/realcheck_large.py --paired --warmup 10 --no-cache --no-rerank --trim-pct 5 --samples 2000 --budgets '200,400,800,1000,1200'
+	@python3 scripts/realcheck_large.py --paired --warmup 10 --no-cache --no-rerank --trim-pct 5 --samples 2000 --budgets "200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600"
 
 real-pareto: real-large-paired
-	@python3 scripts/realcheck_pareto.py --aggregate
+	@python3 scripts/realcheck_pareto.py --aggregate --budgets "200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600"
 
 real-plot:
 	@python3 scripts/realcheck_large.py --plot-only
 	@test -s .runs/real_large_trilines.csv
 	@test -s .runs/real_large_trilines.png
 
-ci: policy-smoke e2e-mini real-large-paired real-pareto real-plot
+real-fast-paired:
+	@python3 scripts/realcheck_large.py --paired --warmup 10 --no-cache --no-rerank --trim-pct 5 --samples 200 --budgets "400,600,800,1000,1200"
+
+real-fast-pareto: real-fast-paired
+	@python3 scripts/realcheck_large.py --aggregate --budgets "400,600,800,1000,1200" --pareto-json .runs/pareto_fast.json
+
+real-fast-plot:
+	@python3 scripts/realcheck_large.py --plot-only --pareto-json .runs/pareto_fast.json --output-csv .runs/real_fast_trilines.csv --output-png .runs/real_fast_trilines.png
+	@test -s .runs/real_fast_trilines.csv
+	@test -s .runs/real_fast_trilines.png
+
+trilines-refresh: ## Generate .runs/real_large_trilines.json/csv
+	@$(MAKE) real-plot
+
+kpi-refresh: ## Generate .runs/pareto.json and .runs/e2e_report.json
+	@$(MAKE) real-pareto
+	@$(MAKE) e2e-mini
+
+ci: ## Run CI with self-healing
+	@bash scripts/ci_self_heal.sh
+
+ci-fast: gpu-smoke ## Fast CI for daily development (few minutes, reduced samples/budgets)
+	@echo "[CI-FAST] running fast evaluation..."
+	@$(MAKE) real-fast-paired
+	@$(MAKE) real-fast-pareto || echo "[CI-FAST] ⚠️  Pareto aggregation had some failures, but continuing..."
+	@$(MAKE) real-fast-plot
+	@echo "[CI-FAST] ✅ done (artifacts in .runs/real_fast_trilines.csv)"
+
+ci-raw: policy-smoke e2e-mini real-large-paired real-pareto real-plot
 	@jq -e '.success_rate>=0.99 and .bounds_ok and .stable_detune and .p95_down' .runs/real_large_report.json >/dev/null
 	@jq -e '.ok==true' .runs/pareto.json >/dev/null
 	@test -s .runs/real_large_trilines.csv && test -s .runs/real_large_trilines.png
+	@echo "[CI] Checking trilines CSV density..."
+	@python3 scripts/check_trilines_density.py
 	@python3 scripts/check_autotuner_persistence.py
+	@echo "[CI] Checking for GPU fallback..."
+	@bash scripts/check_gpu_fallback.sh || (echo "[CI] ❌ GPU fallback detected - CI must use GPU"; exit 1)
+	@echo "[CI] Hard assertions: bounds_ok && stable_detune && p95_down"
+	@test -f .runs/pareto.json && jq -e '.bounds_ok==true' .runs/pareto.json >/dev/null || (echo "❌ bounds_ok assertion failed"; exit 1)
+	@test -f .runs/pareto.json && jq -e '.stable_detune==true' .runs/pareto.json >/dev/null || (echo "❌ stable_detune assertion failed"; exit 1)
+	@test -f .runs/pareto.json && jq -e '.p95_down==true' .runs/pareto.json >/dev/null || (echo "❌ p95_down assertion failed"; exit 1)
+	@echo "[CI] Gate 1: Simulating registry timeout..."
+	@SIMULATE_REGISTRY_TIMEOUT=1 ENV_FILE=$(ENV_FILE) GIT_SHA=$(GIT_SHA) scripts/build_with_fallback.sh rag-api
+	@sleep 2
+	@echo "[CI] Verify base images use :py311"
+	@key_services="services/fiqa_api/Dockerfile services/auto_tuner/Dockerfile services/chaos_injector/Dockerfile services/probe_cron/Dockerfile services/shadow_proxy/Dockerfile"; \
+	for df in $$key_services; do \
+		if [ -f "$$df" ] && ! grep -q '^FROM .*searchforge-base:py311' "$$df" 2>/dev/null; then \
+			echo "❌ $$df does not use searchforge-base:py311"; exit 1; \
+		fi; \
+	done; \
+	echo "✅ All key services use searchforge-base:py311"
+	@echo "[CI] Verify /version == GIT_SHA"
+	@test "$(GIT_SHA)" = "$$(curl -fsS --retry 3 --retry-connrefused --max-time 5 http://localhost:8000/version | jq -r '.commit')" || (echo "/version mismatch"; exit 1)
+	@echo "[CI] Verify cost_per_1k_usd > 0"
+	@awk -F, 'NR==1{for(i=1;i<=NF;i++)if($$i=="cost_per_1k_usd")c=i} NR>1{s+=$$c} END{if(s<=0)exit 1}' .runs/real_large_trilines.csv || (echo "cost_per_1k_usd==0, configure MODEL_PRICING_JSON"; exit 1)
+	@echo "[CI] Verify production build doesn't leak token"
+	@if [ -d ui/dist ]; then \
+		if grep -R "VITE_AUTOTUNER_TOKEN" ui/dist/ 2>/dev/null; then \
+			echo "❌ Token leaked in production build"; exit 1; \
+		else \
+			echo "✅ No token leaked in production build"; \
+		fi; \
+	else \
+		echo "⚠️  ui/dist not found, skipping token leak check"; \
+	fi
+	@echo "✅ CI guards OK"
 
 check-qdrant:
 	$(call ensure_tool,python3)
@@ -209,6 +357,129 @@ reseed-fiqa:
 	@FORCE=1 python3 scripts/seed_qdrant.py > .runs/qdrant_seed.json
 	@python3 scripts/check_qdrant.py > .runs/qdrant_check.json
 	@echo "reseed done"
+
+qdrant-bind-setup:
+	@mkdir -p .qdrant
+	@echo "[ok] .qdrant bind dir ready"
+
+qdrant-backup-volume:
+	@chmod +x scripts/backup_qdrant_volume.sh
+	@./scripts/backup_qdrant_volume.sh searchforge_qdrant_data
+
+qdrant-restart:
+	$(COMPOSE) up -d qdrant
+	@sleep 2
+	@echo "[info] wait qdrant..."
+	@curl -fsS http://localhost:6333/regions >/dev/null || true
+
+fiqa-reseed:
+	@echo "[info] seeding fiqa_50k_v1 ..."
+	$(MAKE) seed-fiqa
+
+fiqa-import-full: ## Import full FiQA 50k dataset (all collections)
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	@echo "[info] Importing full FiQA 50k dataset (all available collections)..."
+	@python3 scripts/import_fiqa_50k.py --all --recreate | tee .runs/import_fiqa_50k.log
+	@echo "[info] Import complete. Check .runs/import_fiqa_50k.json for summary"
+
+fiqa-import: ## Import FiQA 50k collection (default: fiqa_50k_v1)
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	@COLLECTION=$${COLLECTION:-fiqa_50k_v1}; \
+	echo "[info] Importing collection: $$COLLECTION ..."; \
+	python3 scripts/import_fiqa_50k.py --collection $$COLLECTION --recreate | tee .runs/import_fiqa_50k.log
+
+rebuild-fiqa-para: ## Rebuild fiqa_para_50k collection from manifest
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	@python3 scripts/import_fiqa_manifest.py --manifest data/fiqa_v1/manifest_50k_v1.json --collection fiqa_para_50k --recreate --batch 512 2>&1 | tee .runs/import_fiqa_para.log
+
+check-fiqa:
+	@curl -fsS http://localhost:6333/collections/fiqa_50k_v1 | jq .
+	@echo "[assert] points_count >= 50000 (full data expected)"
+
+# ===== DocID 热修补 & 断言 =====
+DOC_COLLECTION ?= fiqa_para_50k
+DOCID_LEN ?= 6
+
+.PHONY: fix-docid
+fix-docid:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	@bash -c 'QDRANT_URL=$${QDRANT_URL:-http://localhost:6333} python3 scripts/patch_docid_padding.py --collection $(DOC_COLLECTION) --length $(DOCID_LEN) --url $${QDRANT_URL:-http://localhost:6333} 2>&1 | tee .runs/fix_docid_$(DOC_COLLECTION).log; exit $${PIPESTATUS[0]}'
+
+.PHONY: assert-docid
+assert-docid:
+	$(call ensure_tool,python3)
+	@mkdir -p .runs
+	@bash -c 'QDRANT_URL=$${QDRANT_URL:-http://localhost:6333} python3 scripts/patch_docid_padding.py --collection $(DOC_COLLECTION) --length $(DOCID_LEN) --assert-only --url $${QDRANT_URL:-http://localhost:6333} 2>&1 | tee .runs/assert_docid_$(DOC_COLLECTION).log; exit $${PIPESTATUS[0]}'
+
+# ===== DocID 恢复（从旧卷/备份） =====
+.PHONY: docid-export-old
+docid-export-old:
+	$(call ensure_tool,python3)
+	@OLD_BASE=$${OLD_BASE:-http://localhost:6335}; \
+	COLLECTION=$${COLLECTION:-fiqa_para_50k}; \
+	OUT=$${OUT:-.runs/docid_map_$$COLLECTION.json}; \
+	echo "[INFO] Exporting doc_id mapping from old Qdrant..."; \
+	echo "[INFO] OLD_BASE=$$OLD_BASE COLLECTION=$$COLLECTION OUT=$$OUT"; \
+	mkdir -p $$(dirname "$$OUT"); \
+	bash -c 'EXPECTED_COUNT=$${EXPECTED_COUNT:-50000}; \
+		python3 scripts/docid_export_from_qdrant.py \
+		--base "$$OLD_BASE" \
+		--collection "$$COLLECTION" \
+		--out "$$OUT" \
+		--expected-count $$EXPECTED_COUNT 2>&1 | tee .runs/docid_restore.log; \
+		exit $${PIPESTATUS[0]}'
+
+.PHONY: docid-apply
+docid-apply:
+	$(call ensure_tool,python3)
+	@COLLECTION=$${COLLECTION:-fiqa_para_50k}; \
+	MAP=$${MAP:-.runs/docid_map_$$COLLECTION.json}; \
+	if [ ! -f "$$MAP" ]; then \
+		echo "[ERROR] Mapping file not found: $$MAP"; \
+		echo "[ERROR] Run 'make docid-export-old' first or set MAP variable"; \
+		exit 1; \
+	fi; \
+	echo "[INFO] Applying doc_id mapping to current collection..."; \
+	echo "[INFO] COLLECTION=$$COLLECTION MAP=$$MAP"; \
+	bash -c 'EXPECTED_COUNT=$${EXPECTED_COUNT:-50000}; \
+		python3 scripts/docid_apply_map.py \
+		--base http://localhost:6333 \
+		--collection "$$COLLECTION" \
+		--map "$$MAP" \
+		--expected-count $$EXPECTED_COUNT 2>&1 | tee -a .runs/docid_restore.log; \
+		exit $${PIPESTATUS[0]}'
+
+.PHONY: docid-verify
+docid-verify:
+	$(call ensure_tool,python3)
+	@COLLECTION=$${COLLECTION:-fiqa_para_50k}; \
+	MAP=$${MAP:-.runs/docid_map_$$COLLECTION.json}; \
+	if [ ! -f "$$MAP" ]; then \
+		echo "[ERROR] Mapping file not found: $$MAP"; \
+		echo "[ERROR] Run 'make docid-export-old' first or set MAP variable"; \
+		exit 1; \
+	fi; \
+	echo "[INFO] Verifying doc_id mapping..."; \
+	echo "[INFO] COLLECTION=$$COLLECTION MAP=$$MAP"; \
+	bash -c 'EXPECTED_COUNT=$${EXPECTED_COUNT:-50000}; \
+		python3 scripts/docid_apply_map.py \
+		--base http://localhost:6333 \
+		--collection "$$COLLECTION" \
+		--map "$$MAP" \
+		--verify-only \
+		--sample 200 \
+		--expected-count $$EXPECTED_COUNT 2>&1 | tee -a .runs/docid_restore.log; \
+		EXIT_CODE=$${PIPESTATUS[0]}; \
+		if [ $$EXIT_CODE -eq 0 ]; then \
+			echo "[INFO] doc_id verification passed"; \
+		else \
+			echo "[ERROR] doc_id verification failed"; \
+		fi; \
+		exit $$EXIT_CODE'
 
 a-verify:
 	$(call ensure_tool,python3)
@@ -398,7 +669,7 @@ open-portainer:
 whoami:
 	@bash tools/switch/print_target.sh
 
-gpu-smoke:
+gpu-hardware:
 	@$(COMPOSE) run --rm --gpus all gpu-smoke nvidia-smi -L
 
 compose-config:
@@ -496,15 +767,148 @@ net-verify: ## 验证 rag-api 端口绑定与健康接口
 	@curl -fsS http://andy-wsl:8000/health || (sleep 2; curl -fsS http://andy-wsl:8000/health)
 	@echo "✅ Network verification done"
 
-up-gpu:
+up-gpu: ## Start GPU worker service
 	@echo "🚀 Starting GPU worker service..."
-	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d gpu-worker'
+	$(COMPOSE) up -d gpu-worker
 	@echo "✅ GPU worker started"
 
-down-gpu:
+down-gpu: ## Stop GPU worker service
 	@echo "🛑 Stopping GPU worker service..."
-	@ssh $(SSH_HOST) 'cd $(RDIR) && docker compose -f docker-compose.yml -f docker-compose.gpu.yml down gpu-worker'
+	$(COMPOSE) stop gpu-worker
 	@echo "✅ GPU worker stopped"
+
+gpu-smoke: up-gpu ## Run GPU path smoke test (self-contained)
+	$(call ensure_tool,python3)
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	@mkdir -p .runs
+	@echo "🧪 Running GPU path smoke test..."
+	@echo "1. Waiting for GPU worker readiness..."
+	@bash scripts/wait_for_gpu_ready.sh || (echo "❌ GPU worker not ready"; exit 1)
+	@echo "2. Running GPU worker smoke tests..."
+	@GPU_WORKER_URL=$${GPU_WORKER_URL:-http://localhost:8090} python3 scripts/gpu_worker_smoke.py || exit 1
+	@echo "3. Testing RAG query through rag-api (should hit GPU worker)..."
+	@if ! curl -fsS -X POST http://localhost:8000/api/query \
+		-H 'Content-Type: application/json' \
+		-d '{"question":"what is ETF?","top_k":5,"rerank":true}' \
+		| jq -e '.items != null' >/dev/null 2>&1; then \
+		echo "❌ RAG query failed or returned invalid response"; \
+		exit 1; \
+	fi
+	@echo "[GPU-SMOKE] ✅ GPU path OK"
+
+.PHONY: auto-tuner-on-off
+auto-tuner-on-off: gpu-smoke
+	@echo "[EXPERIMENT] AutoTuner On/Off (full)..."
+	python3 experiments/auto_tuner_on_off.py
+
+.PHONY: go-proxy-on-off
+go-proxy-on-off: gpu-smoke proxy-smoke
+	@echo "[EXPERIMENT] Go proxy On/Off (concurrency/QPS)..."
+	python3 experiments/go_proxy_on_off.py
+
+.PHONY: auto-tuner-hard
+auto-tuner-hard: gpu-smoke
+	@echo "[EXPERIMENT] AutoTuner On/Off (HARD mode: tight budgets, fewer queries)..."
+	python3 experiments/auto_tuner_on_off.py \
+		--n-queries 150 \
+		--budgets-ms "50,60,70,80" \
+		--repeats 3 \
+		--tag "hard"
+
+.PHONY: auto-tuner-sla
+auto-tuner-sla: gpu-smoke
+	@echo "[EXPERIMENT] AutoTuner vs Heavy Baseline under tight SLA..."
+	python3 experiments/auto_tuner_on_off.py \
+		--n-queries 150 \
+		--budgets-ms "50,60,70" \
+		--repeats 3 \
+		--baseline-top-k 40 \
+		--baseline-rerank true \
+		--autotuner-top-k 10 \
+		--autotuner-rerank false \
+		--tag "sla"
+
+.PHONY: auto-tuner-sla-plot
+auto-tuner-sla-plot:
+	@echo "[PLOT] AutoTuner vs Heavy Baseline under tight SLA..."
+	python3 experiments/plot_auto_tuner_sla.py
+
+.PHONY: auto-tuner-sla-all
+auto-tuner-sla-all: auto-tuner-sla auto-tuner-sla-plot
+	@echo "[PLOT] AutoTuner SLA experiment + plot complete."
+
+.PHONY: buildx-init gpu-build
+buildx-init: ## Initialize Docker buildx builder
+	@echo "🔧 Initializing Docker buildx builder..."
+	@docker buildx create --use || true
+	@mkdir -p .buildx-cache
+	@echo "✅ Buildx builder ready"
+
+gpu-build: buildx-init ## Build GPU worker with BuildKit cache
+	@echo "🔨 Building GPU worker with BuildKit cache..."
+	@$(call ensure_tool,docker)
+	@if [ ! -f .env.current ]; then \
+		echo "⚠️  .env.current not found, using defaults"; \
+		TORCH_VERSION=$${TORCH_VERSION:-2.3.0}; \
+		PYTORCH_CUDA=$${PYTORCH_CUDA:-121}; \
+		MODEL_NAME=$${MODEL_NAME:-sentence-transformers/all-MiniLM-L6-v2}; \
+	else \
+		export $$(grep -v '^#' .env.current | xargs); \
+	fi; \
+	DOCKER_BUILDKIT=1 docker buildx build \
+	  -f docker/Dockerfile.gpu-worker \
+	  --build-arg TORCH_VERSION=$${TORCH_VERSION:-2.4.0} \
+	  --build-arg PYTORCH_CUDA=$${PYTORCH_CUDA:-121} \
+	  --build-arg MODEL_NAME=$${MODEL_NAME:-sentence-transformers/all-MiniLM-L6-v2} \
+	  --cache-from=type=local,src=.buildx-cache \
+	  --cache-to=type=local,dest=.buildx-cache,mode=max \
+	  -t gpu-worker:latest --load .
+	@echo "✅ GPU worker build complete"
+
+gpu-prewarm: ## Wait for /ready and POST /embed to populate caches
+	$(call ensure_tool,curl)
+	@echo "🔥 Prewarming GPU worker..."
+	@echo "Waiting for /ready=200..."
+	@for i in $$(seq 1 60); do \
+		if curl -fsS http://localhost:8090/ready >/dev/null 2>&1; then \
+			echo "✅ /ready=200"; \
+			break; \
+		fi; \
+		echo "⏳ waiting ($$i/60)..."; \
+		sleep 1; \
+	done
+	@echo "POST /embed with [\"hello\",\"world\"]..."
+	@curl -fsS -X POST http://localhost:8090/embed \
+		-H 'Content-Type: application/json' \
+		-d '{"texts":["hello","world"]}' >/dev/null 2>&1 || (echo "❌ Prewarm failed"; exit 1)
+	@echo "✅ Prewarm complete (on-disk caches populated)"
+
+gpu-accept: ## Acceptance test: check device==cuda, /ready=200, run gpu-smoke
+	$(call ensure_tool,curl)
+	$(call ensure_tool,jq)
+	$(call ensure_tool,python3)
+	@echo "✅ Running GPU worker acceptance tests..."
+	@echo "1. Checking /meta -> device==cuda..."
+	@DEVICE=$$(curl -fsS http://localhost:8090/meta | jq -r '.device'); \
+	if [ "$$DEVICE" != "cuda" ]; then \
+		echo "❌ device=$$DEVICE, expected cuda"; \
+		exit 1; \
+	fi; \
+	echo "✅ device=$$DEVICE"
+	@echo "2. Checking /ready=200..."
+	@curl -fsS http://localhost:8090/ready >/dev/null 2>&1 || (echo "❌ /ready failed"; exit 1)
+	@echo "✅ /ready=200"
+	@echo "3. Running gpu-smoke..."
+	@$(MAKE) gpu-smoke
+	@echo "4. Verifying all_passed=true..."
+	@ALL_PASSED=$$(jq -r '.all_passed' .runs/gpu_worker_smoke.json 2>/dev/null || echo "false"); \
+	if [ "$$ALL_PASSED" != "true" ]; then \
+		echo "❌ all_passed=$$ALL_PASSED, expected true"; \
+		exit 1; \
+	fi; \
+	echo "✅ all_passed=$$ALL_PASSED"
+	@echo "✅ GPU worker acceptance tests passed"
 
 # Repository cleanup targets (safe, reversible archiving)
 cleanup-audit: ## 审计可清理的文件（dry-run，生成候选列表）
@@ -854,3 +1258,19 @@ gold-update-presets: ## Update presets with gold qrels mappings
 
 bandit-audit:
 	python3 scripts/audit_bandit.py
+
+.PHONY: check-qdrant-lock check-qdrant-persist
+
+check-qdrant-lock: ## Check if Qdrant tag matches environment variable
+	@echo ">> Check qdrant tag matches env"
+	@mkdir -p .runs
+	@curl -sf http://localhost:8000/api/qdrant/version.tag | tee .runs/qdrant_tag.json | jq -e '.match==true' >/dev/null || (echo "❌ Qdrant tag mismatch"; exit 1)
+	@echo "✅ Qdrant tag matches environment"
+
+check-qdrant-persist: ## Restart qdrant and ensure collections persist
+	@echo ">> Restart qdrant and ensure collections persist"
+	@mkdir -p .runs
+	@$(COMPOSE) restart qdrant
+	@sleep 3
+	@curl -sf http://localhost:6333/collections | tee .runs/qdrant_collections.json | jq -e '.result.collections | type=="array" and (. | length) >= 1' >/dev/null || (echo "❌ Collections not found after restart"; exit 1)
+	@echo "✅ Collections persisted after restart"

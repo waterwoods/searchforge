@@ -35,6 +35,120 @@ A 阶段以健康检查结果为准，集合存在即可 PASS；如需演示“�
 - `make tuner-ab`：代理 ON/OFF 对照跑 80 批次，判定 `TUNER AB PASS`，详细指标同样记录在 `.runs/tuner_small_report.json`。
 - 可单独执行 `make real-large-paired` 复跑成对采样；所有指标会落盘到 `.runs/real_large_paired_{budget}.json`、`.runs/real_large_report.json` 和 `.runs/pareto.json`，并在 `.runs/obs_url.txt` 追加最新 trace URL。
 
+### Golden path: run CI with GPU
+
+```bash
+docker compose up -d
+
+make gpu-smoke      # must be green (GPU path healthy)
+
+make ci             # runs evaluation + generates Metrics Hub artifacts
+```
+
+- `make gpu-smoke` verifies gpu-worker is ready and rag-api can talk to it.
+- `make ci` will fail if it falls back to CPU (see `scripts/check_gpu_fallback.sh`).
+
+**Important**: If `make gpu-smoke` or `make ci` fail, fix GPU / connectivity issues first instead of ignoring and running more experiments.
+
+### AutoTuner vs heavy baseline under tight SLA
+
+We run a dedicated experiment to compare a **dumb heavy baseline** (TopK=40, rerank=on)
+against the **Balanced Autotuner policy** under a tight SLA:
+
+- 150 real FIQA queries (single concurrency).
+- Budgets: 50 / 60 / 70 ms (p95 target ≈ 70 ms).
+- Baseline: fixed, heavy config (TopK=40, rerank=on).
+- Autotuner: Balanced policy with lighter initial config (TopK=10, rerank=off) and per-query feedback.
+
+Run:
+
+```bash
+make auto-tuner-sla-all
+```
+
+This produces both the CSV and the plot:
+
+- `.runs/auto_tuner_on_off_sla.csv`
+- `.runs/auto_tuner_on_off_sla.png`
+
+The figure below shows that under tight budgets, the **heavy baseline blows the SLA**
+with much higher p95 and ~25% timeout rate, while the **Autotuner stays well below
+the SLA with near-zero timeouts**:
+
+![AutoTuner vs Heavy Baseline under tight SLA](docs/screenshots/autotuner_sla.png)
+
+- Detailed metrics: [AutoTuner SLA experiment](docs/experiments/auto_tuner_sla.md)
+- Go proxy concurrency lab: [Go proxy On/Off](docs/experiments/go_proxy_on_off.md)
+
+### Fast CI for local development
+
+For day-to-day development, use `ci-fast` for quicker feedback:
+
+```bash
+docker compose up -d
+
+make gpu-smoke       # verify GPU path
+
+make ci-fast         # fast evaluation (~minutes), writes .runs/real_fast_trilines.csv
+```
+
+Use this for day-to-day changes. `ci-fast` uses:
+- 200 samples (vs 2000 in full CI)
+- 5 budget points: 400, 600, 800, 1000, 1200ms (vs 15 budgets: 200-1600ms in 100ms steps)
+- Still hits the full RAG path (rag-api + gpu-worker + Qdrant)
+- Produces separate artifacts: `.runs/real_fast_trilines.csv` and `.runs/real_fast_trilines.png`
+
+For full metrics & plots (used by Metrics Hub and reports), run:
+
+```bash
+make ci              # full eval (~longer), writes .runs/real_large_trilines.csv
+```
+
+### CI with GPU Worker
+
+When GPU worker is available, CI automatically uses it for embedding and reranking operations. The CI process includes:
+
+1. **GPU Worker Readiness Check**: Before running CI, the system waits for GPU worker to be ready (polls `http://gpu-worker:8090/ready` for up to 60 seconds). If GPU is not available, CI fails (no silent CPU fallback).
+
+2. **GPU Fallback Detection**: After CI runs, `scripts/check_gpu_fallback.sh` checks rag-api logs for fallback patterns. If fallback is detected, CI exits with non-zero code.
+
+3. **Dense Trilines Data Generation**: CI ensures `.runs/real_large_trilines.csv` has:
+   - At least 100 rows
+   - At least 3 unique budget values
+   - Sufficient data points for Metrics Hub visualization
+
+4. **Metrics Hub Compatibility**: Metrics Hub defaults to generous filters (24h time range) and automatically widens filters if no data is found.
+
+#### Running CI with GPU
+
+```bash
+# Start core stack + GPU worker
+docker compose up -d
+make gpu-build && make up-gpu
+
+# Prewarm GPU worker (loads models into memory)
+make gpu-prewarm && make gpu-accept
+
+# Run CI and produce metrics for Metrics Hub
+make ci
+```
+
+#### CI Success Criteria
+
+CI is considered successful when:
+
+- `make gpu-smoke` passes (GPU path verified)
+- `make ci` finishes without error
+- `.runs/real_large_trilines.csv` has >= 100 rows and >= 3 distinct budget values
+- GPU Worker was used (no fallback detected in logs)
+- Metrics Hub, with default filters, shows at least one point on the tri-lines chart
+
+#### Configuration
+
+- **WORKER_URLS**: Set in `docker-compose.yml` as `WORKER_URLS=http://gpu-worker:8090` for rag-api service
+- **CPU Limits**: rag-api keeps CPU limits (`cpus: "2.0"`, `OMP_NUM_THREADS=1`) so heavy work flows to GPU
+- **GPU Fallback Detection**: CI fails if GPU worker falls back to CPU (check `scripts/check_gpu_fallback.sh`)
+
 ### ABC One-Shot Verify
 
 ```bash
@@ -70,6 +184,125 @@ echo ">>> 验收标准：需满足 .runs/{a,b,c}_verify.json 中 ok=true 且日�
 echo "若 A 为 false，可执行：  make reseed-fiqa && make a-verify && make abc-verify"
 ```
 
+## Daily Smoke
+
+Daily Smoke 是一个快速健康检查系统，用于每日自动运行轻量级测试，确保系统基本功能正常。
+
+### 功能特性
+
+- **快速体检**: 执行 `diag-now` 和 `policy-smoke`，验证系统基本功能
+- **状态报告**: 生成 `.runs/smoke_status.json`，包含测试结果和时间戳
+- **日志记录**: 所有输出追加到 `.runs/smoke.log` 便于追踪
+- **自动安装**: 支持通过 cron 自动运行每日检查
+
+### 使用方法
+
+#### 1. 手动运行
+
+```bash
+# 运行一次快速体检
+make smoke-run
+
+# 查看状态
+make smoke-status
+```
+
+**输出示例**:
+```json
+{
+  "ts": 1729987200,
+  "ok": true,
+  "server_commit": "a70f865",
+  "latency_ms": 65000,
+  "notes": "All checks passed"
+}
+```
+
+#### 2. 安装每日自动运行
+
+```bash
+# 安装每日 cron 任务（@daily）
+make smoke-daily-install
+```
+
+这会添加一条 `@daily` cron 任务，每天自动运行快速体检，输出追加到 `.runs/smoke_cron.log`。
+
+**查看已安装的 cron 任务**:
+```bash
+crontab -l | grep quick_smoke
+```
+
+**示例 crontab 条目**:
+```
+@daily cd /home/andy/searchforge && bash scripts/quick_smoke.sh >> .runs/smoke_cron.log 2>&1
+```
+
+#### 3. 查看状态和日志
+
+```bash
+# 查看最新状态
+make smoke-status
+
+# 查看完整日志（最后 50 行）
+tail -50 .runs/smoke.log
+
+# 查看 cron 日志（如果已安装）
+tail -50 .runs/smoke_cron.log
+```
+
+### 期望输出
+
+**成功时的状态文件** (`.runs/smoke_status.json`):
+```json
+{
+  "ts": 1729987200,
+  "ok": true,
+  "server_commit": "a70f865",
+  "latency_ms": 65000,
+  "notes": "All checks passed"
+}
+```
+
+**失败时的状态文件**:
+```json
+{
+  "ts": 1729987300,
+  "ok": false,
+  "server_commit": "a70f865",
+  "latency_ms": 12000,
+  "notes": "policy-smoke failed"
+}
+```
+
+### 集成到监控系统
+
+你可以将 `make smoke-status` 集成到监控系统中，通过检查 `ok` 字段来判断系统健康状态：
+
+```bash
+# 示例：检查状态并发送告警
+if ! make smoke-status | jq -e '.ok == true' >/dev/null; then
+    echo "⚠️ Smoke test failed!"
+    # 发送告警...
+fi
+```
+
+### 故障排查
+
+如果 smoke 测试失败：
+
+1. **检查日志**: `tail -50 .runs/smoke.log`
+2. **手动运行**: `make smoke-run` 查看详细输出
+3. **检查后端**: `make diag-now` 单独运行诊断
+4. **检查策略测试**: `make policy-smoke` 单独运行策略测试
+5. **检查环境变量**: 确保 `.env.current` 中配置了 `AUTOTUNER_TOKENS` 和 `AUTOTUNER_RPS`
+
+### 注意事项
+
+- Smoke 测试是轻量级的，不会运行完整的 CI 套件
+- 测试时间通常在 30-120 秒之间
+- 如果测试失败，退出码为非 0，方便集成到自动化工具
+- Cron 任务的日志会自动追加到 `.runs/smoke_cron.log`，不会覆盖
+
 ## How to open the latest trace
 
 1. 触发任意一次查询（例如调用 `/api/query`）以刷新 `.runs/obs_url.txt` 和 `.runs/trace_id.txt`。
@@ -102,6 +335,150 @@ echo "若 A 为 false，可执行：  make reseed-fiqa && make a-verify && make 
 - `make test`
 - `make export`
 
+## 环境与版本护栏
+
+项目采用环境锁定和版本护栏机制确保部署一致性：
+
+### 环境变量锁定
+
+- **ENV_FILE**: Makefile 默认使用 `.env.current` 作为单一真源，所有 `docker compose` 命令自动追加 `--env-file $(ENV_FILE)`
+- **GIT_SHA**: 自动从 git 获取当前提交的短 SHA，用于版本追踪和构建参数传递
+
+### 版本一致性检查
+
+CI 流程包含以下硬检查（任一失败即退出）：
+
+1. **版本一致性**: `/version` 端点返回的 `commit` 必须等于当前 `$(GIT_SHA)`
+2. **成本启用检查**: 
+   - 检查 `.runs/real_large_trilines.csv` 中是否存在 `cost_per_1k_usd > 0` 的值
+   - 验证 `/api/metrics/kpi` 返回 `cost_enabled == true`
+
+### 成本配置
+
+在 `.env.current` 中配置 `MODEL_PRICING_JSON` 以启用成本追踪：
+
+```bash
+MODEL_PRICING_JSON='{"gpt-4o-mini": {"input": 0.15, "output": 0.6}, "gpt-4o": {"input": 2.5, "output": 10.0}}'
+```
+
+或使用 `prompt/completion` 格式：
+```bash
+MODEL_PRICING_JSON='{"gpt-4o-mini": {"prompt": 0.15, "completion": 0.6}}'
+```
+
+### Autotuner 认证与限流
+
+使用 `/api/autotuner/set_policy` 需要提供认证令牌：
+
+1. **配置令牌**: 在 `.env.current` 中设置 `AUTOTUNER_TOKENS`（逗号分隔）：
+   ```bash
+   AUTOTUNER_TOKENS=token1,token2,token3
+   ```
+
+2. **请求头**: 所有 POST 请求需包含 `X-Autotuner-Token` header：
+   ```bash
+   curl -X POST http://localhost:8000/api/autotuner/set_policy \
+     -H "X-Autotuner-Token: your-token-here" \
+     -H "Content-Type: application/json" \
+     -d '{"policy": "Balanced"}'
+   ```
+
+3. **开发环境**: 在开发环境中，前端会自动从 `VITE_AUTOTUNER_TOKEN` 环境变量读取令牌（仅限 DEV 模式）。生产构建会确保令牌不会泄露到 `ui/dist/` 中。
+
+## Metrics Hub 使用说明
+
+Metrics Hub 提供了完整的指标监控和实验管理界面。
+
+### 功能特性
+
+- **4 个 KPI 卡片**: 显示 Success Rate、P95 Down、Bounds OK、Stable Detune
+- **三线图表**: 展示 P95 (ms)、Recall@10、Cost/1k ($) 随预算变化的关系
+- **预算分段表**: 按预算分组显示最佳数据点，支持策略选择
+- **实验记录表**: 列出所有实验任务，支持点击查看详情
+- **策略选择器**: 支持切换 AutoTuner 策略（LatencyFirst、RecallFirst、Balanced）
+
+### 使用方式
+
+1. **访问页面**: 打开前端应用，导航到 `/lab/metrics` 路由
+2. **查看指标**: 
+   - KPI 卡片自动刷新显示最新指标
+   - 三线图表支持按预算筛选查看不同数据点
+3. **时间范围过滤**: 使用 "Time Range" 下拉框选择时间范围（1小时、6小时、24小时、7天）
+4. **预算过滤**: 使用 "Budget Filter" 下拉框筛选特定预算的数据
+5. **策略切换**: 
+   - 在开发环境中，Strategy Selector 会自动使用 `VITE_AUTOTUNER_TOKEN` 进行认证
+   - 在生产环境中，如果未配置令牌或认证失败，会显示 "Not authorized / token missing" 灰色横幅，选择器自动禁用
+   - 成功更新策略后会显示 "Policy updated" 提示
+   - 策略切换会自动刷新预算分段表，根据策略选择最佳数据点
+6. **刷新数据**: 点击右上角 "Refresh" 按钮手动刷新所有数据
+7. **查看详情**: 点击实验记录表中的任意行，打开详情抽屉查看完整信息、时间线、日志和产物
+
+### 预算分段表使用说明
+
+预算分段表（Budget Segments Table）显示每个预算下的最佳数据点，帮助快速比较不同预算的性能表现。
+
+#### 数据来源
+
+- 从 `/api/metrics/trilines` 读取 trilines 数据（JSON 格式）
+- 如果 JSON 不可用，会尝试从 `.runs/real_large_trilines.csv` 读取（通过 API 文件代理）
+- 如果都不可用，显示空状态
+
+#### 最佳点选择逻辑
+
+对于每个预算，系统会根据当前策略选择一个"最佳点"：
+
+1. **如果 AutoTuner 策略可用**：
+   - **LatencyFirst**: 选择 p95 最小的点
+   - **RecallFirst**: 选择 recall@10 最大的点
+   - **Balanced**: 选择 `argmax(recall - α * normalized_p95)`，其中 α=0.5（硬编码）
+     - normalized_p95 是归一化后的 p95 值（范围 0-1）
+
+2. **如果没有策略**（策略未启用或不可用）：
+   - 使用 Pareto 最优：先选择 recall@10 最大的点，如果有多个，再从中选择 p95 最小的点
+
+#### 表格列说明
+
+- **Budget**: 预算值（单位：ms）
+- **Recall@10**: Recall@10 指标值
+- **p95**: P95 延迟（单位：ms）
+- **Cost/1k**: 每 1000 次查询的成本（美元）
+  - 如果成本未启用或全部为 0，显示 "—" 并提示配置 `MODEL_PRICING_JSON`
+- **Actions**: 操作按钮
+  - **Open trace**: 在新标签页打开 trace URL（如果可用）
+  - **Copy URL**: 复制 trace URL 到剪贴板
+  - 如果没有 trace URL，显示 "No trace"（禁用状态）
+
+#### 功能特性
+
+- **自动刷新**: 当策略改变或点击 Refresh 按钮时，表格会自动刷新
+- **过滤支持**: 表格会应用当前的时间范围和预算过滤器
+- **下载 CSV**: 点击 "Download CSV" 按钮可以下载当前表格数据为 CSV 文件
+- **排序**: 所有列都支持排序
+- **空状态处理**: 如果没有数据，显示灰色空状态提示
+
+#### 验收检查（开发模式）
+
+在开发环境中，如果表格有 ≥3 个预算且至少有一个 trace URL 可访问（通过 HEAD 请求检查），会在页面标题旁显示绿色的 "Table OK" 标签。
+
+### 错误处理
+
+- **404/500 错误**: 显示灰色空状态，不中断页面功能
+- **401/403 错误**: Strategy Selector 自动禁用，显示灰色横幅提示
+- **网络错误**: 静默处理，保留现有数据
+
+### 截图
+
+![Metrics Hub Screenshot](docs/screenshots/metrics_hub.png)
+
+> 注意: 截图路径为占位符，实际使用时请替换为真实截图路径。
+
+3. **速率限制**: 默认每 60 秒最多 12 次请求（可通过 `AUTOTUNER_RPS` 调整）。超出限制返回 429 状态码。
+
+4. **错误响应**: 所有错误以 JSON 格式返回：
+   - `401 Unauthorized`: 缺少 `X-Autotuner-Token` header
+   - `403 Forbidden`: 令牌无效
+   - `429 Too Many Requests`: 速率限制超出
+
 ## 系统架构
 
 采用现代化的微服务架构设计：
@@ -117,6 +494,59 @@ echo "若 A 为 false，可执行：  make reseed-fiqa && make a-verify && make 
 **注意**: rag-api 服务默认使用 CPU-only 模式，无需 GPU。如需 GPU 加速的嵌入和重排序功能，可使用可选的 `gpu-worker` 服务（通过 `make up-gpu` 启用）。
 
 项目基于**Vibe Coding原则**构建，实现透明、可审计的AI智能体，确保每个分析步骤都有明确的证据支撑。
+
+## GPU Worker (embed/rerank)
+
+GPU Worker 是一个可选的 FastAPI 服务，提供 GPU 加速的嵌入和重排序功能。当 GPU 可用时，可以显著提升嵌入和重排序的性能。
+
+### 快速开始
+
+```bash
+# 启动 GPU worker 服务
+make up-gpu
+
+# 运行 GPU worker 冒烟测试
+make gpu-smoke
+```
+
+### 功能特性
+
+- **GPU 加速**: 使用 CUDA 加速嵌入和重排序模型
+- **并发控制**: 通过 `MAX_CONCURRENCY` 和 `QUEUE_LIMIT` 控制并发和队列大小
+- **微批处理**: `/embed` 端点支持微批处理，在 10-30ms 窗口内累积请求
+- **优雅降级**: 当 GPU worker 不可用时，rag-api 自动降级到 CPU 模式
+- **健康检查**: 提供 `/healthz`、`/meta` 和 `/ready` 端点
+
+### 端点
+
+- `GET /healthz`: 健康检查（进程存活）
+- `GET /meta`: 元数据（模型名称、git SHA、设备信息）
+- `GET /ready`: 就绪检查（模型加载完成 + 预热完成）
+- `POST /embed`: 嵌入文本（支持批量）
+- `POST /rerank`: 重排序文档
+
+### 配置
+
+在 `docker-compose.yml` 中，GPU worker 服务支持以下环境变量：
+
+- `MODEL_EMBED`: 嵌入模型名称（默认: `sentence-transformers/all-MiniLM-L6-v2`）
+- `MODEL_RERANK`: 重排序模型名称（默认: `cross-encoder/ms-marco-MiniLM-L-12-v2`）
+- `MAX_CONCURRENCY`: 最大并发数（默认: 2）
+- `QUEUE_LIMIT`: 队列限制（默认: 128）
+- `BATCH_WINDOW_MS`: 批处理窗口（默认: 20ms）
+
+在 `rag-api` 服务中，设置 `WORKER_URLS` 环境变量来启用 GPU worker：
+
+```bash
+WORKER_URLS=http://gpu-worker:8090
+```
+
+### 故障排查
+
+- **429 错误**: 表示 worker 已满，可以增加 `MAX_CONCURRENCY` 或降低 rag-api 的 QPS
+- **/ready 返回 503**: 模型尚未加载完成，等待一段时间后重试
+- **设备不是 cuda**: 检查 Docker 是否正确配置了 NVIDIA runtime，运行 `make gpu-smoke` 验证
+- **降级模式**: 如果 GPU worker 不可用，rag-api 会自动降级到 CPU 模式，所有功能仍然可用
 
 ## Agent 工作流程
 
