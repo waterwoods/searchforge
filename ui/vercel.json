@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/workbench/:path*", "destination": "/" },
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
+

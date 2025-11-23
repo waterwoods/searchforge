@@ -39,3 +39,9 @@ Trigger a new deployment after setting the env var.
 If you see CORS errors, ensure:
 - The backend `ALLOWED_ORIGINS` env var includes the Vercel domain.
 
+## SPA routing / deep links
+
+To support deep linking (e.g., directly accessing `/workbench/single-home-stress`), we use Vercel rewrites configured in `ui/vercel.json`. This file lives under `ui/` since `ui/` is the Vercel project root.
+
+The configuration rewrites all routes (including `/workbench/*`) to `/`, allowing the frontend router to handle the routing client-side. This ensures that deep links work correctly and return the SPA instead of a 404 error.
+
