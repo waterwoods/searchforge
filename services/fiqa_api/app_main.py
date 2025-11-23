@@ -661,6 +661,30 @@ async def get_version():
         "service": "SearchForge Main API"
     }
 
+@app.get("/healthz")
+async def healthz():
+    """
+    Lightweight health check endpoint for Cloud Run.
+    
+    Returns:
+        JSON with status, service name, version, and timestamp.
+        No external dependencies or database calls.
+    """
+    from services.fiqa_api.utils.gitinfo import get_git_sha
+    from datetime import datetime
+    
+    sha, source = get_git_sha()
+    version = sha if sha != "unknown" else os.getenv("GIT_SHA", "unknown")
+    
+    logger.info("Health check requested")
+    
+    return {
+        "status": "ok",
+        "service": "mortgage-agent",
+        "version": version,
+        "time": datetime.utcnow().isoformat() + "Z"
+    }
+
 @app.get("/")
 async def root():
     """Root endpoint with API information."""

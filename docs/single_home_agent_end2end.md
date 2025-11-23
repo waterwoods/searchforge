@@ -591,6 +591,100 @@ See [deploy_frontend_vercel.md](./deploy_frontend_vercel.md) for instructions on
 
 ---
 
+## Pre-interview Cloud Demo Checklist
+
+Before an interview or demo, run these checks to ensure the cloud deployment is stable and ready:
+
+### 1. Run Cloud E2E Script
+
+Test the full cloud deployment using the E2E script:
+
+```bash
+python experiments/single_home_agent_cloud_e2e.py \
+  --base-url https://mortgage-agent-api-XXXX.us-west1.run.app \
+  --verbose
+```
+
+**Expected output**: All 3 scenarios should PASS:
+- ✅ `socal_tight`: SoCal high price, expected `high_risk`, `hard_block=True`, full path with safety_upgrade & programs
+- ✅ `texas_loose`: Texas starter home, expected `loose`, `hard_block=False`, safety_upgrade/programs skipped
+- ✅ `extreme_high_risk`: Very high DTI, expected `high_risk`, `hard_block=True`, full path
+
+**If any scenario fails**: Check Cloud Run logs for errors, verify environment variables are set correctly.
+
+### 2. Test Frontend UI
+
+Open the Vercel URL `https://searchforge.vercel.app/workbench/single-home-stress` and run:
+
+1. **"SoCal High Price, Feels Tight"** preset:
+   - Should show `high_risk` stress band
+   - Should have `hard_block=true` in risk assessment
+   - Should display safety upgrade suggestions
+   - Should show mortgage programs
+   - Should have strategy lab scenarios
+
+2. **"Texas Starter Home, Comfortable"** preset:
+   - Should show `loose` or `ok` stress band
+   - Should have `hard_block=false`
+   - Safety upgrade may be skipped (OK)
+   - Strategy lab should still run
+
+3. **"Extreme High Risk, Hard Block"** preset:
+   - Should show `high_risk` stress band
+   - Should have `hard_block=true`
+   - Should display all rescue paths (safety upgrade, programs, strategy lab)
+
+### 3. Check Structured Logs (Optional)
+
+In Cloud Run logs, filter by `logger name = mortgage_agent` and verify structured log lines appear:
+
+```
+{"event": "stress_check_done", "request_id": "...", "duration_ms": 123, "stress_band": "tight", "dti": 0.43}
+{"event": "nl_parse", "request_id": "...", "duration_ms": 2100, "intent_type": "...", "missing_fields": ["income_monthly"]}
+{"event": "llm_explanation", "request_id": "...", "duration_ms": 3500, "success": true}
+```
+
+### 4. Graceful Degradation Checks
+
+Verify that the system degrades gracefully when LLM is unavailable:
+
+- **LLM/narrative failures**: Numeric stress check should still work even if LLM explanation fails
+- **Timeout handling**: LLM calls should timeout after 15-20 seconds and return fallback narrative
+- **Error handling**: API should return 200 OK with partial results rather than 500 errors
+
+### 5. Environment Variable Verification
+
+Ensure these environment variables are set in Cloud Run:
+
+- `OPENAI_API_KEY`: Required for LLM generation (NLU and explanations)
+- `USE_ML_APPROVAL_SCORE`: Set to `true` to enable ML-based approval scoring (optional)
+- `LLM_GENERATION_ENABLED`: Set to `true` to enable LLM explanations (optional, can disable for numeric-only mode)
+- `ALLOWED_ORIGINS`: Frontend URL(s) for CORS (comma-separated)
+
+**Temporary disable options** (for testing without LLM):
+- Set `LLM_GENERATION_ENABLED=false` to disable all LLM calls (NLU and explanations)
+- Set `USE_ML_APPROVAL_SCORE=false` to use rule-based approval scoring only
+
+### 6. Health Check Endpoint
+
+Verify the health check endpoint responds:
+
+```bash
+curl https://mortgage-agent-api-XXXX.us-west1.run.app/healthz
+```
+
+**Expected response**:
+```json
+{
+  "status": "ok",
+  "service": "mortgage-agent",
+  "version": "<git-sha-or-env>",
+  "time": "<iso-utc>"
+}
+```
+
+---
+
 ## Summary
 
 The Single Home Mortgage Agent demonstrates a production-ready AI system that combines:
@@ -600,6 +694,7 @@ The Single Home Mortgage Agent demonstrates a production-ready AI system that co
 - **GenAI explanations** (LLM-powered borrower narratives)
 - **External tools** (MCP server for mortgage programs)
 - **Offline evaluation** (synthetic data generation, model training, regression tests)
+- **Production stability** (health checks, structured logging, timeouts, graceful degradation)
 
 The system is designed for interview demos, showing how different borrower/home profiles trigger different workflow paths, and how the agent provides actionable recommendations with clear explanations.
 

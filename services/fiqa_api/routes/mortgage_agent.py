@@ -8,7 +8,7 @@ Core logic delegated to services/mortgage_agent_runtime.py.
 import logging
 from typing import List, Optional, Dict, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from services.fiqa_api.mortgage import (
@@ -356,6 +356,7 @@ async def mortgage_stress_check(
 @router.post("/mortgage-agent/single-home-agent", response_model=SingleHomeAgentResponse)
 async def single_home_agent_endpoint(
     payload: SingleHomeAgentRequest,
+    request: Request,
 ) -> SingleHomeAgentResponse:
     """
     Single Home Agent: understand a single-home question, call stress_check, and explain the result.
@@ -391,18 +392,27 @@ async def single_home_agent_endpoint(
             "user_message": "Is this home too tight for my budget?"
         }
     """
+    import uuid
+    
+    # Get request_id from request state or generate new one
+    request_id = getattr(request.state, "request_id", None)
+    if request_id is None:
+        request_id = uuid.uuid4().hex
+    
     try:
         logger.info(
             f"level=INFO endpoint=single_home_agent_endpoint "
             f"monthly_income={payload.stress_request.monthly_income} "
             f"list_price={payload.stress_request.list_price} "
-            f"user_message_present={payload.user_message is not None}"
+            f"user_message_present={payload.user_message is not None} "
+            f"request_id={request_id}"
         )
-        result = run_single_home_agent(payload)
+        result = run_single_home_agent(payload, request_id=request_id)
         logger.info(
             f"level=INFO endpoint=single_home_agent_endpoint status=success "
             f"stress_band={result.stress_result.stress_band} "
-            f"narrative_present={result.borrower_narrative is not None}"
+            f"narrative_present={result.borrower_narrative is not None} "
+            f"request_id={request_id}"
         )
         return result
     except ValueError as ve:

@@ -22,7 +22,7 @@ from typing import List, Literal, Optional, Union, Dict
 
 from pydantic import BaseModel, Field, ValidationError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("mortgage_agent")
 
 # NLU-specific timeout (15-20 seconds for LLM calls)
 NLU_TIMEOUT_SEC = 18.0
@@ -114,7 +114,7 @@ class NLToStressRequestOutput:
 
 
 def extract_fields_with_llm(
-    user_text: str, conversation_history: Optional[List[Dict[str, str]]] = None
+    user_text: str, conversation_history: Optional[List[Dict[str, str]]] = None, request_id: Optional[str] = None
 ) -> NLUResult:
     """
     Use LLM to extract mortgage-related fields from English text.
@@ -233,6 +233,7 @@ Do NOT include any explanatory text outside the JSON object."""
 
     # Retry loop for timeout and transient errors
     last_exception = None
+    nlu_start = time.perf_counter()
     for attempt in range(NLU_MAX_RETRIES + 1):
         try:
             # Call OpenAI API with JSON response format and explicit timeout
@@ -265,7 +266,12 @@ Do NOT include any explanatory text outside the JSON object."""
             nlu_result = NLUResult(**parsed)
             # Ensure raw_user_text matches input
             nlu_result.raw_user_text = user_text
-            logger.info(f"[NLU] Extracted {len(nlu_result.extracted_fields)} fields")
+            nlu_duration_ms = (time.perf_counter() - nlu_start) * 1000
+            logger.info(
+                f'{{"event": "nl_parse", "request_id": "{request_id or "unknown"}", '
+                f'"duration_ms": {nlu_duration_ms:.1f}, "intent_type": "{nlu_result.intent_type}", '
+                f'"missing_fields": {[f for f in ["income_monthly", "list_price"] if f not in [ef.field for ef in nlu_result.extracted_fields]]}}}'
+            )
             return nlu_result
 
         except ValidationError as e:
@@ -275,11 +281,18 @@ Do NOT include any explanatory text outside the JSON object."""
         
         except (TimeoutException, TimeoutError) as e:
             last_exception = e
+            nlu_duration_ms = (time.perf_counter() - nlu_start) * 1000
             if attempt < NLU_MAX_RETRIES:
-                logger.warning(f"[NLU] Timeout on attempt {attempt + 1}/{NLU_MAX_RETRIES + 1}, retrying after {NLU_RETRY_BACKOFF_SEC}s: {e}")
+                logger.warning(
+                    f'{{"event": "nl_llm_error", "request_id": "{request_id or "unknown"}", '
+                    f'"error_type": "timeout", "attempt": {attempt + 1}, "duration_ms": {nlu_duration_ms:.1f}}}'
+                )
                 time.sleep(NLU_RETRY_BACKOFF_SEC)
             else:
-                logger.warning(f"[NLU] Timeout after {NLU_MAX_RETRIES + 1} attempts, returning empty result")
+                logger.warning(
+                    f'{{"event": "nl_llm_error", "request_id": "{request_id or "unknown"}", '
+                    f'"error_type": "timeout", "attempts_exhausted": true, "duration_ms": {nlu_duration_ms:.1f}}}'
+                )
         
         except Exception as e:
             # Check if it's a transient 5xx error (API error)
@@ -294,12 +307,22 @@ Do NOT include any explanatory text outside the JSON object."""
                 time.sleep(NLU_RETRY_BACKOFF_SEC)
             else:
                 # Non-retryable error or all retries exhausted
-                logger.warning(f"[NLU] LLM extraction failed: {e}", exc_info=True)
+                nlu_duration_ms = (time.perf_counter() - nlu_start) * 1000
+                logger.warning(
+                    f'{{"event": "nl_llm_error", "request_id": "{request_id or "unknown"}", '
+                    f'"error_type": "{type(e).__name__}", "duration_ms": {nlu_duration_ms:.1f}}}',
+                    exc_info=True
+                )
                 return NLUResult(extracted_fields=[], intent_type="unknown", raw_user_text=user_text)
         
 
     # All retries exhausted
-    logger.warning(f"[NLU] All retries exhausted, returning empty result. Last error: {last_exception}")
+    nlu_duration_ms = (time.perf_counter() - nlu_start) * 1000
+    logger.warning(
+        f'{{"event": "nl_llm_error", "request_id": "{request_id or "unknown"}", '
+        f'"error_type": "all_retries_exhausted", "duration_ms": {nlu_duration_ms:.1f}}}'
+    )
+    # Return safe degraded result
     return NLUResult(extracted_fields=[], intent_type="unknown", raw_user_text=user_text)
 
 
@@ -573,6 +596,7 @@ def nlu_result_to_partial_request(nlu: NLUResult) -> NLToStressRequestOutput:
 def nl_to_stress_request(
     user_text: str,
     conversation_history: Optional[List[Dict[str, str]]] = None,
+    request_id: Optional[str] = None,
 ) -> NLToStressRequestOutput:
     """
     High-level entry point: convert natural language to partial StressCheckRequest.
@@ -591,7 +615,7 @@ def nl_to_stress_request(
         NLToStressRequestOutput with partial request and metadata
     """
     # Step 1: Extract fields with LLM
-    nlu_result = extract_fields_with_llm(user_text, conversation_history)
+    nlu_result = extract_fields_with_llm(user_text, conversation_history, request_id=request_id)
 
     # Step 2 & 3: Convert to partial request and compute missing fields
     output = nlu_result_to_partial_request(nlu_result)

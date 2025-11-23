@@ -15,6 +15,7 @@ Future: Replace this with LangGraph-based agent or LLM-powered planner.
 import logging
 import os
 import time
+import uuid
 from time import perf_counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -64,7 +65,7 @@ from services.fiqa_api.mortgage.tools.property_tool import get_property_by_id, s
 from services.fiqa_api.mortgage.tools.rates_tool import get_mock_rate_for_state
 from services.fiqa_api.mortgage.local_cost_factors import get_local_cost_factors, LocalCostFactors
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("mortgage_agent")
 
 # Feature flag for LangGraph-based single-home agent
 USE_LANGGRAPH_SINGLE_HOME = os.getenv("USE_LANGGRAPH_SINGLE_HOME", "false").lower() in ("1", "true", "yes")
@@ -1504,7 +1505,7 @@ def _suggest_scenarios_for_stress_result(
     return scenarios
 
 
-def run_stress_check(req: StressCheckRequest) -> StressCheckResponse:
+def run_stress_check(req: StressCheckRequest, request_id: Optional[str] = None) -> StressCheckResponse:
     """
     Compute whether a *single* home is loose / ok / tight for this borrower.
     
@@ -2626,13 +2627,34 @@ def _generate_single_home_narrative(
             {"role": "user", "content": user_prompt},
         ]
         
-        # Call LLM directly (synchronous call)
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=max_tokens,
-        )
+        # Call LLM directly (synchronous call) with timeout
+        LLM_EXPLANATION_TIMEOUT_SEC = 20.0
+        try:
+            response = openai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=max_tokens,
+                timeout=LLM_EXPLANATION_TIMEOUT_SEC,
+            )
+        except (TimeoutError, Exception) as e:
+            # Log timeout/error and return fallback
+            error_type = type(e).__name__
+            if "timeout" in str(e).lower() or isinstance(e, TimeoutError):
+                logger.warning(
+                    f'{{"event": "llm_explanation_timeout", "error_type": "{error_type}"}}'
+                )
+            else:
+                logger.warning(
+                    f'{{"event": "llm_explanation_error", "error_type": "{error_type}"}}',
+                    exc_info=True
+                )
+            # Return fallback narrative
+            return (
+                "The system completed the numeric stress check, but AI explanation is temporarily unavailable. Please review the numeric results above.",
+                None,
+                None
+            )
         
         # Extract content
         explanation = ""
@@ -2714,7 +2736,7 @@ def _generate_single_home_narrative(
         return None, None, None
 
 
-def run_single_home_agent(req: SingleHomeAgentRequest) -> SingleHomeAgentResponse:
+def run_single_home_agent(req: SingleHomeAgentRequest, request_id: Optional[str] = None) -> SingleHomeAgentResponse:
     """
     Single Home Agent: thin "reason + explain" wrapper over run_stress_check.
     
@@ -2732,14 +2754,30 @@ def run_single_home_agent(req: SingleHomeAgentRequest) -> SingleHomeAgentRespons
     
     Args:
         req: SingleHomeAgentRequest with stress_request and optional user_message
+        request_id: Optional request ID for logging (generated if not provided)
     
     Returns:
         SingleHomeAgentResponse with stress_result, borrower_narrative, recommended_actions, llm_usage, and safety_upgrade
     """
+    # Generate request_id if not provided
+    if request_id is None:
+        request_id = uuid.uuid4().hex
+    
+    overall_start = perf_counter()
+    
     if USE_LANGGRAPH_SINGLE_HOME:
         # 走 LangGraph 版本
         from services.fiqa_api.mortgage.graphs import run_single_home_graph
-        return run_single_home_graph(req)
+        langgraph_start = perf_counter()
+        result = run_single_home_graph(req)
+        langgraph_duration_ms = (perf_counter() - langgraph_start) * 1000
+        overall_duration_ms = (perf_counter() - overall_start) * 1000
+        logger.info(
+            f'{{"event": "langgraph_run", "request_id": "{request_id}", '
+            f'"duration_ms": {langgraph_duration_ms:.1f}, "overall_duration_ms": {overall_duration_ms:.1f}, '
+            f'"stress_band": "{result.stress_result.stress_band}", "dti": {result.stress_result.dti_ratio:.3f}}}'
+        )
+        return result
     
     # === 原有实现保留（不要删除）===
     # 之前顺序：run_stress_check → run_safety_upgrade_flow → (optional LLM)
@@ -2748,7 +2786,14 @@ def run_single_home_agent(req: SingleHomeAgentRequest) -> SingleHomeAgentRespons
     stress_request = req.stress_request
     
     # Step 2: Call run_stress_check directly (Python function, not HTTP)
-    stress_result = run_stress_check(stress_request)
+    stress_check_start = perf_counter()
+    stress_result = run_stress_check(stress_request, request_id=request_id)
+    stress_check_duration_ms = (perf_counter() - stress_check_start) * 1000
+    logger.info(
+        f'{{"event": "stress_check_done", "request_id": "{request_id}", '
+        f'"duration_ms": {stress_check_duration_ms:.1f}, "stress_band": "{stress_result.stress_band}", '
+        f'"dti": {stress_result.dti_ratio:.3f}}}'
+    )
     
     # Step 3: Run safety upgrade flow to get structured suggestions
     safety_upgrade = None
@@ -2799,16 +2844,39 @@ def run_single_home_agent(req: SingleHomeAgentRequest) -> SingleHomeAgentRespons
     
     from services.fiqa_api.utils.llm_client import is_llm_generation_enabled
     if is_llm_generation_enabled():
-        borrower_narrative, recommended_actions, llm_usage = _generate_single_home_narrative(
-            stress_result=stress_result,
-            user_message=req.user_message,
-            safety_upgrade=safety_upgrade,
-            mortgage_programs=None,
-            approval_score=stress_result.approval_score,
-            risk_assessment=stress_result.risk_assessment,
-        )
+        llm_start = perf_counter()
+        try:
+            borrower_narrative, recommended_actions, llm_usage = _generate_single_home_narrative(
+                stress_result=stress_result,
+                user_message=req.user_message,
+                safety_upgrade=safety_upgrade,
+                mortgage_programs=None,
+                approval_score=stress_result.approval_score,
+                risk_assessment=stress_result.risk_assessment,
+            )
+            llm_duration_ms = (perf_counter() - llm_start) * 1000
+            logger.info(
+                f'{{"event": "llm_explanation", "request_id": "{request_id}", '
+                f'"duration_ms": {llm_duration_ms:.1f}, "success": true}}'
+            )
+        except Exception as e:
+            llm_duration_ms = (perf_counter() - llm_start) * 1000
+            logger.warning(
+                f'{{"event": "llm_explanation", "request_id": "{request_id}", '
+                f'"duration_ms": {llm_duration_ms:.1f}, "success": false, "error_type": "{type(e).__name__}"}}'
+            )
+            # Set fallback narrative
+            borrower_narrative = (
+                "The system completed the numeric stress check, but AI explanation is temporarily unavailable. "
+                "Please review the numeric results above."
+            )
     
     # Step 6: Assemble response
+    overall_duration_ms = (perf_counter() - overall_start) * 1000
+    logger.info(
+        f'{{"event": "single_home_agent_complete", "request_id": "{request_id}", '
+        f'"duration_ms": {overall_duration_ms:.1f}, "stress_band": "{stress_result.stress_band}"}}'
+    )
     return SingleHomeAgentResponse(
         stress_result=stress_result,
         borrower_narrative=borrower_narrative,
