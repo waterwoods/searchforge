@@ -7,6 +7,8 @@
     },
     "scripts": {
         "dev": "vite --host --port 5173",
+        "build": "vite build",
+        "preview": "vite preview",
         "lint": "echo 'skip lint (scaffold only)'",
         "typecheck": "echo 'skip typecheck (scaffold only)'",
         "clean": "npx rimraf node_modules",

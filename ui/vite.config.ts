@@ -11,9 +11,9 @@ export default defineConfig({
         open: true,
         proxy: {
             // 捕获所有 /api 开头的请求
-            // 例如: /api/orchestrate/run -> http://localhost:8000/api/orchestrate/run
+            // 例如: /api/orchestrate/run -> http://andy-wsl:8000/api/orchestrate/run
             '/api': {
-                target: 'http://localhost:8000',
+                target: 'http://andy-wsl:8000',
                 changeOrigin: true,
                 secure: false, // 如果后端是 http，需要这个
             },

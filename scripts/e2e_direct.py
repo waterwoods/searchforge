@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 import json
 import os
+import sys
 import time
 import urllib.parse
-import urllib.request
+from pathlib import Path
 
+# Import HTTP utility with retry logic
+sys.path.insert(0, str(Path(__file__).parent))
+from _http_util import fetch_json, wait_ready
 
 BASE = os.environ.get("RAG_API_URL", "http://localhost:8000").rstrip("/")
 
 
 def _req(method: str, url: str, data=None):
-    payload = json.dumps(data).encode("utf-8") if data is not None else None
-    headers = {"content-type": "application/json"} if data is not None else {}
-    req = urllib.request.Request(url, data=payload, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return fetch_json(url, method=method, json=data, timeout=15.0)
 
 
 def items_len(obj):

@@ -264,16 +264,47 @@ def persist_trace_id(job_or_trace: Optional[str], trace_id: Optional[str] = None
         logger.debug("failed to persist trace_id.txt: %s", exc)
 
 
-def persist_obs_url(obs_url: Optional[str]) -> None:
+def append_trace(obs_url: Optional[str], limit: int = 200) -> None:
+    """
+    Append trace URL to obs_url.txt with rolling limit.
+    
+    If file exceeds limit lines, keeps only the latest limit lines (atomic write).
+    """
+    if not obs_url:
+        return
     try:
         runs_dir = _runs_dir()
+        obs_file = runs_dir / "obs_url.txt"
         timestamp = datetime.now(timezone.utc).isoformat()
-        value = (obs_url or "").strip()
-        line = f"{timestamp} {value}\n" if value else f"{timestamp}\n"
-        with (runs_dir / "obs_url.txt").open("a", encoding="utf-8") as handle:
-            handle.write(line)
+        value = obs_url.strip()
+        line = f"{timestamp} {value}\n"
+        
+        # Read existing lines
+        lines = []
+        if obs_file.exists():
+            try:
+                lines = obs_file.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                lines = []
+        
+        # Append new line
+        lines.append(line.rstrip())
+        
+        # Keep only latest `limit` lines
+        if len(lines) > limit:
+            lines = lines[-limit:]
+        
+        # Atomic write (write to temp then replace)
+        tmp_file = obs_file.with_suffix(".tmp")
+        tmp_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp_file.replace(obs_file)
     except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("failed to persist obs_url.txt: %s", exc)
+        logger.debug("failed to append trace to obs_url.txt: %s", exc)
+
+
+def persist_obs_url(obs_url: Optional[str]) -> None:
+    """Backward-compatible wrapper for append_trace."""
+    append_trace(obs_url, limit=200)
 
 
 def finalize_root(*args, **kwargs) -> Dict[str, Any] | None:

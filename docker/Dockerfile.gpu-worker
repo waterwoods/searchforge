@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1.7
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS base
+
+ARG TORCH_VERSION=2.3.0
+ARG PYTORCH_CUDA=121
+ARG MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+ARG GIT_SHA=unknown
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app:${PYTHONPATH} \
+    HF_HOME=/root/.cache/huggingface \
+    TORCH_HOME=/root/.cache/torch \
+    MODEL_DIR=/models \
+    GIT_SHA=${GIT_SHA}
+
+WORKDIR /app
+
+# 基础依赖（apt 缓存）
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 依赖（pip 缓存）
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -U pip
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch==${TORCH_VERSION} torchvision torchaudio --index-url https://download.pytorch.org/whl/cu${PYTORCH_CUDA}
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install "fastapi==0.115.0" "uvicorn[standard]==0.30.0" "httpx==0.27.0" "sentence-transformers==2.7.0"
+
+# （可选）构建期"预热"不进镜像：只命中 BuildKit 缓存
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    --mount=type=cache,target=/root/.cache/torch \
+    python3 -c "from sentence_transformers import SentenceTransformer as S; S('${MODEL_NAME}')"
+
+# Set default environment variables
+ENV MODEL_EMBED=sentence-transformers/all-MiniLM-L6-v2 \
+    MODEL_RERANK=cross-encoder/ms-marco-MiniLM-L-12-v2 \
+    MAX_CONCURRENCY=2 \
+    QUEUE_LIMIT=128 \
+    BATCH_WINDOW_MS=20 \
+    PORT=8090
+
+# Copy GPU worker service code
+COPY services/gpu_worker/ /app/services/gpu_worker/
+
+EXPOSE 8090
+
+
+CMD ["sh", "-c", "uvicorn services.gpu_worker.main:app --host 0.0.0.0 --port ${PORT:-8090}"]
+

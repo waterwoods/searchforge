@@ -234,7 +234,7 @@ smoke-daily-install: ## Install daily smoke test cron job
 	echo "Current crontab:"; \
 	crontab -l | grep -A1 -B1 "quick_smoke.sh" || echo "   (not found in crontab - check crontab -l)"
 
-.PHONY: base-build rebuild rebuild-auto smoke-run smoke-status smoke-daily-install
+.PHONY: base-build rebuild rebuild-auto rebuild-fast smoke-run smoke-status smoke-daily-install
 
 ## Build base image (py311) with BuildKit
 base-build:
@@ -252,6 +252,14 @@ rebuild-auto: ## BuildKit→Classic 自动降级，贯穿 GIT_SHA，写日志
 	mkdir -p .runs
 	DOCKER_BUILDKIT=1 $(COMPOSE) build --build-arg GIT_SHA=$(GIT_SHA) --no-cache --pull=false rag-api 2>&1 | tee -a .runs/build.log || (echo "[WARN] BuildKit failed, falling back to classic..." | tee -a .runs/build.log; ENV_FILE=$(ENV_FILE) GIT_SHA=$(GIT_SHA) scripts/build_with_fallback.sh rag-api 2>&1 | tee -a .runs/build.log)
 	$(COMPOSE) up -d rag-api 2>&1 | tee -a .runs/build.log
+
+## Fast rebuild - recreate container without rebuilding image (for env var changes)
+rebuild-fast: ## Fast rebuild - recreate container without rebuilding image
+	@echo "🚀 Fast rebuild: recreating container without rebuilding image..."
+	$(COMPOSE) up -d --force-recreate rag-api
+	@echo "⏳ Waiting for service to be ready..."
+	@sleep 5
+	@$(MAKE) health
 
 real-large-on: realcheck-up
 	@USE_PROXY=true PROXY_URL=$${PROXY_URL:-http://localhost:7070} RAG_API_URL=$${RAG_API_URL:-http://localhost:8000} \
@@ -797,6 +805,36 @@ gpu-smoke: up-gpu ## Run GPU path smoke test (self-contained)
 	fi
 	@echo "[GPU-SMOKE] ✅ GPU path OK"
 
+.PHONY: guardrails-lab-baseline
+guardrails-lab-baseline: gpu-smoke
+	@echo "[EXPERIMENT] RAG Hallucination & Guardrails Lab (baseline)..."
+	python3 experiments/guardrails_lab.py --mode baseline
+
+.PHONY: guardrails-lab-guarded
+guardrails-lab-guarded: gpu-smoke
+	@echo "[EXPERIMENT] RAG Hallucination & Guardrails Lab (guarded)..."
+	python3 experiments/guardrails_lab.py --mode guarded
+
+.PHONY: guardrails-lab-all
+guardrails-lab-all: guardrails-lab-baseline guardrails-lab-guarded
+	@echo "[EXPERIMENT] Guardrails lab baseline vs guarded completed."
+
+.PHONY: kv-stream-demo
+kv-stream-demo: gpu-smoke
+	@echo "[EXPERIMENT] KV-cache / Streaming Lab (baseline demo)..."
+	python3 experiments/kv_stream_lab.py --mode baseline --num-queries 50
+
+.PHONY: kv-stream-all
+kv-stream-all: gpu-smoke
+	@echo "[EXPERIMENT] KV-cache / Streaming Lab (all modes)..."
+	python3 experiments/kv_stream_lab.py --mode all --num-queries 50
+
+.PHONY: llm-query-smoke
+llm-query-smoke: gpu-smoke
+	@echo "[EXPERIMENT] LLM query smoke test..."
+	@echo "[NOTE] Need to set LLM_GENERATION_ENABLED=true to actually call LLM, otherwise only retrieval will run."
+	python3 experiments/llm_query_smoke.py
+
 .PHONY: auto-tuner-on-off
 auto-tuner-on-off: gpu-smoke
 	@echo "[EXPERIMENT] AutoTuner On/Off (full)..."
@@ -837,6 +875,11 @@ auto-tuner-sla-plot:
 .PHONY: auto-tuner-sla-all
 auto-tuner-sla-all: auto-tuner-sla auto-tuner-sla-plot
 	@echo "[PLOT] AutoTuner SLA experiment + plot complete."
+
+.PHONY: regression
+regression:
+	@echo "[REGRESSION] Running regression suite (AutoTuner SLA + Go proxy + ci-fast)..."
+	@python3 scripts/run_regression_suite.py
 
 .PHONY: buildx-init gpu-build
 buildx-init: ## Initialize Docker buildx builder
@@ -913,6 +956,10 @@ gpu-accept: ## Acceptance test: check device==cuda, /ready=200, run gpu-smoke
 # Repository cleanup targets (safe, reversible archiving)
 cleanup-audit: ## 审计可清理的文件（dry-run，生成候选列表）
 	@bash tools/cleanup/audit.sh
+
+audit-space: ## Run read-only disk usage audit and generate report
+	@mkdir -p artifacts/disk_audit
+	@bash tools/cleanup/audit_space.sh | tee artifacts/disk_audit/report.md
 
 cleanup-apply: ## 归档未使用的脚本/测试/文档到 archive/
 	@bash tools/cleanup/apply.sh

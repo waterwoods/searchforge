@@ -1,0 +1,91 @@
+[
+  {
+    "id": "va_loan",
+    "name": "VA Loan · Zero Down Payment",
+    "states": ["CA", "TX", "WA", "FL", "NY"],
+    "zip_prefixes": ["90", "92", "78", "33", "10"],
+    "profile_tags": ["veteran"],
+    "min_credit_score": 620,
+    "max_dti": 0.50,
+    "description": "Zero down payment for eligible veterans, potentially lower rates.",
+    "benefit_summary": "May reduce required down payment to 0% and slightly lower interest rate."
+  },
+  {
+    "id": "ca_first_time_buyer",
+    "name": "California First-Time Homebuyer Assistance",
+    "states": ["CA"],
+    "zip_prefixes": ["90", "91", "92", "93", "94", "95"],
+    "profile_tags": ["first_time_buyer"],
+    "min_credit_score": 640,
+    "max_dti": 0.45,
+    "description": "State-sponsored down payment assistance for first-time homebuyers in California.",
+    "benefit_summary": "Up to $20,000 in down payment assistance, reduced closing costs."
+  },
+  {
+    "id": "tx_down_payment_assistance",
+    "name": "Texas State Down Payment Assistance",
+    "states": ["TX"],
+    "zip_prefixes": ["75", "76", "77", "78", "79"],
+    "profile_tags": ["first_time_buyer", "low_income"],
+    "min_credit_score": 620,
+    "max_dti": 0.50,
+    "description": "Texas state program offering down payment and closing cost assistance.",
+    "benefit_summary": "Up to $15,000 in assistance, flexible income limits."
+  },
+  {
+    "id": "low_income_special",
+    "name": "Low-Income Special Program",
+    "states": ["CA", "TX", "NY", "FL"],
+    "zip_prefixes": ["90", "75", "10", "33"],
+    "profile_tags": ["low_income"],
+    "min_credit_score": 600,
+    "max_dti": 0.55,
+    "description": "Special mortgage program for low-income families with relaxed credit requirements.",
+    "benefit_summary": "Lower credit score requirements, higher DTI tolerance, reduced fees."
+  },
+  {
+    "id": "high_dti_program",
+    "name": "High DTI Accommodation Program",
+    "states": ["CA", "TX", "WA"],
+    "zip_prefixes": ["90", "75", "98"],
+    "profile_tags": ["high_dti"],
+    "min_credit_score": 680,
+    "max_dti": 0.60,
+    "description": "Program designed for borrowers with high debt-to-income ratios but strong credit.",
+    "benefit_summary": "Allows DTI up to 60% for qualified borrowers with excellent credit scores."
+  },
+  {
+    "id": "senior_60_plus",
+    "name": "Senior Homebuyer Program (60+)",
+    "states": ["CA", "FL", "AZ"],
+    "zip_prefixes": ["90", "33", "85"],
+    "profile_tags": ["senior_60_plus"],
+    "min_credit_score": 620,
+    "max_dti": 0.45,
+    "description": "Specialized mortgage products for seniors aged 60 and above.",
+    "benefit_summary": "Reduced rates, flexible repayment terms, reverse mortgage options."
+  },
+  {
+    "id": "wa_first_time_buyer",
+    "name": "Washington First-Time Homebuyer Program",
+    "states": ["WA"],
+    "zip_prefixes": ["98", "99"],
+    "profile_tags": ["first_time_buyer"],
+    "min_credit_score": 640,
+    "max_dti": 0.43,
+    "description": "Washington state assistance for first-time homebuyers.",
+    "benefit_summary": "Down payment assistance up to $12,000, competitive interest rates."
+  },
+  {
+    "id": "ca_affordable_housing",
+    "name": "California Affordable Housing Initiative",
+    "states": ["CA"],
+    "zip_prefixes": ["90", "91", "92"],
+    "profile_tags": ["low_income", "first_time_buyer"],
+    "min_credit_score": 630,
+    "max_dti": 0.48,
+    "description": "Comprehensive affordable housing program combining multiple assistance options.",
+    "benefit_summary": "Combined down payment and closing cost assistance, income-based eligibility."
+  }
+]
+

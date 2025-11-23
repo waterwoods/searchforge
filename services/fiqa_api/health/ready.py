@@ -33,6 +33,15 @@ async def readiness_check():
     This is designed for Kubernetes probes and should complete in <30ms.
     Performs lightweight connection health checks with auto-reconnect.
     
+    Core dependencies (required for readiness):
+    - embedding_model: Embedding model must be initialized
+    - qdrant_connected: Qdrant connection must be healthy
+    - gpu_client_connected: GPU worker connection (if GPU worker is configured)
+    
+    Optional dependencies (reported but do not block readiness):
+    - redis_connected: Redis connection (optional)
+    - openai: OpenAI client (optional)
+    
     Returns:
         {"ok": true/false, "clients_ready": bool, "service": str, "timestamp": str}
     """
@@ -71,16 +80,56 @@ async def readiness_check():
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     logger.info(f"[READYZ] Total latency: {elapsed_ms:.2f}ms")
     
-    clients_ready = are_clients_ready() and qdrant_ok and redis_ok
     clients_status = get_clients_status()
     
     # Add connection health to status
     clients_status["qdrant_connected"] = qdrant_ok
     clients_status["redis_connected"] = redis_ok
     
+    # Check GPU client status if available
+    gpu_client_connected = None
+    try:
+        from services.fiqa_api.gpu_worker_client import get_gpu_pool
+        gpu_pool = get_gpu_pool()
+        if gpu_pool is not None:
+            # Check if at least one GPU worker instance is healthy
+            gpu_client_connected = any(instance.healthy for instance in gpu_pool.instances)
+            clients_status["gpu_client_connected"] = gpu_client_connected
+        else:
+            # GPU worker not configured - not required
+            clients_status["gpu_client_connected"] = None
+    except Exception as e:
+        logger.debug(f"[READYZ] GPU client check failed: {e}")
+        clients_status["gpu_client_connected"] = False
+        gpu_client_connected = False
+    
+    # Define core dependencies (required for readiness)
+    core_keys = [
+        "embedding_model",
+        "qdrant_connected",
+    ]
+    
+    # Add GPU client to core if it's configured (not None)
+    if clients_status.get("gpu_client_connected") is not None:
+        core_keys.append("gpu_client_connected")
+    
+    # Compute core readiness based on core dependencies only
+    core_ready = all(clients_status.get(k) for k in core_keys)
+    
+    # Log warnings for optional dependency failures (non-blocking)
+    optional_keys = ["redis_connected", "openai"]
+    for k in optional_keys:
+        if not clients_status.get(k, True):
+            logger.warning(f"[READYZ] Optional dependency not ready: {k}")
+    
+    # Set readiness based on core dependencies only
+    clients_ready = core_ready
+    ok = core_ready
+    status = "ready" if core_ready else "not_ready"
+    
     return {
-        "ok": clients_ready,
-        "status": "ready" if clients_ready else "not_ready",
+        "ok": ok,
+        "status": status,
         "clients_ready": clients_ready,
         "clients": clients_status,
         "service": "app_main",

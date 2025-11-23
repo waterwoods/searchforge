@@ -1,0 +1,64 @@
+# Dockerfile for GCP Cloud Run deployment
+# This Dockerfile is optimized for Cloud Run:
+# - Uses port 8080 (Cloud Run default)
+# - Stateless container design
+# - Minimal dependencies for production
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8080 \
+    PIP_NO_CACHE_DIR=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency files first (for better layer caching)
+COPY requirements.txt /app/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code
+# Note: We copy from repo root to maintain module structure
+COPY services/fiqa_api/ /app/services/fiqa_api/
+COPY services/core/ /app/services/core/
+COPY services/plugins/ /app/services/plugins/
+COPY services/api/ /app/services/api/
+COPY services/routers/ /app/services/routers/
+COPY services/autotuner_router.py /app/services/autotuner_router.py
+COPY services/code_intelligence/ /app/services/code_intelligence/
+COPY services/black_swan/ /app/services/black_swan/
+COPY modules/ /app/modules/
+COPY engines/ /app/engines/
+COPY interfaces/ /app/interfaces/
+COPY agents/ /app/agents/
+COPY routes/ /app/routes/
+COPY orchestrators/ /app/orchestrators/
+COPY tools/ /app/tools/
+COPY experiments/ /app/experiments/
+
+# Set PYTHONPATH to include /app
+ENV PYTHONPATH=/app:${PYTHONPATH}
+
+# Expose port 8080 (Cloud Run default)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+# Run uvicorn with the app
+# Cloud Run sets PORT env var automatically, we use it here
+CMD ["sh", "-c", "python -m uvicorn services.fiqa_api.app_main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+

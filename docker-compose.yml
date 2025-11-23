@@ -11,9 +11,13 @@ services:
     command: redis-server --appendonly yes
     volumes: [ "redis_data:/data" ]
   qdrant:
-    image: qdrant/qdrant:latest
-    ports: [ "6333:6333" ]
+    image: qdrant/qdrant:${QDRANT_TAG:-v1.8.4}
     restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./.qdrant:/qdrant/storage
   retrieval-proxy:
     build:
       context: .
@@ -80,14 +84,21 @@ services:
       args:
         MAIN_PORT: ${MAIN_PORT:-8000}
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
     env_file:
       - .env.current
     environment:
       - MAIN_PORT=8000
       - UVICORN_WORKERS=1
+      - OMP_NUM_THREADS=1
+      - OPENAI_TIMEOUT_MS=30000
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - MILVUS_HOST=milvus-standalone
+      - USE_LANGGRAPH_SINGLE_HOME=true
       - MILVUS_PORT=19530
       - VECTOR_BACKEND=${VECTOR_BACKEND:-faiss}
       - SENTENCE_TRANSFORMERS_HOME=/app/models
@@ -115,6 +126,9 @@ services:
       - ENV_FILE=/app/.env
       - RUNS_DIR=.runs
       - ARTIFACTS_DIR=.runs/artifacts
+      - TUNER_STATE_PATH=.runs/tuner_state.json
+      - WORKER_URLS=${WORKER_URLS:-http://gpu-worker:8090}
+      - AUTOTUNER_RPS=${AUTOTUNER_RPS:-0}
     ports:
       - "8000:8000"
     depends_on: [ qdrant, milvus-standalone ]
@@ -125,12 +139,45 @@ services:
       - ./experiments:/app/experiments:ro
       - ./configs:/app/configs:ro
       - ./services/fiqa_api:/app/services/fiqa_api:ro
+      - ./mcp:/app/mcp:ro
       - ./data:/app/data:ro
       - ./reports:/app/reports
       - ./.runs:/app/.runs
       - ./baselines:/app/baselines
       - ./.env.current:/app/.env:ro
     # CPU-only service - no GPU runtime
+  gpu-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gpu-worker
+    environment:
+      - HF_HOME=/models/hf
+      - TORCH_HOME=/models/torch
+      - MODEL_EMBED=${MODEL_EMBED:-sentence-transformers/all-MiniLM-L6-v2}
+      - MODEL_RERANK=${MODEL_RERANK:-cross-encoder/ms-marco-MiniLM-L-12-v2}
+      - MAX_CONCURRENCY=${GPU_MAX_CONCURRENCY:-2}
+      - QUEUE_LIMIT=${GPU_QUEUE_LIMIT:-128}
+      - BATCH_WINDOW_MS=${GPU_BATCH_WINDOW_MS:-20}
+      - PORT=8090
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./cache/hf:/models/hf
+      - ./cache/torch:/models/torch
+      - ./.models:/models
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://localhost:8090/ready" ]
+      interval: 5s
+      timeout: 3s
+      start_period: 60s
+      retries: 30
   auto-tuner:
     build:
       context: .
@@ -151,7 +198,6 @@ services:
               capabilities: [ gpu ]
 volumes:
   redis_data:
-  qdrant_data:
   milvus_etcd:
   milvus_minio:
   milvus_data:

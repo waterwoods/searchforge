@@ -4,7 +4,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
-import { worker } from './mocks/browser'
+// import { worker } from './mocks/browser' // Commented out - mocks not available
 
 async function initApp() {
     if (process.env.NODE_ENV === 'development') {

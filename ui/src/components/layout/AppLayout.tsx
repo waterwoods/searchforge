@@ -49,7 +49,7 @@ export const AppLayout: React.FC = () => {
                             margin: 0,
                             background: colorBgContainer,
                             borderRadius: borderRadiusLG,
-                            overflow: 'hidden',
+                            overflow: 'auto', // Changed from 'hidden' to 'auto' to enable scrolling
                             display: 'flex',
                             flexDirection: 'column'
                         }}

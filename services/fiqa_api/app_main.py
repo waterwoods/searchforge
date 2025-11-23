@@ -96,6 +96,7 @@ from services.plugins.watchdog import get_status as get_watchdog_status
 # Import existing routers
 from services.api.ops_routes import router as ops_router
 from services.routers.metrics import router as metrics_router
+from services.fiqa_api.routes.metrics import router as fiqa_metrics_router
 from services.routers.black_swan_async import router as black_swan_router
 from services.routers.ops_control import router as ops_control_router
 from services.routers.quiet_experiment import router as quiet_experiment_router
@@ -105,6 +106,7 @@ from services.routers.autotuner_router import router as autotuner_router
 # ✅ Import new refactored routers
 from services.fiqa_api.routes.search import router as search_router
 from services.fiqa_api.routes.query import router as query_router
+from services.fiqa_api.routes.kv_experiment import router as kv_experiment_router
 from services.fiqa_api.routes.debug import router as debug_router
 from services.fiqa_api.routes.agent_code_lookup import router as code_lookup_router
 from services.fiqa_api.routes.code_graph import router as code_graph_router
@@ -113,6 +115,8 @@ from services.fiqa_api.routes.health import router as qdrant_health_router
 from services.fiqa_api.routes.contract_v1 import router as contract_router
 from services.fiqa_api.routes.experiment import router as experiment_router
 from services.fiqa_api.routes.steward import router as steward_router
+from services.fiqa_api.routes.qdrant_info import router as qdrant_info_router
+from services.fiqa_api.routes.mortgage_agent import router as mortgage_agent_router
 from services.fiqa_api import obs
 try:
     from routes.graph_run import router as graph_router
@@ -142,14 +146,30 @@ from services.code_intelligence.graph_ranker import layer2_graph_ranking
 # ========================================
 
 # Load configuration from environment
-MAIN_PORT = settings.get_env_int("MAIN_PORT", 8000)
+# Cloud Run sets PORT env var, so we respect it if set, otherwise use MAIN_PORT
+_PORT_ENV = os.getenv("PORT")
+if _PORT_ENV:
+    try:
+        MAIN_PORT = int(_PORT_ENV)
+    except ValueError:
+        MAIN_PORT = settings.get_env_int("MAIN_PORT", 8000)
+else:
+    MAIN_PORT = settings.get_env_int("MAIN_PORT", 8000)
 API_ENTRY = settings.get_env("API_ENTRY", "main")
 
 def _parse_origins(env_val: str) -> list[str]:
     return [s.strip() for s in (env_val or "").split(",") if s.strip()]
 
-ALLOW_ALL_CORS = os.getenv("ALLOW_ALL_CORS", "1") in ("1", "true", "True", "yes")
-CORS_ORIGINS = _parse_origins(os.getenv("CORS_ORIGINS", ""))
+# CORS configuration: support both ALLOWED_ORIGINS (Cloud Run) and legacy CORS_ORIGINS
+_ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS")
+if _ALLOWED_ORIGINS_ENV:
+    # New env var for Cloud Run deployment
+    CORS_ORIGINS = _parse_origins(_ALLOWED_ORIGINS_ENV)
+    ALLOW_ALL_CORS = "*" in CORS_ORIGINS or _ALLOWED_ORIGINS_ENV.strip() == "*"
+else:
+    # Legacy env vars for backward compatibility
+    ALLOW_ALL_CORS = os.getenv("ALLOW_ALL_CORS", "1") in ("1", "true", "True", "yes")
+    CORS_ORIGINS = _parse_origins(os.getenv("CORS_ORIGINS", ""))
 
 # Force override configuration
 force_config = settings.get_force_override_config()
@@ -286,6 +306,33 @@ async def lifespan(app: FastAPI):
 
     global _READINESS, _PHASE
     _PHASE = "starting"
+    
+    # Initialize GPU worker pool (if WORKER_URLS is set and dependencies available)
+    try:
+        from services.fiqa_api.gpu_worker_client import initialize_gpu_pool
+        gpu_pool = initialize_gpu_pool()
+        if gpu_pool:
+            logger.info("[STARTUP] GPU worker pool initialized, waiting for readiness...")
+            # Wait for GPU workers to be ready (non-blocking, will degrade if timeout)
+            async def _wait_gpu_ready():
+                try:
+                    ready = await gpu_pool.wait_ready(timeout=300.0, consecutive=3)
+                    if ready:
+                        logger.info("[STARTUP] GPU workers ready")
+                    else:
+                        logger.warning("[STARTUP] GPU workers not ready, degraded mode")
+                except Exception as e:
+                    logger.warning(f"[STARTUP] GPU worker wait failed: {e}, degraded mode")
+            
+            # Start in background (don't block startup)
+            try:
+                asyncio.get_running_loop().create_task(_wait_gpu_ready())
+            except RuntimeError:
+                pass
+        else:
+            logger.info("[STARTUP] GPU worker disabled (no WORKER_URLS)")
+    except (ImportError, RuntimeError) as e:
+        logger.info(f"[STARTUP] GPU worker client not available: {e}. Continuing without GPU worker.")
     
     # Start background embedding warmup (non-blocking)
     start_embedding_warmup()
@@ -546,6 +593,9 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         try:
             return await call_next(request)
+        except HTTPException:
+            # Re-raise HTTPException so FastAPI can handle it properly
+            raise
         except Exception as e:
             request_id = getattr(request.state, "request_id", "unknown")
             logger.exception(f"[{request_id}] Unhandled exception: {e}")
@@ -567,7 +617,11 @@ app.add_middleware(DeprecatedOpsMiddleware)  # Return 410 for /ops/* before rout
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
-# CORS middleware - allow any localhost/127.0.0.1 origin with any port
+# CORS middleware configuration
+# For local dev: ALLOWED_ORIGINS="*" or ALLOW_ALL_CORS=1 (allows all origins)
+# For production (Cloud Run): Set ALLOWED_ORIGINS to specific frontend URL(s), e.g.:
+#   ALLOWED_ORIGINS="https://your-demo.vercel.app,https://your-demo.netlify.app"
+# Legacy env vars (CORS_ORIGINS, ALLOW_ALL_CORS) are still supported for backward compatibility
 # Expose custom response headers for frontend
 EXPOSE_HEADERS = [
     "X-Embed-Model", "X-Backend", "X-Top-K", "X-Mode", "X-Hybrid", "X-Rerank",
@@ -595,6 +649,17 @@ app.add_middleware(
 # ========================================
 # Root Endpoint
 # ========================================
+
+@app.get("/version")
+async def get_version():
+    """Get version information including git commit SHA."""
+    from services.fiqa_api.utils.gitinfo import get_git_sha
+    sha, source = get_git_sha()
+    return {
+        "commit": sha,
+        "source": source,
+        "service": "SearchForge Main API"
+    }
 
 @app.get("/")
 async def root():
@@ -708,6 +773,7 @@ def create_api_router(base_router: APIRouter, new_prefix: str) -> APIRouter:
 # ✅ Mount refactored lightweight routers first
 app.include_router(health_router)  # /healthz, /readyz
 app.include_router(qdrant_health_router, tags=["Health"])  # /api/health/qdrant
+app.include_router(qdrant_info_router)  # /api/qdrant/version.tag
 
 # Lightweight health endpoints
 @app.get("/health/live")
@@ -801,6 +867,8 @@ app.include_router(debug_router)  # /debug/trace
 app.include_router(search_router)  # /search
 app.include_router(contract_router)
 app.include_router(query_router, prefix="/api")  # /api/query
+app.include_router(kv_experiment_router)  # /api/kv-experiment/run
+app.include_router(mortgage_agent_router, prefix="/api")  # /api/mortgage-agent/run
 app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*
 app.include_router(best_router)  # /api/best
@@ -815,6 +883,8 @@ app.include_router(create_api_router(ops_router, "/api"))
 app.include_router(create_api_router(ops_control_router, "/api/control"))
 app.include_router(create_api_router(black_swan_router, "/api/black_swan"))
 app.include_router(create_api_router(metrics_router, "/api"))
+# Mount fiqa_api metrics router (trilines, kpi endpoints)
+app.include_router(fiqa_metrics_router)  # Already has /api/metrics prefix
 app.include_router(create_api_router(quiet_experiment_router, "/api"))
 app.include_router(create_api_router(ops_lab_router, "/api/lab"))
 app.include_router(create_api_router(labops_router, "/api/labops"))

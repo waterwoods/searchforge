@@ -36,6 +36,8 @@ COLLECTION_MAP = {
     # Support dataset_name format
     "fiqa_10k": "fiqa_10k_v1",
     "fiqa_50k": "fiqa_50k_v1",
+    # Airbnb LA demo
+    "airbnb_la_demo": "airbnb_la_demo",
 }
 
 # Default candidate sizes for hybrid search
@@ -236,6 +238,110 @@ def calculate_margin(results: List[Dict[str, Any]]) -> float:
 
 
 # ========================================
+# Qdrant Filter Builder (Airbnb-specific)
+# ========================================
+
+def build_airbnb_qdrant_filter(
+    collection: str,
+    price_max: Optional[float] = None,
+    min_bedrooms: Optional[int] = None,
+    neighbourhood: Optional[str] = None,
+    room_type: Optional[str] = None,
+) -> Optional[Any]:
+    """
+    Build a Qdrant filter for Airbnb-style collections.
+    
+    Only applies when collection == 'airbnb_la_demo'.
+    Returns a Filter object suitable for Qdrant's 'query_filter' param, or None if no filters.
+    
+    Args:
+        collection: Collection name (must be 'airbnb_la_demo' for filter to apply)
+        price_max: Maximum price filter (price <= price_max)
+        min_bedrooms: Minimum bedrooms filter (bedrooms >= min_bedrooms)
+        neighbourhood: Neighbourhood filter (exact match, case-insensitive)
+        room_type: Room type filter (exact match, case-insensitive)
+    
+    Returns:
+        Filter object, or None if no filters or collection mismatch
+    """
+    # Only apply filters for Airbnb collection
+    if collection != "airbnb_la_demo":
+        return None
+    
+    try:
+        from qdrant_client.models import Filter, FieldCondition, Range, MatchValue
+    except ImportError:
+        logger.warning("[FILTER] Qdrant models not available, cannot build filter")
+        return None
+    
+    must_conditions = []
+    
+    # Price filter: price <= price_max
+    if price_max is not None:
+        try:
+            price_max_float = float(price_max)
+            must_conditions.append(
+                FieldCondition(
+                    key="price",
+                    range=Range(lte=price_max_float)
+                )
+            )
+        except (ValueError, TypeError):
+            logger.warning(f"[FILTER] Invalid price_max value: {price_max}, skipping")
+    
+    # Bedrooms filter: bedrooms >= min_bedrooms
+    if min_bedrooms is not None:
+        try:
+            min_bedrooms_int = int(min_bedrooms)
+            must_conditions.append(
+                FieldCondition(
+                    key="bedrooms",
+                    range=Range(gte=min_bedrooms_int)
+                )
+            )
+        except (ValueError, TypeError):
+            logger.warning(f"[FILTER] Invalid min_bedrooms value: {min_bedrooms}, skipping")
+    
+    # Neighbourhood filter: exact match (preserve original case for Qdrant matching)
+    # Note: Qdrant MatchValue is case-sensitive, so we use the original value
+    # Data is stored with title case (e.g., "Hollywood", "Long Beach")
+    if neighbourhood:
+        neighbourhood_clean = str(neighbourhood).strip()
+        if neighbourhood_clean:
+            # Try to match with title case (first letter uppercase, rest lowercase)
+            # This matches the data format in Qdrant
+            neighbourhood_title = neighbourhood_clean.title()
+            must_conditions.append(
+                FieldCondition(
+                    key="neighbourhood",
+                    match=MatchValue(value=neighbourhood_title)
+                )
+            )
+    
+    # Room type filter: exact match (use original value, case-sensitive)
+    # Note: Qdrant MatchValue is case-sensitive, so we use the value as-is
+    # Frontend sends values like "Entire home/apt", "Private room", "Shared room"
+    # which should match the format stored in Qdrant payload
+    if room_type:
+        room_type_clean = str(room_type).strip()
+        if room_type_clean:
+            # Use original value without title case conversion
+            # .title() converts "Entire home/apt" to "Entire Home/Apt" which breaks matching
+            must_conditions.append(
+                FieldCondition(
+                    key="room_type",
+                    match=MatchValue(value=room_type_clean)
+                )
+            )
+    
+    # Return None if no filters
+    if not must_conditions:
+        return None
+    
+    return Filter(must=must_conditions)
+
+
+# ========================================
 # Core Search Function (Reusable)
 # ========================================
 
@@ -256,6 +362,12 @@ def perform_search(
     max_rerank_trigger_rate: float = 0.25,
     rerank_budget_ms: int = 25,
     obs_ctx: Optional[Dict[str, Any]] = None,
+    # Airbnb filter parameters
+    price_max: Optional[float] = None,
+    min_bedrooms: Optional[int] = None,
+    neighbourhood: Optional[str] = None,
+    room_type: Optional[str] = None,
+    profile_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Execute search with unified routing (FAISS/Qdrant/Milvus).
@@ -272,6 +384,11 @@ def perform_search(
         faiss_ready: Whether FAISS is ready (default: False)
         faiss_enabled: Whether FAISS is enabled (default: False)
         lab_headers: Optional lab experiment headers (default: None)
+        price_max: Maximum price filter (for Airbnb collections)
+        min_bedrooms: Minimum bedrooms filter (for Airbnb collections)
+        neighbourhood: Neighbourhood filter (for Airbnb collections)
+        room_type: Room type filter (for Airbnb collections)
+        profile_name: Search profile name (for logging)
         
     Returns:
         Dict with:
@@ -493,6 +610,28 @@ def perform_search(
                     raise
                 # Non-fatal: continue if dimension check fails
             
+            # Build Qdrant filter for Airbnb collections
+            airbnb_filter = build_airbnb_qdrant_filter(
+                collection=actual_collection,
+                price_max=price_max,
+                min_bedrooms=min_bedrooms,
+                neighbourhood=neighbourhood,
+                room_type=room_type,
+            )
+            
+            # Log filter usage
+            filter_used = airbnb_filter is not None
+            if filter_used:
+                logger.info(
+                    f"[FILTER] collection={actual_collection} "
+                    f"profile_name={profile_name or 'None'} "
+                    f"price_max={price_max} "
+                    f"min_bedrooms={min_bedrooms} "
+                    f"neighbourhood={neighbourhood} "
+                    f"room_type={room_type} "
+                    f"filter_used=True"
+                )
+            
             with obs.span(
                 obs_ctx,
                 "retriever",
@@ -508,12 +647,14 @@ def perform_search(
                         "query": query,
                         "collection": actual_collection,
                         "top_k": top_k,
+                        "filter_used": filter_used,
                     },
                 )
                 qdrant_results = client.search(
                     collection_name=actual_collection,
                     query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
-                    limit=top_k
+                    limit=top_k,
+                    query_filter=airbnb_filter  # Apply filter if available
                 )
                 doc_ids = []
                 try:
@@ -534,12 +675,21 @@ def perform_search(
             for r in qdrant_results:
                 payload = r.payload or {}
                 doc_id = str(payload.get("doc_id", r.id))
-                results.append({
+                result_item = {
                     "id": doc_id,
                     "text": payload.get("text", "")[:200],
                     "title": payload.get("title", "Unknown"),
                     "score": float(r.score) if hasattr(r, 'score') else 0.0
-                })
+                }
+                # 如果是 Airbnb collection，添加额外字段
+                if actual_collection == "airbnb_la_demo":
+                    result_item.update({
+                        "price": payload.get("price", 0.0),
+                        "bedrooms": payload.get("bedrooms", 0),
+                        "neighbourhood": payload.get("neighbourhood", ""),
+                        "room_type": payload.get("room_type", ""),
+                    })
+                results.append(result_item)
             
             route_used = "qdrant"
     

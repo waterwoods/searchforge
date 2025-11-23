@@ -22,11 +22,13 @@ COLLECTION_MAP = {
     "fiqa_para_50k": "fiqa_para_50k",
     "fiqa_sent_50k": "fiqa_sent_50k",
     "fiqa_win256_o64_50k": "fiqa_win256_o64_50k",
+    # Airbnb LA demo
+    "airbnb_la_demo": "airbnb_la_demo",
 }
 
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response, Query as FastAPIQuery
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, root_validator
 
 try:
@@ -44,6 +46,7 @@ except ModuleNotFoundError:  # pragma: no cover - container fallback
 
 from services.fiqa_api import obs
 from services.fiqa_api.services.search_core import perform_search
+from services.fiqa_api.services.search_profiles import get_search_profile
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +99,69 @@ def _item_to_source(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_effective_params(request: "QueryRequest", profile) -> Dict[str, Any]:
+    """
+    Build effective parameters by merging profile defaults with request parameters.
+    
+    Priority: request explicit fields > profile.default_filters > original defaults
+    
+    Args:
+        request: QueryRequest instance
+        profile: SearchProfile instance
+    
+    Returns:
+        Dict with effective parameters:
+            - collection: str
+            - price_max: Optional[float]
+            - min_bedrooms: Optional[int]
+            - neighbourhood: Optional[str]
+            - room_type: Optional[str]
+    """
+    effective = {}
+    
+    # Collection: request.collection (if explicitly set and not default) > profile.collection > "fiqa"
+    # If profile_name is specified and request.collection is default "fiqa", prefer profile's collection
+    if request.profile_name and request.collection == "fiqa" and profile.collection:
+        # Profile is specified, use profile's collection instead of default "fiqa"
+        effective["collection"] = profile.collection
+    elif request.collection is not None and request.collection != "fiqa":
+        # Explicitly set collection in request (not default "fiqa")
+        effective["collection"] = request.collection
+    elif profile.collection:
+        # Use profile's collection if request doesn't explicitly set one
+        effective["collection"] = profile.collection
+    else:
+        # Fallback to default
+        effective["collection"] = request.collection if request.collection is not None else "fiqa"
+    
+    # Filters: request explicit > profile.default_filters > None
+    effective["price_max"] = (
+        request.price_max 
+        if request.price_max is not None 
+        else profile.default_filters.get("price_max")
+    )
+    
+    effective["min_bedrooms"] = (
+        request.min_bedrooms 
+        if request.min_bedrooms is not None 
+        else profile.default_filters.get("min_bedrooms")
+    )
+    
+    effective["neighbourhood"] = (
+        request.neighbourhood 
+        if request.neighbourhood is not None 
+        else profile.default_filters.get("neighbourhood")
+    )
+    
+    effective["room_type"] = (
+        request.room_type 
+        if request.room_type is not None 
+        else profile.default_filters.get("room_type")
+    )
+    
+    return effective
+
+
 # ========================================
 # Request/Response Models
 # ========================================
@@ -113,6 +179,21 @@ class QueryRequest(BaseModel):
     rerank_if_margin_below: Optional[float] = Field(default=0.12, ge=0.0, le=1.0, description="Margin threshold for gated reranking")
     max_rerank_trigger_rate: float = Field(default=0.25, ge=0.0, le=1.0, description="Max rerank trigger rate")
     rerank_budget_ms: int = Field(default=25, ge=1, le=1000, description="Rerank budget in milliseconds")
+    use_kv_cache: bool = Field(default=False, description="Whether to use KV-cache for generation (experimental)")
+    session_id: Optional[str] = Field(default=None, description="Logical session id for KV-cache behavior")
+    stream: bool = Field(default=False, description="Whether to stream the response (experimental)")
+    generate_answer: bool = Field(
+        default=False,
+        description="Whether to call LLM to generate an answer (defaults to False for backward compatibility). "
+                    "Note: stream=True implicitly enables answer generation.",
+    )
+    # Search profile support
+    profile_name: Optional[str] = Field(default=None, description="Search profile name (e.g., 'airbnb_la_location_first')")
+    # Filter fields (placeholder, will be used for filtering in future)
+    price_max: Optional[float] = Field(default=None, ge=0.0, description="Maximum price filter")
+    min_bedrooms: Optional[int] = Field(default=None, ge=0, description="Minimum bedrooms filter")
+    neighbourhood: Optional[str] = Field(default=None, description="Neighbourhood filter")
+    room_type: Optional[str] = Field(default=None, description="Room type filter")
 
     @root_validator(pre=True)
     def _alias_q(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -145,32 +226,46 @@ async def _execute_query(
     Maps frontend `question` → core `query`, calls search_core.perform_search,
     and adapts response to frontend format with trace_id, sources, etc.
     
+    Supports both streaming (SSE) and non-streaming (JSON) responses.
+    When stream=True, returns StreamingResponse with SSE format.
+    When stream=False, generates answer using LLM (if available) and returns JSON.
+    
     Includes model consistency checks and embedding model header.
     
     Request body:
         question: str - User's question
         top_k: int - Number of results (default: 20, max: 100)
         rerank: bool - Whether to rerank results (default: False)
+        stream: bool - Whether to stream response (default: False)
+        use_kv_cache: bool - Whether to use KV-cache (experimental, default: False)
     
     Returns:
+        JSON (stream=False):
         {
             "ok": true,
             "trace_id": "uuid",
             "question": "string",
-            "answer": "string",  # Empty for now
+            "answer": "string",  # Generated answer or empty if LLM unavailable
             "latency_ms": float,
             "route": "string",
             "params": {"top_k": int, "rerank": bool},
             "sources": [...],  # Mapped from search results
-            "metrics": {...},  # Structured metrics object
+            "metrics": {...},  # Structured metrics object (may include llm_usage)
             "reranker_triggered": false,
             "ts": "ISO8601 timestamp"
         }
+        
+        StreamingResponse (stream=True):
+        Server-Sent Events stream with answer chunks
     
     Response headers:
         X-Trace-Id: Request trace ID for correlation
     """
     request = request_model
+    
+    # Handle streaming requests
+    if request.stream:
+        return await _execute_query_streaming(request, response, raw_request, x_trace_id)
     # Performance tracking
     start = time.perf_counter()
     
@@ -192,8 +287,28 @@ async def _execute_query(
             detail="question cannot be empty"
         )
     
-    collection_name = request.collection if request.collection else "fiqa"
+    # Apply search profile (if specified)
+    profile = get_search_profile(request.profile_name)
+    effective_params = build_effective_params(request, profile)
+    
+    # Use effective collection (from profile or request)
+    collection_name = effective_params["collection"]
+    # Fallback to environment variable if still not set
+    if not collection_name:
+        default_collection = os.getenv("DEFAULT_SEARCH_COLLECTION", "fiqa")
+        collection_name = default_collection
     actual_collection = COLLECTION_MAP.get(collection_name, collection_name)
+    
+    # Log profile and effective parameters
+    logger.info(
+        f"level=INFO trace_id={trace_id} "
+        f"profile_name={request.profile_name or 'None'} "
+        f"effective_collection={actual_collection} "
+        f"effective_price_max={effective_params.get('price_max')} "
+        f"effective_min_bedrooms={effective_params.get('min_bedrooms')} "
+        f"effective_neighbourhood={effective_params.get('neighbourhood')} "
+        f"effective_room_type={effective_params.get('room_type')}"
+    )
     
     if USE_RETRIEVAL_PROXY:
         try:
@@ -261,8 +376,53 @@ async def _execute_query(
                 "ret_code": ret_code,
                 "cache_hit": cache_hit,
                 "degraded": degraded,
+                "use_kv_cache": request.use_kv_cache,
+                "stream": request.stream,
             }
             logger.info("level=INFO %s", json.dumps(log_payload))
+            
+            # Generate answer using LLM for proxy path (non-streaming only)
+            # Same semantic rules as main path: generate_answer or stream enables generation
+            answer = ""
+            llm_usage = None
+            should_generate = (request.generate_answer or request.stream)
+            
+            if should_generate and not request.stream:
+                from services.fiqa_api.clients import get_openai_client
+                from services.fiqa_api.utils.llm_client import generate_answer_for_query
+                
+                openai_client = get_openai_client()
+                if openai_client is not None and sources:
+                    try:
+                        context = []
+                        for source in sources[:10]:
+                            context_item = {
+                                "title": source.get("title", source.get("doc_id", "")),
+                                "text": source.get("text", source.get("content", "")),
+                            }
+                            context.append(context_item)
+                        
+                        answer, llm_usage, kv_enabled, kv_hit = generate_answer_for_query(
+                            question=cleaned_question,
+                            context=context,
+                            use_kv_cache=request.use_kv_cache,
+                            session_id=request.session_id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"level=WARN trace_id={trace_id} LLM generation failed: {e}")
+                        kv_enabled = False
+                        kv_hit = False
+            
+            if llm_usage:
+                base_metrics["llm_usage"] = llm_usage
+                base_metrics["llm_enabled"] = True
+                base_metrics["kv_enabled"] = kv_enabled if 'kv_enabled' in locals() else bool(request.use_kv_cache)
+                base_metrics["kv_hit"] = kv_hit if 'kv_hit' in locals() else False
+            else:
+                base_metrics["llm_enabled"] = False
+                base_metrics["kv_enabled"] = False
+                base_metrics["kv_hit"] = False
+            
             try:
                 obs.finalize_root(
                     job_id=trace_id,
@@ -279,7 +439,7 @@ async def _execute_query(
                 "ok": True,
                 "trace_id": trace_id,
                 "question": cleaned_question,
-                "answer": "",
+                "answer": answer,  # ✅ Generated answer or empty
                 "latency_ms": latency_ms,
                 "route": route_used,
                 "params": {
@@ -417,6 +577,12 @@ async def _execute_query(
                     max_rerank_trigger_rate=request.max_rerank_trigger_rate,
                     rerank_budget_ms=request.rerank_budget_ms,
                     obs_ctx=obs_ctx,
+                    # Pass effective filter parameters
+                    price_max=effective_params.get("price_max"),
+                    min_bedrooms=effective_params.get("min_bedrooms"),
+                    neighbourhood=effective_params.get("neighbourhood"),
+                    room_type=effective_params.get("room_type"),
+                    profile_name=request.profile_name,
                 ),
                 timeout=QUERY_TIMEOUT_SEC
             )
@@ -447,12 +613,24 @@ async def _execute_query(
         # Map search results to frontend sources format
         sources = []
         for result in search_result.get("results", []):
-            sources.append({
+            source = {
                 "doc_id": result.get("id", "unknown"),
                 "title": result.get("title", ""),
+                "text": result.get("text", ""),  # ✅ Include text field
                 "url": "",  # Empty for now
                 "score": result.get("score", 0.0)
-            })
+            }
+            # 如果是 Airbnb collection，添加额外字段
+            if actual_collection == "airbnb_la_demo" or collection_name == "airbnb_la_demo":
+                if "price" in result:
+                    source["price"] = result.get("price")
+                if "bedrooms" in result:
+                    source["bedrooms"] = result.get("bedrooms")
+                if "neighbourhood" in result:
+                    source["neighbourhood"] = result.get("neighbourhood")
+                if "room_type" in result:
+                    source["room_type"] = result.get("room_type")
+            sources.append(source)
         
         # Extract timing information
         elapsed = (time.perf_counter() - start) * 1000
@@ -492,7 +670,9 @@ async def _execute_query(
             "collection": actual_collection,
             "embed_model": embed_model,
             "backend": embed_backend,
-            "dim": embed_dim
+            "dim": embed_dim,
+            "use_kv_cache": request.use_kv_cache,
+            "stream": request.stream,
         }
         logger.info(f"level=INFO {json.dumps(log_metadata)}")
         
@@ -516,12 +696,111 @@ async def _execute_query(
         base_metrics["rerank_triggered"] = observability_metrics.get("rerank_triggered", False)
         base_metrics["rerank_timeout"] = observability_metrics.get("rerank_timeout", False)
         
+        # Generate answer using LLM (non-streaming only)
+        # 
+        # Semantic rules:
+        # - Default generate_answer=False: Even with OpenAI client, skip LLM, only retrieval
+        # - generate_answer=True and stream=False: Do "retrieval + non-streaming generation"
+        # - stream=True: Implicitly enables answer generation (treated as generate_answer=True)
+        answer = ""
+        llm_usage = None
+        
+        # Determine if we should generate answer
+        # stream=True implies generate_answer=True
+        should_generate = (request.generate_answer or request.stream)
+        
+        if should_generate and not request.stream:
+            from services.fiqa_api.clients import get_openai_client
+            from services.fiqa_api.utils.llm_client import generate_answer_for_query
+            
+            openai_client = get_openai_client()
+            if openai_client is not None and sources:
+                try:
+                    # Build context from sources
+                    context = []
+                    for source in sources[:10]:  # Limit to top 10 sources
+                        context_item = {
+                            "title": source.get("title", source.get("doc_id", "")),
+                            "text": source.get("text", source.get("content", "")),
+                        }
+                        # ✅ Include Airbnb fields if present
+                        if actual_collection == "airbnb_la_demo" or collection_name == "airbnb_la_demo":
+                            if "price" in source:
+                                context_item["price"] = source.get("price")
+                            if "bedrooms" in source:
+                                context_item["bedrooms"] = source.get("bedrooms")
+                            if "neighbourhood" in source:
+                                context_item["neighbourhood"] = source.get("neighbourhood")
+                            if "room_type" in source:
+                                context_item["room_type"] = source.get("room_type")
+                        context.append(context_item)
+                    
+                    # Generate answer
+                    # Log context structure before LLM call
+                    context_debug = []
+                    for idx, ctx_item in enumerate(context[:3], 1):
+                        item_debug = {"idx": idx}
+                        if "price" in ctx_item:
+                            item_debug["price"] = ctx_item.get("price")
+                        if "bedrooms" in ctx_item:
+                            item_debug["bedrooms"] = ctx_item.get("bedrooms")
+                        if "neighbourhood" in ctx_item:
+                            item_debug["neighbourhood"] = ctx_item.get("neighbourhood")
+                        if "room_type" in ctx_item:
+                            item_debug["room_type"] = ctx_item.get("room_type")
+                        if "text" in ctx_item:
+                            text_val = ctx_item.get("text", "")
+                            item_debug["text_len"] = len(text_val) if text_val else 0
+                        context_debug.append(item_debug)
+                    
+                    logger.info(
+                        f"[AIRBNB_PROMPT_DEBUG] trace_id={trace_id} "
+                        f"collection={actual_collection} "
+                        f"context_items={len(context)} "
+                        f"context_sample={context_debug}"
+                    )
+                    
+                    answer, llm_usage, kv_enabled, kv_hit = generate_answer_for_query(
+                        question=cleaned_question,
+                        context=context,
+                        use_kv_cache=request.use_kv_cache,
+                        session_id=request.session_id,
+                    )
+                    
+                    # Log answer summary
+                    answer_preview = answer[:300] if answer else ""
+                    logger.info(
+                        f"[AIRBNB_PROMPT_DEBUG] trace_id={trace_id} "
+                        f"answer_length={len(answer) if answer else 0} "
+                        f"answer_preview={answer_preview}"
+                    )
+                    
+                except Exception as e:
+                    logger.warning(
+                        f"level=WARN trace_id={trace_id} LLM generation failed: {e}",
+                        exc_info=True,
+                    )
+                    # answer remains empty string, llm_usage remains None
+                    kv_enabled = False
+                    kv_hit = False
+        
+        # Add LLM usage to metrics if available
+        if llm_usage:
+            base_metrics["llm_usage"] = llm_usage
+            base_metrics["llm_enabled"] = True
+            base_metrics["kv_enabled"] = kv_enabled if 'kv_enabled' in locals() else bool(request.use_kv_cache)
+            base_metrics["kv_hit"] = kv_hit if 'kv_hit' in locals() else False
+        else:
+            base_metrics["llm_enabled"] = False
+            base_metrics["kv_enabled"] = False
+            base_metrics["kv_hit"] = False
+        
         # Return frontend-friendly response with all required fields
         payload = {
             "ok": True,
             "trace_id": trace_id,
             "question": cleaned_question,
-            "answer": "",  # Empty for now
+            "answer": answer,  # ✅ Filled with generated answer (or empty string if LLM unavailable)
             "latency_ms": elapsed,
             "route": route_used,
             "params": {
@@ -656,6 +935,177 @@ async def _execute_query(
                 "ts": datetime.utcnow().isoformat() + "Z"
             }
         )
+
+
+async def _execute_query_streaming(
+    request: QueryRequest,
+    response: Response,
+    raw_request: Request,
+    x_trace_id: Optional[str] = None,
+):
+    """
+    Streaming version of query endpoint (SSE format).
+    
+    First performs retrieval, then streams LLM-generated answer.
+    """
+    trace_id = (x_trace_id or "").strip() or str(uuid.uuid4())
+    cleaned_question = request.question.strip() if request.question else ""
+    
+    async def event_generator():
+        try:
+            from services.fiqa_api.clients import get_openai_client
+            from services.fiqa_api.utils.llm_client import build_rag_prompt, is_llm_generation_enabled
+            from services.fiqa_api.utils.env_loader import get_llm_conf
+            
+            # Check global LLM generation switch first (prevents accidental LLM calls)
+            if not is_llm_generation_enabled():
+                yield "data: LLM generation disabled by server config (LLM_GENERATION_ENABLED env).\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # Check OpenAI client availability
+            openai_client = get_openai_client()
+            if openai_client is None:
+                yield "data: LLM client not initialized. Please set OPENAI_API_KEY.\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # Perform retrieval first
+            try:
+                from services.fiqa_api.services.search_core import perform_search
+                from services.fiqa_api.app_main import app
+                
+                routing_flags = getattr(app.state, "routing_flags", {"enabled": True, "mode": "rules"})
+                faiss_engine = getattr(app.state, "faiss_engine", None)
+                faiss_ready = getattr(app.state, "faiss_ready", False)
+                faiss_enabled = getattr(app.state, "faiss_enabled", False)
+                
+                # Apply search profile (if specified)
+                profile = get_search_profile(request.profile_name)
+                effective_params = build_effective_params(request, profile)
+                collection_name = effective_params["collection"]
+                if not collection_name:
+                    default_collection = os.getenv("DEFAULT_SEARCH_COLLECTION", "fiqa")
+                    collection_name = default_collection
+                rrf_k = max(1, min(request.rrf_k if request.rrf_k is not None else RRF_K_DEFAULT, 100))
+                rerank_top_k = max(1, min(request.rerank_top_k if request.rerank_top_k is not None else RERANK_TOPK_DEFAULT, request.top_k))
+                
+                obs_ctx = {"trace_id": trace_id, "job_id": trace_id}
+                
+                search_result = await asyncio.to_thread(
+                    perform_search,
+                    query=cleaned_question,
+                    top_k=request.top_k,
+                    collection=collection_name,
+                    routing_flags=routing_flags,
+                    faiss_engine=faiss_engine,
+                    faiss_ready=faiss_ready,
+                    faiss_enabled=faiss_enabled,
+                    lab_headers=None,
+                    use_hybrid=request.use_hybrid,
+                    rrf_k=rrf_k,
+                    rerank=request.rerank,
+                    rerank_top_k=rerank_top_k,
+                    rerank_if_margin_below=request.rerank_if_margin_below,
+                    max_rerank_trigger_rate=request.max_rerank_trigger_rate,
+                    rerank_budget_ms=request.rerank_budget_ms,
+                    obs_ctx=obs_ctx,
+                    # Pass effective filter parameters
+                    price_max=effective_params.get("price_max"),
+                    min_bedrooms=effective_params.get("min_bedrooms"),
+                    neighbourhood=effective_params.get("neighbourhood"),
+                    room_type=effective_params.get("room_type"),
+                    profile_name=request.profile_name,
+                )
+                
+                # Extract sources
+                sources = []
+                for result in search_result.get("results", []):
+                    sources.append({
+                        "doc_id": result.get("id", "unknown"),
+                        "title": result.get("title", ""),
+                        "text": result.get("text", ""),
+                        "score": result.get("score", 0.0),
+                    })
+                
+                # Build context for prompt
+                context = []
+                for source in sources[:10]:
+                    context_item = {
+                        "title": source.get("title", source.get("doc_id", "")),
+                        "text": source.get("text", source.get("content", "")),
+                    }
+                    context.append(context_item)
+                
+                # Build RAG prompt
+                prompt = build_rag_prompt(cleaned_question, context)
+                
+                # Get LLM config
+                llm_conf = get_llm_conf()
+                model = llm_conf.get("model", "gpt-4o-mini")
+                max_tokens = llm_conf.get("max_tokens", 512)
+                
+                # Build messages
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that answers questions based on provided context.",
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ]
+                
+                # Log use_kv_cache (not implemented)
+                if request.use_kv_cache:
+                    logger.debug(f"use_kv_cache=True requested (not yet implemented) for streaming")
+                
+                # Stream from OpenAI
+                stream = openai_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=max_tokens,
+                    stream=True,
+                )
+                
+                async def iterate_stream():
+                    for chunk in stream:
+                        delta = None
+                        try:
+                            delta = chunk.choices[0].delta.content
+                        except Exception:
+                            delta = None
+                        if delta:
+                            yield f"data: {delta}\n\n"
+                        await asyncio.sleep(0)
+                
+                async for sse_chunk in iterate_stream():
+                    yield sse_chunk
+                
+                yield "data: [DONE]\n\n"
+                
+            except Exception as e:
+                logger.error(f"level=ERROR trace_id={trace_id} Streaming query failed: {e}", exc_info=True)
+                yield f"data: Error during retrieval or generation: {str(e)}\n\n"
+                yield "data: [DONE]\n\n"
+                
+        except Exception as outer_e:
+            logger.error(f"level=ERROR trace_id={trace_id} Unexpected error in streaming: {outer_e}", exc_info=True)
+            yield f"data: Unexpected error: {str(outer_e)}\n\n"
+            yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Trace-Id": trace_id,
+        }
+    )
 
 
 @router.post("/query")

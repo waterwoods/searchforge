@@ -215,6 +215,16 @@ def get_recall_config() -> Dict[str, Any]:
     }
 
 
+def get_use_ml_approval_score() -> bool:
+    """
+    Check if ML approval score should be used (hybrid rules + ML).
+    
+    Returns:
+        True if USE_ML_APPROVAL_SCORE env var is set to true, False otherwise
+    """
+    return get_env_bool("USE_ML_APPROVAL_SCORE", False)
+
+
 # ========================================
 # Module-level constants for quick access
 # ========================================

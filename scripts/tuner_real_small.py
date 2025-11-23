@@ -56,17 +56,38 @@ def fetch_json_url(method: str, url: str, session: Optional[requests.Session] = 
 
 
 def wait_ready(session: Optional[requests.Session] = None) -> None:
+    """Wait for backend readiness with retry on connection errors (300s timeout, require 3 consecutive ready)."""
     sess = session or _SESSION
-    sess.get(f"{API_BASE}/healthz", timeout=15).raise_for_status()
-    ready = fetch_json("GET", "/readyz", session=sess)
-    if isinstance(ready, dict) and ready.get("clients_ready") is True:
-        return
-    for attempt in range(30):
-        time.sleep(1.0)
-        ready = fetch_json("GET", "/readyz", session=sess)
-        if isinstance(ready, dict) and ready.get("clients_ready") is True:
-            return
-    raise RuntimeError("Backend not ready after waiting for /readyz")
+    deadline = time.time() + 300  # 300 seconds total timeout
+    consecutive = 0
+    
+    # Try healthz with retry on connection errors
+    while time.time() < deadline:
+        try:
+            sess.get(f"{API_BASE}/healthz", timeout=5).raise_for_status()
+            break
+        except (requests.ConnectionError, requests.Timeout, requests.exceptions.RequestException):
+            if time.time() < deadline:
+                time.sleep(2)
+                continue
+            raise RuntimeError("Backend healthz failed after 300s")
+    
+    # Check readyz with retry on connection errors, require 3 consecutive success
+    while time.time() < deadline:
+        try:
+            ready = fetch_json("GET", "/readyz", session=sess, timeout=3)
+            j = ready if isinstance(ready, dict) else {}
+            ok = bool(j.get("clients_ready", False))
+            consecutive = consecutive + 1 if ok else 0
+            if consecutive >= 3:
+                return
+        except (requests.ConnectionError, requests.Timeout, requests.exceptions.RequestException):
+            consecutive = 0
+        
+        if time.time() < deadline:
+            time.sleep(2)
+    
+    raise RuntimeError("Backend not ready after waiting 300s for 3 consecutive ready checks")
 
 
 def _extract_latency(payload: Dict[str, Any]) -> float:
@@ -83,11 +104,22 @@ def _extract_latency(payload: Dict[str, Any]) -> float:
         return 0.0
 
 
+def _get_autotuner_headers() -> Dict[str, str]:
+    """Get headers with autotuner token if available."""
+    headers = {}
+    token = os.getenv("AUTOTUNER_TOKEN")
+    if token:
+        headers["X-Autotuner-Token"] = token
+    return headers
+
+
 def _set_policy(policy_name: str) -> str:
+    headers = _get_autotuner_headers()
     resp = fetch_json(
         "POST",
         "/api/autotuner/set_policy",
         json={"policy": policy_name},
+        headers=headers,
     )
     policy = resp.get("policy")
     if not policy:
@@ -143,10 +175,12 @@ def run_once(use_proxy: bool, n: int, budget_ms: int, policy_name: Optional[str]
         }
         arm_selected = select_strategy(metrics)
         metrics["arm"] = arm_selected
+        autotuner_headers = _get_autotuner_headers()
+        suggest_headers = {**headers, **autotuner_headers}
         suggest_resp = fetch_json_url(
             "POST",
             f"{RAG_API}/api/autotuner/suggest",
-            headers=headers,
+            headers=suggest_headers,
             json=metrics,
         )
         params_snapshot = suggest_resp.get("next_params", {})

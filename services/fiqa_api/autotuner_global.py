@@ -12,6 +12,10 @@ from modules.autotune import AutoTuner, TuningState
 from modules.autotune.selector import select_strategy
 
 _AUTOSAVE_INTERVAL_SEC = float(os.getenv("AUTOTUNER_AUTOSAVE_SEC", "30"))
+STATE_PATH = os.getenv("TUNER_STATE_PATH", ".runs/tuner_state.json")
+MAX_HISTORY = int(os.getenv("MAX_HISTORY", "2000"))
+COMPACT_EVERY = int(os.getenv("COMPACT_EVERY", "100"))
+COMPACT_KEEP_EVERY = int(os.getenv("COMPACT_KEEP_EVERY", "5"))
 _GLOBAL = {
     "tuner": None,
     "state": None,
@@ -20,7 +24,7 @@ _GLOBAL = {
     "last_params": None,
 }
 _POLICY_FILE = Path(".runs/policy.txt")
-_STATE_FILE = Path(".runs/tuner_state.json")
+_STATE_FILE = Path(STATE_PATH)
 
 
 def _runs_dir() -> Path:
@@ -63,6 +67,7 @@ def _snapshot_state(state: TuningState) -> Dict[str, Any]:
         "recent_metrics": recent_metrics,
         "parameter_history": parameter_history,
         "max_history": state.max_history,
+        "history_len": getattr(state, "history_len", 0),  # Cumulative counter
         "recent_recall_queue": recall_queue,
         "recent_recall_queue_maxlen": maxlen,
         "batches_since_decrease": state.batches_since_decrease,
@@ -76,12 +81,16 @@ def _reset_summary() -> None:
 
 
 def _update_summary(state: TuningState) -> Tuple[int, Optional[Dict[str, Any]]]:
-    history = list(getattr(state, "parameter_history", []))
-    history_len = len(history)
+    # Use history_len counter from state (monotonically increasing), fallback to array length
+    history_len = getattr(state, "history_len", 0)
+    if history_len == 0:
+        history = list(getattr(state, "parameter_history", []))
+        history_len = len(history)
     try:
         current_params = dict(state.get_current_params())
     except Exception:
         current_params = {}
+    history = list(getattr(state, "parameter_history", []))
     last_params = history[-1] if history else current_params
     _GLOBAL["history_len"] = history_len
     _GLOBAL["last_params"] = last_params
@@ -114,9 +123,13 @@ def _load_state() -> Tuple[Optional[TuningState], Optional[str]]:
     state.target_p95_ms = float(state_payload.get("target_p95_ms", state.target_p95_ms))
     state.target_recall = float(state_payload.get("target_recall", state.target_recall))
     state.target_coverage = float(state_payload.get("target_coverage", state.target_coverage))
-    state.max_history = int(state_payload.get("max_history", state.max_history))
+    state.max_history = int(state_payload.get("max_history", MAX_HISTORY))
     state.recent_metrics = list(state_payload.get("recent_metrics", []))[-state.max_history :]
     state.parameter_history = list(state_payload.get("parameter_history", []))[-state.max_history :]
+    # Restore history_len counter (monotonically increasing)
+    state.history_len = int(state_payload.get("history_len", len(state.parameter_history)))
+    # Restore compact counter (internal, defaults to 0)
+    state._compact_count = int(state_payload.get("_compact_count", 0))
     queue_items = list(state_payload.get("recent_recall_queue", []))
     queue_maxlen = state_payload.get("recent_recall_queue_maxlen")
     queue_maxlen = int(queue_maxlen) if queue_maxlen else None
@@ -129,19 +142,36 @@ def _load_state() -> Tuple[Optional[TuningState], Optional[str]]:
 
 
 def _persist_state(tuner: AutoTuner, state: TuningState) -> None:
+    """
+    Atomically persist state to disk using tmp file + rename pattern.
+    On failure, roll back (tmp file is not renamed, so old file remains).
+    """
     snapshot = {
         "ts": time.time(),
         "policy": getattr(tuner, "policy_name", ""),
         "state": _snapshot_state(state),
     }
+    tmp_path = None
     try:
         _runs_dir()
         tmp_path = _STATE_FILE.with_suffix(".tmp")
+        # Write to tmp file first
         with tmp_path.open("w", encoding="utf-8") as handle:
             json.dump(snapshot, handle, indent=2)
             handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())  # Force flush to disk
+        # Atomic rename (move)
         tmp_path.replace(_STATE_FILE)
-    except OSError:
+        tmp_path = None  # Mark as successfully renamed
+    except OSError as e:
+        # Rollback: if tmp_path exists, remove it (don't rename to main file)
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        # Fail silently (observability helper)
         pass
     finally:
         _update_summary(state)
@@ -178,6 +208,13 @@ def _create_autotuner(policy_name: Optional[str] = None, state: Optional[TuningS
     if state is None:
         loaded_state, saved_policy = _load_state()
         state = loaded_state or TuningState()
+        # Set max_history from env if not loaded
+        if state.max_history == 100:  # Default value
+            state.max_history = MAX_HISTORY
+    else:
+        # Ensure max_history is set from env
+        if state.max_history == 100:  # Default value
+            state.max_history = MAX_HISTORY
     configured_policy = policy_name or saved_policy or os.getenv("TUNER_POLICY", "RecallFirst")
     tuner = AutoTuner(engine="hnsw", policy=configured_policy, state=state)
     _persist_policy(tuner.policy_name)

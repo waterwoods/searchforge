@@ -9,6 +9,9 @@ import { RetrieverLabPage } from './pages/RetrieverLabPage';
 import { RankerLabPage } from './pages/RankerLabPage';
 import { IndexExplorerPage } from './pages/IndexExplorerPage';
 import { SLATunerLabPage } from './pages/SLATunerLabPage';
+import { SearchLabPage } from './pages/SearchLabPage';
+import { MortgageAssistantPage } from './pages/MortgageAssistantPage';
+import { SingleHomeStressPage } from './pages/SingleHomeStressPage';
 import CodeLookupPage from './pages/CodeLookupPage';
 import MermaidTestPage from './pages/MermaidTestPage';
 import EdgesJsonTestPage from './pages/EdgesJsonTestPage';
@@ -48,6 +51,9 @@ function App() {
                         <Route path="workbench/ranker-lab" element={<RankerLabPage />} />
                         <Route path="workbench/index-explorer" element={<IndexExplorerPage />} />
                         <Route path="workbench/sla-tuner-lab" element={<SLATunerLabPage />} />
+                        <Route path="workbench/search-lab" element={<SearchLabPage />} />
+                        <Route path="workbench/mortgage-assistant" element={<MortgageAssistantPage />} />
+                        <Route path="workbench/single-home-stress" element={<SingleHomeStressPage />} />
 
                         {/* Code Lookup Agent Route */}
                         <Route path="workbench/code-lookup-agent" element={<CodeLookupPage />} />

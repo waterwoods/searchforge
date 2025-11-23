@@ -18,10 +18,39 @@ BASE_URL = os.getenv("AUTOTUNER_BASE_URL", "http://localhost:8000")
 RETRIES = int(os.getenv("AUTOTUNER_CHECK_RETRIES", "8"))
 SLEEP_SEC = float(os.getenv("AUTOTUNER_CHECK_DELAY", "1.0"))
 
+# Get autotuner token from environment or .env.current file
+def _get_autotuner_token() -> Optional[str]:
+    token = os.getenv("AUTOTUNER_TOKEN")
+    if token:
+        return token
+    
+    # Try reading from .env.current file
+    env_file = ROOT / ".env.current"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("AUTOTUNER_TOKENS="):
+                tokens = line.split("=", 1)[1].strip().strip('"').strip("'")
+                # Get first token if comma-separated
+                if "," in tokens:
+                    token = tokens.split(",")[0].strip()
+                else:
+                    token = tokens
+                if token:
+                    return token
+    
+    # Default fallback
+    return os.getenv("AUTOTUNER_TOKENS", "devtoken").split(",")[0].strip() if os.getenv("AUTOTUNER_TOKENS") else "devtoken"
+
 
 def _request(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     data = None
     headers = {}
+    
+    # Add authentication token
+    token = _get_autotuner_token()
+    if token:
+        headers["X-Autotuner-Token"] = token
+    
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"

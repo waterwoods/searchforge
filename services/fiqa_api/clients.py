@@ -67,7 +67,9 @@ REDIS_SOCKET_TIMEOUT = int(os.getenv("REDIS_SOCKET_TIMEOUT", "3"))  # 3s default
 
 # OpenAI (optional)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_TIMEOUT = int(os.getenv("CODE_LOOKUP_LLM_TIMEOUT_MS", "3000")) / 1000.0  # 3s default
+# OpenAI timeout: use OPENAI_TIMEOUT_MS if set, otherwise fall back to CODE_LOOKUP_LLM_TIMEOUT_MS for backward compatibility
+OPENAI_TIMEOUT_MS = os.getenv("OPENAI_TIMEOUT_MS") or os.getenv("CODE_LOOKUP_LLM_TIMEOUT_MS", "3000")
+OPENAI_TIMEOUT = int(OPENAI_TIMEOUT_MS) / 1000.0  # Convert ms to seconds
 
 
 # ========================================
@@ -429,17 +431,43 @@ def get_openai_client() -> Optional[object]:
             if _openai_client is None:
                 try:
                     from openai import OpenAI
-                    print("[DEBUG] OpenAI client initialized successfully")
+                    import httpx
+                    
                     logger.info(f"[CLIENTS] Initializing OpenAI client")
                     logger.info(f"[CLIENTS] OpenAI API Key loaded: {bool(OPENAI_API_KEY)}")
+                    
+                    # Workaround for OpenAI library 1.46.0 'proxies' parameter error:
+                    # Create httpx client with trust_env=False to prevent automatic proxy detection
+                    # which may cause OpenAI.Client to receive unexpected 'proxies' parameter
+                    http_client = httpx.Client(
+                        timeout=httpx.Timeout(OPENAI_TIMEOUT),
+                        trust_env=False,  # Disable automatic proxy/env var detection
+                    )
+                    
                     _openai_client = OpenAI(
                         api_key=OPENAI_API_KEY,
-                        timeout=OPENAI_TIMEOUT
+                        http_client=http_client,
                     )
+                    
                     logger.info(f"[CLIENTS] OpenAI client initialized successfully")
+                    
+                except ImportError as import_err:
+                    # httpx not available, try direct init (may still fail but worth trying)
+                    logger.warning(f"[CLIENTS] httpx not available: {import_err}, trying direct init")
+                    try:
+                        _openai_client = OpenAI(
+                            api_key=OPENAI_API_KEY,
+                            timeout=OPENAI_TIMEOUT
+                        )
+                        logger.info(f"[CLIENTS] OpenAI client initialized successfully (direct)")
+                    except Exception as direct_err:
+                        logger.warning(f"[CLIENTS] Direct init also failed: {direct_err}")
+                        return None
                 except Exception as e:
                     print(f"[DEBUG] Failed to init OpenAI client: {e}")
                     logger.warning(f"[CLIENTS] Failed to initialize OpenAI client: {e}")
+                    import traceback
+                    logger.debug(f"[CLIENTS] OpenAI init traceback: {traceback.format_exc()}")
                     return None
     
     return _openai_client
@@ -605,8 +633,11 @@ def get_clients_status() -> dict:
     Returns:
         Dict with status of each client
     """
+    # Check embedding model status - prefer _embedder (pluggable) over _embedding_model (legacy)
+    embedding_ready = (_embedder is not None and EMBED_READY) or _embedding_model is not None
+    
     return {
-        "embedding_model": _embedding_model is not None,
+        "embedding_model": embedding_ready,
         "qdrant": _qdrant_client is not None,
         "redis": _redis_client is not None,
         "openai": _openai_client is not None,

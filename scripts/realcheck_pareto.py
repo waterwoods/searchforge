@@ -125,11 +125,14 @@ if __name__ == "__main__":
         default="200,400,800,1000,1200",
         help="Comma or space separated budgets used when aggregating paired results.",
     )
+    parser.add_argument("--pareto-json", type=str, help="Path to pareto.json file (default: .runs/pareto.json).")
     args = parser.parse_args()
 
     if args.aggregate:
         budgets_override = _parse_budgets_arg(args.budgets)
-        budgets = budgets_override or [200, 400, 800, 1000, 1200]
-        raise SystemExit(aggregate_paired(budgets))
+        budgets = budgets_override or list(range(200, 1700, 100))  # Denser grid
+        policies = ["LatencyFirst", "Balanced", "RecallFirst"]
+        pareto_path = args.pareto_json or ".runs/pareto.json"
+        raise SystemExit(aggregate_paired(budgets, policies, pareto_path=pareto_path))
 
     raise SystemExit(_legacy_main())

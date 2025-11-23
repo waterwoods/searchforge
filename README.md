@@ -80,6 +80,25 @@ the SLA with near-zero timeouts**:
 - Detailed metrics: [AutoTuner SLA experiment](docs/experiments/auto_tuner_sla.md)
 - Go proxy concurrency lab: [Go proxy On/Off](docs/experiments/go_proxy_on_off.md)
 
+### RAG Hallucination & Guardrails Lab (MVP)
+
+We provide a small hallucination/guardrail lab:
+
+```bash
+make guardrails-lab-baseline
+make guardrails-lab-guarded
+```
+
+This runs a FIQA-based grounding proxy (hit/miss vs qrels) and a small set of
+hand-authored guardrail cases (insufficient evidence, prompt injection, harmful).
+It reports hallucination-proxy and guardrail metrics into:
+
+- `.runs/guardrails_lab_baseline.csv`
+- `.runs/guardrails_lab_guarded.csv`
+
+These metrics are **proxies**, not perfect truth, but are useful for quick
+comparisons between baseline and simple guarded behavior.
+
 ### Fast CI for local development
 
 For day-to-day development, use `ci-fast` for quicker feedback:
@@ -103,6 +122,18 @@ For full metrics & plots (used by Metrics Hub and reports), run:
 ```bash
 make ci              # full eval (~longer), writes .runs/real_large_trilines.csv
 ```
+
+### Regression suite (quality gates)
+
+Before upgrading components (Qdrant/Python) or merging major changes, run:
+
+```bash
+make regression
+```
+
+This command re-runs three key experiments (AutoTuner SLA, Go proxy concurrency/QPS, and ci-fast)
+and compares their metrics against stored baselines. It fails if p95/QPS/timeout rates regress
+beyond simple thresholds, so previously achieved performance and stability are not silently lost.
 
 ### CI with GPU Worker
 

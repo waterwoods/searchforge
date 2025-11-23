@@ -9,7 +9,8 @@ import {
     ThunderboltOutlined,
     NodeIndexOutlined,
     ToolOutlined,
-    BarChartOutlined
+    BarChartOutlined,
+    BankOutlined
 } from '@ant-design/icons';
 import { Menu } from 'antd';
 import { Link, useLocation } from 'react-router-dom';
@@ -92,6 +93,21 @@ const menuItems = [
                 key: '/workbench/sla-tuner-lab',
                 icon: <ThunderboltOutlined />,
                 label: <Link to="/workbench/sla-tuner-lab">SLA Tuner Lab</Link>,
+            },
+            {
+                key: '/workbench/search-lab',
+                icon: <SearchOutlined />,
+                label: <Link to="/workbench/search-lab">Search Lab</Link>,
+            },
+            {
+                key: '/workbench/mortgage-assistant',
+                icon: <BankOutlined />,
+                label: <Link to="/workbench/mortgage-assistant">Mortgage Assistant</Link>,
+            },
+            {
+                key: '/workbench/single-home-stress',
+                icon: <BankOutlined />,
+                label: <Link to="/workbench/single-home-stress">Single Home Stress</Link>,
             },
         ],
     },
