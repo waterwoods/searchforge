@@ -1,7 +1,12 @@
 {
-  "rewrites": [
-    { "source": "/workbench/:path*", "destination": "/" },
-    { "source": "/(.*)", "destination": "/" }
-  ]
+    "rewrites": [
+        {
+            "source": "/workbench/:path*",
+            "destination": "/"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/"
+        }
+    ]
 }
-

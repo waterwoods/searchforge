@@ -993,7 +993,7 @@ export const SingleHomeStressPage = () => {
 
         return (
             <Card
-                title="Your wallet"
+                title={<span style={{ fontSize: '15px' }}>Your wallet</span>}
                 style={{ backgroundColor: '#1d1f23', marginBottom: '16px' }}
             >
                 <Space direction="vertical" size="small" style={{ width: '100%' }}>
@@ -1050,7 +1050,7 @@ export const SingleHomeStressPage = () => {
 
         return (
             <Card
-                title="Target home"
+                title={<span style={{ fontSize: '15px' }}>Target home</span>}
                 extra={
                     <Button
                         type="link"
@@ -1160,7 +1160,7 @@ export const SingleHomeStressPage = () => {
                 data-nl-assistant-card
                 title={
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>Talk to the agent (English only)</span>
+                        <span style={{ fontSize: '15px' }}>Talk to the agent (English only)</span>
                         {nlConversation.length > 0 && (
                             <Button
                                 type="text"
@@ -1177,7 +1177,7 @@ export const SingleHomeStressPage = () => {
                         )}
                     </div>
                 }
-                style={{ marginTop: '16px', marginBottom: '16px' }}
+                style={{ marginTop: '16px', marginBottom: '24px' }}
             >
                 <Space direction="vertical" size="small" style={{ width: '100%' }}>
                     <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '12px' }}>
@@ -1683,8 +1683,8 @@ export const SingleHomeStressPage = () => {
         // like one coherent agent "action panel" instead of three separate cards.
         return (
             <Card
-                title="Next steps · What the agent suggests"
-                style={{ backgroundColor: '#1d1f23', marginTop: '16px', marginBottom: '16px' }}
+                title={<span style={{ fontSize: '15px' }}>Next steps · What the agent suggests</span>}
+                style={{ backgroundColor: '#1d1f23', marginTop: '24px', marginBottom: '16px' }}
                 bodyStyle={{ padding: 16 }}
             >
                 {/* A. Safety Upgrade Summary */}
@@ -2722,11 +2722,11 @@ export const SingleHomeStressPage = () => {
     };
 
     return (
-        <div style={{ padding: '24px' }}>
-            <Title level={2}>
+        <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+            <Title level={3} style={{ fontSize: '24px', marginBottom: '8px' }}>
                 <BankOutlined /> Single Home Stress · powered by Mortgage Agent
             </Title>
-            <Paragraph>
+            <Paragraph style={{ fontSize: '14px', marginBottom: '32px' }}>
                 Evaluate whether a specific home is affordable for your financial situation using the Mortgage Agent.
             </Paragraph>
 
@@ -2735,7 +2735,11 @@ export const SingleHomeStressPage = () => {
                 <Col xs={24} lg={8}>
                     <Space direction="vertical" size="large" style={{ width: '100%' }}>
                         {/* Preset Scenarios Selector */}
-                        <Card title="Demo Presets" size="small">
+                        <Card 
+                            title={<span style={{ fontSize: '15px' }}>Demo Presets</span>} 
+                            size="small"
+                            bodyStyle={{ minHeight: '100px', display: 'flex', alignItems: 'center' }}
+                        >
                             <Space direction="vertical" size="small" style={{ width: '100%' }}>
                                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
                                     Select a preset to auto-fill the form and run a stress check:
@@ -2760,7 +2764,7 @@ export const SingleHomeStressPage = () => {
                             </Space>
                         </Card>
 
-                        <Card title="Input Parameters">
+                        <Card title={<span style={{ fontSize: '15px' }}>Input Parameters</span>} style={{ marginTop: '24px' }}>
                             <Form
                                 form={form}
                                 layout="vertical"
@@ -2971,7 +2975,7 @@ export const SingleHomeStressPage = () => {
                         ) : response ? (
                             <>
                                 {/* Top Row: Your Wallet + Target Home */}
-                                <Row gutter={16}>
+                                <Row gutter={16} style={{ marginTop: '24px' }}>
                                     <Col xs={24} sm={12}>
                                         {renderWalletCard(response)}
                                     </Col>
@@ -2991,8 +2995,8 @@ export const SingleHomeStressPage = () => {
 
                                 {/* What-if Scenarios */}
                                 <Card
-                                    title="What-if Scenarios"
-                                    style={{ marginTop: '16px', marginBottom: '16px' }}
+                                    title={<span style={{ fontSize: '15px' }}>What-if Scenarios</span>}
+                                    style={{ marginTop: '24px', marginBottom: '16px' }}
                                 >
                                     <Space direction="vertical" size="small" style={{ width: '100%' }}>
                                         <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
@@ -3053,7 +3057,7 @@ export const SingleHomeStressPage = () => {
 
                                 {/* Payment Breakdown */}
                                 <Card
-                                    title="Payment Breakdown"
+                                    title={<span style={{ fontSize: '15px' }}>Payment Breakdown</span>}
                                     style={{ marginTop: '16px', marginBottom: '16px' }}
                                 >
                                     <Row gutter={16}>

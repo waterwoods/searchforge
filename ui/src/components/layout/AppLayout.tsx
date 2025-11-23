@@ -19,8 +19,8 @@ export const AppLayout: React.FC = () => {
     // --- NEW CONTEXT-AWARE LOGIC ---
     // Determine which panel to show in the right Sider
     let rightPanelContent;
-    if (location.pathname === '/workbench/code-lookup-agent') {
-        // Hide the generic right panel for the Code Lookup Agent page
+    if (location.pathname === '/workbench/code-lookup-agent' || location.pathname === '/workbench/single-home-stress') {
+        // Hide the generic right panel for the Code Lookup Agent page and Single Home Stress page
         rightPanelContent = null;
     } else if (location.pathname === '/workbench') {
         // ONLY the Leaderboard page shows the Experiment (RAG Triad) panel
