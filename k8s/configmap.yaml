@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecommerce-agent-config
+data:
+  # Optional: LangSmith project name
+  LANGSMITH_PROJECT: "searchforge-ecommerce-dev"
+  # Log level configuration
+  LOG_LEVEL: "info"
+

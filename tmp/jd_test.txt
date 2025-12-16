@@ -1,0 +1,23 @@
+Senior Software Engineer - AI/ML Platform
+
+We are looking for a Senior Software Engineer to join our AI/ML Platform team. You will be responsible for building and scaling our machine learning infrastructure that powers our core products.
+
+Key Responsibilities:
+- Design and implement scalable ML training and inference pipelines
+- Build and maintain distributed systems for model serving
+- Collaborate with ML researchers to productionize research models
+- Optimize model performance and reduce infrastructure costs
+- Implement monitoring and observability for ML systems
+
+Requirements:
+- 5+ years of software engineering experience
+- Strong background in distributed systems and cloud infrastructure
+- Experience with ML frameworks (PyTorch, TensorFlow, etc.)
+- Proficiency in Python, Go, or similar languages
+- Experience with Kubernetes, Docker, and cloud platforms (AWS, GCP, Azure)
+- Strong problem-solving skills and ability to work in a fast-paced environment
+
+Nice to have:
+- Experience with LLMs and generative AI
+- Knowledge of MLOps best practices
+- Experience with observability tools (Datadog, Prometheus, etc.)

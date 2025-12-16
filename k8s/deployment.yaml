@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecommerce-agent-api
+  labels:
+    app: ecommerce-agent-api
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ecommerce-agent-api
+  template:
+    metadata:
+      labels:
+        app: ecommerce-agent-api
+    spec:
+      containers:
+      - name: ecommerce-agent-api
+        image: searchforge-ecommerce-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8000"
+        - name: APP_VERSION
+          value: "v3"
+        # Load non-sensitive config from ConfigMap
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: ecommerce-agent-config
+              key: LOG_LEVEL
+              optional: true
+        - name: LANGSMITH_PROJECT
+          valueFrom:
+            configMapKeyRef:
+              name: ecommerce-agent-config
+              key: LANGSMITH_PROJECT
+              optional: true
+        # Load sensitive secrets
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ecommerce-agent-secrets
+              key: OPENAI_API_KEY
+        - name: LANGSMITH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ecommerce-agent-secrets
+              key: LANGSMITH_API_KEY
+              optional: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8000
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+

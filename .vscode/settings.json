@@ -1,3 +1,20 @@
 {
-    "python.languageServer": "None"
+    // 完全禁用 Python 语言服务器（如果不需要代码补全）
+    "python.languageServer": "None",
+    // 如果 Cursor 强制使用语言服务器，用这些设置最小化分析负载
+    "python.analysis.disabled": [
+        "all" // 禁用所有分析功能
+    ],
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.autoImportCompletions": false,
+    "python.analysis.diagnosticMode": "openFilesOnly", // 只分析打开的文件
+    "python.analysis.exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "**/.git",
+        "**/venv",
+        "**/.venv",
+        "**/env",
+        "**/experiments/**" // 排除实验脚本目录（可选）
+    ]
 }

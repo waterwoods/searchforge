@@ -1,0 +1,25 @@
+About the job
+
+The Observability Data Platform (ODP) powers the core of Datadog's telemetry systems, handling exabytes of multimodal observability data. As AI agents become first-class consumers of telemetry, ODP is evolving to meet their demands - scaling with explosive data growth, exposing new query mechanisms, rethinking how telemetry is stored, transformed, and served, and enforcing guardrails that ensure security and reliability.
+
+Our team's new focus is to build an intelligent control plane for production systems. This involves moving beyond passive monitoring to create a platform where AI agents can safely and effectively take action in live environments. To achieve this, we are integrating techniques from symbolic reasoning, formal methods, and generative AI.
+
+We are looking for an experienced Staff Applied Scientist with a background that spans systems engineering, AI, and formal reasoning. You have expertise in areas like causal modeling, generative simulation, runtime verification, or reinforcement learning, and are motivated to apply these skills to build reliable systems.
+
+You will join the team behind Datadog's most ambitious projects: evolving observability infrastructure for stochastic, self-improving systems.
+
+At Datadog, we place value in our office culture - the relationships and collaboration it builds and the creativity it brings to the table. We operate as a hybrid workplace to ensure our Datadogs can create a work-life harmony that best fits them.
+
+What You'll Do:
+
+Design and prototype intelligent systems for AI-native observability, including cost-aware agent orchestration, adaptive query execution, and self-optimizing system components.
+
+Lead efforts to apply reinforcement learning, search, or hybrid approaches to infrastructure-level decision-making, such as autoscaling, scheduling, or load shaping.
+
+Collaborate with AI researchers and platform engineers to design experimentation loops and verifiers that guide LLM outputs using runtime metrics and formal models.
+
+Explore emerging paradigms like AI compilers, "programming after code," and runtime-aware prompt engineering to inform Datadog's infrastructure and product design.
+
+Help define the direction of BitsEvolve - Datadog's optimization agent that uses LLMs and evolutionary search to discover code improvements, optimize GPU kernels, and tune configurations to improve performance.
+
+Partner with product teams and platform stakeholders to ensure scientific advances translate into measurable improvements in cost, performance, and observability depth.

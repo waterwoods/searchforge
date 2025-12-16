@@ -6,6 +6,8 @@ from typing import TypedDict, Optional, List, Dict, Any
 
 from langgraph.graph import StateGraph, END
 
+from services.fiqa_api.observability.langsmith_tracing import maybe_traceable
+
 from services.fiqa_api.mortgage.schemas import (
     SingleHomeAgentRequest,
     SingleHomeAgentResponse,
@@ -427,6 +429,7 @@ def _build_single_home_graph() -> StateGraph:
     return _graph
 
 
+@maybe_traceable(name="single_home_graph_run")
 def run_single_home_graph(
     request: SingleHomeAgentRequest,
     *,

@@ -67,8 +67,42 @@ REDIS_SOCKET_TIMEOUT = int(os.getenv("REDIS_SOCKET_TIMEOUT", "3"))  # 3s default
 
 # OpenAI (optional)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# OpenAI timeout: use OPENAI_TIMEOUT_MS if set, otherwise fall back to CODE_LOOKUP_LLM_TIMEOUT_MS for backward compatibility
-OPENAI_TIMEOUT_MS = os.getenv("OPENAI_TIMEOUT_MS") or os.getenv("CODE_LOOKUP_LLM_TIMEOUT_MS", "3000")
+# OpenAI timeout configuration:
+# - Environment variable: OPENAI_TIMEOUT_MS (milliseconds)
+# - Default: 60000ms (60s) - suitable for heavy JD analysis with candidate profiles
+# - Minimum enforced: 5000ms (5s) to avoid silly values
+# - Long JDs + candidate profile need longer timeout to avoid request timeouts
+# - Backward compatibility: also checks CODE_LOOKUP_LLM_TIMEOUT_MS
+#
+# Usage example:
+#   export OPENAI_TIMEOUT_MS=60000  # 60 seconds
+#   python -m experiments.jobhunter.jd_explainer_cli ...
+def _get_openai_timeout_ms() -> int:
+    """
+    Get OpenAI timeout in milliseconds with sensible defaults and minimum.
+    
+    Returns:
+        Timeout in milliseconds (minimum 5000ms, default 60000ms)
+        
+    Environment variables checked (in order):
+        - OPENAI_TIMEOUT_MS: Primary timeout setting
+        - CODE_LOOKUP_LLM_TIMEOUT_MS: Legacy fallback for backward compatibility
+    """
+    DEFAULT_TIMEOUT_MS = 60000  # 60 seconds - suitable for long JDs + candidate profile
+    MIN_TIMEOUT_MS = 5000  # 5 seconds minimum
+    
+    raw = os.getenv("OPENAI_TIMEOUT_MS") or os.getenv("CODE_LOOKUP_LLM_TIMEOUT_MS")
+    if not raw:
+        return DEFAULT_TIMEOUT_MS
+    
+    try:
+        value = int(raw)
+        return max(MIN_TIMEOUT_MS, value)  # Enforce minimum
+    except ValueError:
+        logger.warning(f"Invalid OPENAI_TIMEOUT_MS value '{raw}', using default {DEFAULT_TIMEOUT_MS}ms")
+        return DEFAULT_TIMEOUT_MS
+
+OPENAI_TIMEOUT_MS = str(_get_openai_timeout_ms())
 OPENAI_TIMEOUT = int(OPENAI_TIMEOUT_MS) / 1000.0  # Convert ms to seconds
 
 

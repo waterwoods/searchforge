@@ -685,6 +685,46 @@ curl https://mortgage-agent-api-XXXX.us-west1.run.app/healthz
 
 ---
 
+## LangSmith / LangGraph Observability (Optional)
+
+The Single Home Mortgage Agent supports optional LangSmith tracing for observability of LangGraph workflow execution.
+
+### Setup
+
+Set environment variables to enable LangSmith tracing:
+
+```bash
+export LANGCHAIN_TRACING_V2=true
+export LANGCHAIN_API_KEY=your_langsmith_api_key_here
+export LANGCHAIN_PROJECT=searchforge-mortgage
+```
+
+### Usage
+
+Once configured, all existing scripts and API endpoints automatically send traces to LangSmith:
+
+- **Smoke tests**: `python experiments/single_home_graph_scenarios_smoke.py`
+- **Full agent smoke**: `python experiments/single_home_agent_smoke.py`
+- **API calls**: Any request to `/api/mortgage-agent/single-home` via frontend or Cloud Run
+
+### What You'll See in LangSmith
+
+In the LangSmith UI, you'll see:
+
+- **Top-level trace**: `single_home_graph_run` - the entire workflow execution
+  - Includes request_id, stress_band, DTI ratio, and other metadata
+  - Shows the full graph execution flow (stress_check → safety_upgrade → strategy_lab → llm_explanation)
+- **LLM explanation trace**: `mortgage_llm_explanation` - nested under the graph trace
+  - Shows LLM prompts, responses, tokens, and latency
+
+### Non-Intrusive Design
+
+- **Zero impact when disabled**: If environment variables are not set, tracing is completely disabled (no performance impact)
+- **Graceful degradation**: If langsmith package is not installed, tracing silently fails without breaking execution
+- **No code changes required**: All tracing is handled via decorators, existing code logic remains unchanged
+
+---
+
 ## Summary
 
 The Single Home Mortgage Agent demonstrates a production-ready AI system that combines:
@@ -697,4 +737,65 @@ The Single Home Mortgage Agent demonstrates a production-ready AI system that co
 - **Production stability** (health checks, structured logging, timeouts, graceful degradation)
 
 The system is designed for interview demos, showing how different borrower/home profiles trigger different workflow paths, and how the agent provides actionable recommendations with clear explanations.
+
+---
+
+## Security & Guardrails
+
+The Single Home Mortgage Agent implements a multi-layered security and guardrails system to ensure safe, production-grade operation. These guardrails align with best practices for AI safety, prompt injection defense, and safe rollout strategies.
+
+### Input Validation
+
+**Module**: `services/fiqa_api/mortgage/input_validation.py`
+
+Before any processing begins, all input requests are validated for hard errors:
+
+- **Required fields**: `monthly_income`, `list_price` must be positive
+- **Range checks**: `down_payment_pct` must be in 0-100% (0-1 decimal range)
+- **Non-negative checks**: `other_debts_monthly`, `hoa_monthly` cannot be negative
+- **Value validation**: Tax and insurance rates must be within reasonable bounds
+
+Invalid inputs are rejected with HTTP 400 status and detailed error messages. All validation failures are logged as security events for audit purposes.
+
+**Security logging**: All input validation failures trigger `input_validation_failed` security events with context (field name, invalid value, reason).
+
+### Output Guardrails
+
+**Function**: `apply_mortgage_output_guardrails()` in `mortgage_agent_runtime.py`
+
+The LLM-generated narrative and recommendations are checked and adjusted to ensure they are sufficiently conservative for high-risk cases:
+
+- **Hard block cases**: If `risk_assessment.hard_block = True` or `stress_band = "high_risk"`, the narrative MUST contain warning language (e.g., "高风险", "not recommended"). If missing, a conservative warning is appended.
+- **Safety actions**: Recommended actions must include safety suggestions (e.g., "降低房价", "咨询贷款顾问"). If missing, standard safety actions are prepended.
+- **Soft warnings**: For `soft_warning = True` cases, the narrative should mention caution. If missing, a cautionary note is appended.
+
+**Security logging**: All narrative adjustments trigger `narrative_guardrail_adjusted` security events with context (reason, stress_band, what was adjusted).
+
+### Tool-level Guardrails
+
+**Structure**: `SENSITIVE_TOOLS` in `ops_copilot/ops_runtime.py` (shared pattern)
+
+While the Mortgage Agent currently uses read-only tools (suggestions only), the system includes a foundation for tool-level guardrails:
+
+- **Sensitive tools registry**: Defines which tools require guardrails (e.g., future tools that could modify loan applications)
+- **Environment restrictions**: Tools can be restricted to specific environments (prod/staging/dev)
+- **Dry-run mode**: All tools are currently in dry-run mode (suggestions only, no execution)
+
+**Future extension**: When tools that modify data are added, they must pass through `guard_tool_call()` which enforces policies and logs security events.
+
+### Security Event Logging
+
+**Module**: `services/fiqa_api/observability/security_events.py`
+
+All security-related events are logged to a dedicated "security" logger:
+
+- **Event types**: `input_validation_failed`, `hard_blocked_request`, `tool_call_blocked`, `narrative_guardrail_adjusted`
+- **Structured logging**: All events include `event_type`, `request_id`, `timestamp`, and context
+- **Exception-safe**: Logging failures never impact the main request flow
+- **Audit trail**: Security events provide a complete audit trail for compliance and incident investigation
+
+**Usage in interviews**: These guardrails demonstrate production-grade safety practices, including:
+- **Prompt injection defense**: Input validation prevents malformed requests
+- **Safe rollout**: Output guardrails ensure conservative messaging even if LLM misbehaves
+- **Audit compliance**: All security events are logged for regulatory compliance
 

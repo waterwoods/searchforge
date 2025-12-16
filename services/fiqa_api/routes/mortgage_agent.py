@@ -29,6 +29,8 @@ from services.fiqa_api.mortgage import (
     run_stress_check,
     search_safer_homes_for_case,
 )
+from services.fiqa_api.mortgage.input_validation import validate_stress_request_inputs
+from services.fiqa_api.observability.security_events import log_security_event
 from services.fiqa_api.mortgage.nl_to_stress_request import (
     nl_to_stress_request,
     PartialStressRequest,
@@ -398,6 +400,25 @@ async def single_home_agent_endpoint(
     request_id = getattr(request.state, "request_id", None)
     if request_id is None:
         request_id = uuid.uuid4().hex
+    
+    # Input validation with security logging
+    validation_errors = validate_stress_request_inputs(payload.stress_request)
+    if validation_errors:
+        log_security_event(
+            event_type="input_validation_failed",
+            request_id=request_id,
+            context={
+                "service_name": "mortgage_agent",
+                "endpoint": "single_home_agent_endpoint",
+                "errors": validation_errors,
+                "monthly_income": payload.stress_request.monthly_income,
+                "list_price": payload.stress_request.list_price,
+            },
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": validation_errors}
+        )
     
     try:
         logger.info(

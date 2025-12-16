@@ -117,6 +117,9 @@ from services.fiqa_api.routes.experiment import router as experiment_router
 from services.fiqa_api.routes.steward import router as steward_router
 from services.fiqa_api.routes.qdrant_info import router as qdrant_info_router
 from services.fiqa_api.routes.mortgage_agent import router as mortgage_agent_router
+from services.fiqa_api.routes.ops_copilot import router as ops_copilot_router
+from services.fiqa_api.routes.ecommerce_agent import router as ecommerce_agent_router
+from services.fiqa_api.routes.jobhunter import router as jobhunter_router
 from services.fiqa_api import obs
 try:
     from routes.graph_run import router as graph_router
@@ -893,6 +896,9 @@ app.include_router(contract_router)
 app.include_router(query_router, prefix="/api")  # /api/query
 app.include_router(kv_experiment_router)  # /api/kv-experiment/run
 app.include_router(mortgage_agent_router, prefix="/api")  # /api/mortgage-agent/run
+app.include_router(ops_copilot_router, prefix="/api")  # /api/ops-copilot/system-health
+app.include_router(ecommerce_agent_router, prefix="/api")  # /api/ecommerce-agent/run
+app.include_router(jobhunter_router, prefix="/api")  # /api/jobhunter/analyze
 app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*
 app.include_router(best_router)  # /api/best

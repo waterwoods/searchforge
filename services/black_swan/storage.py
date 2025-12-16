@@ -18,7 +18,16 @@ import json
 import logging
 from typing import Optional, Dict, Any, List
 from collections import deque
-import redis
+
+# Optional redis import - gracefully handle if not available
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    redis = None  # type: ignore
+    REDIS_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("[BS:STORAGE] Redis module not available, will use memory-only mode")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +49,7 @@ class RedisStorage:
             enabled: Enable Redis storage (if False, uses memory-only mode)
         """
         self.enabled = enabled
-        self.client: Optional[redis.Redis] = None
+        self.client: Optional[Any] = None  # Type: redis.Redis if available, None otherwise
         self.available = False
         
         # Memory fallback: ring buffer for QA feed (max 200 items)
@@ -50,11 +59,19 @@ class RedisStorage:
             logger.info("[BS:STORAGE] Redis disabled, using memory-only mode")
             return
         
+        # Check if redis module is available
+        if not REDIS_AVAILABLE or redis is None:
+            logger.info("[BS:STORAGE] Redis module not available, using memory-only mode")
+            return
+        
         # Get Redis URL from parameter or environment
         redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
         
         try:
             # Connect to Redis with timeout and retry settings
+            if redis is None:
+                raise ImportError("Redis module not available")
+            
             from redis import ConnectionPool
             
             pool = ConnectionPool.from_url(
@@ -73,7 +90,7 @@ class RedisStorage:
             self.available = True
             logger.info(f"[BS:STORAGE] Connected to Redis: {redis_url} (timeouts: connect=2s, op=5s)")
             
-        except Exception as e:
+        except (ImportError, Exception) as e:
             logger.warning(f"[BS:STORAGE] Redis unavailable: {e} (degrading to memory-only)")
             self.client = None
             self.available = False

@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_cases": 5,
+    "passed_cases": 5,
+    "failed_cases": 0,
+    "pass_rate": 100.0,
+    "manual_review_cases": 0
+  },
+  "results": [
+    {
+      "case_id": "case_001",
+      "passed": true,
+      "error": null,
+      "actual_refund_eligible": true,
+      "actual_refund_amount": 83.992,
+      "failure_reason": null,
+      "requires_manual_review": false
+    },
+    {
+      "case_id": "case_002",
+      "passed": true,
+      "error": null,
+      "actual_refund_eligible": true,
+      "actual_refund_amount": 199.99,
+      "failure_reason": null,
+      "requires_manual_review": false
+    },
+    {
+      "case_id": "case_003",
+      "passed": true,
+      "error": null,
+      "actual_refund_eligible": false,
+      "actual_refund_amount": 0.0,
+      "failure_reason": null,
+      "requires_manual_review": false
+    },
+    {
+      "case_id": "case_004",
+      "passed": true,
+      "error": null,
+      "actual_refund_eligible": false,
+      "actual_refund_amount": 0.0,
+      "failure_reason": null,
+      "requires_manual_review": false
+    },
+    {
+      "case_id": "case_005",
+      "passed": true,
+      "error": null,
+      "actual_refund_eligible": true,
+      "actual_refund_amount": 45.0,
+      "failure_reason": null,
+      "requires_manual_review": false
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+Full job description
+
+Join the Clean Energy Revolution
+
+
+
+
+
+Become a Data Engineering Advisor at Southern California Edison (SCE) and build a better tomorrow. In this job, you'll be responsible for creating and supporting analytical datamarts by developing data integration pipelines (ETL) sourcing from various databases and systems.
+
+
+
+The Data Engineering Advisor will develop programs using coding languages (i.e. Python, SQL, PROC, R, etc.) to create visualizations or analysis for stakeholders throughout the company. The candidate is expected to work on data architecture, data engineering solutions, and best practices for analyzing large datasets, perform data mining activities to derive data insights: work with OLAP systems such as Snowflake, GCP and others. The Data Engineering Advisor will also investigate emerging technologies and create pilot environments for use, and will participate in rapid prototyping, evaluating, and recommending data engineering technologies and solutions.
+
+
+
+As a Data Engineering Advisor, your work will help power our planet, reduce carbon emissions and create cleaner air for everyone. Are you ready to take on the challenge to help us build the future?
+
+
+
+Responsibilities
+
+Manages and scales data pipelines from internal and external data sources to support new product launches and drive data quality across data products
+
+Facilitates data engineering activities covering data acquisition, extraction, normalization, transformation, management, and manipulation of large and complex data sets
+
+Keep abreast of new and current data engineering, big data and data science techniques. Research methods, techniques, and new practices; develop and promote data engineering best practices, standards and guidelines
+
+Works closely with subject matter experts to design and develop front end applications with data model and data pipelines supporting the applications
+
+Provides governance and oversight of data assets, data environments and relevant data procedures, with the proactive planning and enforcement of data asset naming conventions
+
+Builds and maintains data pipelines using big data processing technologies to process and analyze large datasets; uses ETL processes on the internal cluster
+
+Develops and maintains data warehouse schema and data models, ensuring data consistency and accuracy
+
+Ensures ongoing alignment of technical and business strategies based on changing business and technology drivers and risks
+
+Creates advanced visualizations and tools to provide insight, drive action, and support work throughout the business
+
+Identify and design Data-as-a-Service candidates for improved data availability and consumption
+
+A material job duty of all positions within the Company is ensuring the protection of all its physical, financial and cybersecurity assets, and properly accessing and managing private customer data, proprietary information, confidential medical records, and other types of highly sensitive information and data with the highest standards of conduct and integrity.
+
+Minimum Qualifications
+
+Bachelor's Degree in Computer Science, Information Systems, Engineering, Statistics/ Mathematics or equivalent STEM major
+
+Seven or more years of experience in data processing large data sets, hands-on with data transformation, aggregation, and filtering.
+
+Preferred Qualifications
+
+
+
+Additional certifications such as Palantir Foundry Data Engineer, Azure Data Engineer, Certified Data Management Professional, SnowPro Advanced, etc.
+
+Demonstrated experience building and maintaining APIs and ETL pipelines using tools like Python, SQL, Apache Airflow, Azure Data Factory, or similar platforms
+
+Familiarity with systems like Palantir Foundry, Snowflake, SAP, Oracle, OMS/ADMS, ODRM, or similar platforms
+
+Understanding of cloud-based data storage and architecture
+
+Proven ability to implement data validation, metadata management, and ensure consistency and accuracy across systems.
+
+Experience working in the electric utility industry or with infrastructure investment planning.
+
+Experience working collaboratively with cross-function stakeholders such as IT, Engineering, Planning and business teams to gather requirements and deliver tailored data solutions.
+
+
+
+Additional Information
+
+
+
+This position's work mode is hybrid. The employee will report to an SCE facility for a set number of days with the option to work remotely on the remaining days. Unless otherwise noted, employees are required to work and reside in the state of California. Further details of this work mode will be discussed at the interview stage. The work mode can be changed based on business needs.
+
+Visit our Candidate Resource page to get meaningful information related to benefits, perks, resources, testing information, hiring process, and more!
+
+Qualified applications with arrest or conviction records will be considered for employment in accordance with the Los Angeles County Fair Chance Ordinance for Employers and the California Fair Chance Act.
+
+The primary work location for this position is Pomona, CA (PIV3). However, the successful candidate may also be asked to work for an extended amount of time at (alternate work location).
+
+Position will require up to 10% traveling and being out in the field throughout the SCE service territory.

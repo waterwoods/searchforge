@@ -14,13 +14,13 @@ echo "--- Running cleanup of old services first..."
 
 # Start backend
 cd "${ROOT_DIR}"
-uvicorn services.fiqa_api.app_main:app --reload --port 8001 &
+uvicorn services.fiqa_api.app_main:app --reload --port 8000 &
 BACKEND_PID=$!
 echo "${BACKEND_PID}" > "${PID_DIR}/backend.pid"
 echo "✅ Backend service started with PID: ${BACKEND_PID}"
 
 # Start frontend
-cd "${ROOT_DIR}/frontend"
+cd "${ROOT_DIR}/ui"
 # Prefer dev script since package.json defines it
 npm run dev &
 FRONTEND_PID=$!

@@ -32,6 +32,7 @@ from services.fiqa_api.mortgage.mortgage_profile import (
     extract_inputs,
     generate_input_summary,
 )
+from services.fiqa_api.observability.langsmith_tracing import maybe_traceable
 from services.fiqa_api.mortgage.schemas import (
     AgentStep,
     ApprovalScore,
@@ -2301,6 +2302,7 @@ def run_strategy_lab(
 #    - In SingleHomeStressPage.tsx, conditionally show primary_suggestion under AI Answer
 #    - Show title, notes, and delta_dti if present
 
+@maybe_traceable(name="mortgage_llm_explanation")
 def _generate_single_home_narrative(
     stress_result: StressCheckResponse,
     *,
@@ -2736,6 +2738,139 @@ def _generate_single_home_narrative(
         return None, None, None
 
 
+def apply_mortgage_output_guardrails(
+    stress_result: StressCheckResponse,
+    narrative: Optional[str],
+    recommended_actions: Optional[List[str]],
+    request_id: Optional[str] = None,
+) -> Tuple[str, List[str]]:
+    """
+    Apply output guardrails to ensure narrative and recommendations are conservative enough for high-risk cases.
+    
+    This function checks if the LLM-generated narrative is sufficiently conservative when the case is high-risk.
+    If the narrative is too optimistic (lacks warning language), it appends conservative language.
+    If recommended_actions don't include safety suggestions, it adds them.
+    
+    This ensures that even if the LLM generates overly optimistic text, we have rule-based safety nets.
+    
+    Args:
+        stress_result: StressCheckResponse instance (source of truth for risk assessment)
+        narrative: Optional narrative text from LLM (may be None if LLM disabled)
+        recommended_actions: Optional list of recommended actions from LLM
+        request_id: Optional request ID for security logging
+    
+    Returns:
+        Tuple of (narrative, recommended_actions) - potentially adjusted with guardrail content
+    """
+    from services.fiqa_api.observability.security_events import log_security_event
+    
+    # Initialize defaults
+    if narrative is None:
+        narrative = ""
+    if recommended_actions is None:
+        recommended_actions = []
+    
+    narrative_adjusted = False
+    actions_adjusted = False
+    
+    # Check if we have risk assessment info
+    risk_assessment = stress_result.risk_assessment
+    hard_block = False
+    soft_warning = False
+    stress_band = stress_result.stress_band
+    
+    if risk_assessment:
+        hard_block = risk_assessment.hard_block
+        soft_warning = risk_assessment.soft_warning
+    else:
+        # Fallback: infer from stress_band
+        hard_block = (stress_band == "high_risk")
+        soft_warning = (stress_band in ("tight", "high_risk"))
+    
+    # Hard block cases: narrative MUST contain strong warning language
+    if hard_block:
+        warning_keywords = [
+            "高风险", "high risk", "严重", "serious", "不建议", "not recommended",
+            "无法获批", "unlikely to be approved", "谨慎", "caution",
+            "强烈建议", "strongly recommend", "避免", "avoid",
+        ]
+        
+        narrative_lower = narrative.lower()
+        has_warning_language = any(kw.lower() in narrative_lower for kw in warning_keywords)
+        
+        if not has_warning_language:
+            # Narrative lacks sufficient warning - append conservative language
+            warning_suffix = (
+                "\n\n⚠️ **重要提示**: 基于当前的计算结果，这个房贷方案风险较高，"
+                "可能无法获得贷款批准。强烈建议您考虑降低房价、提高首付比例，"
+                "或咨询专业贷款顾问获取个性化建议。"
+            )
+            narrative = narrative + warning_suffix
+            narrative_adjusted = True
+        
+        # Check recommended_actions for safety suggestions
+        safety_keywords = [
+            "降低", "lower", "提高", "increase", "减少", "reduce",
+            "咨询", "consult", "顾问", "advisor", "首付", "down payment",
+        ]
+        
+        actions_text = " ".join(recommended_actions).lower()
+        has_safety_action = any(kw.lower() in actions_text for kw in safety_keywords)
+        
+        if not has_safety_action or len(recommended_actions) == 0:
+            # Add a standard safety action
+            safety_action = "考虑降低房价或提高首付比例，或咨询专业贷款顾问获取建议"
+            recommended_actions = [safety_action] + recommended_actions
+            actions_adjusted = True
+        
+        # Log security event if we adjusted
+        if narrative_adjusted or actions_adjusted:
+            log_security_event(
+                event_type="narrative_guardrail_adjusted",
+                request_id=request_id,
+                context={
+                    "service_name": "mortgage_agent",
+                    "reason": "hard_block_without_warning",
+                    "stress_band": stress_band,
+                    "hard_block": True,
+                    "narrative_adjusted": narrative_adjusted,
+                    "actions_adjusted": actions_adjusted,
+                },
+            )
+    
+    # Soft warning cases: narrative should mention caution
+    elif soft_warning:
+        caution_keywords = [
+            "紧张", "tight", "谨慎", "caution", "注意", "attention",
+            "压力", "stress", "需要关注", "needs attention",
+        ]
+        
+        narrative_lower = narrative.lower()
+        has_caution_language = any(kw.lower() in narrative_lower for kw in caution_keywords)
+        
+        if not has_caution_language and narrative:
+            # Add light cautionary note
+            caution_suffix = "\n\n💡 提示：该方案稍显紧张，建议谨慎考虑。"
+            narrative = narrative + caution_suffix
+            narrative_adjusted = True
+    
+    # Ensure narrative is not empty (fallback)
+    if not narrative.strip():
+        narrative = (
+            f"基于您提供的信息，该房贷方案的压力等级为 {stress_band}。"
+            "请查看上方的详细计算结果以了解更多信息。"
+        )
+    
+    # Ensure we have at least one action (fallback)
+    if not recommended_actions:
+        recommended_actions = ["请查看详细计算结果并咨询专业贷款顾问"]
+    
+    # Limit to 3 actions max
+    recommended_actions = recommended_actions[:3]
+    
+    return narrative, recommended_actions
+
+
 def run_single_home_agent(req: SingleHomeAgentRequest, request_id: Optional[str] = None) -> SingleHomeAgentResponse:
     """
     Single Home Agent: thin "reason + explain" wrapper over run_stress_check.
@@ -2871,7 +3006,15 @@ def run_single_home_agent(req: SingleHomeAgentRequest, request_id: Optional[str]
                 "Please review the numeric results above."
             )
     
-    # Step 6: Assemble response
+    # Step 6: Apply output guardrails (ensure narrative is conservative for high-risk cases)
+    borrower_narrative, recommended_actions = apply_mortgage_output_guardrails(
+        stress_result=stress_result,
+        narrative=borrower_narrative,
+        recommended_actions=recommended_actions,
+        request_id=request_id,
+    )
+    
+    # Step 7: Assemble response
     overall_duration_ms = (perf_counter() - overall_start) * 1000
     logger.info(
         f'{{"event": "single_home_agent_complete", "request_id": "{request_id}", '
