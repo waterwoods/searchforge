@@ -18,6 +18,32 @@ A Chrome extension (Manifest V3) that allows you to clip job postings from any w
 4. Review the preview of the text that will be saved
 5. Click **Save clip** to store it locally
 
+## Export JSON
+
+- Click the extension icon on any job page.
+- Click "Save clip" a few times to store some jobs.
+- Click "Export JSON" to download a file like `jobhunter_clips_2025-12-16T231001.json`.
+- The JSON structure:
+
+```json
+{
+  "version": 1,
+  "exported_at": "2025-12-16T23:10:01.123Z",
+  "clips": [
+    {
+      "id": "1765923047859-ux6o6iyir",
+      "url": "https://www.linkedin.com/jobs/view/xxxx",
+      "title": "Lead Data Engineer | The Walt Disney Company | LinkedIn",
+      "clippedAt": "2025-12-16T22:10:47.859Z",
+      "source": "manual-clip-v1",
+      "text": "......完整的 JD 文本（已截断到上限，例如 12000 字符）"
+    }
+  ]
+}
+```
+
+- If there are no clips in storage, the export will still generate a valid JSON file with an empty `clips: []` array.
+
 ## Features
 
 - **Smart LinkedIn extraction**: On LinkedIn job detail pages, the extension automatically targets the job description content area, avoiding navigation and ads for cleaner text extraction.
@@ -45,7 +71,6 @@ To view your saved clips:
 
 ## Future Enhancements
 
-- Export clips to JSON file for batch processing by JobHunter Agent
 - Filter and search saved clips
 - Delete individual clips
 - Sync across devices (optional)

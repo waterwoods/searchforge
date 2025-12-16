@@ -191,5 +191,71 @@ async function saveClip(url, title, text) {
   }
 }
 
+// Export clips as JSON
+async function exportClipsAsJson() {
+  const exportBtn = document.getElementById('export-json-btn');
+  const exportStatusEl = document.getElementById('export-status');
+
+  exportBtn.disabled = true;
+  exportStatusEl.textContent = 'Exporting...';
+  exportStatusEl.className = '';
+
+  try {
+    // 1. Read storage
+    const { jobhunter_clips } = await chrome.storage.local.get('jobhunter_clips');
+    const clips = Array.isArray(jobhunter_clips) ? jobhunter_clips : [];
+
+    // 2. Construct export object
+    const exportPayload = {
+      version: 1,
+      exported_at: new Date().toISOString(),
+      clips: clips
+    };
+
+    // 3. Serialize to JSON string with 2-space indentation
+    const jsonStr = JSON.stringify(exportPayload, null, 2);
+
+    // 4. Generate filename with timestamp
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `jobhunter_clips_${ts}.json`;
+
+    // 5. Create Blob and trigger download
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Update UI status
+    if (clips.length === 0) {
+      exportStatusEl.textContent = 'No clips in storage, exported empty list.';
+      exportStatusEl.className = 'success';
+    } else {
+      exportStatusEl.textContent = `Exported ${clips.length} clips to ${filename}`;
+      exportStatusEl.className = 'success';
+    }
+
+    exportBtn.disabled = false;
+
+  } catch (err) {
+    console.error('Export failed:', err);
+    exportStatusEl.textContent = `Export failed: ${err.message}`;
+    exportStatusEl.className = 'error';
+    exportBtn.disabled = false;
+  }
+}
+
 // Initialize when popup opens
-document.addEventListener('DOMContentLoaded', initializePopup);
+document.addEventListener('DOMContentLoaded', () => {
+  initializePopup();
+
+  // Bind export button
+  const exportBtn = document.getElementById('export-json-btn');
+  if (exportBtn) {
+    exportBtn.onclick = exportClipsAsJson;
+  }
+});
