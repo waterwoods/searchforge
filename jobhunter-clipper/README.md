@@ -18,6 +18,12 @@ A Chrome extension (Manifest V3) that allows you to clip job postings from any w
 4. Review the preview of the text that will be saved
 5. Click **Save clip** to store it locally
 
+## Features
+
+- **Smart LinkedIn extraction**: On LinkedIn job detail pages, the extension automatically targets the job description content area, avoiding navigation and ads for cleaner text extraction.
+- **Extended text limit**: Supports up to 12,000 characters per clip (increased from 4,000).
+- **Preview mode**: Shows first 1,200 characters in the preview, while saving the full text (up to 12,000 chars).
+
 ## Data Storage
 
 - Clips are stored in Chrome's local storage under the key `jobhunter_clips`

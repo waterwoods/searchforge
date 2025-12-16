@@ -51,9 +51,10 @@ async function initializePopup() {
       return;
     }
 
-    // Show preview (first 1000 chars)
-    const preview = textToUse.slice(0, 1000);
-    previewEl.value = preview + (textToUse.length > 1000 ? '\n\n... (truncated for preview)' : '');
+    // Show preview (first 1200 chars)
+    const PREVIEW_LENGTH = 1200;
+    const preview = textToUse.slice(0, PREVIEW_LENGTH);
+    previewEl.value = preview + (textToUse.length > PREVIEW_LENGTH ? '\n\n... (truncated for preview)' : '');
 
     // Load saved clips count
     await updateSavedCount();
@@ -74,15 +75,44 @@ async function initializePopup() {
 
 // Function injected into page to extract text
 function extractPageText() {
+  const MAX_TEXT_LENGTH = 12000; // New limit for saved text
+
   // Get selected text
   const selection = window.getSelection()?.toString() || '';
 
-  // Get body text
+  // Smart text extraction with LinkedIn-specific logic
   let bodyText = '';
   try {
-    bodyText = document.body.innerText || document.body.textContent || '';
+    const host = window.location.host || '';
+    const path = window.location.pathname || '';
+
+    // Priority: LinkedIn job detail pages
+    if (host.includes('linkedin.com') && path.includes('/jobs/')) {
+      const candidates = [
+        'main div.jobs-details__main-content',
+        'section.jobs-description__container',
+        'div.jobs-description-content__text',
+        'div.jobs-description__content',
+        'div.show-more-less-html__markup',
+      ];
+
+      for (const sel of candidates) {
+        const el = document.querySelector(sel);
+        if (el && el.innerText && el.innerText.trim().length > 500) {
+          bodyText = el.innerText.trim();
+          break;
+        }
+      }
+    }
+
+    // Fallback to full body text if LinkedIn-specific extraction didn't work
+    if (!bodyText) {
+      bodyText = document.body.innerText || document.body.textContent || '';
+    }
   } catch (e) {
     console.error('Error getting body text:', e);
+    // Final fallback
+    bodyText = document.body.innerText || document.body.textContent || '';
   }
 
   // Clean and truncate
@@ -90,7 +120,7 @@ function extractPageText() {
   const cleanBodyText = bodyText
     .replace(/\s+/g, ' ')  // Replace multiple whitespace with single space
     .trim()
-    .slice(0, 4000);  // Truncate to 4000 chars
+    .slice(0, MAX_TEXT_LENGTH);  // Truncate to MAX_TEXT_LENGTH chars
 
   return {
     selectionText: cleanSelection,
