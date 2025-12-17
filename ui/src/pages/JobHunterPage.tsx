@@ -35,6 +35,8 @@ import {
 import { SearchOutlined, MessageOutlined, FileTextOutlined, HistoryOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from '../api/config';
+import { fetchJobhunterCache, fetchCachedJDDetail, type CachedJDDetail } from '../api/jobhunter';
+import type { CachedJobAnalysis } from '../types/api.types';
 
 const { Title, Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -174,6 +176,55 @@ export const JobHunterPage = () => {
     // History sidebar collapse state (default: collapsed)
     const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(true);
 
+    // Cached batch analysis list (from backend SQLite/Qdrant cache via /api/jobhunter/cache)
+    const [cachedJobs, setCachedJobs] = useState<CachedJobAnalysis[]>([]);
+    const [cacheLoading, setCacheLoading] = useState(false);
+    const [cacheError, setCacheError] = useState<string | null>(null);
+
+    // Cached detail loading state
+    const [selectedCacheId, setSelectedCacheId] = useState<number | null>(null);
+    const [cachedDetailLoading, setCachedDetailLoading] = useState(false);
+    const [cachedDetailError, setCachedDetailError] = useState<string | null>(null);
+
+    const getProfileIdForMode = (mode: "agent" | "data_eng"): string => {
+        // Map UI profile mode to backend profile_id used for caching
+        if (mode === "data_eng") {
+            return "data_engineer_gcp";
+        }
+        return "llm_agent";
+    };
+
+    // Load cached batch results whenever profile mode changes.
+    // NOTE: This list is based on backend SQLite cache via /api/jobhunter/cache,
+    // not on real-time LLM analysis.
+    useEffect(() => {
+        const loadCache = async () => {
+            try {
+                setCacheLoading(true);
+                setCacheError(null);
+                const profileId = getProfileIdForMode(profileMode);
+                const items = await fetchJobhunterCache(profileId, 50);
+
+                // Safety: sort by match_score descending (backend also orders by updated_at)
+                const sorted = [...items].sort((a, b) => {
+                    const aScore = a.match_score ?? 0;
+                    const bScore = b.match_score ?? 0;
+                    return bScore - aScore;
+                });
+
+                setCachedJobs(sorted);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Failed to load cached jobs';
+                console.error('[JobHunter] Failed to load cache:', err);
+                setCacheError(msg);
+            } finally {
+                setCacheLoading(false);
+            }
+        };
+
+        loadCache();
+    }, [profileMode]);
+
     // ========================================
     // Flow 1: JD 解读 + 适配度分析
     // ========================================
@@ -183,6 +234,7 @@ export const JobHunterPage = () => {
             setLoading(true);
             setAnalysisResult(null);
             setChatHistory([]);  // 清空聊天历史，开始新的分析
+            setSelectedCacheId(null);  // 清除缓存选中状态，因为这是新的分析
 
             const jdInput: JobJDInput = {
                 description: values.jd_description,
@@ -268,6 +320,58 @@ export const JobHunterPage = () => {
             console.error('JD analysis error:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ========================================
+    // Handle selecting a cached job from batch list
+    // ========================================
+    const handleSelectCachedJob = async (item: CachedJobAnalysis) => {
+        if (!item.cache_id) {
+            message.error('Invalid cache ID');
+            return;
+        }
+
+        try {
+            setCachedDetailLoading(true);
+            setCachedDetailError(null);
+            setSelectedCacheId(item.cache_id);
+
+            // Clear chat history when loading cached detail
+            setChatHistory([]);
+
+            // Fetch detailed analysis from cache
+            const detail: CachedJDDetail = await fetchCachedJDDetail(item.cache_id);
+
+            // Convert cached detail to JDAnalysisResponse format
+            // The backend returns analysis as a dict with jd_summary, fit_summary, constraints, graph_steps, etc.
+            const analysisData: JDAnalysisResponse = {
+                ok: true,
+                jd_summary: detail.analysis.jd_summary,
+                fit_summary: detail.analysis.fit_summary,
+                constraints: detail.analysis.constraints,
+                graph_steps: detail.analysis.graph_steps,
+            };
+
+            // Set analysis result (same format as single JD analysis)
+            setAnalysisResult(analysisData);
+
+            // Log debug info about core_signals
+            if (analysisData.jd_summary?.core_signals) {
+                console.log(`[JobHunter] Loaded cached core_signals:`, analysisData.jd_summary.core_signals.length);
+            }
+            if (analysisData.jd_summary?.core_narrative) {
+                console.log(`[JobHunter] Loaded cached core_narrative:`, analysisData.jd_summary.core_narrative.substring(0, 100));
+            }
+
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to load cached analysis detail';
+            console.error('[JobHunter] Failed to load cached detail:', err);
+            setCachedDetailError(msg);
+            message.error(msg);
+            setSelectedCacheId(null);
+        } finally {
+            setCachedDetailLoading(false);
         }
     };
 
@@ -497,11 +601,12 @@ export const JobHunterPage = () => {
                                         padding: '8px',
                                     }}
                                 >
+                                    {/* Session-only analysis history (in-memory for this tab) */}
                                     {analyzedJDList.length === 0 ? (
                                         <Empty
                                             description="No analysis records"
                                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                            style={{ marginTop: '40px' }}
+                                            style={{ marginTop: '24px' }}
                                         />
                                     ) : (
                                         <List
@@ -510,7 +615,8 @@ export const JobHunterPage = () => {
                                                 <List.Item
                                                     style={{
                                                         cursor: 'pointer',
-                                                        backgroundColor: selectedJDId === item.id ? '#1890ff20' : 'transparent',
+                                                        backgroundColor:
+                                                            selectedJDId === item.id ? '#1890ff20' : 'transparent',
                                                         borderRadius: '4px',
                                                         padding: '12px',
                                                         marginBottom: '8px',
@@ -546,6 +652,140 @@ export const JobHunterPage = () => {
                                                     </div>
                                                 </List.Item>
                                             )}
+                                        />
+                                    )}
+
+                                    <Divider style={{ margin: '12px 0', borderColor: '#262626' }}>
+                                        <span style={{ fontSize: '11px', color: '#a3a3a3' }}>
+                                            Batch Results (from cache)
+                                        </span>
+                                    </Divider>
+
+                                    {/* Batch results backed by backend SQLite cache via /api/jobhunter/cache (no live LLM calls) */}
+                                    {(cacheLoading || cachedDetailLoading) && (
+                                        <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                                            <Spin size="small" />
+                                        </div>
+                                    )}
+                                    {cacheError && (
+                                        <Alert
+                                            type="error"
+                                            showIcon
+                                            message="Failed to load cached jobs"
+                                            description={cacheError}
+                                            style={{ marginBottom: '8px' }}
+                                        />
+                                    )}
+                                    {cachedDetailError && (
+                                        <Alert
+                                            type="error"
+                                            showIcon
+                                            message="Failed to load cached detail"
+                                            description={cachedDetailError}
+                                            style={{ marginBottom: '8px' }}
+                                        />
+                                    )}
+                                    {!cacheLoading && !cacheError && cachedJobs.length === 0 && (
+                                        <Empty
+                                            description="No cached batch results"
+                                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                            style={{ marginTop: '8px' }}
+                                        />
+                                    )}
+                                    {!cacheLoading && !cacheError && cachedJobs.length > 0 && (
+                                        <List
+                                            size="small"
+                                            dataSource={cachedJobs}
+                                            renderItem={(item) => {
+                                                const score = item.match_score ?? 0;
+                                                const scorePct = Math.max(
+                                                    0,
+                                                    Math.min(100, Math.round(score * 10))
+                                                );
+                                                const isSelected = selectedCacheId === item.cache_id;
+                                                return (
+                                                    <List.Item
+                                                        onClick={() => handleSelectCachedJob(item)}
+                                                        style={{
+                                                            padding: '8px 8px',
+                                                            marginBottom: '4px',
+                                                            borderRadius: '4px',
+                                                            backgroundColor: isSelected ? 'rgba(24, 144, 255, 0.15)' : 'transparent',
+                                                            border: isSelected ? '1px solid #1890ff' : '1px solid transparent',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s',
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (!isSelected) {
+                                                                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (!isSelected) {
+                                                                e.currentTarget.style.backgroundColor = 'transparent';
+                                                            }
+                                                        }}
+                                                    >
+                                                        <List.Item.Meta
+                                                            title={
+                                                                <div
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        alignItems: 'center',
+                                                                    }}
+                                                                >
+                                                                    <span
+                                                                        style={{
+                                                                            color: '#e5e5e5',
+                                                                            fontSize: '12px',
+                                                                        }}
+                                                                    >
+                                                                        {item.company} · {item.title}
+                                                                    </span>
+                                                                    <Tag
+                                                                        color={getCategoryColor(
+                                                                            item.category as any
+                                                                        )}
+                                                                    >
+                                                                        {item.category || '-'} · {scorePct}%
+                                                                    </Tag>
+                                                                </div>
+                                                            }
+                                                            description={
+                                                                <div
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        alignItems: 'center',
+                                                                    }}
+                                                                >
+                                                                    <span
+                                                                        style={{
+                                                                            color: '#737373',
+                                                                            fontSize: '11px',
+                                                                        }}
+                                                                    >
+                                                                        {item.recommendation || '—'}
+                                                                    </span>
+                                                                    <span
+                                                                        style={{
+                                                                            color: '#525252',
+                                                                            fontSize: '11px',
+                                                                        }}
+                                                                    >
+                                                                        {item.last_analyzed_at
+                                                                            ? new Date(
+                                                                                item.last_analyzed_at
+                                                                            ).toLocaleString()
+                                                                            : ''}
+                                                                    </span>
+                                                                </div>
+                                                            }
+                                                        />
+                                                    </List.Item>
+                                                );
+                                            }}
                                         />
                                     )}
                                 </div>
@@ -1278,7 +1518,7 @@ export const JobHunterPage = () => {
                                                     <div>
                                                         <Text strong style={{ color: '#fff' }}>Match Score: </Text>
                                                         <Text style={{ fontSize: '20px', color: '#1890ff' }}>
-                                                            {analysisResult.fit_summary.match_score}/10
+                                                            {analysisResult.fit_summary.match_score != null ? analysisResult.fit_summary.match_score : '—'}/10
                                                         </Text>
                                                     </div>
                                                     <div>

@@ -30,6 +30,12 @@ from services.fiqa_api.telemetry.langsmith_config import (
     is_langsmith_enabled,
     default_langsmith_run_config,
 )
+from services.fiqa_api.jobhunter.sqlite_cache import (
+    init_db,
+    compute_jd_hash,
+    get_cached_analysis,
+    save_analysis,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +207,25 @@ def node_interpret_jd(state: JDAnalysisState) -> Dict[str, Any]:
         logger.info("Interpreting JD...")
         jd_summary = interpret_job_jd(jd_input, client=None)
         
+        # Check if interpret_job_jd returned None (should not happen, but handle gracefully)
+        if jd_summary is None:
+            logger.error("interpret_job_jd returned None, creating fallback summary")
+            jd_summary = JobJDSummary(
+                job_id=jd_input.job_id,
+                company=jd_input.company,
+                title=jd_input.title,
+                location=jd_input.location,
+                gold_points=[],
+                silver_points=[],
+                bronze_points=[],
+                core_skills=[],
+                nice_to_have_skills=[],
+                risks_or_red_flags=[],
+                recommendation="MAYBE",
+                reasoning_summary="JD interpretation returned None (internal error)",
+                evidence_snippets=[],
+            )
+        
         finished_at = datetime.utcnow().isoformat()
         duration_ms = (time.perf_counter() - start_time) * 1000.0
         
@@ -218,6 +243,8 @@ def node_interpret_jd(state: JDAnalysisState) -> Dict[str, Any]:
         finished_at = datetime.utcnow().isoformat()
         duration_ms = (time.perf_counter() - start_time) * 1000.0
         
+        logger.error(f"Failed to interpret JD in node: {e}", exc_info=True)
+        
         # Record failed step (reducer will append this to existing list)
         new_step = _create_graph_step(
             node_name, "failed",
@@ -225,7 +252,26 @@ def node_interpret_jd(state: JDAnalysisState) -> Dict[str, Any]:
             extra_info={"error": str(e)[:200]}
         )
         
+        # Create a minimal fallback jd_summary so the graph can continue
+        # This matches the fallback behavior in interpret_job_jd
+        minimal_summary = JobJDSummary(
+            job_id=jd_input.job_id,
+            company=jd_input.company,
+            title=jd_input.title,
+            location=jd_input.location,
+            gold_points=[],
+            silver_points=[],
+            bronze_points=[],
+            core_skills=[],
+            nice_to_have_skills=[],
+            risks_or_red_flags=[],
+            recommendation="MAYBE",
+            reasoning_summary=f"Analysis failed: {str(e)[:200]}",
+            evidence_snippets=[],
+        )
+        
         return {
+            "jd_summary": minimal_summary,
             "graph_steps": [new_step],  # Return only new step, reducer will append
         }
 
@@ -575,63 +621,172 @@ def run_jd_analysis(
     jd_input: JobJDInput,
     candidate_profile: str | None = None,
     profile_id: str | None = None,
+    job_url: str | None = None,
+    job_title: str | None = None,
 ) -> Dict[str, Any]:
     """
-    Helper function to run JD interpretation + fit analysis.
+    Helper function to run JD interpretation + fit analysis with caching support.
+    
+    This function:
+    1. Checks cache before running analysis
+    2. Runs LangGraph analysis if cache miss
+    3. Saves result to cache after analysis
     
     Args:
         jd_input: JobJDInput instance
         candidate_profile: Optional candidate profile text
         profile_id: Optional profile identifier (e.g., "data_engineer_gcp", "llm_agent")
+        job_url: Optional job posting URL (for cache storage)
+        job_title: Optional job title (for cache storage, defaults to jd_input.title)
     
     Returns:
         Completed JDAnalysisState (as dict) with graph_steps populated
     """
-    graph = build_jd_analysis_graph().compile()
+    # ========================================
+    # Cache Integration: Check cache before analysis
+    # ========================================
+    user_id = "local_demo_user"  # Simple constant for now
+    full_jd_text = jd_input.description  # Use the full JD text for hashing
+    cached_result = None
+    cache_hit = False
     
-    initial_state: JDAnalysisState = {
-        "jd_input": jd_input,
-        "candidate_profile": candidate_profile,
-        "profile_id": profile_id,
-        "graph_steps": [],  # Initialize graph_steps list
-        "skip_deep_analysis": False,  # [Quick Filter] Initialize skip flag
-    }
-    
-    if is_langsmith_enabled():
-        config = default_langsmith_run_config("jobhunter_jd_analysis")
-        result = graph.invoke(initial_state, config=config)
-    else:
-        result = graph.invoke(initial_state)
-    
-    # Ensure graph_steps is in result (convert GraphStep objects to dicts)
-    # LangGraph merges state updates, so graph_steps should be accumulated from all nodes
-    if "graph_steps" in result and result["graph_steps"]:
-        # Convert GraphStep objects to dicts for JSON serialization
-        graph_steps_list = []
-        for step in result["graph_steps"]:
-            if hasattr(step, "model_dump"):
-                graph_steps_list.append(step.model_dump())
-            elif isinstance(step, dict):
-                graph_steps_list.append(step)
+    # Only check cache if we have valid JD text and profile_id
+    if full_jd_text and profile_id:
+        try:
+            # Initialize DB (idempotent)
+            init_db()
+            
+            # Compute hash for cache key
+            jd_hash = compute_jd_hash(full_jd_text)
+            
+            # Try to get cached analysis
+            cached_result = get_cached_analysis(
+                user_id=user_id,
+                profile_id=profile_id,
+                jd_hash=jd_hash,
+            )
+            
+            if cached_result:
+                cache_hit = True
+                logger.info(f"Cache HIT for job: {jd_input.title or 'Untitled'} (profile_id={profile_id}, jd_hash={jd_hash[:8]}...)")
             else:
-                # Fallback: try to convert to dict
-                try:
-                    graph_steps_list.append({
-                        "name": getattr(step, "name", ""),
-                        "status": getattr(step, "status", ""),
-                        "started_at": getattr(step, "started_at", None),
-                        "finished_at": getattr(step, "finished_at", None),
-                        "duration_ms": getattr(step, "duration_ms", None),
-                        "extra_info": getattr(step, "extra_info", None),
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to convert graph step to dict: {e}")
-                    continue
-        result["graph_steps"] = graph_steps_list
-        logger.info(f"Collected {len(graph_steps_list)} graph steps")
+                logger.info(f"Cache MISS for job: {jd_input.title or 'Untitled'} (profile_id={profile_id}, jd_hash={jd_hash[:8]}...)")
+        except Exception as e:
+            # Graceful degradation: if cache fails, continue with normal analysis
+            logger.warning(f"Cache lookup failed: {e}, continuing with normal analysis")
+    
+    # If cache hit, use cached result; otherwise run analysis
+    if cache_hit and cached_result:
+        # Reconstruct result dict from cached analysis
+        # cached_result should be the analysis_result dict saved by save_analysis
+        result = cached_result
+        logger.info("Using cached analysis result")
     else:
-        logger.warning("No graph_steps found in result")
-        result["graph_steps"] = []
+        # Run JD analysis graph
+        logger.info(f"Running JD analysis for job: {jd_input.title or 'Untitled'} at {jd_input.company or 'Unknown'}")
+        
+        graph = build_jd_analysis_graph().compile()
+        
+        initial_state: JDAnalysisState = {
+            "jd_input": jd_input,
+            "candidate_profile": candidate_profile,
+            "profile_id": profile_id,
+            "graph_steps": [],  # Initialize graph_steps list
+            "skip_deep_analysis": False,  # [Quick Filter] Initialize skip flag
+        }
+        
+        if is_langsmith_enabled():
+            config = default_langsmith_run_config("jobhunter_jd_analysis")
+            result = graph.invoke(initial_state, config=config)
+        else:
+            result = graph.invoke(initial_state)
+        
+        # Ensure graph_steps is in result (convert GraphStep objects to dicts)
+        # LangGraph merges state updates, so graph_steps should be accumulated from all nodes
+        if "graph_steps" in result and result["graph_steps"]:
+            # Convert GraphStep objects to dicts for JSON serialization
+            graph_steps_list = []
+            for step in result["graph_steps"]:
+                if hasattr(step, "model_dump"):
+                    graph_steps_list.append(step.model_dump())
+                elif isinstance(step, dict):
+                    graph_steps_list.append(step)
+                else:
+                    # Fallback: try to convert to dict
+                    try:
+                        graph_steps_list.append({
+                            "name": getattr(step, "name", ""),
+                            "status": getattr(step, "status", ""),
+                            "started_at": getattr(step, "started_at", None),
+                            "finished_at": getattr(step, "finished_at", None),
+                            "duration_ms": getattr(step, "duration_ms", None),
+                            "extra_info": getattr(step, "extra_info", None),
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to convert graph step to dict: {e}")
+                        continue
+            result["graph_steps"] = graph_steps_list
+            logger.info(f"Collected {len(graph_steps_list)} graph steps")
+        else:
+            logger.warning("No graph_steps found in result")
+            result["graph_steps"] = []
+        
+        # ========================================
+        # Cache Integration: Save result after analysis
+        # ========================================
+        if full_jd_text and profile_id and not cache_hit:
+            try:
+                jd_hash = compute_jd_hash(full_jd_text)
+                job_url_final = job_url or ""
+                job_title_final = job_title or jd_input.title or ""
+                
+                # Prepare analysis_result dict with COMPLETE analysis results
+                # Include all fields: jd_summary, fit_summary, constraints, lifecycle, spotlight_stories, core_signals, graph_steps
+                # TODO: cache full analysis_json here - saving complete analysis result including Core Signals, Lifecycle, Story, etc.
+                analysis_result = {
+                    "jd_summary": result.get("jd_summary"),
+                    "fit_summary": result.get("fit_summary"),
+                    "constraints": result.get("constraints"),
+                    "lifecycle": result.get("lifecycle"),
+                    "spotlight_stories": result.get("spotlight_stories"),
+                    "core_signals": result.get("core_signals"),
+                    "graph_steps": result.get("graph_steps", []),
+                }
+                
+                # Convert Pydantic models to dicts if needed (for JSON serialization)
+                def convert_to_dict(obj):
+                    """Helper to convert Pydantic models to dicts."""
+                    if obj is None:
+                        return None
+                    if hasattr(obj, "model_dump"):
+                        return obj.model_dump()
+                    if isinstance(obj, list):
+                        return [convert_to_dict(item) for item in obj]
+                    if isinstance(obj, dict):
+                        return {k: convert_to_dict(v) for k, v in obj.items()}
+                    return obj
+                
+                # Convert all Pydantic models to dicts
+                analysis_result["jd_summary"] = convert_to_dict(analysis_result["jd_summary"])
+                analysis_result["fit_summary"] = convert_to_dict(analysis_result["fit_summary"])
+                analysis_result["constraints"] = convert_to_dict(analysis_result["constraints"])
+                analysis_result["lifecycle"] = convert_to_dict(analysis_result["lifecycle"])
+                analysis_result["spotlight_stories"] = convert_to_dict(analysis_result["spotlight_stories"])
+                analysis_result["core_signals"] = convert_to_dict(analysis_result["core_signals"])
+                
+                save_analysis(
+                    user_id=user_id,
+                    profile_id=profile_id,
+                    job_url=job_url_final,
+                    job_title=job_title_final,
+                    jd_hash=jd_hash,
+                    raw_text=full_jd_text,
+                    analysis=analysis_result,
+                )
+                logger.info(f"Cached complete analysis result (profile_id={profile_id}, jd_hash={jd_hash[:8]}...)")
+            except Exception as e:
+                # Graceful degradation: if save fails, log warning but don't fail the request
+                logger.warning(f"Failed to save analysis to cache: {e}")
     
     return result
 

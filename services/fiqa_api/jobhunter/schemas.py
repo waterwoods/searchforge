@@ -491,6 +491,54 @@ class JobHunterChatResponse(BaseModel):
     messages: List[ChatMessage] = Field(..., description="Updated complete chat history")
 
 
+# ========================================
+# Batch Analysis Models (for Chrome Clipper)
+# ========================================
+
+class BatchJobClipIn(BaseModel):
+    """Input model for a single job clip from Chrome clipper export."""
+    id: str = Field(..., description="Clip ID from clipper")
+    url: str = Field(..., description="Job posting URL")
+    title: str = Field(..., description="Job title")
+    clippedAt: Optional[str] = Field(None, description="ISO timestamp when clip was created")
+    source: Optional[str] = Field(None, description="Source identifier (e.g., 'manual-clip-v1')")
+    text: str = Field(..., description="Full flattened JD text from clipper")
+
+
+class BatchAnalyzeRequest(BaseModel):
+    """Request model for batch JD analysis endpoint."""
+    version: int = Field(1, description="Export format version")
+    exported_at: Optional[str] = Field(None, description="ISO timestamp when export was created")
+    clips: List[BatchJobClipIn] = Field(..., description="List of job clips to analyze")
+    profile_id: Optional[str] = Field(
+        None,
+        description="Profile identifier (e.g., 'data_engineer_gcp', 'llm_agent'). If None, uses default from single JD API."
+    )
+    max_jobs: Optional[int] = Field(30, description="Safety limit on number of jobs to analyze")
+
+
+class BatchJobResult(BaseModel):
+    """Result model for a single job in batch analysis."""
+    clip_id: str = Field(..., description="Clip ID from input")
+    url: str = Field(..., description="Job posting URL")
+    title: str = Field(..., description="Job title")
+    company: Optional[str] = Field(None, description="Company name (parsed from title if possible)")
+    match_score: Optional[float] = Field(None, description="Match score (1-10) from fit analysis")
+    category: Optional[str] = Field(None, description="Category (A/B/C) from fit analysis")
+    recommendation: Optional[str] = Field(None, description="Recommendation (APPLY/MAYBE/SKIP)")
+    core_signals: Optional[List[CoreSignal]] = Field(None, description="Core signals extracted from JD")
+    reasoning_summary: Optional[str] = Field(None, description="Brief explanation of recommendation")
+    error: Optional[str] = Field(None, description="Error message if analysis failed")
+
+
+class BatchAnalyzeResponse(BaseModel):
+    """Response model for batch JD analysis endpoint."""
+    total_clips: int = Field(..., description="Total number of clips in input")
+    analyzed_jobs: int = Field(..., description="Number of jobs that were analyzed (including quick-filtered)")
+    skipped_jobs: int = Field(..., description="Number of jobs skipped (too short, invalid, etc.)")
+    results: List[BatchJobResult] = Field(..., description="Analysis results for each job")
+
+
 __all__ = [
     "JobPosting",
     "JobScore",
@@ -510,4 +558,8 @@ __all__ = [
     "ChatMessage",
     "JobHunterChatRequest",
     "JobHunterChatResponse",
+    "BatchJobClipIn",
+    "BatchAnalyzeRequest",
+    "BatchJobResult",
+    "BatchAnalyzeResponse",
 ]

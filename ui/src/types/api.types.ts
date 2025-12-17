@@ -507,6 +507,33 @@ export interface SaferHomesResult {
 }
 
 // ========================================
+// JobHunter Cache Types
+// ========================================
+
+export interface CachedJobAnalysis {
+    /** Stable id constructed on the frontend (job_url + timestamp) */
+    id: string;
+    /** Backend cache record ID (primary key, used for detail API lookup) */
+    cache_id: number;
+    /** Raw job URL from backend cache */
+    job_url: string;
+    /** Raw job title text from backend cache */
+    job_title: string;
+    /** Parsed job title (without trailing source suffix like " | LinkedIn") */
+    title: string;
+    /** Parsed company name (best-effort from job_title) */
+    company: string;
+    /** Match score (1-10) computed by backend; null if unavailable */
+    match_score: number | null;
+    /** Category bucket ("A", "B", "C") from backend; null if unavailable */
+    category: string | null;
+    /** Recommendation text ("APPLY", "MAYBE", "SKIP"); null if unavailable */
+    recommendation: string | null;
+    /** Last analyzed timestamp in ISO format (from backend updated_at) */
+    last_analyzed_at: string | null;
+}
+
+// ========================================
 // Safety Upgrade Types
 // ========================================
 

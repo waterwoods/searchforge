@@ -650,6 +650,62 @@ async def get_cached_analysis_detail(cache_id: int) -> CachedJDDetail:
         # analysis_dict is already deserialized in get_cached_analysis_by_id
         analysis_dict = result.get("analysis", {})
         
+        # Calculate match_score and category for fit_summary if not present (same logic as analyze_jd endpoint)
+        fit_summary = analysis_dict.get("fit_summary", {})
+        constraints = analysis_dict.get("constraints", {})
+        
+        if isinstance(fit_summary, dict) and fit_summary:
+            # Check if match_score already exists, if not, calculate it
+            if "match_score" not in fit_summary or fit_summary.get("match_score") is None:
+                # [Quick Filter] Check if skip_deep_analysis is True
+                skip_deep_analysis = False
+                if isinstance(constraints, dict):
+                    skip_deep_analysis = constraints.get("skip_deep_analysis", False)
+                
+                # If skip_deep_analysis is True, set match_score=1 and category="C"
+                if skip_deep_analysis:
+                    match_score = 1
+                    category = "C"
+                else:
+                    # Calculate match_score (1-10) based on strengths vs gaps
+                    strengths = fit_summary.get("strengths", [])
+                    gaps = fit_summary.get("gaps", [])
+                    recommendation = fit_summary.get("recommendation") or fit_summary.get("recommendation_for_candidate", "SKIP")
+                    
+                    strengths_count = len(strengths)
+                    gaps_count = len(gaps)
+                    
+                    # Base score from recommendation
+                    if recommendation == "APPLY":
+                        base_score = 8
+                    elif recommendation == "MAYBE":
+                        base_score = 5
+                    else:  # SKIP
+                        base_score = 3
+                    
+                    # Adjust based on strengths/gaps ratio
+                    if strengths_count > 0 or gaps_count > 0:
+                        ratio = strengths_count / max(strengths_count + gaps_count, 1)
+                        match_score = int(base_score + (ratio - 0.5) * 4)  # Scale to 1-10
+                        match_score = max(1, min(10, match_score))  # Clamp to 1-10
+                    else:
+                        match_score = base_score
+                    
+                    # Map recommendation to category
+                    if recommendation == "APPLY":
+                        category = "A"
+                    elif recommendation == "MAYBE":
+                        category = "B"
+                    else:  # SKIP
+                        category = "C"
+                
+                # Update fit_summary with calculated values
+                fit_summary["match_score"] = match_score
+                if "category" not in fit_summary or fit_summary.get("category") is None:
+                    fit_summary["category"] = category
+                if "recommendation" not in fit_summary:
+                    fit_summary["recommendation"] = fit_summary.get("recommendation_for_candidate", "SKIP")
+        
         return CachedJDDetail(
             id=result["id"],
             profile_id=result["profile_id"],
