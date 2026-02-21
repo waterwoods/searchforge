@@ -20,6 +20,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 from services.fiqa_api import obs
+from services.fiqa_api.utils.qdrant_adapter import qdrant_search
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Collection mapping
 COLLECTION_MAP = {
-    "fiqa": os.getenv("DEFAULT_QDRANT_COLLECTION", "fiqa_50k_v1"),
+    "fiqa": os.getenv("DEFAULT_QDRANT_COLLECTION", "fiqa_10k_v1"),  # Default to fiqa_10k_v1 for demo
     "beir_fiqa_full_ta": "beir_fiqa_full_ta",
     "fiqa_10k_v1": "fiqa_10k_v1",
     "fiqa_50k_v1": "fiqa_50k_v1",
@@ -38,6 +39,13 @@ COLLECTION_MAP = {
     "fiqa_50k": "fiqa_50k_v1",
     # Airbnb LA demo
     "airbnb_la_demo": "airbnb_la_demo",
+    # Auto Insurance (南加州汽车保险)
+    "auto_insurance": "auto_insurance_v2_clean",
+    "auto_insurance_v1": "auto_insurance_v1",
+    "auto_insurance_v2_clean": "auto_insurance_v2_clean",
+    # Demo collection for business presentation
+    "demo_auto_insurance": "auto_insurance_demo_core",
+    "auto_insurance_demo_core": "auto_insurance_demo_core",
 }
 
 # Default candidate sizes for hybrid search
@@ -650,7 +658,8 @@ def perform_search(
                         "filter_used": filter_used,
                     },
                 )
-                qdrant_results = client.search(
+                qdrant_results = qdrant_search(
+                    client=client,
                     collection_name=actual_collection,
                     query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
                     limit=top_k,

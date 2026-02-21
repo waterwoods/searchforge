@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 
 # Collection name mapping (dataset_name -> collection_name)
 COLLECTION_MAP = {
-    "fiqa": "fiqa_50k_v1",
+    "fiqa": "fiqa_10k_v1",  # Default to fiqa_10k_v1 for demo
     "fiqa_10k_v1": "fiqa_10k_v1",
     "fiqa_50k_v1": "fiqa_50k_v1",
     "fiqa_para_50k": "fiqa_para_50k",
@@ -24,6 +24,13 @@ COLLECTION_MAP = {
     "fiqa_win256_o64_50k": "fiqa_win256_o64_50k",
     # Airbnb LA demo
     "airbnb_la_demo": "airbnb_la_demo",
+    # Auto Insurance (南加州汽车保险)
+    "auto_insurance": "auto_insurance_v2_clean",
+    "auto_insurance_v1": "auto_insurance_v1",
+    "auto_insurance_v2_clean": "auto_insurance_v2_clean",
+    # Demo collection for business presentation
+    "demo_auto_insurance": "auto_insurance_demo_core",
+    "auto_insurance_demo_core": "auto_insurance_demo_core",
 }
 
 
@@ -47,6 +54,9 @@ except ModuleNotFoundError:  # pragma: no cover - container fallback
 from services.fiqa_api import obs
 from services.fiqa_api.services.search_core import perform_search
 from services.fiqa_api.services.search_profiles import get_search_profile
+from services.fiqa_api.utils.translation import (
+    detect_lang, translate_zh_to_en, translate_en_to_zh, is_translation_available, translation_debug_state
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,17 +94,20 @@ def get_default_metrics() -> dict:
 
 
 def _item_to_source(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert search result item to frontend-friendly source format."""
     payload = item.get("payload") if isinstance(item, dict) else {}
     if not isinstance(payload, dict):
         payload = {}
     doc_id = payload.get("doc_id") or item.get("id") or payload.get("id") or "unknown"
     title = payload.get("title") or item.get("title", "")
-    url = payload.get("url") or ""
+    text = payload.get("text") or item.get("text", "")
+    source_url = payload.get("url") or payload.get("source_url") or item.get("url") or item.get("source_url") or ""
     score = item.get("score", 0.0)
     return {
         "doc_id": doc_id,
         "title": title,
-        "url": url,
+        "text": text,
+        "source_url": source_url,
         "score": score,
     }
 
@@ -171,7 +184,7 @@ class QueryRequest(BaseModel):
     question: str = Field(..., alias="question")
     budget_ms: Optional[int] = Field(default=None, alias="budget_ms")
     top_k: int = Field(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description=f"Number of results (default: {DEFAULT_TOP_K}, max: {MAX_TOP_K})")
-    collection: Optional[str] = Field(default="fiqa", description="Collection name (e.g., 'fiqa', 'fiqa_50k_v1', 'fiqa_10k_v1')")
+    collection: Optional[str] = Field(default="auto_insurance", description="Collection name (e.g., 'auto_insurance', 'fiqa', 'fiqa_50k_v1', 'fiqa_10k_v1')")
     rerank: bool = Field(default=False, description="Whether to rerank results")
     use_hybrid: bool = Field(default=False, description="Whether to use hybrid retrieval (BM25 + vector fusion)")
     rrf_k: Optional[int] = Field(default=None, ge=1, le=100, description="RRF reciprocal rank fusion k parameter")
@@ -187,6 +200,14 @@ class QueryRequest(BaseModel):
         description="Whether to call LLM to generate an answer (defaults to False for backward compatibility). "
                     "Note: stream=True implicitly enables answer generation.",
     )
+    translation_mode: Optional[str] = Field(
+        default=None,
+        description="Translation mode: 'auto' (auto-detect and translate Chinese), True (force translate), False (disable)"
+    )
+    translate: Optional[bool] = Field(
+        default=None,
+        description="Alias for translation_mode='auto' when True"
+    )
     # Search profile support
     profile_name: Optional[str] = Field(default=None, description="Search profile name (e.g., 'airbnb_la_location_first')")
     # Filter fields (placeholder, will be used for filtering in future)
@@ -194,6 +215,8 @@ class QueryRequest(BaseModel):
     min_bedrooms: Optional[int] = Field(default=None, ge=0, description="Minimum bedrooms filter")
     neighbourhood: Optional[str] = Field(default=None, description="Neighbourhood filter")
     room_type: Optional[str] = Field(default=None, description="Room type filter")
+    # Demo mode support
+    mode: Optional[str] = Field(default=None, description="Mode: 'demo' to use demo collection with top_k=5")
 
     @root_validator(pre=True)
     def _alias_q(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -203,6 +226,9 @@ class QueryRequest(BaseModel):
                 values["question"] = alias_val
         if "budget_ms" not in values and "budget" in values:
             values["budget_ms"] = values.get("budget")
+        # Handle translate alias
+        if "translate" in values and values["translate"] is True and "translation_mode" not in values:
+            values["translation_mode"] = "auto"
         return values
 
     class Config:
@@ -287,16 +313,84 @@ async def _execute_query(
             detail="question cannot be empty"
         )
     
-    # Apply search profile (if specified)
-    profile = get_search_profile(request.profile_name)
-    effective_params = build_effective_params(request, profile)
+    # Translation support: detect language and translate if needed
+    # Initialize all translation variables with explicit defaults AT THE VERY BEGINNING
+    # This ensures they're always in scope for error handlers
+    question_original = cleaned_question
+    question_used = cleaned_question
+    translation_applied = False
+    detected_lang = "unknown"  # Initialize with default, not None
+    translation_error = None
     
-    # Use effective collection (from profile or request)
-    collection_name = effective_params["collection"]
-    # Fallback to environment variable if still not set
-    if not collection_name:
-        default_collection = os.getenv("DEFAULT_SEARCH_COLLECTION", "fiqa")
-        collection_name = default_collection
+    # Check if translation is requested (via request param or auto-detect)
+    # QueryRequest model includes translation_mode field (line 200), so it should be accessible
+    translation_mode = getattr(request, "translation_mode", None)
+    if translation_mode is None:
+        # Fallback to translate field if translation_mode is not set
+        translate_flag = getattr(request, "translate", False)
+        if translate_flag is True:
+            translation_mode = "auto"
+        else:
+            translation_mode = None
+    
+    print(f"[query] translation_mode={translation_mode}, question={cleaned_question[:40]}")
+    
+    # Detect language (always detect, even if translation is not enabled)
+    try:
+        detected_lang = detect_lang(cleaned_question)
+        if detected_lang is None:
+            detected_lang = "unknown"
+    except Exception as e:
+        detected_lang = "unknown"
+        logger.warning(f"[translation] detect_lang failed: {e}")
+    
+    print(f"[translation] available={is_translation_available()}, state={translation_debug_state()}")
+    print(f"[translation] detected_lang={detected_lang}")
+    
+    if translation_mode == "auto" or (translation_mode is True and detected_lang == "zh"):
+        # Auto-translate Chinese queries
+        if detected_lang == "zh":
+            if is_translation_available():
+                try:
+                    translated = translate_zh_to_en(cleaned_question)
+                    if translated and translated.strip():
+                        question_used = translated
+                        translation_applied = True
+                        print(f"[translation] applied zh->en, question_used={question_used[:60]}")
+                        logger.info(f"[translation] zh -> en ok trace_id={trace_id} original='{cleaned_question[:50]}...' translated='{translated[:50]}...'")
+                    else:
+                        translation_error = "Translation returned empty result"
+                        logger.warning(f"[translation] zh -> en failed (empty) trace_id={trace_id} original='{cleaned_question[:50]}...'")
+                except Exception as e:
+                    translation_error = f"Translation exception: {str(e)}"
+                    logger.error(f"[translation] zh -> en error trace_id={trace_id} error='{str(e)}'")
+                    # Fallback: use original question
+            else:
+                translation_error = "Translation service not available"
+                logger.warning(f"[translation] service unavailable trace_id={trace_id}")
+        elif translation_mode is True and detected_lang != "zh":
+            # Explicit translation requested but not Chinese - use original
+            logger.debug(f"[translation] requested but not Chinese trace_id={trace_id} lang={detected_lang}")
+    
+    # Handle demo mode
+    if getattr(request, "mode", None) == "demo":
+        # Demo mode: force use demo collection and top_k=5
+        collection_name = "demo_auto_insurance"
+        request.top_k = 5  # Override top_k for demo mode
+        effective_params = {"collection": collection_name}  # Minimal params for demo mode
+        logger.info(f"level=INFO trace_id={trace_id} mode=DEMO collection={collection_name} top_k={request.top_k}")
+    else:
+        # Apply search profile (if specified)
+        profile = get_search_profile(request.profile_name)
+        effective_params = build_effective_params(request, profile)
+        
+        # Use effective collection (from profile or request)
+        collection_name = effective_params["collection"]
+        # Fallback to environment variable if still not set
+        if not collection_name:
+            default_collection = os.getenv("DEFAULT_SEARCH_COLLECTION", "fiqa")
+            collection_name = default_collection
+    
     actual_collection = COLLECTION_MAP.get(collection_name, collection_name)
     
     # Log profile and effective parameters
@@ -438,7 +532,11 @@ async def _execute_query(
             return {
                 "ok": True,
                 "trace_id": trace_id,
-                "question": cleaned_question,
+                "question": question_original,  # Original question
+                "question_used": question_used if question_used else question_original,  # Question used for search (may be translated)
+                "translation_applied": bool(translation_applied),  # Ensure boolean, never None
+                "detected_lang": detected_lang if detected_lang else "unknown",  # Ensure string, never None
+                "translation_error": translation_error if translation_error else "",  # Error message if translation failed, empty string if None
                 "answer": answer,  # ✅ Generated answer or empty
                 "latency_ms": latency_ms,
                 "route": route_used,
@@ -561,7 +659,7 @@ async def _execute_query(
             search_result = await asyncio.wait_for(
                 asyncio.to_thread(
                     perform_search,
-                    query=cleaned_question,
+                    query=question_used,  # Use translated query if translation was applied
                     top_k=request.top_k,
                     collection=collection_name,
                     routing_flags=routing_flags,
@@ -613,13 +711,40 @@ async def _execute_query(
         # Map search results to frontend sources format
         sources = []
         for result in search_result.get("results", []):
+            # Extract source_url from result payload if available
+            result_payload = result.get("payload", {}) if isinstance(result.get("payload"), dict) else {}
+            source_url = result_payload.get("url") or result_payload.get("source_url") or result.get("url") or result.get("source_url") or ""
+            
+            title = result.get("title", "")
+            text = result.get("text", "")
+            
             source = {
                 "doc_id": result.get("id", "unknown"),
-                "title": result.get("title", ""),
-                "text": result.get("text", ""),  # ✅ Include text field
-                "url": "",  # Empty for now
+                "title": title,  # Original English title
+                "text": text,  # Original English text
+                "source_url": source_url,
                 "score": result.get("score", 0.0)
             }
+            
+            # Translate sources to Chinese if translation was applied and enabled
+            if translation_applied:
+                title_zh = translate_en_to_zh(title)
+                text_zh = translate_en_to_zh(text)
+                
+                if title_zh:
+                    source["title_zh"] = title_zh
+                if text_zh:
+                    source["text_zh"] = text_zh
+                
+                # Also add translations object for structured access
+                if title_zh or text_zh:
+                    source["translations"] = {
+                        "zh": {
+                            "title": title_zh or title,
+                            "text": text_zh or text
+                        }
+                    }
+            
             # 如果是 Airbnb collection，添加额外字段
             if actual_collection == "airbnb_la_demo" or collection_name == "airbnb_la_demo":
                 if "price" in result:
@@ -796,10 +921,24 @@ async def _execute_query(
             base_metrics["kv_hit"] = False
         
         # Return frontend-friendly response with all required fields
+        # Ensure translation fields are never None - use explicit defaults
+        # Variables are initialized at function level (lines 312-320), but add safety checks
+        q_orig = question_original if question_original is not None else cleaned_question
+        q_used_val = question_used if question_used is not None else q_orig
+        # Ensure translation_applied is always a boolean
+        trans_applied_val = bool(translation_applied) if translation_applied is not None else False
+        # Ensure detected_lang is always a string (never None)
+        det_lang_val = str(detected_lang) if detected_lang is not None and detected_lang != "" else "unknown"
+        trans_error_val = translation_error if translation_error is not None else None
+        
         payload = {
             "ok": True,
             "trace_id": trace_id,
-            "question": cleaned_question,
+            "question": q_orig,  # Original question
+            "question_used": q_used_val,  # Question used for search (may be translated)
+            "translation_applied": trans_applied_val,  # Ensure boolean, never None
+            "detected_lang": det_lang_val,  # Ensure string, never None
+            "translation_error": trans_error_val,  # Error message if translation failed, null if None
             "answer": answer,  # ✅ Filled with generated answer (or empty string if LLM unavailable)
             "latency_ms": elapsed,
             "route": route_used,
@@ -817,6 +956,9 @@ async def _execute_query(
             "budget_ms": request.budget_ms,
             "ts": datetime.utcnow().isoformat() + "Z",
         }
+        # Add translation error if present (for debugging, not fatal)
+        if translation_error:
+            payload["translation_error"] = translation_error
         try:
             trace_url = search_result.get("trace_url") or obs.build_obs_url(trace_id)
             raw_request.state.trace_url = trace_url
@@ -861,11 +1003,31 @@ async def _execute_query(
         )
         if any(marker in error_text for marker in not_found_markers):
             message = f"Collection '{actual_collection}' not found in Qdrant. Run `make seed-fiqa` to seed demo vectors."
+            # Include translation fields even in error responses
+            # Variables are initialized at function level (lines 312-320), so they should always exist
+            # Use explicit defaults to ensure fields are never None
+            # Access variables directly with safe defaults
+            question_orig = cleaned_question if "cleaned_question" in locals() and cleaned_question else (request.question if request else "")
+            question_used_val = question_used if "question_used" in locals() and question_used else question_orig
+            # Ensure translation_applied is always a boolean, never None
+            if "translation_applied" in locals():
+                translation_applied_val = bool(translation_applied) if translation_applied is not None else False
+            else:
+                translation_applied_val = False
+            # Ensure detected_lang is always a string, never None
+            if "detected_lang" in locals():
+                detected_lang_val = str(detected_lang) if detected_lang is not None and detected_lang != "" else "unknown"
+            else:
+                detected_lang_val = "unknown"
+            
             friendly_payload = {
                 "ok": False,
                 "ret_code": "DATASET_MISSING",
                 "trace_id": trace_id,
-                "question": cleaned_question if "cleaned_question" in locals() else "",
+                "question": question_orig,
+                "question_used": question_used_val,
+                "translation_applied": translation_applied_val,  # Always boolean, never None
+                "detected_lang": detected_lang_val,  # Always string, never None
                 "answer": "",
                 "message": message,
                 "latency_ms": elapsed,
@@ -911,13 +1073,22 @@ async def _execute_query(
             pass
         
         # Return error response with all required fields and proper status code
+        # Include translation fields even in error responses
+        question_orig = cleaned_question if 'cleaned_question' in locals() else ""
+        question_used_val = question_used if "question_used" in locals() else question_orig
+        translation_applied_val = bool(translation_applied) if "translation_applied" in locals() else False
+        detected_lang_val = detected_lang if "detected_lang" in locals() else "unknown"
+        
         return JSONResponse(
             status_code=500,
             headers={"X-Trace-Id": trace_id},  # Also set in headers
             content={
                 "ok": False,
                 "trace_id": trace_id,
-                "question": cleaned_question if 'cleaned_question' in locals() else "",
+                "question": question_orig,
+                "question_used": question_used_val,
+                "translation_applied": translation_applied_val,
+                "detected_lang": detected_lang_val,
                 "answer": "",
                 "error": str(e),
                 "latency_ms": elapsed,
@@ -1128,3 +1299,34 @@ async def query_get(
 ):
     payload = QueryRequest(q=q, budget_ms=budget_ms)
     return await _execute_query(payload, response, raw_request, x_trace_id)
+
+
+@router.get("/debug/translation")
+async def debug_translation():
+    """
+    Debug endpoint to check translation system state.
+    Does not expose secrets.
+    """
+    from services.fiqa_api.utils.translation import detect_lang, translation_debug_state
+    
+    state = translation_debug_state()
+    
+    # Test detect_lang on sample strings
+    test_chinese = "你好"
+    test_english = "hello"
+    
+    result = {
+        **state,
+        "detect_lang_tests": {
+            "chinese": {
+                "input": test_chinese,
+                "detected": detect_lang(test_chinese)
+            },
+            "english": {
+                "input": test_english,
+                "detected": detect_lang(test_english)
+            }
+        }
+    }
+    
+    return result

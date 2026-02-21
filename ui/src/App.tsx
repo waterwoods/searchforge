@@ -27,6 +27,8 @@ import { RagLabHistoryPage } from './pages/RagLabHistoryPage';
 import { RagLabDetailPage } from './pages/RagLabDetailPage';
 import StewardDashboard from './pages/StewardDashboard';
 import { MetricsHub } from './pages/lab/MetricsHub';
+import VitalsDashboardPage from './pages/VitalsDashboardPage';
+import { DemoPage } from './pages/DemoPage';
 
 function App() {
     return (
@@ -94,7 +96,13 @@ function App() {
 
                         {/* Metrics Hub Route */}
                         <Route path="lab/metrics" element={<MetricsHub />} />
+
+                        {/* Vitals Monitor Route */}
+                        <Route path="vitals" element={<VitalsDashboardPage />} />
                     </Route>
+                    
+                    {/* Demo Route - Standalone (no AppLayout) */}
+                    <Route path="demo" element={<DemoPage />} />
                 </Routes>
             </AntdApp>
         </ConfigProvider>

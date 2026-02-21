@@ -1,0 +1,358 @@
+.demo-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  color: #333;
+  background: #fff;
+  min-height: 100vh;
+}
+
+.demo-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.demo-header h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: #1a1a1a;
+}
+
+.demo-header p {
+  color: #666;
+  font-size: 1rem;
+}
+
+.demo-source-note {
+  color: #888;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
+.demo-form {
+  margin-bottom: 2rem;
+}
+
+.input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.question-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.question-input:focus {
+  border-color: #4a90e2;
+}
+
+.question-input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.ask-button {
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  background-color: #4a90e2;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.ask-button:hover:not(:disabled) {
+  background-color: #357abd;
+}
+
+.ask-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.error-message {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background-color: #fee;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+  color: #c33;
+}
+
+.latency-info {
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  background-color: #f0f8ff;
+  border: 1px solid #d0e8ff;
+  border-radius: 6px;
+  color: #0066cc;
+  font-size: 0.9rem;
+}
+
+.results-container {
+  margin-top: 2rem;
+}
+
+.results-container h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #1a1a1a;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.source-item {
+  padding: 1.5rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #fafafa;
+  transition: box-shadow 0.2s;
+}
+
+.source-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.source-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  flex: 1;
+  min-width: 200px;
+}
+
+.source-score {
+  font-size: 0.9rem;
+  color: #666;
+  background-color: #e8f4f8;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.source-text {
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+  color: #444;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.source-url {
+  margin-bottom: 0.5rem;
+}
+
+.source-url a {
+  color: #4a90e2;
+  text-decoration: none;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.source-url a:hover {
+  text-decoration: underline;
+}
+
+.source-domain {
+  color: #888;
+  font-size: 0.85rem;
+  margin-left: 0.25rem;
+}
+
+.authoritative-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  background-color: #4caf50;
+  color: white;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.source-id {
+  font-size: 0.85rem;
+  color: #999;
+  font-family: 'Courier New', monospace;
+}
+
+.no-results {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.example-questions {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.example-questions-label {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.example-questions-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.example-question-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  color: #333;
+}
+
+.example-question-btn:hover:not(:disabled) {
+  background-color: #e8e8e8;
+  border-color: #ccc;
+}
+
+.example-question-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.demo-toggles {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.translation-toggle {
+  /* Remove margin-top as it's now in demo-toggles */
+}
+
+.demo-mode-toggle {
+  /* Same style as translation-toggle */
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #555;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #4a90e2;
+}
+
+.translation-badge {
+  margin-left: 1rem;
+  padding: 0.25rem 0.75rem;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.lang-badge {
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background-color: #fff3e0;
+  color: #e65100;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.translation-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background-color: #e3f2fd;
+  border-radius: 4px;
+}
+
+.translation-label {
+  font-size: 0.85rem;
+  color: #1976d2;
+  font-weight: 500;
+}
+
+.show-original-btn {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  background-color: #fff;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  color: #1976d2;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.show-original-btn:hover {
+  background-color: #e3f2fd;
+  border-color: #64b5f6;
+}
+
+.original-text {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background-color: #f5f5f5;
+  border-left: 3px solid #999;
+  border-radius: 4px;
+}
+
+.original-label {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.original-content {
+  font-size: 0.9rem;
+  color: #555;
+  line-height: 1.6;
+}
