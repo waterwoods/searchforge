@@ -366,6 +366,14 @@ reseed-fiqa:
 	@python3 scripts/check_qdrant.py > .runs/qdrant_check.json
 	@echo "reseed done"
 
+vitals-stream: ## Generate fake vitals stream (stdout mode, 60s, 2s interval)
+	$(call ensure_tool,python3)
+	@python3 scripts/generate_vitals_stream.py --mode stdout --duration-sec 60 --interval-sec 2.0
+
+vitals-e2e: ## End-to-end verification of vitals POST mode (requires API running)
+	$(call ensure_tool,python3)
+	@python3 scripts/verify_vitals_e2e_post.py --endpoint-base http://localhost:8000 --duration-sec 10 --interval-sec 1
+
 qdrant-bind-setup:
 	@mkdir -p .qdrant
 	@echo "[ok] .qdrant bind dir ready"

@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Response, Query
@@ -259,4 +259,240 @@ async def get_obs_last(limit: int = Query(default=10, ge=1, le=100)):
     except Exception as e:
         logger.error(f"Error reading obs_url.txt: {e}", exc_info=True)
         return Response(status_code=204)
+
+
+class DemoSummaryResponse(BaseModel):
+    dataset: Union[str, Dict[str, Any]]  # Can be string or dict for safe default
+    kpis: Dict[str, Optional[float]]  # Allow None for missing metrics
+    timestamp: str
+    message: Optional[str] = None  # Optional guidance message
+
+
+@router.get("/demo-summary", response_model=DemoSummaryResponse)
+async def get_demo_summary():
+    """
+    Get demo summary from benchmark results for Metrics Hub demo mode.
+    
+    Reads results/fiqa_bench/demo_summary.json (preferred) or results/fiqa_bench/metrics.json (fallback).
+    Returns normalized schema with KPIs: recall@5, recall@10, mrr@5, ndcg@10, avg_latency_ms, p95_latency_ms.
+    
+    Returns:
+        {
+            "dataset": "fiqa_10k_v1",
+            "kpis": {
+                "recall@5": 1.0,
+                "recall@10": 0.975,
+                "mrr@5": 1.0,
+                "ndcg@10": 0.9824,
+                "avg_latency_ms": 44.86,
+                "p95_latency_ms": 70.0
+            },
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
+    
+    Raises:
+        404: If neither demo_summary.json nor metrics.json exists
+        500: If file read/parse fails
+    """
+    # Try demo_summary.json first, then fallback to metrics.json
+    results_dir = REPO_ROOT / "results" / "fiqa_bench"
+    demo_summary_path = results_dir / "demo_summary.json"
+    metrics_path = results_dir / "metrics.json"
+    
+    data_file = None
+    data = None
+    
+    # Prefer demo_summary.json
+    if demo_summary_path.exists():
+        data_file = demo_summary_path
+        try:
+            with open(demo_summary_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logger.info(f"Loaded demo_summary.json from {demo_summary_path}")
+        except Exception as e:
+            logger.warning(f"Failed to read demo_summary.json: {e}, trying metrics.json")
+            data_file = None
+            data = None
+    
+    # Fallback to metrics.json
+    if data_file is None and metrics_path.exists():
+        data_file = metrics_path
+        try:
+            with open(metrics_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logger.info(f"Loaded metrics.json from {metrics_path}")
+        except Exception as e:
+            logger.error(f"Failed to read metrics.json: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to read metrics file: {str(e)}"
+            )
+    
+    # If no artifacts found, return safe default demo payload (never 404)
+    if data_file is None or data is None:
+        logger.warning(f"Demo summary artifacts not found at {results_dir}, returning safe default")
+        from datetime import datetime
+        return {
+            "dataset": {
+                "name": "FIQA 10k",
+                "split": "test",
+                "queries": 0,
+                "collection": "fiqa_10k_v1"
+            },
+            "kpis": {
+                "Recall@5": None,
+                "Recall@10": None,
+                "MRR@5": None,
+                "nDCG@10": None,
+                "avg_latency_ms": None,
+                "p95_latency_ms": None
+            },
+            "message": "No benchmark artifacts found. Run: python scripts/fiqa_rag_benchmark.py --split test --limit 50",
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+    
+    # Normalize schema
+    try:
+        # Extract dataset name
+        dataset = data.get("dataset", "fiqa_10k_v1")
+        
+        # Extract metrics from nested structure
+        metrics = data.get("metrics", {})
+        counts = data.get("counts", {})
+        
+        # Build normalized KPIs
+        kpis: Dict[str, float] = {}
+        
+        # Recall metrics
+        if "Recall@5" in metrics:
+            kpis["recall@5"] = float(metrics["Recall@5"])
+        elif "recall@5" in metrics:
+            kpis["recall@5"] = float(metrics["recall@5"])
+        
+        if "Recall@10" in metrics:
+            kpis["recall@10"] = float(metrics["Recall@10"])
+        elif "recall@10" in metrics:
+            kpis["recall@10"] = float(metrics["recall@10"])
+        
+        # MRR metrics
+        if "MRR@5" in metrics:
+            kpis["mrr@5"] = float(metrics["MRR@5"])
+        elif "mrr@5" in metrics:
+            kpis["mrr@5"] = float(metrics["mrr@5"])
+        
+        # nDCG metrics
+        if "nDCG@10" in metrics:
+            kpis["ndcg@10"] = float(metrics["nDCG@10"])
+        elif "ndcg@10" in metrics:
+            kpis["ndcg@10"] = float(metrics["ndcg@10"])
+        
+        # Latency metrics
+        if "avg_latency_ms" in counts:
+            kpis["avg_latency_ms"] = float(counts["avg_latency_ms"])
+        elif "avg_latency_ms" in data:
+            kpis["avg_latency_ms"] = float(data["avg_latency_ms"])
+        
+        if "p95_latency_ms" in counts:
+            kpis["p95_latency_ms"] = float(counts["p95_latency_ms"])
+        elif "p95_latency_ms" in data:
+            kpis["p95_latency_ms"] = float(data["p95_latency_ms"])
+        
+        # Get timestamp from file mtime or use current time
+        if data_file:
+            timestamp = datetime.fromtimestamp(data_file.stat().st_mtime).isoformat() + "Z"
+        else:
+            timestamp = datetime.utcnow().isoformat() + "Z"
+        
+        return DemoSummaryResponse(
+            dataset=dataset,
+            kpis=kpis,
+            timestamp=timestamp,
+            message=None
+        )
+    except (KeyError, ValueError, TypeError) as e:
+        logger.error(f"Failed to normalize demo summary data: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to normalize demo summary: {str(e)}"
+        )
+
+
+class AutoInsuranceEvalResponse(BaseModel):
+    collection: str
+    total_queries: int
+    avg_hit_at_5: float
+    pct_queries_with_3_plus_relevant: float
+    avg_latency_ms: float
+    passed: bool
+    timestamp: str
+    message: Optional[str] = None
+    language_breakdown: Optional[Dict[str, Any]] = None
+
+
+@router.get("/auto-insurance-eval", response_model=AutoInsuranceEvalResponse)
+async def get_auto_insurance_eval():
+    """
+    Get latest auto insurance RAG evaluation metrics.
+    
+    Reads results/auto_insurance/EVAL_REPORT.json and returns aggregate metrics.
+    Returns safe defaults if file is missing (never 404).
+    
+    Returns:
+        {
+            "collection": "auto_insurance_v2_clean",
+            "total_queries": 20,
+            "avg_hit_at_5": 0.75,
+            "pct_queries_with_3_plus_relevant": 85.0,
+            "avg_latency_ms": 45.2,
+            "passed": true,
+            "timestamp": "2024-01-01T00:00:00Z",
+            "message": null,
+            "language_breakdown": {...}
+        }
+    """
+    eval_report_path = REPO_ROOT / "results" / "auto_insurance" / "EVAL_REPORT.json"
+    
+    if not eval_report_path.exists():
+        logger.warning(f"Auto insurance eval report not found at {eval_report_path}")
+        return AutoInsuranceEvalResponse(
+            collection="auto_insurance_v2_clean",
+            total_queries=0,
+            avg_hit_at_5=0.0,
+            pct_queries_with_3_plus_relevant=0.0,
+            avg_latency_ms=0.0,
+            passed=False,
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            message="No evaluation report found. Run: ./scripts/run_auto_insurance_refresh.sh",
+            language_breakdown=None
+        )
+    
+    try:
+        with open(eval_report_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Extract metrics
+        return AutoInsuranceEvalResponse(
+            collection=data.get("collection", "auto_insurance_v2_clean"),
+            total_queries=data.get("total_queries", 0),
+            avg_hit_at_5=float(data.get("avg_hit_at_5", 0.0)),
+            pct_queries_with_3_plus_relevant=float(data.get("pct_queries_with_3_plus_relevant", 0.0)),
+            avg_latency_ms=float(data.get("avg_latency_ms", 0.0)),
+            passed=bool(data.get("passed", False)),
+            timestamp=data.get("timestamp", datetime.utcnow().isoformat() + "Z"),
+            message=None,
+            language_breakdown=data.get("language_breakdown")
+        )
+    except Exception as e:
+        logger.error(f"Failed to read auto insurance eval report: {e}", exc_info=True)
+        return AutoInsuranceEvalResponse(
+            collection="auto_insurance_v2_clean",
+            total_queries=0,
+            avg_hit_at_5=0.0,
+            pct_queries_with_3_plus_relevant=0.0,
+            avg_latency_ms=0.0,
+            passed=False,
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            message=f"Failed to read evaluation report: {str(e)}",
+            language_breakdown=None
+        )
 

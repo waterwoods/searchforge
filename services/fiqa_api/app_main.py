@@ -16,24 +16,33 @@ Features:
 
 This is the main entry point. Old entry points (app.py, app_v2.py) have been moved to _deprecated/.
 """
+# [health] inspected
 
+# ========================================
+# Environment Variables Loading (MUST BE FIRST - BEFORE ANY IMPORTS)
+# ========================================
+from dotenv import load_dotenv
+from pathlib import Path
 import os
+
+# Load .env.cloudrun first, then fall back to .env
+# This MUST happen before any project imports that might import translation.py
+env_cloudrun = Path(".env.cloudrun")
+if env_cloudrun.exists():
+    load_dotenv(env_cloudrun, override=False)
+load_dotenv(override=False)
+
+# Log environment loading for debugging
+print("[env] loaded .env.cloudrun, TRANSLATION_ENABLED=", os.getenv("TRANSLATION_ENABLED"))
+
+# Now safe to import other modules
 import sys
 import time
 import json
 import logging
 import uuid
 import signal
-from pathlib import Path
 from typing import Optional, List, Dict, Any
-
-# ========================================
-# Environment Variables Loading (MUST BE FIRST)
-# ========================================
-from dotenv import load_dotenv
-
-# Load .env file before any other initialization
-load_dotenv()
 
 # ✅ OPENAI_API_KEY is optional - code_lookup will fall back to raw results if missing
 # Configure logging first before any logging calls
@@ -120,6 +129,8 @@ from services.fiqa_api.routes.mortgage_agent import router as mortgage_agent_rou
 from services.fiqa_api.routes.ops_copilot import router as ops_copilot_router
 from services.fiqa_api.routes.ecommerce_agent import router as ecommerce_agent_router
 from services.fiqa_api.routes.jobhunter import router as jobhunter_router
+from services.fiqa_api.routes.inbox_triage import router as inbox_triage_router
+from services.fiqa_api.routes.health_monitor import router as health_monitor_router
 from services.fiqa_api import obs
 try:
     from routes.graph_run import router as graph_router
@@ -401,6 +412,14 @@ async def lifespan(app: FastAPI):
             logger.warning(f"[STARTUP] Failed to ensure {label} dir {path}: {exc}")
 
     logger.info(f"[PATHS] runs_dir={RUNS_PATH.resolve()} artifacts_dir={ARTIFACTS_PATH.resolve()}")
+    
+    # [health] init_health_db - Initialize health monitoring database
+    try:
+        from services.fiqa_api.health.health_db import init_health_db
+        init_health_db()
+        logger.info("[STARTUP] Health monitoring database initialized")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Failed to initialize health monitoring database: {e}")
 
     logger.info(f"Port: {MAIN_PORT}")
     logger.info(f"API Entry: {API_ENTRY}")
@@ -672,6 +691,7 @@ async def healthz():
     Returns:
         JSON with status, service name, version, and timestamp.
         No external dependencies or database calls.
+        Always returns 200 if service is running.
     """
     from services.fiqa_api.utils.gitinfo import get_git_sha
     from datetime import datetime
@@ -679,11 +699,9 @@ async def healthz():
     sha, source = get_git_sha()
     version = sha if sha != "unknown" else os.getenv("GIT_SHA", "unknown")
     
-    logger.info("Health check requested")
-    
     return {
         "status": "ok",
-        "service": "mortgage-agent",
+        "service": "SearchForge Main API",
         "version": version,
         "time": datetime.utcnow().isoformat() + "Z"
     }
@@ -899,6 +917,8 @@ app.include_router(mortgage_agent_router, prefix="/api")  # /api/mortgage-agent/
 app.include_router(ops_copilot_router, prefix="/api")  # /api/ops-copilot/system-health
 app.include_router(ecommerce_agent_router, prefix="/api")  # /api/ecommerce-agent/run
 app.include_router(jobhunter_router, prefix="/api")  # /api/jobhunter/analyze
+app.include_router(inbox_triage_router)  # /api/inbox/triage
+app.include_router(health_monitor_router)  # [health] include_router - /api/vitals/ingest, /api/vitals/latest
 app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*
 app.include_router(best_router)  # /api/best

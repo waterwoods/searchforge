@@ -1,0 +1,71 @@
+{
+  "cleaning": {
+    "remove_selectors": [
+      "nav",
+      "header nav",
+      "footer",
+      ".ad",
+      ".advertisement",
+      "[class*='ad']",
+      "[id*='ad']",
+      ".cookie-banner",
+      ".cookie-consent",
+      ".social-share",
+      ".share-buttons",
+      ".comments",
+      ".comment-section",
+      ".related",
+      ".recommended",
+      ".sidebar",
+      "script",
+      "style",
+      "[style*='display: none']",
+      "[style*='visibility: hidden']"
+    ],
+    "keep_selectors": [
+      "main",
+      "article",
+      ".content",
+      ".main-content",
+      ".post-content",
+      "h1, h2, h3, h4, h5, h6",
+      "p",
+      "ul, ol, li",
+      "table, tr, td, th",
+      "blockquote",
+      "strong, em, b, i"
+    ],
+    "text_cleaning": {
+      "normalize_whitespace": true,
+      "remove_empty_lines": true,
+      "preserve_paragraphs": true,
+      "remove_extra_spaces": true,
+      "trim_lines": true,
+      "min_line_length": 10
+    },
+    "content_extraction": {
+      "preferred_containers": [
+        "main",
+        "article",
+        "[role='main']",
+        ".content",
+        ".main-content",
+        ".post-content",
+        "#content"
+      ],
+      "fallback_strategy": "largest_text_block",
+      "description": "如无明确标记，选择最大文本块"
+    },
+    "link_handling": {
+      "keep_link_text": true,
+      "remove_link_tags": true,
+      "preserve_important_links": false,
+      "description": "保留链接文本，移除 <a> 标签"
+    },
+    "table_handling": {
+      "convert_to_text": true,
+      "preserve_structure": true,
+      "separator": " | "
+    }
+  }
+}

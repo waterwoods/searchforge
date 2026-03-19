@@ -246,6 +246,176 @@ def calculate_margin(results: List[Dict[str, Any]]) -> float:
 
 
 # ========================================
+# Gov-domain boost (auto insurance demo)
+# ========================================
+
+# Keywords that trigger gov-domain boost (新车投保/最低要求 style queries)
+# Include both Chinese (original) and English (translated) forms
+_GOV_BOOST_KEYWORDS = (
+    "加州", "最低", "要求", "法规", "责任险", "新车", "投保",
+    "minimum", "requirement", "coverage", "liability", "california",
+    "sr-22", "sr22", "proof of insurance", "保险证明", "财务责任",
+)
+
+# Boost value for gov domains when query matches keywords (balance: need 1 gov + 1 insurer in top 5)
+_GOV_BOOST_VALUE = 0.15
+
+
+def _domain_from_result(result: Dict[str, Any]) -> str:
+    """Extract domain from a search result (url, domain, or id if URL-like)."""
+    domain = result.get("domain") or ""
+    if domain:
+        return (domain or "").lower().strip()
+    url = result.get("url") or result.get("source_url") or ""
+    if url:
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(url).hostname or ""
+            return host.lower().strip()
+        except Exception:
+            pass
+    # Fallback: doc_id might be a URL for some collections
+    doc_id = str(result.get("id", ""))
+    if doc_id.startswith("http://") or doc_id.startswith("https://"):
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(doc_id).hostname or ""
+            return host.lower().strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _is_gov_domain(domain: str) -> bool:
+    """Check if domain is a California gov domain (dmv.ca.gov, insurance.ca.gov, ca.gov, *.ca.gov)."""
+    d = (domain or "").lower()
+    return d.endswith(".ca.gov") or "dmv.ca.gov" in d or "insurance.ca.gov" in d or "ca.gov" in d
+
+
+def _should_apply_gov_boost(query: str, collection: str) -> bool:
+    """Only apply boost when collection is auto-insurance and query matches keywords."""
+    auto_insurance_collections = (
+        "auto_insurance_demo_core", "auto_insurance_v2_clean",
+        "auto_insurance_v1", "auto_insurance", "demo_auto_insurance",
+    )
+    if collection not in auto_insurance_collections:
+        return False
+    q = (query or "").lower()
+    # Exclude gov-seeking queries (合规, 官方) - they naturally favor gov, boost would over-promote
+    if "合规" in q or "官方" in q:
+        return False
+    return any(kw in q for kw in _GOV_BOOST_KEYWORDS)
+
+
+# Insurer domains for diversity boost (when results are all-gov)
+_INSURER_DOMAINS = (
+    "geico.com", "progressive.com", "usaa.com", "nationwide.com",
+    "libertymutual.com", "travelers.com", "allstate.com", "aaa.com",
+)
+_INSURER_BOOST_VALUE = 0.12  # Small boost for insurer when gov-seeking query returns all gov
+
+
+def _is_insurer_domain(domain: str) -> bool:
+    d = (domain or "").lower()
+    return any(ins in d for ins in _INSURER_DOMAINS)
+
+
+def apply_demo_diversity_fallback(
+    expanded_results: List[Dict[str, Any]],
+    top_k: int,
+    query: str,
+    collection: str,
+) -> List[Dict[str, Any]]:
+    """
+    Deterministic diversity fallback for demo mode: ensure top_k contains >=1 gov and >=1 insurer
+    when possible. Only applies when collection is auto_insurance_demo_core and top_k <= 5.
+    """
+    demo_collections = ("auto_insurance_demo_core", "demo_auto_insurance")
+    if collection not in demo_collections or top_k > 5 or len(expanded_results) < top_k:
+        return expanded_results[:top_k]
+    final = list(expanded_results[:top_k])
+    final_ids = {r.get("id") for r in final}
+    domains_before = [_domain_from_result(r) for r in final]
+    replaced = []
+    # Find first GOV in expanded not in final
+    for r in expanded_results:
+        if r.get("id") in final_ids:
+            continue
+        if _is_gov_domain(_domain_from_result(r)):
+            break
+    else:
+        r = None
+    gov_candidate = r
+    # Find first INSURER in expanded not in final
+    for r in expanded_results:
+        if r.get("id") in final_ids:
+            continue
+        if _is_insurer_domain(_domain_from_result(r)):
+            break
+    else:
+        r = None
+    insurer_candidate = r
+    has_gov = any(_is_gov_domain(_domain_from_result(r)) for r in final)
+    has_insurer = any(_is_insurer_domain(_domain_from_result(r)) for r in final)
+    if not has_gov and gov_candidate:
+        final[-1] = gov_candidate
+        final_ids.add(gov_candidate.get("id"))
+        replaced.append(("gov", gov_candidate))
+    if not has_insurer and insurer_candidate:
+        # Replace last if we didn't add gov; else replace second-to-last to keep gov
+        idx = -2 if (not has_gov and replaced) else -1
+        if final[idx].get("id") != insurer_candidate.get("id"):
+            final[idx] = insurer_candidate
+            replaced.append(("insurer", insurer_candidate))
+    if replaced:
+        domains_after = [_domain_from_result(r) for r in final]
+        logger.info(
+            "[DEMO_DIVERSITY] fallback triggered query=%s before=%s after=%s replaced=%s",
+            (query or "")[:60],
+            domains_before,
+            domains_after,
+            [t for t, _ in replaced],
+        )
+    return final
+
+
+def apply_gov_domain_boost(
+    results: List[Dict[str, Any]],
+    query: str,
+    collection: str,
+    boost: float = _GOV_BOOST_VALUE,
+) -> List[Dict[str, Any]]:
+    """
+    Add score boost for gov domains when query matches 新车投保/最低要求 style keywords.
+    For gov-seeking queries (合规, 官方), add small insurer boost to ensure diversity.
+    Re-sorts results by (score + boost) descending. Minimal change, no model updates.
+    """
+    if not results or collection not in (
+        "auto_insurance_demo_core", "auto_insurance_v2_clean",
+        "auto_insurance_v1", "auto_insurance", "demo_auto_insurance",
+    ):
+        return results
+    q = (query or "").lower()
+    gov_seeking = "合规" in q or "官方" in q
+    apply_gov = _should_apply_gov_boost(query, collection)
+    # Expand retrieval when gov boost applies (so gov docs can rank into top_k)
+    if apply_gov:
+        pass  # Expansion is done at qdrant_search call site
+    boosted = []
+    for r in results:
+        score = float(r.get("score", 0.0))
+        domain = _domain_from_result(r)
+        if apply_gov and _is_gov_domain(domain):
+            score += boost
+        elif gov_seeking and _is_insurer_domain(domain):
+            # Gov-seeking query returning all gov: boost insurer for diversity
+            score += _INSURER_BOOST_VALUE
+        boosted.append({**r, "score": score})
+    boosted.sort(key=lambda x: -x.get("score", 0.0))
+    return boosted
+
+
+# ========================================
 # Qdrant Filter Builder (Airbnb-specific)
 # ========================================
 
@@ -658,11 +828,21 @@ def perform_search(
                         "filter_used": filter_used,
                     },
                 )
+                # Fetch more candidates for gov boost, diversity boost, or demo diversity fallback
+                qdrant_limit = top_k
+                if _should_apply_gov_boost(query, actual_collection):
+                    qdrant_limit = max(top_k * 10, 50)
+                else:
+                    q_low = (query or "").lower()
+                    if ("compliant" in q_low or "compliance" in q_low or "official" in q_low or "合规" in q_low or "官方" in q_low) and actual_collection in ("auto_insurance_demo_core", "auto_insurance_v2_clean", "auto_insurance_v1", "auto_insurance", "demo_auto_insurance"):
+                        qdrant_limit = max(top_k * 10, 50)  # gov-seeking: expand for insurer diversity
+                    elif actual_collection in ("auto_insurance_demo_core", "demo_auto_insurance") and top_k <= 5:
+                        qdrant_limit = max(top_k * 10, 50)  # demo mode: expand for diversity fallback
                 qdrant_results = qdrant_search(
                     client=client,
                     collection_name=actual_collection,
                     query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
-                    limit=top_k,
+                    limit=qdrant_limit,
                     query_filter=airbnb_filter  # Apply filter if available
                 )
                 doc_ids = []
@@ -681,15 +861,22 @@ def perform_search(
                 )
             
             # Format results (ensure doc_id is string)
+            # Use 800 chars for broker demo collection to improve Q4/Q5 answer quality
+            snippet_len = 800 if actual_collection in ("auto_insurance_demo_core", "demo_auto_insurance") else 400
             for r in qdrant_results:
                 payload = r.payload or {}
                 doc_id = str(payload.get("doc_id", r.id))
                 result_item = {
                     "id": doc_id,
-                    "text": payload.get("text", "")[:200],
+                    "text": payload.get("text", "")[:snippet_len],  # 800 for broker demo, 400 for others
                     "title": payload.get("title", "Unknown"),
                     "score": float(r.score) if hasattr(r, 'score') else 0.0
                 }
+                # Include url/domain for citation checks (e.g. E2E demo)
+                if payload.get("url"):
+                    result_item["url"] = payload["url"]
+                if payload.get("domain"):
+                    result_item["domain"] = payload["domain"]
                 # 如果是 Airbnb collection，添加额外字段
                 if actual_collection == "airbnb_la_demo":
                     result_item.update({
@@ -1017,6 +1204,11 @@ def perform_search(
     
     # Record serialize start (just before building response)
     t_serialize_start = time.perf_counter()
+    
+    # Apply gov-domain boost for auto insurance queries (新车投保/最低要求 style)
+    boosted = apply_gov_domain_boost(results, query, actual_collection)
+    # Demo mode: deterministic diversity fallback (>=1 gov, >=1 insurer when possible)
+    results = apply_demo_diversity_fallback(boosted, top_k, query, actual_collection)
     
     latency_ms = (time.perf_counter() - start_time) * 1000
     latency_search_ms = (t_vec_search - start_time) * 1000 if t_vec_search else latency_ms

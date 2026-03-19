@@ -1,0 +1,275 @@
+{
+  "version": "1",
+  "description": "Same-intent expression packs for robustness testing. Each intent has multiple realistic phrasings.",
+  "intents": [
+    {
+      "id": "add_car_quote",
+      "name": "新车 / 加车报价",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["报价", "quote", "VIN", "车型", "year", "model"],
+      "variants": [
+        {
+          "id": "AC1",
+          "text": "我刚买了2026宝马X5，保费大概多少",
+          "style": "clear standard Chinese"
+        },
+        {
+          "id": "AC2",
+          "text": "新车BMW X5，想问保险",
+          "style": "short Chinese"
+        },
+        {
+          "id": "AC3",
+          "text": "刚提一台X5，报价能看下吗",
+          "style": "shorthand Chinese"
+        },
+        {
+          "id": "AC4",
+          "text": "2026 X5，90210，下周拿车，多少钱",
+          "style": "fragment with partial info"
+        },
+        {
+          "id": "AC5",
+          "text": "买了新车，宝马X5，保险怎么弄",
+          "style": "vague but common"
+        },
+        {
+          "id": "AC6",
+          "text": "want quote for new BMW X5",
+          "style": "mixed / English shorthand"
+        },
+        {
+          "id": "AC7",
+          "text": "宝马新车，保费大概呢",
+          "style": "WeChat-like fragment"
+        },
+        {
+          "id": "AC8",
+          "text": "I bought a new BMW X5, how much is insurance?",
+          "style": "clear standard English"
+        },
+        {
+          "id": "AC9",
+          "text": "加一台2025 Honda CR-V 报价",
+          "style": "short Chinese add-car"
+        },
+        {
+          "id": "AC10",
+          "text": "想加车，2024 Tesla Model Y",
+          "style": "vague add + vehicle"
+        }
+      ]
+    },
+    {
+      "id": "remove_car_policy_change",
+      "name": "删车 / 保单变更",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["拿掉", "卖车", "过户", "remove", "sale"],
+      "variants": [
+        {
+          "id": "RC1",
+          "text": "客户卖掉旧车了，想把2014 Honda Accord从保单拿掉",
+          "style": "clear standard"
+        },
+        {
+          "id": "RC2",
+          "text": "旧车卖掉了，想从保单拿掉",
+          "style": "short Chinese"
+        },
+        {
+          "id": "RC3",
+          "text": "删车，2021 Accord 上个月卖了",
+          "style": "shorthand"
+        },
+        {
+          "id": "RC4",
+          "text": "remove car from policy, sold last week",
+          "style": "mixed English"
+        }
+      ]
+    },
+    {
+      "id": "premium_review",
+      "name": "保费太高 / 续保 review",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["保费", "premium", "policy", "bill", "账单"],
+      "variants": [
+        {
+          "id": "PR1",
+          "text": "客户说这个月保费太高了，能不能看看怎么降一点",
+          "style": "clear standard"
+        },
+        {
+          "id": "PR2",
+          "text": "续保保费太高了，能不能看看怎么降",
+          "style": "short Chinese"
+        },
+        {
+          "id": "PR3",
+          "text": "保费太贵，想降一点",
+          "style": "shorthand"
+        },
+        {
+          "id": "PR4",
+          "text": "Client says renewal premium is too high, can we review options?",
+          "style": "English"
+        },
+        {
+          "id": "PR5",
+          "text": "rate too high 想看看能不能便宜",
+          "style": "mixed"
+        }
+      ]
+    },
+    {
+      "id": "payment_failed_cancellation_risk",
+      "name": "付款失败 / 取消风险 / lapse risk",
+      "expected_category": "payment_lapse_expiration",
+      "expected_draft_contains_any": ["付款", "payment", "今天", "停保", "notice"],
+      "variants": [
+        {
+          "id": "PF1",
+          "text": "客户问：这个英文 notice 说 payment failed，我现在怎么办？",
+          "style": "clear mixed"
+        },
+        {
+          "id": "PF2",
+          "text": "他说 payment failed，现在怎么办",
+          "style": "short relay"
+        },
+        {
+          "id": "PF3",
+          "text": "客户问 这个是不是保单要停了? 他说昨天收到账单 overdue",
+          "style": "vague policy-stop"
+        },
+        {
+          "id": "PF4",
+          "text": "Payment failed",
+          "style": "minimal English"
+        },
+        {
+          "id": "PF5",
+          "text": "AutoPay failed again, please update card to avoid interruption in coverage",
+          "style": "carrier-style"
+        }
+      ]
+    },
+    {
+      "id": "english_notice_confusion",
+      "name": "英文 notice confusion",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["发我", "帮你看", "notice", "完整"],
+      "variants": [
+        {
+          "id": "EN1",
+          "text": "客户发来一张DMV的信，问「这是什么意思？我需要做什么？」",
+          "style": "clear DMV"
+        },
+        {
+          "id": "EN2",
+          "text": "这个英文 notice 看不懂",
+          "style": "short"
+        },
+        {
+          "id": "EN3",
+          "text": "客户发了一张截图 上面是dmv的信 看不懂",
+          "style": "fragment"
+        },
+        {
+          "id": "EN4",
+          "text": "what does this notice mean",
+          "style": "English"
+        }
+      ]
+    },
+    {
+      "id": "missing_document",
+      "name": "缺材料 / declaration page / DL / garaging proof",
+      "expected_category": "missing_document",
+      "expected_draft_contains_any": ["发我", "核对", "declaration", "garaging", "驾照"],
+      "variants": [
+        {
+          "id": "MD1",
+          "text": "UW follow up - need dec page + garaging proof. 客户说上周发过了",
+          "style": "mixed shorthand"
+        },
+        {
+          "id": "MD2",
+          "text": "需要驾照 copy 客户说上周寄了",
+          "style": "short Chinese"
+        },
+        {
+          "id": "MD3",
+          "text": "need declaration page and garaging proof, client says she already sent",
+          "style": "English"
+        },
+        {
+          "id": "MD4",
+          "text": "缺dec page，客户说发过了",
+          "style": "shorthand Chinese"
+        },
+        {
+          "id": "MD5",
+          "text": "客户发来carrier email，说 declaration page missing，他问这个什么意思",
+          "style": "carrier + confusion"
+        }
+      ]
+    },
+    {
+      "id": "claim_intake",
+      "name": "事故 / Claim intake / Accident first response",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["事故", "accident", "照片", "photos", "collect", "报案"],
+      "variants": [
+        {
+          "id": "CL1",
+          "text": "刚出事故了，要收集什么？",
+          "style": "clear Chinese"
+        },
+        {
+          "id": "CL2",
+          "text": "Car accident just happened, what should I collect?",
+          "style": "clear English"
+        },
+        {
+          "id": "CL3",
+          "text": "客户出事故了，问要不要对方驾照和保险",
+          "style": "relay mixed"
+        },
+        {
+          "id": "CL4",
+          "text": "accident 刚发生 要拍照吗",
+          "style": "shorthand mixed"
+        },
+        {
+          "id": "CL5",
+          "text": "我撞车了，怎么办",
+          "style": "vague but common"
+        }
+      ]
+    },
+    {
+      "id": "dmv_sr22_help",
+      "name": "DMV / SR-22 help",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["DMV", "SR-22", "带什么", "bring"],
+      "variants": [
+        {
+          "id": "DM1",
+          "text": "DMV信说要 SR-22 proof 才能 clear suspension，这个要带什么？",
+          "style": "clear mixed"
+        },
+        {
+          "id": "DM2",
+          "text": "Need SR-22 filing proof for DMV suspension clearance, what should client bring?",
+          "style": "English"
+        },
+        {
+          "id": "DM3",
+          "text": "suspension clearance 要带什么去DMV",
+          "style": "shorthand"
+        }
+      ]
+    }
+  ]
+}

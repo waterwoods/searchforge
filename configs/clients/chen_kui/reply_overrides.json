@@ -1,0 +1,5 @@
+{
+  "version": "1",
+  "description": "Optional Chen Kui reply overrides. When present, overrides industry reply_templates for matching keys. Empty = use industry defaults.",
+  "overrides": {}
+}

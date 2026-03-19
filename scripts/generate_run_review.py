@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-生成 Step5B 运行验收报告
+Generate Step5B discovery run review report.
+Usage: python3 scripts/generate_run_review.py [--run-dir PATH]
 """
+import argparse
 import json
 from collections import defaultdict, Counter
 from urllib.parse import urlparse
@@ -9,26 +11,37 @@ import statistics
 from pathlib import Path
 from datetime import datetime
 
-def analyze_run():
-    """分析运行结果并生成报告"""
+# T1 insurer domains (commercial tier) - used for insurer-domain counts
+INSURER_DOMAINS = {
+    "geico.com", "progressive.com", "allstate.com", "farmers.com", "nationwide.com",
+    "libertymutual.com", "travelers.com", "aaa.com", "ace.aaa.com", "usaa.com"
+}
+
+def analyze_run(run_dir: Path):
+    """Analyze run results and generate report."""
     
-    # 读取数据
-    repo_root = Path(__file__).parent.parent
-    results_dir = repo_root / "results" / "auto_insurance_discovery"
+    candidates_file = run_dir / "candidates.json"
+    passing_file = run_dir / "passing.json"
     
-    with open(results_dir / "candidates.json", 'r') as f:
+    if not candidates_file.exists():
+        raise FileNotFoundError(f"candidates.json not found in {run_dir}")
+    
+    with open(candidates_file, 'r') as f:
         candidates = json.load(f)
     
-    with open(results_dir / "passing.json", 'r') as f:
-        passing = json.load(f)
+    if passing_file.exists():
+        with open(passing_file, 'r') as f:
+            passing = json.load(f)
+    else:
+        passing = [c for c in candidates if not c.get('blocked_by_robots') and c.get('score', 0) >= 15.0]
     
     verify_docs = []
     try:
-        with open(results_dir / "verify_corpus.jsonl", 'r') as f:
+        with open(run_dir / "verify_corpus.jsonl", 'r') as f:
             for line in f:
                 if line.strip():
                     verify_docs.append(json.loads(line))
-    except:
+    except FileNotFoundError:
         pass
     
     # 统计信息
@@ -49,6 +62,10 @@ def analyze_run():
     avg_length = statistics.mean(content_lengths) if content_lengths else 0
     max_length = max(content_lengths) if content_lengths else 0
     min_length = min(content_lengths) if content_lengths else 0
+    
+    # Insurer-domain counts (from T1 commercial insurers)
+    insurer_candidates = [c for c in candidates if c.get('domain', '') in INSURER_DOMAINS]
+    insurer_passing = [c for c in passing if c.get('domain', '') in INSURER_DOMAINS]
     
     # 筛选 Top 20 最适合 Demo 的页面
     # 标准：内容完整、信息权威、覆盖客户真实问题
@@ -94,7 +111,7 @@ def analyze_run():
     report_lines.append("# Step5B Auto Insurance Discovery 运行验收报告")
     report_lines.append("")
     report_lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    report_lines.append(f"**运行目录**: `{results_dir}`")
+    report_lines.append(f"**运行目录**: `{run_dir}`")
     report_lines.append("")
     report_lines.append("---")
     report_lines.append("")
@@ -106,11 +123,25 @@ def analyze_run():
     report_lines.append("|------|------|")
     report_lines.append(f"| 总候选 URL 数量 | {total_candidates} |")
     report_lines.append(f"| 通过筛选的高质量 URL 数量 | {total_passing} |")
+    report_lines.append(f"| 来自 insurer 域名的候选数 | {len(insurer_candidates)} |")
+    report_lines.append(f"| 来自 insurer 域名的通过数 | {len(insurer_passing)} |")
     report_lines.append(f"| 实际可用内容页面数量 | {total_verify_docs} |")
     report_lines.append(f"| 平均内容长度 | {avg_length:.0f} 字符 |")
     report_lines.append(f"| 最长内容 | {max_length} 字符 |")
     report_lines.append(f"| 最短内容 | {min_length} 字符 |")
     report_lines.append("")
+    
+    # Top 10 passing URLs
+    report_lines.append("## Top 10 Passing URLs")
+    report_lines.append("")
+    for i, c in enumerate(passing[:10], 1):
+        title = c.get('title', 'N/A')[:70]
+        url = c.get('url', '')
+        score = c.get('score', 0)
+        report_lines.append(f"{i}. **{title}**")
+        report_lines.append(f"   - URL: {url}")
+        report_lines.append(f"   - Score: {score}")
+        report_lines.append("")
     
     # 2. 域名分布
     report_lines.append("## 2️⃣ 域名分布（Top 10）")
@@ -320,7 +351,7 @@ def analyze_run():
     report_lines.append("*报告生成完成*")
     
     # 写入文件
-    output_file = results_dir / "RUN_REVIEW.md"
+    output_file = run_dir / "RUN_REVIEW.md"
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write('\n'.join(report_lines))
     
@@ -328,4 +359,17 @@ def analyze_run():
     return output_file
 
 if __name__ == "__main__":
-    analyze_run()
+    parser = argparse.ArgumentParser(description="Generate Step5B discovery run review")
+    parser.add_argument("--run-dir", type=str, default=None,
+                       help="Run directory (default: results/auto_insurance_discovery)")
+    args = parser.parse_args()
+    
+    repo_root = Path(__file__).parent.parent
+    if args.run_dir:
+        run_dir = Path(args.run_dir)
+        if not run_dir.is_absolute():
+            run_dir = repo_root / run_dir
+    else:
+        run_dir = repo_root / "results" / "auto_insurance_discovery"
+    
+    analyze_run(run_dir)

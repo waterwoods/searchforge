@@ -28,8 +28,12 @@ import { RagLabDetailPage } from './pages/RagLabDetailPage';
 import StewardDashboard from './pages/StewardDashboard';
 import { MetricsHub } from './pages/lab/MetricsHub';
 import VitalsDashboardPage from './pages/VitalsDashboardPage';
+import UnifiedIntakePage from './pages/UnifiedIntakePage';
+import AddCarRulesPage from './pages/AddCarRulesPage';
+import ScenarioLogicCenterPage from './pages/ScenarioLogicCenterPage';
 import { DemoPage } from './pages/DemoPage';
-
+import { DemoRouteSmoke } from './pages/DemoRouteSmoke';
+import { ClientConfigProvider } from './context/ClientConfigContext';
 function App() {
     return (
         <ConfigProvider
@@ -39,8 +43,8 @@ function App() {
         >
             <AntdApp>
                 <Routes>
-                    {/* All pages use the same AppLayout */}
-                    <Route path="/" element={<AppLayout />}>
+                    {/* All pages use the same AppLayout; ClientConfigProvider for Unified Intake client copy */}
+                    <Route path="/" element={<ClientConfigProvider><AppLayout /></ClientConfigProvider>}>
                         {/* Default page is Showtime */}
                         <Route index element={<ShowtimePage />} />
 
@@ -99,10 +103,23 @@ function App() {
 
                         {/* Vitals Monitor Route */}
                         <Route path="vitals" element={<VitalsDashboardPage />} />
+
+                        {/* Unified Intake MVP — Broker triage */}
+                        <Route path="workbench/unified-intake" element={<UnifiedIntakePage />} />
+                        {/* Scenario Logic Center — founder/broker review */}
+                        <Route path="workbench/scenario-logic-center" element={<ScenarioLogicCenterPage />} />
+                        {/* Add-Car Quote Rules Center */}
+                        <Route path="workbench/add-car-rules" element={<AddCarRulesPage />} />
                     </Route>
-                    
-                    {/* Demo Route - Standalone (no AppLayout) */}
-                    <Route path="demo" element={<DemoPage />} />
+
+                    {/* Demo - TOP-LEVEL route (no AppLayout). Use DemoRouteSmoke for smoke test. */}
+                    <Route path="/demo" element={
+                        <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                            <div style={{ minHeight: '100vh', background: '#fff', padding: '1rem' }}>
+                                <DemoPage />
+                            </div>
+                        </ConfigProvider>
+                    } />
                 </Routes>
             </AntdApp>
         </ConfigProvider>

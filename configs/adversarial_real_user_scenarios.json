@@ -1,0 +1,63 @@
+{
+  "version": "1",
+  "description": "Adversarial real-user scenario pack — messy, imperfect human behavior for stress-testing",
+  "flows": [
+    {
+      "id": "add_car",
+      "name": "Add Car / New Quote",
+      "scenarios": [
+        {"id": "A1", "text": "宝马x5，多少钱", "style": "ultra-short, no verb"},
+        {"id": "A2", "text": "我新车，下周拿，保险大概？", "style": "vague, no vehicle details"},
+        {"id": "A3", "text": "加车，但是 VIN 还没拿到", "style": "add-car with explicit VIN gap"},
+        {"id": "A4", "text": "新车想报价 还没提车", "style": "future delivery, minimal info"},
+        {"id": "A5", "text": "x5 下周提 90210 多少钱", "style": "fragment, wrong order"},
+        {"id": "A6", "text": "想加一台车 型号还没定", "style": "intent clear, no model"},
+        {"id": "A7", "text": "quote for new car, picking up tomorrow", "style": "English, no make/model"}
+      ]
+    },
+    {
+      "id": "renewal_premium",
+      "name": "Renewal / Premium Too High",
+      "scenarios": [
+        {"id": "R1", "text": "保费太贵了，能不能想办法便宜点", "style": "vague, no policy context"},
+        {"id": "R2", "text": "我是不是把其中一辆先去掉会便宜点", "style": "coverage adjustment, indirect"},
+        {"id": "R3", "text": "续保涨了好多 有办法吗", "style": "short, no bill"},
+        {"id": "R4", "text": "太贵了想降一点", "style": "ultra-vague"},
+        {"id": "R5", "text": "能不能便宜 保单我发你", "style": "casual, policy mentioned later"}
+      ]
+    },
+    {
+      "id": "claim_intake",
+      "name": "Claim Intake / Accident",
+      "scenarios": [
+        {"id": "C1", "text": "刚撞了，对方跑了，我现在先干嘛", "style": "panic, hit-and-run"},
+        {"id": "C2", "text": "出事了 要拍什么照", "style": "ultra-short"},
+        {"id": "C3", "text": "accident 对方保险要记吗", "style": "mixed, incomplete"},
+        {"id": "C4", "text": "撞车了 人没事 接下来怎么办", "style": "emotional, safety first"},
+        {"id": "C5", "text": "刚出事故 对方没保险", "style": "uninsured other driver"}
+      ]
+    },
+    {
+      "id": "notice_payment",
+      "name": "Notice / Payment / Cancellation",
+      "scenarios": [
+        {"id": "N1", "text": "这个英文 notice 是不是要停了 我没看懂", "style": "notice + cancel confusion"},
+        {"id": "N2", "text": "payment failed 这个严重吗 我现在在上班", "style": "urgency question, context"},
+        {"id": "N3", "text": "说我要cancel了 什么意思", "style": "vague cancel"},
+        {"id": "N4", "text": "last notice 是不是今天要付", "style": "urgent, deadline question"},
+        {"id": "N5", "text": "付款失败了 怎么办", "style": "short Chinese"}
+      ]
+    },
+    {
+      "id": "document_chase",
+      "name": "Document Chase / Underwriting",
+      "scenarios": [
+        {"id": "D1", "text": "都发过了怎么还要 declaration page", "style": "frustrated, already sent"},
+        {"id": "D2", "text": "上次说那个材料我又发了 还不行吗", "style": "prior convo, vague"},
+        {"id": "D3", "text": "dec page 上周就发了 carrier还说缺", "style": "mixed, resend confusion"},
+        {"id": "D4", "text": "garaging proof 是什么 为什么要", "style": "document confusion"},
+        {"id": "D5", "text": "缺什么材料 我一起发", "style": "proactive but no context"}
+      ]
+    }
+  ]
+}

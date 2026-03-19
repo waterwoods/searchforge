@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "description": "评估问题集，用于测试 RAG 检索效果",
+  "questions": [
+    {
+      "id": "eval_001",
+      "question": "加州法律要求的最低汽车责任险保额是多少？",
+      "question_en": "What is the minimum auto liability insurance coverage required by California law?",
+      "expected_answer_keywords": [
+        "15/30/5",
+        "$15,000",
+        "$30,000",
+        "$5,000",
+        "人身伤害",
+        "property damage",
+        "per person",
+        "per accident"
+      ],
+      "content_types": ["eligibility", "compliance"],
+      "priority": "high",
+      "evaluation_criteria": {
+        "accuracy": "是否包含具体数字（15/30/5）",
+        "completeness": "是否解释三个数字的含义",
+        "clarity": "答案是否清晰易懂"
+      }
+    },
+    {
+      "id": "eval_002",
+      "question": "碰撞险（Collision）和全险（Comprehensive）有什么区别？",
+      "question_en": "What is the difference between Collision and Comprehensive coverage?",
+      "expected_answer_keywords": [
+        "collision",
+        "comprehensive",
+        "覆盖范围",
+        "coverage",
+        "适用场景",
+        "价格差异",
+        "deductible"
+      ],
+      "content_types": ["coverage", "comparison"],
+      "priority": "high",
+      "evaluation_criteria": {
+        "accuracy": "定义是否正确",
+        "comparison": "是否清晰对比两者",
+        "practicality": "是否包含适用场景说明"
+      }
+    },
+    {
+      "id": "eval_003",
+      "question": "发生车祸后，我应该如何申请理赔？",
+      "question_en": "How should I file a claim after a car accident?",
+      "expected_answer_keywords": [
+        "报案",
+        "file a claim",
+        "步骤",
+        "所需文件",
+        "documents",
+        "时间线",
+        "timeline",
+        "contact"
+      ],
+      "content_types": ["claims", "faq"],
+      "priority": "high",
+      "evaluation_criteria": {
+        "step_completeness": "是否包含所有关键步骤",
+        "practicality": "是否包含具体操作指导",
+        "documentation": "是否说明所需文件"
+      }
+    },
+    {
+      "id": "eval_004",
+      "question": "什么是 SR-22 文件？谁需要它？",
+      "question_en": "What is an SR-22 form? Who needs it?",
+      "expected_answer_keywords": [
+        "SR-22",
+        "文件",
+        "form",
+        "适用人群",
+        "who needs",
+        "获取方式",
+        "how to get",
+        "DMV"
+      ],
+      "content_types": ["eligibility", "compliance", "faq"],
+      "priority": "medium",
+      "evaluation_criteria": {
+        "definition_accuracy": "定义是否准确",
+        "applicability": "是否说明适用场景",
+        "process": "是否包含获取方式"
+      }
+    },
+    {
+      "id": "eval_005",
+      "question": "哪些因素会影响我的汽车保险费率？",
+      "question_en": "What factors affect my auto insurance rates?",
+      "expected_answer_keywords": [
+        "驾驶记录",
+        "driving record",
+        "车型",
+        "vehicle type",
+        "年龄",
+        "age",
+        "地点",
+        "location",
+        "信用评分",
+        "credit score",
+        "折扣",
+        "discounts"
+      ],
+      "content_types": ["rates", "faq", "guides"],
+      "priority": "medium",
+      "evaluation_criteria": {
+        "factor_completeness": "是否涵盖主要因素",
+        "explanation_clarity": "解释是否清晰",
+        "actionability": "是否提供改善建议"
+      }
+    }
+  ],
+  "evaluation_metrics": {
+    "retrieval": [
+      "Recall@5",
+      "Recall@10",
+      "MRR@5",
+      "nDCG@10"
+    ],
+    "answer_quality": [
+      "accuracy",
+      "completeness",
+      "relevance",
+      "clarity"
+    ]
+  }
+}

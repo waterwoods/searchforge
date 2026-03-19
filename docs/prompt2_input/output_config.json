@@ -1,0 +1,43 @@
+{
+  "output": {
+    "format": "jsonl",
+    "output_dir": "data/raw",
+    "file_naming": {
+      "pattern": "{site_name}_{content_type}_{date}.jsonl",
+      "date_format": "YYYYMMDD",
+      "sanitize_site_name": true,
+      "description": "示例: statefarm_faq_20240115.jsonl"
+    },
+    "directory_structure": {
+      "enabled": true,
+      "structure": {
+        "raw": "data/raw/{site_name}/",
+        "processed": "data/processed/chunks/",
+        "metadata": "data/metadata/"
+      }
+    },
+    "include_metadata": true,
+    "compress": false,
+    "batch_size": 1000,
+    "description": "每1000条记录写入一次文件",
+    "logging": {
+      "enabled": true,
+      "log_file": "data/metadata/crawl_log_{date}.json",
+      "log_format": "json",
+      "include_stats": true
+    },
+    "statistics": {
+      "enabled": true,
+      "output_file": "data/metadata/crawl_stats_{date}.json",
+      "include": [
+        "total_documents",
+        "total_chunks",
+        "documents_per_site",
+        "chunks_per_document",
+        "language_distribution",
+        "content_type_distribution",
+        "deduplication_stats"
+      ]
+    }
+  }
+}

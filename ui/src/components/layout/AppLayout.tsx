@@ -1,13 +1,18 @@
 // frontend/src/components/layout/AppLayout.tsx
 import React from 'react';
-import { Layout, theme } from 'antd';
-import { Outlet, useLocation } from 'react-router-dom'; // <-- Add useLocation
+import { Layout, Space, theme, Typography } from 'antd';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { KpiBar } from '../kpi/KpiBar';
 import { RightPanelTabs } from '../panels/RightPanelTabs'; // This is for Showtime
 import { WorkbenchPanel } from '../panels/WorkbenchPanel'; // <-- This is for Workbench
 import { AppSider } from './AppSider';
+import { ReleaseIdentityBar } from './ReleaseIdentityBar';
+import { useClientConfig } from '../../context/ClientConfigContext';
 
 const { Header, Content, Sider } = Layout;
+const { Text } = Typography;
+
+const UNIFIED_INTAKE_PATH = '/workbench/unified-intake';
 
 export const AppLayout: React.FC = () => {
     const {
@@ -15,32 +20,46 @@ export const AppLayout: React.FC = () => {
     } = theme.useToken();
 
     const location = useLocation();
+    const isUnifiedIntake = location.pathname === UNIFIED_INTAKE_PATH;
+    const { uiCopy } = useClientConfig();
+    const appTitle = uiCopy.app_title ?? '保险经纪人智能助手';
 
-    // --- NEW CONTEXT-AWARE LOGIC ---
-    // Determine which panel to show in the right Sider
+    // --- CONTEXT-AWARE LOGIC ---
     let rightPanelContent;
-    if (location.pathname === '/workbench/code-lookup-agent' || location.pathname === '/workbench/single-home-stress') {
-        // Hide the generic right panel for the Code Lookup Agent page and Single Home Stress page
+    if (location.pathname === '/workbench/code-lookup-agent' || location.pathname === '/workbench/single-home-stress' || location.pathname === '/jobhunter' || location.pathname === '/workbench/jobhunter' || location.pathname === '/vitals' || isUnifiedIntake) {
         rightPanelContent = null;
     } else if (location.pathname === '/workbench') {
-        // ONLY the Leaderboard page shows the Experiment (RAG Triad) panel
         rightPanelContent = <WorkbenchPanel />;
     } else {
-        // Showtime (/) AND AgentStudio (/workbench/agent-studio)
-        // both need the "Improve" controls (RightPanelTabs).
         rightPanelContent = <RightPanelTabs />;
     }
-    // --- END NEW LOGIC ---
+    // --- END ---
 
     return (
         <Layout style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <Header style={{ display: 'flex', alignItems: 'center', color: 'white', flexShrink: 0 }}>
-                <KpiBar />
+            <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', flexShrink: 0, paddingLeft: 24, paddingRight: 24, gap: 16 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0, maxWidth: 'calc(100% - 260px)', overflow: 'hidden' }}>
+                    {isUnifiedIntake ? (
+                        <Space size={16}>
+                            <Text style={{ color: 'rgba(255,255,255,0.95)', fontSize: 16, fontWeight: 600 }}>
+                                {appTitle}
+                            </Text>
+                            <Link to="/workbench" style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
+                                返回工作台
+                            </Link>
+                        </Space>
+                    ) : (
+                        <KpiBar />
+                    )}
+                </div>
+                {!isUnifiedIntake && <ReleaseIdentityBar />}
             </Header>
             <Layout style={{ flex: 1, overflow: 'hidden' }}>
-                <Sider width={200} style={{ overflow: 'auto' }}>
-                    <AppSider />
-                </Sider>
+                {!isUnifiedIntake && (
+                    <Sider width={200} style={{ overflow: 'auto' }}>
+                        <AppSider />
+                    </Sider>
+                )}
                 <Layout style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <Content
                         style={{
@@ -49,7 +68,7 @@ export const AppLayout: React.FC = () => {
                             margin: 0,
                             background: colorBgContainer,
                             borderRadius: borderRadiusLG,
-                            overflow: 'auto', // Changed from 'hidden' to 'auto' to enable scrolling
+                            overflow: 'auto',
                             display: 'flex',
                             flexDirection: 'column'
                         }}
@@ -57,9 +76,11 @@ export const AppLayout: React.FC = () => {
                         <Outlet />
                     </Content>
                 </Layout>
-                <Sider width={300} style={{ overflow: 'auto' }}>
-                    {rightPanelContent} {/* <-- Render the correct panel */}
-                </Sider>
+                {rightPanelContent !== null && (
+                    <Sider width={300} style={{ overflow: 'auto' }}>
+                        {rightPanelContent}
+                    </Sider>
+                )}
             </Layout>
         </Layout>
     );

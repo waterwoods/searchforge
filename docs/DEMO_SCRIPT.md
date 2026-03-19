@@ -184,6 +184,6 @@ How to file a car insurance claim?
 
 ## 🔗 相关文档
 
-- [验收清单](./PROMPT3_ACCEPTANCE_CHECKLIST.md)
+- [验收清单](./supporting/PROMPT3_ACCEPTANCE_CHECKLIST.md)
 - [API 文档](../services/fiqa_api/routes/query.py)
 - [前端代码](../ui/src/pages/DemoPage.tsx)

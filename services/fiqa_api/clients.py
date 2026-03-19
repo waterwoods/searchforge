@@ -58,6 +58,7 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 QDRANT_GRPC_PORT = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
 QDRANT_URL = os.getenv("QDRANT_URL", f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # Optional, for Qdrant Cloud
 QDRANT_TIMEOUT = int(os.getenv("QDRANT_TIMEOUT", "10"))  # 10s default for gRPC
 
 # Redis
@@ -240,6 +241,10 @@ def get_qdrant_client():
     """
     Get singleton Qdrant client.
     
+    Supports both local Qdrant (via QDRANT_HOST/QDRANT_PORT) and Qdrant Cloud (via QDRANT_URL/QDRANT_API_KEY).
+    If QDRANT_URL is set and contains 'http://' or 'https://', uses URL-based connection.
+    Otherwise, falls back to host/port for backward compatibility.
+    
     Returns:
         QdrantClient instance
         
@@ -253,17 +258,57 @@ def get_qdrant_client():
             if _qdrant_client is None:
                 try:
                     from qdrant_client import QdrantClient
-                    logger.info(f"[CLIENTS] Initializing Qdrant client at {QDRANT_HOST}:{QDRANT_PORT} (gRPC:{QDRANT_GRPC_PORT})")
-                    _qdrant_client = QdrantClient(
-                        host=QDRANT_HOST,
-                        port=QDRANT_PORT,
-                        grpc_port=QDRANT_GRPC_PORT,
-                        prefer_grpc=True,
-                        timeout=QDRANT_TIMEOUT
-                    )
-                    logger.info(f"[CLIENTS] Qdrant client initialized successfully with gRPC")
+                    
+                    # When USE_LOCAL_QDRANT=1, force local host/port (ignore QDRANT_URL from .env.cloudrun)
+                    use_url_mode = False
+                    if os.getenv("USE_LOCAL_QDRANT") != "1":
+                        use_url_mode = (
+                            QDRANT_URL and
+                            (QDRANT_URL.startswith("http://") or QDRANT_URL.startswith("https://")) and
+                            QDRANT_URL != f"http://{QDRANT_HOST}:{QDRANT_PORT}"  # Not the default constructed URL
+                        )
+                    
+                    if use_url_mode:
+                        # URL-based connection (Qdrant Cloud or remote instance)
+                        logger.info(f"[CLIENTS] Initializing Qdrant client with URL: {QDRANT_URL}")
+                        logger.info(f"[CLIENTS] QDRANT_API_KEY present: {bool(QDRANT_API_KEY)}")
+                        logger.info(f"[CLIENTS] QDRANT_TIMEOUT: {QDRANT_TIMEOUT}s")
+                        client_kwargs = {
+                            "url": QDRANT_URL,
+                            "timeout": QDRANT_TIMEOUT
+                        }
+                        if QDRANT_API_KEY:
+                            client_kwargs["api_key"] = QDRANT_API_KEY
+                            logger.info(f"[CLIENTS] Using API key authentication (key length: {len(QDRANT_API_KEY)})")
+                        else:
+                            logger.warning(f"[CLIENTS] QDRANT_API_KEY not set - connection may fail if Qdrant Cloud requires authentication")
+                        _qdrant_client = QdrantClient(**client_kwargs)
+                        # Test connection immediately
+                        try:
+                            collections = _qdrant_client.get_collections()
+                            logger.info(f"[CLIENTS] Qdrant client initialized successfully (URL mode), collections: {len(collections.collections)}")
+                        except Exception as test_error:
+                            logger.error(f"[CLIENTS] Qdrant client created but connection test failed: {test_error}")
+                            logger.error(f"[CLIENTS] Connection details: URL={QDRANT_URL}, API_KEY={'***' if QDRANT_API_KEY else 'None'}")
+                            raise
+                    else:
+                        # Host/port-based connection (local Qdrant, backward compatible)
+                        logger.info(f"[CLIENTS] Initializing Qdrant client at {QDRANT_HOST}:{QDRANT_PORT} (gRPC:{QDRANT_GRPC_PORT})")
+                        _qdrant_client = QdrantClient(
+                            host=QDRANT_HOST,
+                            port=QDRANT_PORT,
+                            grpc_port=QDRANT_GRPC_PORT,
+                            prefer_grpc=True,
+                            timeout=QDRANT_TIMEOUT
+                        )
+                        logger.info(f"[CLIENTS] Qdrant client initialized successfully with gRPC")
                 except Exception as e:
                     logger.error(f"[CLIENTS] Failed to initialize Qdrant client: {e}")
+                    logger.error(f"[CLIENTS] QDRANT_URL: {QDRANT_URL}")
+                    logger.error(f"[CLIENTS] QDRANT_API_KEY present: {bool(QDRANT_API_KEY)}")
+                    logger.error(f"[CLIENTS] QDRANT_HOST: {QDRANT_HOST}, QDRANT_PORT: {QDRANT_PORT}")
+                    import traceback
+                    logger.error(f"[CLIENTS] Traceback: {traceback.format_exc()}")
                     raise RuntimeError(f"Qdrant client initialization failed: {e}")
     
     return _qdrant_client
@@ -287,7 +332,8 @@ def ensure_qdrant_connection() -> bool:
     # Quick health check
     try:
         # Lightweight check: get collections (should be fast)
-        _qdrant_client.get_collections()
+        collections = _qdrant_client.get_collections()
+        logger.debug(f"[QDRANT] Connection healthy, {len(collections.collections)} collections available")
         
         # Mark connection as OK if it was previously failed
         if not _qdrant_connection_ok:
@@ -300,6 +346,9 @@ def ensure_qdrant_connection() -> bool:
         # Connection failed
         if _qdrant_connection_ok:
             logger.error(f"[QDRANT] Connection lost: {e}")
+            logger.error(f"[QDRANT] Connection details: URL={QDRANT_URL}, API_KEY={'***' if QDRANT_API_KEY else 'None'}")
+            import traceback
+            logger.debug(f"[QDRANT] Traceback: {traceback.format_exc()}")
             _qdrant_connection_ok = False
         
         # Check cooldown before attempting reconnect
@@ -317,17 +366,47 @@ def ensure_qdrant_connection() -> bool:
         with _lock:
             try:
                 from qdrant_client import QdrantClient
-                _qdrant_client = QdrantClient(url=QDRANT_URL, timeout=QDRANT_TIMEOUT)
+                
+                # Use same logic as get_qdrant_client() for reconnection
+                use_url_mode = False
+                if os.getenv("USE_LOCAL_QDRANT") != "1":
+                    use_url_mode = (
+                        QDRANT_URL and
+                        (QDRANT_URL.startswith("http://") or QDRANT_URL.startswith("https://")) and
+                        QDRANT_URL != f"http://{QDRANT_HOST}:{QDRANT_PORT}"
+                    )
+                
+                if use_url_mode:
+                    logger.info(f"[QDRANT] Reconnecting with URL: {QDRANT_URL}")
+                    client_kwargs = {
+                        "url": QDRANT_URL,
+                        "timeout": QDRANT_TIMEOUT
+                    }
+                    if QDRANT_API_KEY:
+                        client_kwargs["api_key"] = QDRANT_API_KEY
+                        logger.info(f"[QDRANT] Using API key for reconnection")
+                    _qdrant_client = QdrantClient(**client_kwargs)
+                else:
+                    logger.info(f"[QDRANT] Reconnecting to {QDRANT_HOST}:{QDRANT_PORT}")
+                    _qdrant_client = QdrantClient(
+                        host=QDRANT_HOST,
+                        port=QDRANT_PORT,
+                        grpc_port=QDRANT_GRPC_PORT,
+                        prefer_grpc=True,
+                        timeout=QDRANT_TIMEOUT
+                    )
                 
                 # Test new connection
-                _qdrant_client.get_collections()
-                
-                logger.info("[QDRANT] Reconnection successful")
+                collections = _qdrant_client.get_collections()
+                logger.info(f"[QDRANT] Reconnection successful, {len(collections.collections)} collections available")
                 _qdrant_connection_ok = True
                 return True
                 
             except Exception as reconnect_error:
                 logger.error(f"[QDRANT] Reconnection failed: {reconnect_error}")
+                logger.error(f"[QDRANT] Connection details: URL={QDRANT_URL}, API_KEY={'***' if QDRANT_API_KEY else 'None'}")
+                import traceback
+                logger.error(f"[QDRANT] Reconnection traceback: {traceback.format_exc()}")
                 return False
 
 

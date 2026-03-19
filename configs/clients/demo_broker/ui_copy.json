@@ -1,0 +1,20 @@
+{
+  "version": "1",
+  "description": "Demo broker client — generic branding for A→B migration proof. Use ?client=demo_broker to see variation.",
+  "app_title": "保险经纪助手 Demo",
+  "office_label": "客服团队",
+  "office_workbench": "客服团队工作台",
+  "talk_to_agent_label": "联系人工",
+  "talk_to_agent_starter": "我想联系客服",
+  "handoff_default": "客服团队会尽快处理，有结果会联系您。",
+  "welcome_highlight": "您的消息会直接转给客服团队，我们会尽快帮您处理。",
+  "welcome_hint": "如需人工协助，点击「联系人工」即可，消息会直接转给客服团队。",
+  "quick_start_buttons": {
+    "add_car": { "label": "获取报价", "shortLabel": "报价", "starterMessage": "我想加新车报价" },
+    "remove_car": { "label": "保单变更", "shortLabel": "变更", "starterMessage": "我想从保单拿掉一辆车" },
+    "claim_intake": { "label": "报事故", "shortLabel": "事故", "starterMessage": "刚出事故了" },
+    "cancellation_warning": { "label": "付款 / 账单", "shortLabel": "付款", "starterMessage": "付款有问题" },
+    "missing_document": { "label": "上传材料", "shortLabel": "材料", "starterMessage": "有材料要补" },
+    "talk_to_agent": { "label": "联系人工", "shortLabel": "联系人工", "starterMessage": "我想联系客服" }
+  }
+}

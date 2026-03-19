@@ -1,0 +1,34 @@
+{
+  "version": "1",
+  "description": "Chen Kui handoff reply phrases when case is ready for broker",
+  "handoff": {
+    "customer_requested_human": {
+      "zh": "好的，已帮您转给陈奎办公室，他们会尽快联系您。",
+      "en": "Got it. We've forwarded your request to the office. They will contact you shortly."
+    },
+    "add_car": {
+      "zh": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+      "en": "Got your quote details. Our office will review and follow up with you."
+    },
+    "remove_car": {
+      "zh": "您说的卖车信息已整理好了，办公室会尽快处理，有结果会联系您。",
+      "en": "Got your vehicle removal details. Our office will process this and follow up with you."
+    },
+    "other": {
+      "zh": "您说的情况已整理好了，办公室会尽快处理，有结果会联系您。",
+      "en": "Got it. We've noted your info—our office will review and follow up with you."
+    },
+    "other_received": {
+      "zh": "好的，收到了。办公室会尽快处理，有结果会联系您。",
+      "en": "Got it, thanks. Our office will review this and follow up with you."
+    },
+    "other_corrected": {
+      "zh": "好的，明白了。办公室会尽快处理，有结果会联系您。",
+      "en": "Got it, understood. Our office will review this and follow up with you."
+    },
+    "other_clarification": {
+      "zh": "您说的已收到，办公室会优先核实，有结果会联系您。",
+      "en": "Got it. We'll prioritize verification and follow up with you."
+    }
+  }
+}

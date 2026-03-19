@@ -409,7 +409,9 @@ def do_code_lookup(message: str) -> Dict[str, Any]:
     # Step 3A: Vector Search
     # ========================================
     try:
-        vector_results = qdrant_client.search(
+        from services.fiqa_api.utils.qdrant_adapter import qdrant_search
+        vector_results = qdrant_search(
+            client=qdrant_client,
             collection_name=QDRANT_COLLECTION,
             query_vector=query_vector,
             limit=VECTOR_SEARCH_LIMIT
@@ -437,7 +439,9 @@ def do_code_lookup(message: str) -> Dict[str, Any]:
             
             # Perform filter-only search (no vector needed)
             # We use a dummy query_vector but rely on the filter
-            symbol_results = qdrant_client.search(
+            from services.fiqa_api.utils.qdrant_adapter import qdrant_search
+            symbol_results = qdrant_search(
+                client=qdrant_client,
                 collection_name=QDRANT_COLLECTION,
                 query_vector=query_vector,  # Still need a vector for the search API
                 query_filter=name_filter,

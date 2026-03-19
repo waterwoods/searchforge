@@ -1,0 +1,52 @@
+{
+  "version": "1",
+  "description": "Insurance scenario reply templates — first-turn customer-facing drafts. Used when config present; falls back to triage hardcoded defaults when missing.",
+  "templates": {
+    "cancellation_warning": {
+      "zh": "这个通知说明保单有取消风险。现在最关键的是把通知和付款记录发我，我先帮你确认；如果还没付，今天尽快处理。",
+      "en": "This notice means the policy could cancel. The most important thing right now is to send me the notice and any payment confirmation—I will check; if it is still unpaid we will handle it today."
+    },
+    "add_car": {
+      "zh": "可以先帮你看这台车的报价。把车子的年份、车型、VIN（有的话）、提车日期、地址邮编和主要驾驶人发我，我先帮你算。",
+      "en": "I can start a quote for the new car. Send me the year, make/model, VIN if you have it, delivery date, zip or address, and main driver and I will check it."
+    },
+    "payment_lapse_expiration": {
+      "zh": "这看起来是付款出了问题。现在最关键的是把最新通知或付款截图发我，我先帮你确认；如果还没付，今天尽快处理，避免停保。",
+      "en": "This looks like a payment issue. The most important thing right now is to send me the latest notice or any payment confirmation—I will check; if it is still unpaid we will fix it today."
+    },
+    "missing_document": {
+      "zh_with_item": "现在文件里还缺 {item_text}。请再发我一次；如果你之前已经发过，也跟我说一声，我这边帮你核对，核对好后就能往下推。",
+      "zh_without_item": "现在文件里还缺资料。请把资料再发我一次；如果你之前已经发过，也跟我说一声，我这边帮你核对。",
+      "zh_already_sent_with_item": "您说发过了，我这边帮你核对。把完整通知和 {item_text} 发我，核对好后就能往下推。",
+      "zh_already_sent_without_item": "您说发过了，我这边帮你核对。把完整通知和您发过的材料发我，核对好后就能往下推。",
+      "en_with_item": "They still need the {item_text}. Please send {pronoun} again when you can, and if you already sent {pronoun}, tell me so I can check on my side—once verified we can move forward.",
+      "en_without_item": "They still need one document on this file. Please send it again when you can, and if you already sent it, tell me so I can check on my side.",
+      "en_already_sent_with_item": "You said you already sent it—I will check on my side. Send me the full notice and the {item_text} so we can verify and move forward.",
+      "en_already_sent_without_item": "You said you already sent it—I will check on my side. Send me the full notice and what you sent so we can verify and move forward."
+    },
+    "english_notice_confusion": {
+      "zh": "英文通知有些术语看不懂很正常。把完整通知或更清楚的照片发我，我先帮你看一下，再告诉你重点和下一步怎么处理。",
+      "en": "English notices can be confusing. Send me the full notice or a clearer photo and I will tell you what it means and what to do next."
+    },
+    "premium_review": {
+      "zh": "我先帮你看这次保费为什么变高，再看看有没有能调整的地方。把现在保单和最新账单发我（先发其中一个也行），我先帮你核对。",
+      "en": "I can review why the premium went up and see what can realistically be adjusted. Send me the current policy page or latest bill (either one works), and I will check."
+    },
+    "remove_vehicle": {
+      "zh": "好的，可以处理。把卖车日期、车辆信息和是否已经过户发我，我先帮你确认。",
+      "en": "Got it, I can help with that. Send me the vehicle details, sale date, and whether title already transferred and I will confirm the next step."
+    },
+    "claim_intake": {
+      "zh": "刚出事故一定很着急，先别慌。先确保人没事，再拍现场照片、记下对方车牌和保险信息。先把事故经过、对方信息和照片发我，我就能帮你确认下一步怎么报案。",
+      "en": "Accidents can be stressful—first make sure everyone is okay. Then take photos and get the other driver's license and insurance info. Send me what happened, the other driver's info and photos, and I can confirm the next steps to report the claim."
+    },
+    "claim_intake_hit_and_run": {
+      "zh": "刚出事故一定很着急，先别慌。对方跑了的话，最关键的是车牌号、现场照片和事故经过。先把这些发我，我就能帮你确认下一步怎么报案和报保险。",
+      "en": "Accidents can be stressful—first make sure everyone is okay. If the other driver left, the most important things are the license plate, photos, and what happened. Send me those and I can confirm the next steps to report the claim."
+    },
+    "premium_review_reassurance": {
+      "zh": "一般有办法的。我先帮你看这次保费为什么变高，再看看有没有能调整的地方。把现在保单和最新账单发我（先发其中一个也行），我先帮你核对。",
+      "en": "There are usually options. I can review why the premium went up and see what can realistically be adjusted. Send me the current policy page or latest bill (either one works), and I will check."
+    }
+  }
+}

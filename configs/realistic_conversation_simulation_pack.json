@@ -1,0 +1,211 @@
+{
+  "version": "1",
+  "description": "Realistic conversation simulation pack — messy, shorthand, emotional, correction-heavy for trial readiness stress-test",
+  "single_turn": [
+    {
+      "id": "RC-S1",
+      "input": "x5 多少钱",
+      "style": "ultra-short, no verb",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["报价", "quote", "VIN", "车型", "year", "发我"],
+      "anti_patterns": ["这段内容还不够完整", "please provide more context"],
+      "business_goal": "Add-car quote",
+      "why_matters": "High-frequency; shorthand common in WeChat"
+    },
+    {
+      "id": "RC-S2",
+      "input": "加车 90210 下周拿",
+      "style": "fragment, zip+delivery only",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["报价", "车型", "year", "VIN"],
+      "anti_patterns": ["这段内容还不够完整", "please provide more context"],
+      "business_goal": "Add-car quote",
+      "why_matters": "Common shorthand; missing vehicle"
+    },
+    {
+      "id": "RC-S3",
+      "input": "我付了呀，怎么还说 payment failed",
+      "style": "already-paid frustration",
+      "expected_category": "payment_lapse_expiration",
+      "expected_draft_contains_any": ["付款", "核对", "截图", "发我", "payment"],
+      "business_goal": "Payment clarification",
+      "why_matters": "Customer frustration; broker must verify"
+    },
+    {
+      "id": "RC-S4",
+      "input": "都发过了怎么还要 declaration page",
+      "style": "frustrated, already sent",
+      "expected_category": "missing_document",
+      "expected_draft_contains_any": ["核对", "发我", "declaration", "材料"],
+      "business_goal": "Document chase",
+      "why_matters": "Common pain; broker must reconcile"
+    },
+    {
+      "id": "RC-S5",
+      "input": "找陈奎",
+      "style": "Talk to Agent, ultra-short",
+      "expected_category": "customer_requested_human",
+      "expected_draft_contains_any": ["陈奎", "联系", "办公室"],
+      "business_goal": "Hand off to broker",
+      "why_matters": "Must detect and route correctly"
+    },
+    {
+      "id": "RC-S6",
+      "input": "急死了 保单要停了",
+      "style": "emotional, urgent",
+      "expected_category": "cancellation_warning",
+      "expected_urgency": "critical",
+      "expected_draft_contains_any": ["今天", "付款", "取消", "urgent"],
+      "business_goal": "Cancellation risk",
+      "why_matters": "Same-day action required"
+    },
+    {
+      "id": "RC-S7",
+      "input": "加车顺便notice什么意思",
+      "style": "mixed intent, no space",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["报价", "notice", "发我", "帮你看"],
+      "anti_patterns": ["这段内容还不够完整", "please provide more context"],
+      "business_goal": "Add-car + notice confusion",
+      "why_matters": "Mixed intent common"
+    },
+    {
+      "id": "RC-S8",
+      "input": "续保太贵 有办法吗",
+      "style": "vague, shorthand",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["保费", "账单", "保单", "发我"],
+      "anti_patterns": ["这段内容还不够完整"],
+      "business_goal": "Premium review",
+      "why_matters": "High-frequency retention"
+    },
+    {
+      "id": "RC-S9",
+      "input": "dec page 上周就发了 carrier还说缺",
+      "style": "mixed, resend confusion",
+      "expected_category": "missing_document",
+      "expected_draft_contains_any": ["核对", "declaration", "发我", "材料"],
+      "business_goal": "Document chase",
+      "why_matters": "Broker must escalate to carrier"
+    },
+    {
+      "id": "RC-S10",
+      "input": "刚撞了 对方跑了 急",
+      "style": "panic, hit-and-run, shorthand",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["事故", "照片", "报案", "发我"],
+      "anti_patterns": ["这段内容还不够完整"],
+      "business_goal": "Claim intake",
+      "why_matters": "First-response guidance"
+    },
+    {
+      "id": "RC-S11",
+      "input": "账单我发你了 什么意思",
+      "style": "billing clarification, already sent",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["账单", "bill", "帮你看", "发我"],
+      "business_goal": "Billing clarification",
+      "why_matters": "Not payment failure; explain bill"
+    },
+    {
+      "id": "RC-S12",
+      "input": "卖车了 拿掉",
+      "style": "ultra-short remove-car",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["拿掉", "卖车", "过户", "车型"],
+      "anti_patterns": ["这段内容还不够完整"],
+      "business_goal": "Remove vehicle",
+      "why_matters": "Routine policy change"
+    },
+    {
+      "id": "RC-S13",
+      "input": "联系人工",
+      "style": "Talk to Agent",
+      "expected_category": "customer_requested_human",
+      "expected_draft_contains_any": ["陈奎", "联系", "办公室"],
+      "business_goal": "Hand off",
+      "why_matters": "Must detect free-text"
+    },
+    {
+      "id": "RC-S14",
+      "input": "last notice 是不是今天要付",
+      "style": "urgent, deadline question",
+      "expected_category": "cancellation_warning",
+      "expected_urgency": "critical",
+      "expected_draft_contains_any": ["今天", "付款", "取消"],
+      "business_goal": "Cancellation risk",
+      "why_matters": "Same-day action"
+    },
+    {
+      "id": "RC-S15",
+      "input": "garaging proof 是什么 为什么要",
+      "style": "document confusion",
+      "expected_category": "customer_question",
+      "expected_draft_contains_any": ["garaging", "停放", "发我", "帮你看"],
+      "business_goal": "Document explanation",
+      "why_matters": "Common confusion"
+    }
+  ],
+  "multi_turn": [
+    {
+      "id": "RC-M1",
+      "category": "add_car_quote",
+      "name": "Shorthand add-car correction",
+      "turns": [
+        {"role": "customer", "text": "x5 多少钱"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是这个，2024 Model Y"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Correction: wrong car; must use corrected vehicle"
+    },
+    {
+      "id": "RC-M2",
+      "category": "missing_document",
+      "name": "Already sent frustrated",
+      "turns": [
+        {"role": "customer", "text": "UW need dec page 客户说上周发过了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "又发了一次 微信"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Preserve already-sent context in summary"
+    },
+    {
+      "id": "RC-M3",
+      "category": "payment_failed_cancellation_risk",
+      "name": "Already paid correction",
+      "turns": [
+        {"role": "customer", "text": "payment failed 怎么办"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "我付了呀 截图发你"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Preserve paid + screenshot in handoff"
+    },
+    {
+      "id": "RC-M4",
+      "category": "add_car_quote",
+      "name": "Talk to Agent mid-flow",
+      "turns": [
+        {"role": "customer", "text": "想加一台2024 X5"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "算了 联系人工吧"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Customer switches to Talk to Agent"
+    },
+    {
+      "id": "RC-M5",
+      "category": "premium_review",
+      "name": "Vague then bill sent",
+      "turns": [
+        {"role": "customer", "text": "太贵了想降一点"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "续保通知发你微信了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Vague T1; T2 provides bill"
+    }
+  ]
+}

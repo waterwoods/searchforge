@@ -1,0 +1,127 @@
+{
+  "version": "1",
+  "description": "Mixed-intent scenario pack — customer asks 2 things at once for stress-testing",
+  "flows": [
+    {
+      "id": "add_car",
+      "name": "Add Car / New Quote",
+      "scenarios": [
+        {
+          "id": "MI-AC1",
+          "text": "我想加一辆车，然后这个 garaging proof 又是什么？",
+          "style": "add-car + document confusion",
+          "primary_intent": "add_car",
+          "secondary_intent": "document_confusion"
+        },
+        {
+          "id": "MI-AC2",
+          "text": "想加车，顺便现在保费能不能一起看一下",
+          "style": "add-car + premium review",
+          "primary_intent": "add_car",
+          "secondary_intent": "premium_review"
+        },
+        {
+          "id": "MI-AC3",
+          "text": "我刚买了新车，下周提车，另外保单是不是也快到期了？",
+          "style": "add-car + renewal",
+          "primary_intent": "add_car",
+          "secondary_intent": "renewal"
+        },
+        {
+          "id": "MI-AC4",
+          "text": "add car 2024 Tesla Model Y, and what does this notice mean?",
+          "style": "add-car + notice confusion (English)",
+          "primary_intent": "add_car",
+          "secondary_intent": "notice_confusion"
+        }
+      ]
+    },
+    {
+      "id": "renewal_premium",
+      "name": "Renewal / Premium Too High",
+      "scenarios": [
+        {
+          "id": "MI-PR1",
+          "text": "保费太贵了，我想把一辆车去掉，另外这个英文 notice 我也没看懂",
+          "style": "premium + remove-car + notice confusion",
+          "primary_intent": "premium_review",
+          "secondary_intent": "remove_car_and_notice"
+        },
+        {
+          "id": "MI-PR2",
+          "text": "payment failed 是什么意思，还有我能不能换个便宜点的方案？",
+          "style": "payment confusion + premium review",
+          "primary_intent": "payment_confusion",
+          "secondary_intent": "premium_review"
+        },
+        {
+          "id": "MI-PR3",
+          "text": "续保涨了好多，能不能便宜点，顺便dec page发过了还说要",
+          "style": "premium + document chase",
+          "primary_intent": "premium_review",
+          "secondary_intent": "missing_document"
+        }
+      ]
+    },
+    {
+      "id": "claim_intake",
+      "name": "Claim Intake / Accident",
+      "scenarios": [
+        {
+          "id": "MI-CL1",
+          "text": "我刚撞了车，对方跑了，顺便我保单是不是也快到期了？",
+          "style": "claim + renewal",
+          "primary_intent": "claim_intake",
+          "secondary_intent": "renewal"
+        },
+        {
+          "id": "MI-CL2",
+          "text": "出事了要拍什么，还有这个payment failed通知什么意思",
+          "style": "claim + notice confusion",
+          "primary_intent": "claim_intake",
+          "secondary_intent": "notice_confusion"
+        }
+      ]
+    },
+    {
+      "id": "notice_payment",
+      "name": "Notice / Payment / Cancellation",
+      "scenarios": [
+        {
+          "id": "MI-N1",
+          "text": "这个英文 notice 看不懂，是不是要停了，还有我想加一台车",
+          "style": "notice + cancel + add-car",
+          "primary_intent": "notice_or_payment",
+          "secondary_intent": "add_car"
+        },
+        {
+          "id": "MI-N2",
+          "text": "payment failed 怎么办，另外dec page我上周发过了",
+          "style": "payment + document already sent",
+          "primary_intent": "payment",
+          "secondary_intent": "missing_document"
+        }
+      ]
+    },
+    {
+      "id": "document_chase",
+      "name": "Document Chase / Underwriting",
+      "scenarios": [
+        {
+          "id": "MI-D1",
+          "text": "garaging proof 是什么，为什么要，顺便我想加一辆2024 X5",
+          "style": "document confusion + add-car",
+          "primary_intent": "document_confusion",
+          "secondary_intent": "add_car"
+        },
+        {
+          "id": "MI-D2",
+          "text": "缺材料我一起发，另外保费能不能便宜点",
+          "style": "missing doc + premium",
+          "primary_intent": "missing_document",
+          "secondary_intent": "premium_review"
+        }
+      ]
+    }
+  ]
+}

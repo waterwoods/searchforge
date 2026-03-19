@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Connection Test</h1>
+    <button onclick="testAPI()">Test API</button>
+    <pre id="result"></pre>
+    <script>
+        async function testAPI() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                // 测试 1: 直接访问后端
+                console.log('Test 1: Direct backend access');
+                const response1 = await fetch('http://localhost:8000/api/query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({question:'test',top_k:1})
+                });
+                const data1 = await response1.json();
+                resultEl.textContent = '✅ Direct access: ' + JSON.stringify(data1, null, 2);
+                
+                // 测试 2: 通过相对路径（使用 Vite proxy）
+                console.log('Test 2: Via Vite proxy');
+                const response2 = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({question:'test',top_k:1})
+                });
+                const data2 = await response2.json();
+                resultEl.textContent += '\n\n✅ Via proxy: ' + JSON.stringify(data2, null, 2);
+            } catch (error) {
+                resultEl.textContent = '❌ Error: ' + error.message + '\n' + error.stack;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

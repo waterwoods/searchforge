@@ -1,0 +1,46 @@
+{
+  "deduplication": {
+    "method": "hash",
+    "hash_algorithm": "md5",
+    "document_hash": {
+      "fields": ["title", "text"],
+      "text_prefix_length": 500,
+      "description": "使用 title + text前500字符计算哈希"
+    },
+    "chunk_hash": {
+      "fields": ["text"],
+      "description": "使用块文本内容计算哈希"
+    },
+    "url_normalization": {
+      "enabled": true,
+      "remove_query_params": true,
+      "remove_anchors": true,
+      "remove_trailing_slash": true,
+      "lowercase": true,
+      "description": "规范化 URL（移除查询参数、锚点、尾部斜杠）"
+    },
+    "similarity_threshold": 0.95,
+    "storage": {
+      "type": "file",
+      "path": "metadata/deduplication_hashes.json",
+      "description": "维护已抓取文档的哈希集合"
+    },
+    "levels": [
+      {
+        "level": "url",
+        "enabled": true,
+        "description": "URL 级去重"
+      },
+      {
+        "level": "document",
+        "enabled": true,
+        "description": "文档级去重"
+      },
+      {
+        "level": "chunk",
+        "enabled": true,
+        "description": "块级去重"
+      }
+    ]
+  }
+}

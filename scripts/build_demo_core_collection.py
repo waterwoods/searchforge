@@ -269,11 +269,13 @@ def get_latest_run_dir() -> Optional[Path]:
 
 
 def initialize_qdrant_client() -> QdrantClient:
-    """Initialize Qdrant client"""
+    """Initialize Qdrant client.
+    When USE_LOCAL_QDRANT=1, force local host/port (ignore QDRANT_URL from .env.cloudrun).
+    """
     qdrant_host = os.getenv("QDRANT_HOST", "localhost")
     qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+    qdrant_url = None if os.getenv("USE_LOCAL_QDRANT") == "1" else os.getenv("QDRANT_URL")
+    qdrant_api_key = None if os.getenv("USE_LOCAL_QDRANT") == "1" else os.getenv("QDRANT_API_KEY")
     
     if qdrant_url and (qdrant_url.startswith("http://") or qdrant_url.startswith("https://")):
         logger.info(f"Connecting to Qdrant at {qdrant_url}")
@@ -384,21 +386,22 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Dry run (don't upsert to Qdrant)")
     parser.add_argument("--no-robots-check", action="store_true", help="Skip robots.txt check")
     parser.add_argument("--report-dir", type=Path, default=INGEST_REPORT_DIR, help="Ingest report output dir")
+    parser.add_argument("--report-run-dir", type=str, default=None, help="Run dir for report (e.g. 2026-02-21_105716)")
     args = parser.parse_args()
     limit = args.limit or args.top_n
 
     # Resolve URLs
     urls = []
-    selected_run = None
+    selected_run = args.report_run_dir
     if args.url_list:
         urls = load_urls_from_file(args.url_list, limit)
     elif args.run_dir:
-        selected_run = str(args.run_dir)
+        selected_run = selected_run or str(args.run_dir)
         urls = get_urls_from_run_dir(args.run_dir, limit)
     else:
         run_dir = get_latest_run_dir()
         if run_dir:
-            selected_run = str(run_dir)
+            selected_run = selected_run or str(run_dir)
             urls = get_urls_from_run_dir(run_dir, limit)
         if not urls:
             urls = parse_run_review_md(RESULTS_DISCOVERY / "RUN_REVIEW.md")

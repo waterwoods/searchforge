@@ -1,10 +1,10 @@
+// [vitals-lan] inspected - API request configuration uses relative paths for proxy
 /**
  * Centralized Axios instance for API requests
  * Provides consistent configuration and error handling
  */
 import axios, { AxiosInstance, AxiosError } from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE ?? '/api';
+import { API_BASE_URL } from './config';
 
 /**
  * Create and configure axios instance

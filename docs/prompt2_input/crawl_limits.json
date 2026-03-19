@@ -1,0 +1,33 @@
+{
+  "limits": {
+    "max_pages_per_site": 500,
+    "max_depth": 3,
+    "delay_between_requests": {
+      "min_seconds": 1,
+      "max_seconds": 3,
+      "description": "随机延迟，避免被封"
+    },
+    "timeout": {
+      "connect": 10,
+      "read": 30,
+      "total": 60
+    },
+    "max_retries": 3,
+    "retry_delay": 5,
+    "concurrent_requests": {
+      "per_domain": 2,
+      "total": 5,
+      "description": "每个域名最多2个并发，总共5个并发"
+    },
+    "user_agent": {
+      "rotation": true,
+      "user_agents": [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+      ]
+    },
+    "respect_robots_txt": true,
+    "respect_rate_limits": true
+  }
+}

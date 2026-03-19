@@ -5,6 +5,64 @@
 
 ---
 
+## Tomorrow Demo Playbook（明日演示操作手册）
+
+**目标**: Demo 在无 LAN、后端宕机时仍可演示。
+
+### 今晚准备（Tonight）
+
+```bash
+cd /home/andy/searchforge
+bash scripts/demo_prepare_tomorrow.sh
+```
+
+- 运行 quick_validate（需后端）
+- 重新生成 offline pack（需后端）
+- 报告写入 `results/demo_prepare/YYYY-MM-DD_HHMMSS/REPORT.md`
+
+### 明日启动（Tomorrow）
+
+```bash
+cd /home/andy/searchforge
+bash scripts/run_demo_local.sh
+```
+
+- 等待 "Demo ready" 和 Demo URL
+- **Demo URL:** http://localhost:5173/demo
+
+### 模式说明
+
+**Demo mode enforces gov+insurer mix for stability:** When using demo collection with top_k=5, the backend applies a deterministic diversity fallback so that results always include ≥1 gov domain (dmv.ca.gov, insurance.ca.gov, *.ca.gov) and ≥1 insurer domain when possible. This ensures consistent validation across runs.
+
+| 状态 | 页面显示 | 操作 |
+|------|----------|------|
+| **Live** | 绿色 "Live" 徽章 | 点击任意问题，实时查询后端 |
+| **Offline** | 橙色 "Offline" 徽章 | 点击 3 个推荐问题，加载预存答案 |
+
+### 后端宕机时（Fallback）
+
+1. 脚本仍会启动 UI，打印 Demo URL
+2. 打开 Demo URL，页面显示 "Offline" 模式
+3. 点击 3 个推荐问题，加载预存答案
+4. 结论+下一步、引用、复制给客户 均可用
+
+### 验证（可选）
+
+```bash
+# 需后端运行
+bash scripts/demo_quick_validate.sh
+```
+
+若失败，报告会说明原因和最小修复步骤。
+
+### 刷新离线包（当后端可用时）
+
+```bash
+python3 scripts/snapshot_demo_answers.py
+```
+
+---
+
 ## 一、验收标准
 
 ### ✅ 1. 页面展示验收
@@ -189,27 +247,59 @@ npm run dev
 
 ## 七、本地启动命令
 
-### 一次性构建 Demo 知识库
+### One-command start（推荐）
+```bash
+cd /home/andy/searchforge
+bash scripts/run_demo_local.sh
+```
+- 自动启动后端 (8001) + 前端 (5173)
+- 等待 healthz 通过后打印 Demo URL
+- Ctrl+C 同时停止后端和前端
+
+**Demo URL:** http://localhost:5173/demo
+
+### Quick validate（3 个业务问题）
+```bash
+# 先启动 demo（如上），再在另一终端运行：
+bash scripts/demo_quick_validate.sh
+```
+- 发送 3 个中文问题到 /api/query
+- 报告写入 `results/demo_quick_validate/YYYY-MM-DD_HHMMSS/REPORT.md`
+
+### What "PASS" means for broker demo
+Quick validate 通过表示：
+- **results ≥ 3**：每个问题至少 3 条检索结果
+- **sources ≥ 2**：至少 2 条可引用来源
+- **snippets ≥ 2**：至少 2 条有摘要（可展示给客户）
+- **gov_domain**：至少 1 条来自加州官方（.ca.gov / dmv.ca.gov / insurance.ca.gov）
+- **insurer_domain**：至少 1 条来自主流保险公司（geico, progressive, usaa 等）
+
+**Gov + insurer 混合** 确保回答既有官方权威，又有保险公司实务参考，对经纪人演示更有说服力。
+
+### 手动启动（可选）
+
+#### 一次性构建 Demo 知识库
 ```bash
 cd /home/andy/searchforge
 python3 scripts/build_demo_core_collection.py --top-n 20
 ```
 
-### 启动后端服务
+#### 启动后端服务
 ```bash
-cd /home/andy/searchforge/services/fiqa_api
-# 根据项目配置启动（例如：uvicorn app_main:app --reload --port 8000）
+cd /home/andy/searchforge
+set -a; source .env.cloudrun; set +a
+TRANSLATION_ENABLED=1 TRANSLATION_PROVIDER=argos python3 -m uvicorn services.fiqa_api.app_main:app --host 0.0.0.0 --port 8001
 ```
 
-### 启动前端服务
+#### 启动前端服务
 ```bash
 cd /home/andy/searchforge/ui
 npm run dev
 ```
 
-### 访问 Demo 页面
-- 前端地址：`http://localhost:5173`（或根据 Vite 配置的端口）
-- 导航到 Demo 页面
+#### 访问 Demo 页面
+- 前端地址：`http://localhost:5173`
+- Demo 页面：http://localhost:5173/demo
 
 ---
 

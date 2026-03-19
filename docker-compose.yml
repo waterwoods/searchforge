@@ -98,6 +98,9 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - MILVUS_HOST=milvus-standalone
+      - TRANSLATION_ENABLED=1
+      - TRANSLATION_PROVIDER=argos
+      - TRANSLATE_SOURCES_TO_ZH=1
       - USE_LANGGRAPH_SINGLE_HOME=true
       - MILVUS_PORT=19530
       - VECTOR_BACKEND=${VECTOR_BACKEND:-faiss}
@@ -140,7 +143,7 @@ services:
       - ./configs:/app/configs:ro
       - ./services/fiqa_api:/app/services/fiqa_api:ro
       - ./mcp:/app/mcp:ro
-      - ./data:/app/data:ro
+      - ./data:/app/data
       - ./reports:/app/reports
       - ./.runs:/app/.runs
       - ./baselines:/app/baselines

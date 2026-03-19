@@ -5,12 +5,16 @@ import {
     RobotOutlined,
     SearchOutlined,
     OrderedListOutlined,
+    UnorderedListOutlined,
     DatabaseOutlined,
     ThunderboltOutlined,
     NodeIndexOutlined,
     ToolOutlined,
     BarChartOutlined,
-    BankOutlined
+    BankOutlined,
+    HeartOutlined,
+    InboxOutlined,
+    SettingOutlined,
 } from '@ant-design/icons';
 import { Menu } from 'antd';
 import { Link, useLocation } from 'react-router-dom';
@@ -31,6 +35,11 @@ const menuItems = [
         key: '/codemap',
         icon: <NodeIndexOutlined />,
         label: <Link to="/codemap">Code Map</Link>,
+    },
+    {
+        key: '/vitals',
+        icon: <HeartOutlined />,
+        label: <Link to="/vitals">Vitals Monitor</Link>,
     },
     {
         key: '/rag-lab-sub',
@@ -108,6 +117,21 @@ const menuItems = [
                 key: '/workbench/single-home-stress',
                 icon: <BankOutlined />,
                 label: <Link to="/workbench/single-home-stress">Single Home Stress</Link>,
+            },
+            {
+                key: '/workbench/unified-intake',
+                icon: <InboxOutlined />,
+                label: <Link to="/workbench/unified-intake">Unified Intake</Link>,
+            },
+            {
+                key: '/workbench/scenario-logic-center',
+                icon: <UnorderedListOutlined />,
+                label: <Link to="/workbench/scenario-logic-center">Scenario Logic</Link>,
+            },
+            {
+                key: '/workbench/add-car-rules',
+                icon: <SettingOutlined />,
+                label: <Link to="/workbench/add-car-rules">加车报价规则</Link>,
             },
         ],
     },

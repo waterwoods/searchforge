@@ -2,6 +2,14 @@
 
 > 一个由AI驱动的、能够分析、可视化并解释您代码库的智能体。
 
+## Broker Demo (California Auto Insurance)
+
+**Agents (Cursor/OpenClaw):** Read [AGENTS.md](AGENTS.md) first — default entry point, reading order, script path.  
+**Doc map:** [docs/PROJECT_DOC_SYSTEM_MAP.md](docs/PROJECT_DOC_SYSTEM_MAP.md) — goals, runbooks, guardrails.  
+**Quick start:** `docs/ANDY_QUICK_START.md` → `bash scripts/run_demo_local.sh` → http://localhost:5173/demo
+
+---
+
 ## Quick Start
 
 1. `docker compose build rag-api`
@@ -16,6 +24,249 @@
 - `POST /api/query` with JSON `{"question": "...", "budget_ms": 400}`（`q` 也是合法别名）
 - 兼容 `GET /api/query?q=...&budget_ms=400` 查询字符串形式
 - 响应包含 `items`/`sources` 阵列，便于直连校验脚本统计结果条数
+
+## Environment Variables & Secrets Management
+
+### Unified Secret Management
+
+**All sensitive information (local and Cloud Run) is stored in `.env.cloudrun`**:
+- ✅ `.env.cloudrun` is git-ignored (never committed)
+- ✅ Template: `configs/demo.env.example` (committed, no real values)
+- ✅ Deployment scripts automatically load `.env.cloudrun`
+
+### Setup Steps
+
+1. **Create `.env.cloudrun` from template**:
+   ```bash
+   cp configs/demo.env.example .env.cloudrun
+   ```
+
+2. **Edit `.env.cloudrun` with your real values**:
+   ```bash
+   # Required for Qdrant Cloud
+   QDRANT_URL=https://your-cluster.qdrant.io
+   QDRANT_API_KEY=your-api-key
+   QDRANT_COLLECTION=auto_insurance_v1
+   
+   # Optional: GCP overrides
+   PROJECT_ID=your-project-id
+   REGION=us-west1
+   ```
+
+3. **Verify configuration**:
+   ```bash
+   python scripts/check_qdrant_env.py
+   ```
+
+### Local Development
+
+For local Python scripts, use `.env` file (automatically loaded via `python-dotenv`):
+
+```bash
+# Copy template
+cp .env.example .env
+
+# Edit with your values
+nano .env
+```
+
+**Note**: 
+- `.env` is for local Python scripts (pipelines, scripts)
+- `.env.cloudrun` is for Cloud Run deployment
+- Both are git-ignored
+
+### Cloud Run Deployment
+
+The deployment script (`scripts/deploy_rag_demo.sh`) **automatically loads `.env.cloudrun`**:
+
+```bash
+# 1. Ensure .env.cloudrun exists and is configured
+cp configs/demo.env.example .env.cloudrun
+# Edit .env.cloudrun with real values
+
+# 2. Run deployment (automatically sources .env.cloudrun)
+bash scripts/deploy_rag_demo.sh
+```
+
+**What happens**:
+- ✅ Script checks for `.env.cloudrun` (fails fast if missing)
+- ✅ Automatically sources `.env.cloudrun` to load all variables
+- ✅ Variables are passed to Cloud Run via `--set-env-vars`
+
+**Important**: 
+- ✅ Never commit `.env.cloudrun` (already in `.gitignore`)
+- ✅ `configs/demo.env.example` is the template (committed, no secrets)
+- ✅ Dockerfiles do NOT copy `.env.cloudrun` into images
+- ✅ Secrets are passed via Cloud Run environment variables
+
+### Verify Environment Variables
+
+Check your environment variable configuration:
+
+```bash
+# For local Python scripts
+python scripts/check_qdrant_env.py
+
+# For deployment (checks .env.cloudrun)
+bash scripts/deploy_rag_demo.sh  # Will validate on startup
+```
+
+The verification script will:
+- ✅ Check if required variables are set
+- ✅ Mask secrets in output (shows only first/last few chars)
+- ✅ Provide clear error messages if missing
+
+## Cloud Run Deployment
+
+### Quick Deploy and Verify
+
+To deploy and verify the Cloud Run service with all required environment variables:
+
+```bash
+# 1. Set required environment variables (or source from .env file)
+export QDRANT_URL=https://your-qdrant-cloud-instance.qdrant.io
+export QDRANT_API_KEY=your-api-key
+export QDRANT_COLLECTION=fiqa_10k_v1
+export GCP_PROJECT=your-project-id
+export GCP_REGION=us-west1
+
+# 2. Run the complete deployment and verification script
+bash scripts/deploy_and_verify_cloud_run.sh
+```
+
+This script will:
+- ✅ Check all required environment variables
+- ✅ Preflight verify Qdrant Cloud connectivity
+- ✅ Deploy to Cloud Run with DEMO_MODE=true
+- ✅ Wait for service readiness (up to 3 minutes)
+- ✅ Test query endpoint with sample queries
+- ✅ Print final checklist
+
+### Required Environment Variables
+
+For Cloud Run deployment, the following environment variables are required:
+
+- `QDRANT_URL` - Qdrant Cloud instance URL (e.g., `https://xxx.us-east4-0.gcp.cloud.qdrant.io`)
+- `QDRANT_API_KEY` - Qdrant Cloud API key
+- `QDRANT_COLLECTION` - Collection name (e.g., `fiqa_10k_v1`)
+- `GCP_PROJECT` - Google Cloud Project ID
+- `GCP_REGION` - Google Cloud Region (e.g., `us-west1`)
+
+Optional but recommended:
+- `DEMO_MODE=true` - Enables retrieval-only mode (embedding model optional for readiness)
+
+### Cloud Run Demo Endpoints
+
+The backend is deployed on Cloud Run at:
+**Base URL**: `https://fiqa-api-g7zatxrycq-uw.a.run.app`
+
+**Note**: After deployment, the service URL may change. Check the deployment output or run:
+```bash
+gcloud run services describe fiqa-api --region us-west1 --format 'value(status.url)'
+```
+
+### Health & Readiness Checks
+
+```bash
+# Health check (always returns 200 if service is running)
+curl https://fiqa-api-g7zatxrycq-uw.a.run.app/healthz
+
+# Readiness check (returns 200 only when core dependencies are ready)
+curl https://fiqa-api-g7zatxrycq-uw.a.run.app/readyz
+```
+
+Expected `/readyz` response when ready:
+```json
+{
+  "ok": true,
+  "status": "ready",
+  "clients_ready": true,
+  "clients": {
+    "embedding_model": true,
+    "qdrant_connected": true,
+    "redis_connected": false,
+    "openai": false
+  },
+  "service": "app_main",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+### Query Endpoint
+
+```bash
+# POST query with JSON body
+curl -X POST "https://fiqa-api-g7zatxrycq-uw.a.run.app/api/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What is a bond yield?",
+    "top_k": 5
+  }'
+
+# Alternative: GET query with query parameters
+curl "https://fiqa-api-g7zatxrycq-uw.a.run.app/api/query?q=What%20is%20a%20bond%20yield?&top_k=5"
+```
+
+Expected response format:
+```json
+{
+  "ok": true,
+  "trace_id": "uuid-here",
+  "question": "What is a bond yield?",
+  "answer": "",
+  "latency_ms": 123.45,
+  "route": "qdrant",
+  "params": {
+    "top_k": 5,
+    "rerank": false
+  },
+  "sources": [
+    {
+      "doc_id": "doc_123",
+      "title": "Bond Yields Explained",
+      "snippet": "A bond yield is the return an investor realizes...",
+      "score": 0.85,
+      "url": "https://example.com/doc_123"
+    }
+  ],
+  "metrics": {
+    "search_ms": 45.2,
+    "total_ms": 123.45
+  },
+  "reranker_triggered": false,
+  "ts": "2024-01-15T10:30:00Z"
+}
+```
+
+### Metrics Endpoint
+
+```bash
+# Get demo summary metrics
+curl https://fiqa-api-g7zatxrycq-uw.a.run.app/api/metrics/demo-summary
+```
+
+### Demo Mode Configuration
+
+For HR/demo purposes, `DEMO_MODE=true` is automatically set during deployment. This makes the embedding model optional for readiness checks, allowing the service to be ready even if the embedding model is still warming up. The service will still function for retrieval queries using pre-computed embeddings in Qdrant.
+
+**Note**: In demo mode, `/readyz` will return `ok: true` as long as Qdrant is connected, even if the embedding model is not ready.
+
+### Manual Deployment
+
+If you prefer to deploy manually:
+
+```bash
+# 1. Set environment variables
+export QDRANT_URL=...
+export QDRANT_API_KEY=...
+export QDRANT_COLLECTION=fiqa_10k_v1
+export DEMO_MODE=true
+
+# 2. Deploy
+bash scripts/deploy_rag_demo.sh
+```
+
+The deploy script automatically includes `DEMO_MODE=true` in the Cloud Run environment variables.
 
 ## Data readiness
 

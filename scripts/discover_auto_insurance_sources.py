@@ -39,27 +39,35 @@ def signal_handler(signum, frame):
 
 # Seed URLs - known-good starting points
 # Note: Using specific /auto/ or /car-insurance/ pages, not homepages, for better discovery
+# T0 = CA government (authoritative). T1 = commercial insurers (allowed, lower than .gov).
+# State Farm removed: blocked by robots.txt per prior run review.
 SEED_URLS = [
-    # T0: Official CA government sources
+    # T0: Official CA government sources (authoritative)
     "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/",
     "https://www.insurance.ca.gov/01-consumers/help/auto/",
-    # T1: Major insurers (auto insurance pages)
+    # T1: Major insurers - auto insurance entry/info pages
     "https://www.geico.com/information/aboutinsurance/auto/",
     "https://www.progressive.com/auto/",
-    "https://www.statefarm.com/insurance/auto",
     "https://www.allstate.com/auto-insurance",
     "https://www.farmers.com/insurance/auto",
     "https://www.nationwide.com/personal/insurance/auto/",
     "https://www.libertymutual.com/auto-insurance",
+    "https://www.travelers.com/car-insurance",
+    "https://ace.aaa.com/insurance/auto-insurance.html",
+    "https://www.usaa.com/insurance/vehicles/auto",
 ]
 
-# Domain trust tiers
+# Domain trust tiers (see docs/STEP5B_SEEDS_TIERS_UPDATE.md)
+# T0: CA government domains - highest trust, authoritative for CA regulations
+# T1: Commercial insurers - major companies, allowed but lower than .gov
+# T2: Reputable third-party (NAIC, III, comparison sites)
 DOMAIN_TRUST_TIERS = {
     "T0": {  # Official CA gov domains - highest trust
         "dmv.ca.gov", "insurance.ca.gov", "ca.gov"
     },
-    "T1": {  # Top insurers - major insurance companies
-        "geico.com", "progressive.com", "statefarm.com", "allstate.com", "farmers.com", "nationwide.com", "libertymutual.com"
+    "T1": {  # Top insurers - major insurance companies (commercial tier)
+        "geico.com", "progressive.com", "allstate.com", "farmers.com", "nationwide.com",
+        "libertymutual.com", "travelers.com", "aaa.com", "ace.aaa.com", "usaa.com"
     },
     "T2": {  # Other reputable sources
         "naic.org",  # National Association of Insurance Commissioners
@@ -89,11 +97,12 @@ EXCLUDE_PATTERNS = [
 
 
 class RobotsTxtChecker:
-    """Check robots.txt compliance"""
+    """Check robots.txt compliance. Uses timeout to avoid hanging on slow domains."""
     
-    def __init__(self):
+    def __init__(self, timeout: int = 10):
         self.parsers: Dict[str, RobotFileParser] = {}
         self.user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+        self.timeout = timeout
     
     def can_fetch(self, url: str) -> bool:
         """Check if URL can be fetched according to robots.txt"""
@@ -104,8 +113,10 @@ class RobotsTxtChecker:
             rp = RobotFileParser()
             robots_url = urljoin(base_url, "/robots.txt")
             try:
-                rp.set_url(robots_url)
-                rp.read()
+                # Fetch with timeout to avoid hanging (RobotFileParser.read() has no timeout)
+                resp = requests.get(robots_url, timeout=self.timeout)
+                resp.raise_for_status()
+                rp.parse(resp.text.splitlines())
                 self.parsers[base_url] = rp
                 logger.debug(f"Loaded robots.txt from {robots_url}")
             except Exception as e:
@@ -320,9 +331,9 @@ class SourceDiscoverer:
         
         logger.info(f"Discovering from seed: {seed_url}")
         
-        # Check robots.txt
+        # Check robots.txt - log and skip blocked domains
         if not self.robots_checker.can_fetch(seed_url):
-            logger.warning(f"Blocked by robots.txt: {seed_url}")
+            logger.info(f"Blocked by robots.txt (skipping): {seed_url}")
             return discovered
         
         # Fetch seed page
@@ -369,7 +380,7 @@ class SourceDiscoverer:
         # Check robots.txt
         blocked = not self.robots_checker.can_fetch(url)
         if blocked:
-            logger.debug(f"Blocked by robots.txt: {url}")
+            logger.info(f"Blocked by robots.txt (skipping): {url}")
             return {
                 "url": url,
                 "domain": domain,

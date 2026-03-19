@@ -29,8 +29,15 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Pre-download and cache fastembed model at build time (avoids runtime HuggingFace download failures)
+# Model name must match runtime default: BAAI/bge-small-en-v1.5
+RUN python -c "from fastembed import TextEmbedding; model_name = 'BAAI/bge-small-en-v1.5'; print(f'[BUILD] Pre-downloading fastembed model: {model_name}'); emb = TextEmbedding(model_name=model_name); _ = next(iter(emb.embed(['warmup']))); print(f'✅ fastembed model cached: {model_name}')"
+
 # Copy the rest of the application code
 # Note: We copy from repo root to maintain module structure
+# First copy services/__init__.py to make services a package
+COPY services/__init__.py /app/services/__init__.py
+# Copy services/fiqa_api/ including all subdirectories (models, routes, etc.)
 COPY services/fiqa_api/ /app/services/fiqa_api/
 COPY services/core/ /app/services/core/
 COPY services/plugins/ /app/services/plugins/
@@ -47,16 +54,27 @@ COPY routes/ /app/routes/
 COPY orchestrators/ /app/orchestrators/
 COPY tools/ /app/tools/
 COPY experiments/ /app/experiments/
+COPY configs/ /app/configs/
 
 # Set PYTHONPATH to include /app
 ENV PYTHONPATH=/app:${PYTHONPATH}
+
+# Smoke test: verify critical imports work before deployment
+# Note: This test runs after all files are copied and PYTHONPATH is set
+RUN python -c "import sys; sys.path.insert(0, '/app'); import services.fiqa_api.models; print('✅ Import smoke test passed')" || \
+    (echo "❌ Import smoke test failed - check package structure" && \
+     echo "Debug: Checking structure..." && \
+     ls -la /app/services/ && \
+     ls -la /app/services/fiqa_api/ && \
+     ls -la /app/services/fiqa_api/models/ && \
+     exit 1)
 
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+    CMD curl -f http://127.0.0.1:${PORT}/healthz || exit 1
 
 # Run uvicorn with the app
 # Cloud Run sets PORT env var automatically, we use it here

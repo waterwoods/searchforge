@@ -1,12 +1,13 @@
 {
     "name": "searchforge-ui",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "private": true,
     "engines": {
         "node": ">=20 <21"
     },
     "scripts": {
-        "dev": "vite --host --port 5173",
+        "dev": "vite --host 0.0.0.0 --port 5173",
+        "dev:lan": "vite --host 0.0.0.0 --port 5173 --strictPort",
         "build": "vite build",
         "preview": "vite preview",
         "lint": "echo 'skip lint (scaffold only)'",
@@ -16,6 +17,7 @@
         "verify:deps": "node ../scripts/ui_depcheck.mjs"
     },
     "devDependencies": {
+        "@types/node": "^22.10.0",
         "@types/react": "^19.2.3",
         "@types/react-dom": "^19.2.2",
         "@types/svg-pan-zoom": "^3.3.0",

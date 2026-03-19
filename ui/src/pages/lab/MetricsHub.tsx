@@ -24,6 +24,7 @@ import {
     Tooltip,
     message,
     Table,
+    Switch,
 } from 'antd';
 import {
     BarChartOutlined,
@@ -37,14 +38,29 @@ import {
     LinkOutlined,
     CopyOutlined,
     DownloadOutlined,
+    ExperimentOutlined,
 } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useRagLabStore } from '../../store/ragLabStore';
 import type { JobMeta } from '../../api/experiment';
 import * as experimentApi from '../../api/experiment';
+import { API_BASE_URL } from '../../api/config';
 
 const { Title, Text, Paragraph } = Typography;
 const { Panel } = Collapse;
+
+// Helper function to build API URLs
+// In local dev (Vite proxy), use relative paths
+// In production (Vercel), use full Cloud Run URL
+const apiUrl = (path: string): string => {
+    // If API_BASE_URL is the default localhost, use relative path for Vite proxy
+    if (API_BASE_URL === 'http://localhost:8000' || !API_BASE_URL) {
+        return path.startsWith('/') ? path : `/${path}`;
+    }
+    // Otherwise, use full URL (production)
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${API_BASE_URL}${cleanPath}`;
+};
 
 interface TrilinesPoint {
     budget: number;
@@ -78,6 +94,19 @@ interface BudgetSegmentRow {
     policy_used: string | null;
     updated_at: string;
     trace_url: string | null;
+}
+
+interface DemoSummaryData {
+    dataset: string;
+    kpis: {
+        'recall@5'?: number;
+        'recall@10'?: number;
+        'mrr@5'?: number;
+        'ndcg@10'?: number;
+        avg_latency_ms?: number;
+        p95_latency_ms?: number;
+    };
+    timestamp: string;
 }
 
 export const MetricsHub = () => {
@@ -122,6 +151,40 @@ export const MetricsHub = () => {
     type DataMode = "full" | "fast";
     const [dataMode, setDataMode] = useState<DataMode>("full");
 
+    // Demo Mode state
+    const [demoMode, setDemoMode] = useState<boolean>(false);
+    const [demoSummary, setDemoSummary] = useState<DemoSummaryData | null>(null);
+    const [demoLoading, setDemoLoading] = useState(false);
+    const [demoError, setDemoError] = useState<string | null>(null);
+
+    // Fetch demo summary data
+    const fetchDemoSummary = async () => {
+        setDemoLoading(true);
+        setDemoError(null);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/metrics/demo-summary`);
+            if (!response.ok) {
+                if (response.status === 404) {
+                    setDemoError('Demo summary not found. Run fiqa_rag_benchmark.py to generate metrics.');
+                    return;
+                }
+                throw new Error(`Failed to fetch demo summary: ${response.status}`);
+            }
+            const data: DemoSummaryData = await response.json();
+            setDemoSummary(data);
+        } catch (err: any) {
+            if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                console.warn('Demo summary fetch network error:', err);
+                setDemoError('Network error: Could not fetch demo summary.');
+            } else {
+                setDemoError(err.message || 'Failed to fetch demo summary');
+                console.error('Demo summary fetch error:', err);
+            }
+        } finally {
+            setDemoLoading(false);
+        }
+    };
+
     // Fetch KPI data with robust error handling
     const fetchKPI = async (mode?: DataMode) => {
         const currentMode = mode ?? dataMode;
@@ -133,7 +196,7 @@ export const MetricsHub = () => {
                 params.set('mode', 'fast');
             }
             const url = `/api/metrics/kpi${params.toString() ? '?' + params.toString() : ''}`;
-            const response = await fetch(url);
+            const response = await fetch(apiUrl(url));
             if (!response.ok) {
                 if (response.status === 404) {
                     console.warn('KPI endpoint not found (404)');
@@ -171,7 +234,7 @@ export const MetricsHub = () => {
                 params.set('mode', 'fast');
             }
             const url = `/api/metrics/trilines${params.toString() ? '?' + params.toString() : ''}`;
-            const response = await fetch(url);
+            const response = await fetch(apiUrl(url));
             if (!response.ok) {
                 if (response.status === 404) {
                     console.warn('Trilines endpoint not found (404)');
@@ -200,7 +263,7 @@ export const MetricsHub = () => {
                 }
                 const widerUrl = `/api/metrics/trilines?${widerParams.toString()}`;
                 try {
-                    const widerResponse = await fetch(widerUrl);
+                    const widerResponse = await fetch(apiUrl(widerUrl));
                     if (widerResponse.ok) {
                         const widerData: TrilinesData = await widerResponse.json();
                         setTrilinesData(widerData);
@@ -234,7 +297,7 @@ export const MetricsHub = () => {
     // Fetch Langfuse URL with robust error handling
     const fetchLangfuseUrl = async () => {
         try {
-            const response = await fetch('/api/metrics/obs/url');
+            const response = await fetch(apiUrl('/api/metrics/obs/url'));
             if (response.status === 204) {
                 setLangfuseUrl(null);
                 return;
@@ -264,7 +327,7 @@ export const MetricsHub = () => {
     const fetchLastTraceUrls = async () => {
         setLastTraceLoading(true);
         try {
-            const response = await fetch('/api/metrics/obs/last?limit=10');
+            const response = await fetch(apiUrl('/api/metrics/obs/last?limit=10'));
             if (response.status === 204) {
                 setLastTraceUrls([]);
                 return;
@@ -296,7 +359,7 @@ export const MetricsHub = () => {
     const handleOpenLastTrace = async () => {
         setLastTraceLoading(true);
         try {
-            const response = await fetch('/api/metrics/obs/last?limit=10');
+            const response = await fetch(apiUrl('/api/metrics/obs/last?limit=10'));
             if (response.status === 204) {
                 return;
             }
@@ -347,7 +410,7 @@ export const MetricsHub = () => {
             const token = import.meta.env.DEV ? (import.meta.env as any).VITE_AUTOTUNER_TOKEN : undefined;
             const maybeAuth: Record<string, string> = token ? { 'X-Autotuner-Token': token } : {};
             const headers: Record<string, string> = maybeAuth;
-            const response = await fetch('/api/autotuner/status', { headers });
+            const response = await fetch(apiUrl('/api/autotuner/status'), { headers });
             if (!response.ok) {
                 if (response.status === 404 || response.status >= 500) {
                     // Backend not upgraded or server error
@@ -393,7 +456,7 @@ export const MetricsHub = () => {
                 'Content-Type': 'application/json',
                 ...maybeAuth,
             };
-            const response = await fetch('/api/autotuner/set_policy', {
+            const response = await fetch(apiUrl('/api/autotuner/set_policy'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ policy }),
@@ -526,14 +589,49 @@ export const MetricsHub = () => {
         if (budgetParam) setBudgetFilter(parseFloat(budgetParam));
     }, [searchParams]);
 
+    // Auto-enable demo mode if live data is empty (run once on mount)
+    useEffect(() => {
+        const checkAndEnableDemoMode = async () => {
+            // Try to fetch live KPI first
+            try {
+                const params = new URLSearchParams();
+                if (dataMode === "fast") {
+                    params.set('mode', 'fast');
+                }
+                const url = `/api/metrics/kpi${params.toString() ? '?' + params.toString() : ''}`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data: KPIData = await response.json();
+                    // If live data exists and has meaningful data, don't auto-enable demo mode
+                    if (data && (data.budgets?.length > 0 || data.success_rate > 0)) {
+                        return; // Keep demo mode off
+                    }
+                }
+            } catch (err) {
+                // Network error or no live data - will enable demo mode below
+            }
+            
+            // If no live data, enable demo mode
+            setDemoMode(true);
+            fetchDemoSummary();
+        };
+        
+        checkAndEnableDemoMode();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     useEffect(() => {
         fetchJobs();
-        fetchKPI();
-        fetchTrilines(timeRange || undefined, budgetFilter || undefined);
+        if (demoMode) {
+            fetchDemoSummary();
+        } else {
+            fetchKPI();
+            fetchTrilines(timeRange || undefined, budgetFilter || undefined);
+        }
         fetchLangfuseUrl();
         fetchLastTraceUrls();
         fetchAutotunerStatus();
-    }, [timeRange, budgetFilter, dataMode]);
+    }, [timeRange, budgetFilter, dataMode, demoMode]);
 
     // Refresh trilines when policy changes
     useEffect(() => {
@@ -805,6 +903,21 @@ export const MetricsHub = () => {
                     )}
                 </Space>
                 <Space>
+                    {/* Demo Mode Toggle */}
+                    <Space>
+                        <Text type="secondary">Demo Mode:</Text>
+                        <Switch
+                            checked={demoMode}
+                            onChange={(checked) => {
+                                setDemoMode(checked);
+                                if (checked) {
+                                    fetchDemoSummary();
+                                }
+                            }}
+                            checkedChildren="ON"
+                            unCheckedChildren="OFF"
+                        />
+                    </Space>
                     {/* Autotuner Policy Selector */}
                     <Space direction="vertical" size="small">
                         <Space>
@@ -888,8 +1001,33 @@ export const MetricsHub = () => {
                 />
             )}
 
+            {/* Demo Mode Indicator */}
+            {demoMode && (
+                <Alert
+                    message="Demo Mode: showing last benchmark results"
+                    description={demoError || (demoSummary ? `Dataset: ${demoSummary.dataset}` : 'Loading demo data...')}
+                    type="info"
+                    showIcon
+                    icon={<ExperimentOutlined />}
+                    style={{ marginBottom: '16px' }}
+                    closable
+                    onClose={() => setDemoMode(false)}
+                />
+            )}
+
+            {/* Demo Error Alert */}
+            {demoMode && demoError && (
+                <Alert
+                    message="Demo Mode Error"
+                    description={demoError}
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: '16px' }}
+                />
+            )}
+
             {/* Stale data warning */}
-            {kpiData && isDataStale(kpiData.updated_at) && (
+            {!demoMode && kpiData && isDataStale(kpiData.updated_at) && (
                 <Alert
                     message="Data may be stale"
                     description="Last updated more than 2 hours ago. Run 'make ci' to refresh."
@@ -899,83 +1037,194 @@ export const MetricsHub = () => {
                 />
             )}
 
-            {/* KPI Cards */}
-            <Row gutter={16} style={{ marginBottom: '24px' }}>
-                <Col xs={24} sm={12} md={6}>
-                    <Card>
-                        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                            <Text type="secondary">Success Rate</Text>
-                            {kpiLoading ? (
-                                <Skeleton.Input active size="large" style={{ width: '100%' }} />
-                            ) : (
-                                <Text strong style={{ fontSize: '24px' }}>
-                                    {kpiData ? `${(kpiData.success_rate * 100).toFixed(1)}%` : '—'}
-                                </Text>
-                            )}
-                        </Space>
-                    </Card>
-                </Col>
-                <Col xs={24} sm={12} md={6}>
-                    <Card>
-                        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                            <Text type="secondary">P95 Down</Text>
-                            {kpiLoading ? (
-                                <Skeleton.Input active size="large" style={{ width: '100%' }} />
-                            ) : (
-                                <Text strong style={{ fontSize: '24px' }}>
-                                    {kpiData ? (
-                                        <Tag color={kpiData.p95_down ? 'success' : 'error'}>
-                                            {kpiData.p95_down ? '✓' : '✗'}
-                                        </Tag>
-                                    ) : '—'}
-                                </Text>
-                            )}
-                        </Space>
-                    </Card>
-                </Col>
-                <Col xs={24} sm={12} md={6}>
-                    <Card>
-                        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                            <Text type="secondary">Bounds OK</Text>
-                            {kpiLoading ? (
-                                <Skeleton.Input active size="large" style={{ width: '100%' }} />
-                            ) : (
-                                <Text strong style={{ fontSize: '24px' }}>
-                                    {kpiData ? (
-                                        <Tag color={kpiData.bounds_ok ? 'success' : 'error'}>
-                                            {kpiData.bounds_ok ? '✓' : '✗'}
-                                        </Tag>
-                                    ) : '—'}
-                                </Text>
-                            )}
-                        </Space>
-                    </Card>
-                </Col>
-                <Col xs={24} sm={12} md={6}>
-                    <Card>
-                        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                            <Text type="secondary">Stable Detune</Text>
-                            {kpiLoading ? (
-                                <Skeleton.Input active size="large" style={{ width: '100%' }} />
-                            ) : (
-                                <Text strong style={{ fontSize: '24px' }}>
-                                    {kpiData ? (
-                                        <Tag color={kpiData.stable_detune ? 'success' : 'error'}>
-                                            {kpiData.stable_detune ? '✓' : '✗'}
-                                        </Tag>
-                                    ) : '—'}
-                                </Text>
-                            )}
-                        </Space>
-                    </Card>
-                </Col>
-            </Row>
+            {/* KPI Cards - Live Mode */}
+            {!demoMode && (
+                <Row gutter={16} style={{ marginBottom: '24px' }}>
+                    <Col xs={24} sm={12} md={6}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">Success Rate</Text>
+                                {kpiLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {kpiData ? `${(kpiData.success_rate * 100).toFixed(1)}%` : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">P95 Down</Text>
+                                {kpiLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {kpiData ? (
+                                            <Tag color={kpiData.p95_down ? 'success' : 'error'}>
+                                                {kpiData.p95_down ? '✓' : '✗'}
+                                            </Tag>
+                                        ) : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">Bounds OK</Text>
+                                {kpiLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {kpiData ? (
+                                            <Tag color={kpiData.bounds_ok ? 'success' : 'error'}>
+                                                {kpiData.bounds_ok ? '✓' : '✗'}
+                                            </Tag>
+                                        ) : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">Stable Detune</Text>
+                                {kpiLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {kpiData ? (
+                                            <Tag color={kpiData.stable_detune ? 'success' : 'error'}>
+                                                {kpiData.stable_detune ? '✓' : '✗'}
+                                            </Tag>
+                                        ) : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                </Row>
+            )}
+
+            {/* Demo KPI Cards */}
+            {demoMode && (
+                <Row gutter={16} style={{ marginBottom: '24px' }}>
+                    <Col xs={24} sm={12} md={8} lg={4}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">Recall@5</Text>
+                                {demoLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {demoSummary?.kpis?.['recall@5'] !== undefined
+                                            ? (demoSummary.kpis['recall@5'] * 100).toFixed(1) + '%'
+                                            : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={4}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">Recall@10</Text>
+                                {demoLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {demoSummary?.kpis?.['recall@10'] !== undefined
+                                            ? (demoSummary.kpis['recall@10'] * 100).toFixed(1) + '%'
+                                            : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={4}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">MRR@5</Text>
+                                {demoLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {demoSummary?.kpis?.['mrr@5'] !== undefined
+                                            ? (demoSummary.kpis['mrr@5'] * 100).toFixed(1) + '%'
+                                            : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={4}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">nDCG@10</Text>
+                                {demoLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {demoSummary?.kpis?.['ndcg@10'] !== undefined
+                                            ? (demoSummary.kpis['ndcg@10'] * 100).toFixed(1) + '%'
+                                            : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={4}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">Avg Latency</Text>
+                                {demoLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {demoSummary?.kpis?.['avg_latency_ms'] !== undefined
+                                            ? `${demoSummary.kpis['avg_latency_ms'].toFixed(2)} ms`
+                                            : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={4}>
+                        <Card>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                <Text type="secondary">P95 Latency</Text>
+                                {demoLoading ? (
+                                    <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                                ) : (
+                                    <Text strong style={{ fontSize: '24px' }}>
+                                        {demoSummary?.kpis?.['p95_latency_ms'] !== undefined
+                                            ? `${demoSummary.kpis['p95_latency_ms'].toFixed(2)} ms`
+                                            : '—'}
+                                    </Text>
+                                )}
+                            </Space>
+                        </Card>
+                    </Col>
+                </Row>
+            )}
 
             {/* Last updated timestamp */}
-            {kpiData && (
+            {!demoMode && kpiData && (
                 <div style={{ marginBottom: '16px', textAlign: 'right' }}>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
                         Last updated: {formatTimestamp(kpiData.updated_at)}
+                    </Text>
+                </div>
+            )}
+            {demoMode && demoSummary && (
+                <div style={{ marginBottom: '16px', textAlign: 'right' }}>
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                        Last updated: {formatTimestamp(demoSummary.timestamp)}
                     </Text>
                 </div>
             )}
@@ -1269,12 +1518,16 @@ export const MetricsHub = () => {
                         icon={<ReloadOutlined />}
                         onClick={() => {
                             fetchJobs();
-                            fetchKPI();
-                            fetchTrilines(timeRange || undefined, budgetFilter || undefined);
+                            if (demoMode) {
+                                fetchDemoSummary();
+                            } else {
+                                fetchKPI();
+                                fetchTrilines(timeRange || undefined, budgetFilter || undefined);
+                            }
                             fetchLangfuseUrl();
                             fetchLastTraceUrls();
                         }}
-                        loading={loading || kpiLoading || trilinesLoading}
+                        loading={loading || (demoMode ? demoLoading : (kpiLoading || trilinesLoading))}
                     >
                         Refresh
                     </Button>

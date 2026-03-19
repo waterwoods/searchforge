@@ -1,0 +1,40 @@
+{
+  "chunking": {
+    "min_chunk_size": 300,
+    "max_chunk_size": 800,
+    "overlap_size": 50,
+    "use_semantic_chunking": true,
+    "semantic_threshold_high": 0.85,
+    "semantic_threshold_low": 0.5,
+    "split_on": ["paragraph", "heading", "sentence"],
+    "split_priority": [
+      "paragraph",
+      "heading",
+      "list_item",
+      "sentence",
+      "comma"
+    ],
+    "special_content_rules": {
+      "faq": {
+        "strategy": "per_qa_pair",
+        "description": "每个 Q&A 对作为一个独立块"
+      },
+      "table": {
+        "strategy": "per_row_or_whole",
+        "description": "转换为文本后，按行切分或整体保留"
+      },
+      "list": {
+        "strategy": "per_item_or_merge",
+        "description": "每个列表项可作为独立块，或合并为一个大块"
+      },
+      "code_block": {
+        "strategy": "keep_whole",
+        "description": "如包含代码示例，整体保留为一个块"
+      }
+    },
+    "character_counting": {
+      "chinese_char_multiplier": 2,
+      "description": "中文字符按 2 字符计算"
+    }
+  }
+}

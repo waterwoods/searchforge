@@ -1,0 +1,344 @@
+{
+  "version": "1",
+  "description": "Visual Simulation Assistant — 15 trial + 8 real-customer scenarios. Top 5 recommended are 3–4 turn deep. Real customer pack = messy, short, mixed-language.",
+  "recommended_trial_order": ["SIM1", "SIM2", "SIM3", "SIM6", "SIM5"],
+  "real_customer_order": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"],
+  "scenarios": [
+    {
+      "id": "SIM1",
+      "flow_type": "notice_cancellation",
+      "title": "Cancellation risk",
+      "section": "recommended",
+      "trial_order": 1,
+      "turns": [
+        { "role": "customer", "text": "这个英文 notice 说 payment failed，我现在怎么办？" },
+        { "role": "customer", "text": "我发了截图在微信" },
+        { "role": "customer", "text": "其实已经付了，但是账单上还显示due，是不是搞错了？那我现在最要紧做什么？" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn: Turn 1 vague notice question; Turn 2 sent screenshot; Turn 3 clarifies payment confusion + asks what matters most. Handoff at turn 2; turn 3 shows clarification value. Proves urgency + broker handoff."
+    },
+    {
+      "id": "SIM2",
+      "flow_type": "missing_document",
+      "title": "Missing document",
+      "section": "recommended",
+      "trial_order": 2,
+      "turns": [
+        { "role": "customer", "text": "UW follow up - need dec page + garaging proof. 上周发过了" },
+        { "role": "customer", "text": "declaration page 他又发了一次，garaging proof 还没弄" },
+        { "role": "customer", "text": "garaging proof 是什么意思？要发什么？" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn: Turn 1 need dec+garaging, client said sent; Turn 2 clarifies dec resent, garaging missing; Turn 3 asks what garaging proof means + what to send. Handoff at turn 2; turn 3 shows clarification. Proves structured follow-up + verification clarity."
+    },
+    {
+      "id": "SIM3",
+      "flow_type": "add_car",
+      "title": "Add-car quote (Chinese)",
+      "section": "recommended",
+      "trial_order": 3,
+      "turns": [
+        { "role": "customer", "text": "我买了台宝马X5，想问下保费多少钱" },
+        { "role": "customer", "text": "2024年的" },
+        { "role": "customer", "text": "90210，下周提车。这些够了吗？" }
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "3-turn: Turn 1 vague quote ask; Turn 2 year; Turn 3 zip+delivery + asks if enough. Proves multi-turn quote collection + Collected chips."
+    },
+    {
+      "id": "SIM4",
+      "flow_type": "add_car",
+      "title": "Add car (English)",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "I bought a new BMW X5, how much is insurance?" },
+        { "role": "customer", "text": "2024, 90210, picking up next week" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "English add-car; second turn provides year, zip, delivery"
+    },
+    {
+      "id": "SIM5",
+      "flow_type": "claim",
+      "title": "Claim intake",
+      "section": "recommended",
+      "trial_order": 5,
+      "turns": [
+        { "role": "customer", "text": "刚出事故了，要收集什么？" },
+        { "role": "customer", "text": "对方跑了，我没拍照片，记了车牌" },
+        { "role": "customer", "text": "现在最要紧做什么？" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn: Turn 1 accident; Turn 2 hit-and-run, no photos; Turn 3 asks what matters most. Handoff at turn 2; turn 3 shows next-step ask. Proves first-response guidance + collected/still-needed."
+    },
+    {
+      "id": "SIM6",
+      "flow_type": "renewal_premium",
+      "title": "Premium review",
+      "section": "recommended",
+      "trial_order": 4,
+      "turns": [
+        { "role": "customer", "text": "保费太高了，能不能便宜一点" },
+        { "role": "customer", "text": "续保通知和账单我发你微信了" },
+        { "role": "customer", "text": "能不能少一辆车便宜点？办公室先看什么？" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn: Turn 1 premium too high; Turn 2 sent bill; Turn 3 asks if removing vehicle helps + what office reviews first. Handoff at turn 2; turn 3 shows retention follow-up. Proves retention-style follow-up."
+    },
+    {
+      "id": "SIM7",
+      "flow_type": "notice_cancellation",
+      "title": "AutoPay failed",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "AutoPay failed again, please update card to avoid interruption in coverage" },
+        { "role": "customer", "text": "我昨天已经换了新卡，需要再发什么给你吗" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Payment failed; second turn says they updated card"
+    },
+    {
+      "id": "SIM8",
+      "flow_type": "missing_document",
+      "title": "Missing DL follow-up",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "要驾照 copy，我上周就发过了" },
+        { "role": "customer", "text": "刚又发了一次正反面" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Missing DL; second turn says client resent"
+    },
+    {
+      "id": "SIM9",
+      "flow_type": "notice_cancellation",
+      "title": "Notice correction (already paid)",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "这个英文 notice 说 payment failed，我现在怎么办？" },
+        { "role": "customer", "text": "我其实已经付了，需要发什么给你吗" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Payment notice; second turn corrects — already paid; should hand off with verify-receipt"
+    },
+    {
+      "id": "SIM10",
+      "flow_type": "missing_document",
+      "title": "Vague \"already sent\" follow-up",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "UW follow up - need dec page. 上周发过了" },
+        { "role": "customer", "text": "就是上次那个材料，我又发了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Missing doc; second turn vague \"上次那个材料\" — should preserve context, hand off"
+    },
+    {
+      "id": "SIM11",
+      "flow_type": "add_car",
+      "title": "Add car partial (zip only)",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "我买了台2024宝马X5，想问下保费" },
+        { "role": "customer", "text": "90210，下周提车" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Add-car; first turn has year+model; second adds zip+delivery — hand off"
+    },
+    {
+      "id": "SIM12",
+      "flow_type": "claim",
+      "title": "Claim hit-and-run no photos",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "刚出事故了，要收集什么？" },
+        { "role": "customer", "text": "对方跑了，我没拍照片，记了车牌" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Claim; second turn hit-and-run, no photos — should still hand off with guidance"
+    },
+    {
+      "id": "SIM13",
+      "flow_type": "renewal_premium",
+      "title": "Renewal indirect wording",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "保费涨了好多，能不能便宜点" },
+        { "role": "customer", "text": "续保账单我微信发你了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Renewal; second turn informal \"发你了\" — hand off"
+    },
+    {
+      "id": "SIM14",
+      "flow_type": "notice_cancellation",
+      "title": "Notice minimal follow-up (tricky)",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "那个英文 notice 说 payment failed，我现在怎么办？" },
+        { "role": "customer", "text": "发你了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Payment notice; second turn minimal \"发你了\" — may expose wrong ask or generic fallback"
+    },
+    {
+      "id": "SIM15",
+      "flow_type": "add_car",
+      "title": "Add-car 3-turn (strongest multi-turn proof)",
+      "section": "multi_turn",
+      "turns": [
+        { "role": "customer", "text": "想加一台车，宝马X5" },
+        { "role": "customer", "text": "2024年的" },
+        { "role": "customer", "text": "90210，下周提车" }
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "Strongest multi-turn proof: Turn 1 model only; Turn 2 year; Turn 3 zip+delivery — hand off at turn 3. Shows turn-to-turn context preservation."
+    },
+    {
+      "id": "R1",
+      "flow_type": "notice_cancellation",
+      "title": "Notice + cancel confusion (real)",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "这个英文 notice 是不是要停了 我没看懂" },
+        { "role": "customer", "text": "我其实已经付了，需要发什么给你吗" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: notice+cancel confusion, correction. Adversarial N1 style."
+    },
+    {
+      "id": "R2",
+      "flow_type": "missing_document",
+      "title": "Doc frustrated — 都发过了怎么还要",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "都发过了怎么还要 declaration page" },
+        { "role": "customer", "text": "就是上次那个材料，我又发了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: frustrated already-sent, vague follow-up. Adversarial D1+D2."
+    },
+    {
+      "id": "R3",
+      "flow_type": "add_car",
+      "title": "Add-car ultra-short (real)",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "宝马x5，多少钱" },
+        { "role": "customer", "text": "2024年的，90210，下周拿" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: ultra-short fragment, no verb. Adversarial A1."
+    },
+    {
+      "id": "R4",
+      "flow_type": "add_car",
+      "title": "Add-car + garaging (mixed intent)",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "我想加一辆车，然后这个 garaging proof 又是什么？" },
+        { "role": "customer", "text": "X5 2024年的，zip 90210" },
+        { "role": "customer", "text": "下周拿车" }
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "Real: mixed intent — add-car + document confusion. T2 vehicle+zip; T3 delivery → handoff (80% completion)."
+    },
+    {
+      "id": "R5",
+      "flow_type": "claim",
+      "title": "Claim panic — 刚撞了对方跑了",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "刚撞了，对方跑了，我现在先干嘛" },
+        { "role": "customer", "text": "拍了现场照，发你微信了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: panic, hit-and-run. Adversarial C1."
+    },
+    {
+      "id": "R6",
+      "flow_type": "renewal_premium",
+      "title": "Renewal short — 续保涨了好多",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "续保涨了好多 有办法吗" },
+        { "role": "customer", "text": "账单我发你" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: short, no bill in turn 1. Adversarial R3."
+    },
+    {
+      "id": "R7",
+      "flow_type": "notice_cancellation",
+      "title": "Payment + dec page (mixed intent)",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "payment failed 怎么办，另外dec page我上周发过了" },
+        { "role": "customer", "text": "通知我发你了，dec page 我又发了一次" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: payment + doc already-sent in one message. MI-N2."
+    },
+    {
+      "id": "R8",
+      "flow_type": "missing_document",
+      "title": "Doc vague — 上次那个材料我又发了",
+      "section": "real_customer",
+      "turns": [
+        { "role": "customer", "text": "上次说那个材料我又发了 还不行吗" },
+        { "role": "customer", "text": "declaration page 和 garaging proof 都发了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Real: vague prior convo, frustrated. Adversarial D2."
+    },
+    {
+      "id": "FAQ-RM1",
+      "flow_type": "remove_car",
+      "title": "Remove car — 卖车拿掉",
+      "section": "faq_corpus",
+      "turns": [
+        { "role": "customer", "text": "卖车了，想把2014 Honda Accord从保单拿掉" },
+        { "role": "customer", "text": "上个月卖的，已经过户了" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "FAQ corpus: remove_car; Turn 1 broker-forwarded; Turn 2 sale date + transfer."
+    },
+    {
+      "id": "FAQ-SR1",
+      "flow_type": "dmv_sr22",
+      "title": "SR-22 / DMV suspension help",
+      "section": "faq_corpus",
+      "turns": [
+        { "role": "customer", "text": "Need SR-22 filing proof for DMV suspension clearance, what should client bring?" },
+        { "role": "customer", "text": "DMV notice 发你了，你看下要带什么" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "FAQ corpus: sr22_dmv_help; Turn 1 broker question; Turn 2 client sent notice, asks what to bring."
+    },
+    {
+      "id": "FAQ-W1",
+      "flow_type": "missing_document",
+      "title": "What to send — garaging proof 是什么意思",
+      "section": "faq_corpus",
+      "turns": [
+        { "role": "customer", "text": "UW follow up - need garaging proof. garaging proof 是什么意思" },
+        { "role": "customer", "text": "要发什么" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "FAQ corpus: what_to_send; Turn 2 clarification; FAST path when clear."
+    },
+    {
+      "id": "FAQ-NC1",
+      "flow_type": "notice_confusion",
+      "title": "Notice confusion — 这个英文 notice 看不懂",
+      "section": "edge_cases",
+      "turns": [
+        { "role": "customer", "text": "这个英文 notice 看不懂" },
+        { "role": "customer", "text": "发你微信了，你看下什么意思" }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "8-question type: notice_confusion; English notice, client confused; handoff after full notice sent."
+    }
+  ]
+}

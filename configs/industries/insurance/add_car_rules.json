@@ -1,0 +1,16 @@
+{
+  "version": "1",
+  "description": "Add-Car Quote next-step prompts. Editable by business users via Rules Center.",
+  "ask_vehicle": {
+    "zh": "先把年份和车型发我，我就能帮你算。",
+    "en": "Send me the year and make/model first so I can run the quote."
+  },
+  "ask_zip": {
+    "zh": "先把地址邮编发我，我就能帮你算。",
+    "en": "Send me the zip or address first and I will run the quote."
+  },
+  "ask_delivery_driver": {
+    "zh": "提车日期和主要驾驶人发我一下，我好安排报价。",
+    "en": "Send me the delivery date and main driver so I can prepare the quote."
+  }
+}

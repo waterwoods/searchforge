@@ -1,0 +1,36 @@
+{
+  "description": "Curated broker-high-value URLs for auto_insurance_demo_core. Optimized for Q4 (discounts), Q2 (suspension), Q5 (claims).",
+  "target_urls": [
+    "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/",
+    "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/suspended-vehicle-registration/",
+    "https://www.dmv.ca.gov/portal/driver-education-and-safety/dmv-safety-guidelines-actions/financial-responsibility-insurance/",
+    "https://www.insurance.ca.gov/01-consumers/help/auto/",
+    "https://www.insurance.ca.gov/01-consumers/help/auto/auto-insurance-basics/",
+    "https://www.insurance.ca.gov/01-consumers/help/auto/rate-factors/",
+    "https://www.insurance.ca.gov/01-consumers/help/auto/discounts/",
+    "https://www.insurance.ca.gov/01-consumers/help/auto/claims/",
+    "https://www.insurance.ca.gov/01-consumers/help/auto/coverage-types/",
+    "https://www.insurance.ca.gov/0200-industry/0008-check-license-status/index.cfm",
+    "https://www.geico.com/information/aboutinsurance/auto/",
+    "https://www.geico.com/save/discounts/car-insurance-discounts/",
+    "https://www.geico.com/claims/claimsprocess/",
+    "https://www.progressive.com/answers/auto-insurance/",
+    "https://www.progressive.com/auto/discounts/",
+    "https://www.progressive.com/answers/what-to-do-after-car-accident/",
+    "https://www.progressive.com/claims/auto-process/"
+  ],
+  "allowed_domains": [
+    "dmv.ca.gov",
+    "insurance.ca.gov",
+    "geico.com",
+    "progressive.com"
+  ],
+  "max_pages_per_source": 1,
+  "scenario_coverage": {
+    "Q1_new_car": ["dmv.ca.gov/insurance-requirements", "insurance.ca.gov/auto-basics", "insurance.ca.gov/coverage-types"],
+    "Q2_suspended": ["dmv.ca.gov/suspended-vehicle-registration", "dmv.ca.gov/financial-responsibility-insurance"],
+    "Q3_compliance": ["insurance.ca.gov/check-license-status"],
+    "Q4_discounts": ["insurance.ca.gov/rate-factors", "insurance.ca.gov/discounts", "geico.com/discounts", "progressive.com/discounts"],
+    "Q5_claims": ["insurance.ca.gov/claims", "geico.com/claims", "progressive.com/claims", "progressive.com/what-to-do-after-car-accident"]
+  }
+}

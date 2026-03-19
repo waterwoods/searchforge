@@ -1,0 +1,239 @@
+{
+  "version": "1.0",
+  "created_at": "2026-03-06",
+  "description": "Broker long-tail question set for California auto insurance. Use for validation, corpus expansion, and broker value sessions.",
+  "source": "Broker Long-Tail Question Expansion Sprint",
+  "questions": [
+    {
+      "id": "LT01",
+      "question_zh": "15/30/5 具体是什么意思？客户问我要解释清楚。",
+      "question_en": "What does 15/30/5 mean? Client wants a clear explanation.",
+      "category": "policy_minimums_coverage",
+      "frequency": "high",
+      "current_coverage": "well",
+      "validation_tier": "core",
+      "carrier_dependent": false,
+      "notes": "Extends Q1; corpus has DMV/insurance.ca.gov coverage types"
+    },
+    {
+      "id": "LT02",
+      "question_zh": "客户想买高于最低的保额，有什么推荐？比如 50/100 还是 100/300？",
+      "question_en": "Client wants more than minimum coverage. What's recommended? 50/100 vs 100/300?",
+      "category": "policy_minimums_coverage",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "General guidance exists; specific limits vary by carrier"
+    },
+    {
+      "id": "LT03",
+      "question_zh": "什么是 SR-22？谁需要？怎么办理？",
+      "question_en": "What is SR-22? Who needs it? How to get it?",
+      "category": "proof_of_insurance_sr22",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "core",
+      "carrier_dependent": false,
+      "notes": "DMV has SR-22 page; broker_demo_urls includes it; high-value for high-risk clients"
+    },
+    {
+      "id": "LT04",
+      "question_zh": "客户需要提供什么保险证明？电子卡可以吗？",
+      "question_en": "What proof of insurance does client need? Is electronic card OK?",
+      "category": "proof_of_insurance_sr22",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": false,
+      "notes": "DMV proof-of-insurance page in broker_demo_urls"
+    },
+    {
+      "id": "LT05",
+      "question_zh": "客户的车注册被暂停了，但他说已经买了保险，为什么还会被停？",
+      "question_en": "Client's registration was suspended but they say they have insurance. Why?",
+      "category": "registration_suspension",
+      "frequency": "high",
+      "current_coverage": "well",
+      "validation_tier": "core",
+      "carrier_dependent": false,
+      "notes": "Extends Q2; DMV mentions VIN mismatch, insurer not reporting"
+    },
+    {
+      "id": "LT06",
+      "question_zh": "客户 DUI 后需要什么保险才能恢复驾照？",
+      "question_en": "What insurance does client need after DUI to restore license?",
+      "category": "proof_of_insurance_sr22",
+      "frequency": "medium",
+      "current_coverage": "weak",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": true,
+      "notes": "SR-22 + high-risk; corpus may have DMV SR-22; carrier-specific for who writes"
+    },
+    {
+      "id": "LT07",
+      "question_zh": "好司机折扣具体能省多少？各公司一样吗？",
+      "question_en": "How much does good driver discount save? Same across carriers?",
+      "category": "discounts_savings",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Q4 covers categories; percentages vary by carrier; insurance.ca.gov discount pages 404"
+    },
+    {
+      "id": "LT08",
+      "question_zh": "客户有防御性驾驶课证书，能打折吗？",
+      "question_en": "Client has defensive driving certificate. Can they get a discount?",
+      "category": "discounts_savings",
+      "frequency": "medium",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Q4 broker hint mentions 防御性驾驶; carrier-specific acceptance"
+    },
+    {
+      "id": "LT09",
+      "question_zh": "出险后多久内必须报案？24 小时？",
+      "question_en": "How soon must client report a claim after accident? 24 hours?",
+      "category": "accident_claims",
+      "frequency": "high",
+      "current_coverage": "weak",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": true,
+      "notes": "Q5 covers flow; timing guidance missing; varies by carrier"
+    },
+    {
+      "id": "LT10",
+      "question_zh": "客户出险了，对方全责，应该找谁理赔？",
+      "question_en": "Client had accident, other party at fault. Who to claim from?",
+      "category": "accident_claims",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Own insurer vs other party's; general guidance in corpus"
+    },
+    {
+      "id": "LT11",
+      "question_zh": "客户问：怎么投诉保险公司？加州有官方渠道吗？",
+      "question_en": "How to file complaint against insurer? Is there official CA channel?",
+      "category": "compliance_complaints",
+      "frequency": "medium",
+      "current_coverage": "partial",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": false,
+      "notes": "CDI has complaints; may need corpus expansion"
+    },
+    {
+      "id": "LT12",
+      "question_zh": "客户要准备哪些材料才能顺利报价？",
+      "question_en": "What documents should client prepare for a quote?",
+      "category": "documentation_client_prep",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Q4 broker hint has 客户可准备; carrier-specific lists"
+    },
+    {
+      "id": "LT13",
+      "question_zh": "客户说：我开车很少，为什么保费还这么高？",
+      "question_en": "Client says they drive very little. Why is premium still high?",
+      "category": "common_misunderstandings",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Low-mileage discount exists; other factors (location, record) matter"
+    },
+    {
+      "id": "LT14",
+      "question_zh": "客户从外州搬来加州，原来的保险能用吗？",
+      "question_en": "Client moved from another state. Can they keep old insurance?",
+      "category": "edge_cases",
+      "frequency": "medium",
+      "current_coverage": "weak",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": true,
+      "notes": "CA minimums differ; must meet CA requirements"
+    },
+    {
+      "id": "LT15",
+      "question_zh": "客户没有车但需要保险（比如租车、借车），有什么选择？",
+      "question_en": "Client has no car but needs insurance (e.g. rental, borrowing). Options?",
+      "category": "edge_cases",
+      "frequency": "medium",
+      "current_coverage": "weak",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": true,
+      "notes": "Non-owner policy; rental coverage; corpus likely thin"
+    },
+    {
+      "id": "LT16",
+      "question_zh": "碰撞险和综合险有什么区别？新车必须买吗？",
+      "question_en": "What's the difference between collision and comprehensive? Required for new car?",
+      "category": "policy_minimums_coverage",
+      "frequency": "high",
+      "current_coverage": "well",
+      "validation_tier": "core",
+      "carrier_dependent": false,
+      "notes": "Q1 fallback mentions both; GEICO/Progressive have coverage pages"
+    },
+    {
+      "id": "LT17",
+      "question_zh": "客户问：为什么不同公司报价差这么多？正常吗？",
+      "question_en": "Why do quotes vary so much between companies? Is that normal?",
+      "category": "common_misunderstandings",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Rate factors; underwriting; broker can explain"
+    },
+    {
+      "id": "LT18",
+      "question_zh": "客户有事故记录，还能拿到好司机折扣吗？",
+      "question_en": "Client has accident on record. Can they still get good driver discount?",
+      "category": "discounts_savings",
+      "frequency": "medium",
+      "current_coverage": "weak",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": true,
+      "notes": "CA good driver definition; 18-month lookback; corpus may have"
+    },
+    {
+      "id": "LT19",
+      "question_zh": "贷款买的车，银行要求什么保险？",
+      "question_en": "Client financed car. What does the bank require for insurance?",
+      "category": "policy_minimums_coverage",
+      "frequency": "high",
+      "current_coverage": "partial",
+      "validation_tier": "secondary",
+      "carrier_dependent": true,
+      "notes": "Lender typically requires collision + comprehensive; gap insurance"
+    },
+    {
+      "id": "LT20",
+      "question_zh": "客户问：保险卡上的 NAIC 号是什么？有什么用？",
+      "question_en": "What is NAIC number on insurance card? What's it for?",
+      "category": "documentation_client_prep",
+      "frequency": "low",
+      "current_coverage": "weak",
+      "validation_tier": "future_corpus",
+      "carrier_dependent": false,
+      "notes": "DMV suspended page mentions NAIC; edge case for reinstatement"
+    }
+  ],
+  "categories": {
+    "policy_minimums_coverage": "Coverage types, limits, 15/30/5, collision/comprehensive",
+    "registration_suspension": "Suspended registration, reinstatement, fees, steps",
+    "proof_of_insurance_sr22": "Proof of insurance, SR-22, electronic cards",
+    "discounts_savings": "Discounts, rate factors, savings tips",
+    "accident_claims": "Claims process, reporting, fault, timing",
+    "compliance_complaints": "License lookup, complaints, CDI",
+    "documentation_client_prep": "What client needs to prepare, documents",
+    "common_misunderstandings": "Client objections, why premiums vary",
+    "edge_cases": "Out-of-state, non-owner, DUI, gap insurance"
+  }
+}

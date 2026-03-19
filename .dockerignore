@@ -13,7 +13,8 @@ reports/
 *.log
 archives/
 .trash/
-models/
+# Note: models/ exclusion removed - we need services/fiqa_api/models/ in the build
+# If you have a root-level models/ directory to exclude, add it back with a more specific pattern
 .env.*
 services/fiqa_api/logs/
 *.csv

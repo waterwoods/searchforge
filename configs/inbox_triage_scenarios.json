@@ -1,0 +1,594 @@
+{
+  "version": "1",
+  "description": "Broker Inbox Triage MVP scenario pack",
+  "scenarios": [
+    {
+      "id": "S1",
+      "input": "客户发来截图：保单申请需要签名，但客户说「我签了呀，怎么还说要签？」",
+      "expected_category": "missing_signature",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Broker should verify which document, which field; client may have signed wrong place."
+    },
+    {
+      "id": "S2",
+      "input": "Underwriting requested driver's license copy. Client says \"I already sent it last week.\"",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Broker should confirm what was received; may need to resend or escalate to underwriting."
+    },
+    {
+      "id": "S3",
+      "input": "Notice: Policy will be cancelled in 7 days due to non-payment. Last notice.",
+      "expected_category": "cancellation_warning",
+      "expected_urgency": "critical",
+      "expected_manual_followup": true,
+      "notes": "Immediate broker action; client needs to pay or contact carrier."
+    },
+    {
+      "id": "S4",
+      "input": "Your policy is pending issuance. We will notify you within 5-7 business days.",
+      "expected_category": "policy_delay_pending",
+      "expected_urgency": "low",
+      "expected_manual_followup": false,
+      "notes": "Informational; broker can draft 'we're on it, expect update soon.'"
+    },
+    {
+      "id": "S5",
+      "input": "Underwriting needs clarification on prior claims. Please respond within 10 days.",
+      "expected_category": "underwriting_followup",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "notes": "Broker should help client gather info; deadline matters."
+    },
+    {
+      "id": "S6",
+      "input": "Renewal reminder: Your policy renews in 45 days. No action needed at this time.",
+      "expected_category": "renewal_reminder",
+      "expected_urgency": "low",
+      "expected_manual_followup": false,
+      "notes": "Informational; optional broker outreach for retention."
+    },
+    {
+      "id": "S7",
+      "input": "客户发来一张DMV的信，问「这是什么意思？我需要做什么？」",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Broker should explain in plain language; client may need to take action."
+    },
+    {
+      "id": "S8",
+      "input": "[Forwarded email, subject: \"Important - Action Required\" but body is just a generic marketing footer]",
+      "expected_category": "unclear",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Ambiguous; broker should review and clarify with client."
+    },
+    {
+      "id": "S9",
+      "input": "Payment failed. Your card on file was declined. Please update payment method.",
+      "expected_category": "payment_lapse_expiration",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "notes": "Client needs to update payment; risk of lapse."
+    },
+    {
+      "id": "S10",
+      "input": "Your proof of insurance has been emailed to the DMV. No further action required.",
+      "expected_category": "informational",
+      "expected_urgency": "low",
+      "expected_manual_followup": false,
+      "notes": "Can send brief 'all set' reply."
+    },
+    {
+      "id": "S11",
+      "input": "Escrow department requests updated declaration page for loan refinance. Due in 14 days.",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Broker provides dec page; client may need to forward to escrow."
+    },
+    {
+      "id": "S12",
+      "input": "Lienholder requests certificate of insurance. Policy number and effective dates needed.",
+      "expected_category": "informational",
+      "expected_urgency": "medium",
+      "expected_manual_followup": false,
+      "notes": "Standard request; broker can generate COI and draft reply."
+    },
+    {
+      "id": "R1",
+      "input": "Fwd: FW: Re: Policy - 客户说看了这个不知道怎么弄",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Partial forwarded email; client says they don't know how to handle."
+    },
+    {
+      "id": "R2",
+      "input": "保险公司说我的保单7天后要cancel",
+      "expected_category": "cancellation_warning",
+      "expected_urgency": "critical",
+      "expected_manual_followup": true,
+      "notes": "Customer pasted summary; mixed language cancellation."
+    },
+    {
+      "id": "R3",
+      "input": "Payment failed",
+      "expected_category": "payment_lapse_expiration",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "notes": "Minimal payment failure notice."
+    },
+    {
+      "id": "R3b",
+      "input": "联系人工",
+      "expected_category": "customer_requested_human",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["陈奎", "联系", "办公室"],
+      "notes": "SALES_READINESS_HARDENING: Talk to Agent free-text detection."
+    },
+    {
+      "id": "R4",
+      "input": "客户发了一张截图 上面是dmv的信 看不懂",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["发我", "帮你看"],
+      "notes": "Vague screenshot; client can't understand DMV letter."
+    },
+    {
+      "id": "R5",
+      "input": "需要驾照 copy 客户说上周寄了",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Fragmented underwriting doc request; client says they sent."
+    },
+    {
+      "id": "R6",
+      "input": "⚠️ 重要：您的保单即将因未缴款而被取消",
+      "expected_category": "cancellation_warning",
+      "expected_urgency": "critical",
+      "expected_manual_followup": true,
+      "notes": "Chinese cancellation warning with emoji."
+    },
+    {
+      "id": "R7",
+      "input": "UW follow up - need dec page + garaging proof. 客户说上周发过了",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["declaration page", "garaging proof", "核对"],
+      "notes": "Mixed English + Chinese document chase with shorthand broker wording."
+    },
+    {
+      "id": "R8",
+      "input": "AutoPay failed again, please update card to avoid interruption in coverage",
+      "expected_category": "payment_lapse_expiration",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "notes": "Broken payment wording without formal carrier notice language."
+    },
+    {
+      "id": "R9",
+      "input": "这个是不是保单要停了？我昨天收到账单 overdue",
+      "expected_category": "payment_lapse_expiration",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["付款", "今天", "停保"],
+      "notes": "Mixed Chinese + English payment-risk wording; should feel like possible lapse risk, not a vague unclear case."
+    },
+    {
+      "id": "R10",
+      "input": "Need SR-22 filing proof for DMV suspension clearance, what should client bring?",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "DMV / suspension help wording should read like a broker-help question, not an unclassified fragment."
+    },
+    {
+      "id": "R11",
+      "input": "这个英文 notice 说 payment failed，我现在怎么办？",
+      "expected_category": "payment_lapse_expiration",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["付款", "今天"],
+      "notes": "English payment wording with a Chinese client question should draft back in Chinese."
+    },
+    {
+      "id": "R12",
+      "input": "Carrier notice: Your policy will be cancelled due to non-payment. 这个是不是今天一定要处理？",
+      "expected_category": "cancellation_warning",
+      "expected_urgency": "critical",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["通知", "今天", "付款"],
+      "notes": "English carrier notice plus Chinese broker/client summary should still produce a short Chinese draft."
+    },
+    {
+      "id": "R13",
+      "input": "这个月保费太高了，能不能看看怎么降一点",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["保费", "调整", "账单"],
+      "notes": "Premium-too-high wording should sound like a broker reviewing realistic options, not a generic clarification request."
+    },
+    {
+      "id": "R14",
+      "input": "想加一台2021 Tesla Model Y，下周提车，今天能不能先出报价",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["报价", "VIN", "车型"],
+      "notes": "Add-car quote requests should produce a broker-natural intake reply that asks for the concrete vehicle details."
+    },
+    {
+      "id": "R15",
+      "input": "客户卖掉旧车了，想把2014 Honda Accord从保单拿掉",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["拿掉", "卖车", "过户"],
+      "notes": "Remove-car wording should produce broker-natural reply about sale date and removal."
+    },
+    {
+      "id": "R16",
+      "input": "carrier 说 declaration page missing，这个什么意思",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["declaration page", "保单首页", "发我"],
+      "notes": "Carrier missing doc with client confusion; should explain and ask for resend."
+    },
+    {
+      "id": "R17",
+      "input": "I bought a new BMW X5, how much is insurance?",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "en",
+      "expected_draft_contains_any": ["quote", "year", "VIN", "model"],
+      "notes": "English add-car/quote request; should ask for vehicle details, not generic 'provide more context'."
+    },
+    {
+      "id": "R18",
+      "input": "我刚刚买了2026年的宝马X5，我想问一下保费多少钱",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["报价", "VIN", "车型", "年份"],
+      "notes": "Chinese add-car/quote; must NOT get generic 不够完整 fallback."
+    },
+    {
+      "id": "R19",
+      "input": "这个英文 notice 看不懂",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["发我", "帮你看"],
+      "notes": "English notice confusion; should ask for full notice, not generic fallback."
+    },
+    {
+      "id": "R20",
+      "input": "他说 payment failed，现在怎么办",
+      "expected_category": "payment_lapse_expiration",
+      "expected_urgency": "high",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["付款", "今天"],
+      "notes": "Payment failed relay; should state urgency and ask for notice/payment."
+    },
+    {
+      "id": "D1",
+      "input": "Client says renewal premium is too high, can we review options?",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "en",
+      "expected_draft_contains_any": ["premium", "policy", "bill"],
+      "notes": "Daily-use: premium review in English; must NOT get renewal_reminder."
+    },
+    {
+      "id": "D2",
+      "input": "续保保费太高了，能不能看看怎么降",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["保费", "账单", "保单"],
+      "notes": "Daily-use: renewal premium review in Chinese; must NOT get renewal_reminder."
+    },
+    {
+      "id": "D3",
+      "input": "need declaration page and garaging proof, client says she already sent",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "notes": "Daily-use: missing doc shorthand; broker handoff should show Collected/Still needed."
+    },
+    {
+      "id": "D4",
+      "input": "想加一台车，2025 Honda CR-V",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["报价", "车型", "VIN", "年份"],
+      "notes": "Daily-use: add car shorthand; should ask for zip, delivery, driver."
+    },
+    {
+      "id": "ER1",
+      "input": "刚提一台X5，报价能看下吗",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["报价", "VIN", "车型"],
+      "notes": "Expression robustness: shorthand add-car; must NOT get generic fallback."
+    },
+    {
+      "id": "ER2",
+      "input": "2026 X5，90210，下周拿车，多少钱",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["quote", "year", "VIN", "model", "报价", "车型"],
+      "notes": "Expression robustness: fragment with partial info; add-car intent."
+    },
+    {
+      "id": "ER3",
+      "input": "remove car from policy, sold last week",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["remove", "sale", "拿掉", "卖车", "过户"],
+      "notes": "Expression robustness: mixed English remove-car; must NOT get unclear."
+    },
+    {
+      "id": "ER4",
+      "input": "what does this notice mean",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["notice", "发我", "帮你看", "send"],
+      "notes": "Expression robustness: English notice confusion; must NOT get unclear."
+    },
+    {
+      "id": "F1",
+      "input": "刚出事故了，要收集什么？",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["事故", "照片", "报案"],
+      "notes": "Flow 3: Claim intake; first-step guidance."
+    },
+    {
+      "id": "F2",
+      "input": "Car accident just happened, what should I collect?",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["accident", "photos", "collect"],
+      "notes": "Flow 3: Claim intake English."
+    },
+    {
+      "id": "F3",
+      "input": "这个通知是不是今天一定要处理？",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["发我", "通知", "帮你看"],
+      "notes": "Flow 4: Notice confusion - is this urgent?"
+    },
+    {
+      "id": "F4",
+      "input": "客户说dec page发过了，carrier还说要",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["declaration", "核对", "发我"],
+      "notes": "Flow 5: Document chase - I already sent it."
+    },
+    {
+      "id": "AC-ULTRA-1",
+      "input": "我新车，下周拿，保险大概？",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["报价", "车型", "年份", "VIN"],
+      "notes": "Add-car gap-closing: ultra-short, no vehicle details; must ask for year/model, NOT unclear."
+    },
+    {
+      "id": "AC-ULTRA-2",
+      "input": "新车保险多少",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["报价", "车型", "年份", "VIN"],
+      "notes": "Add-car gap-closing: minimal Chinese; must NOT get generic fallback."
+    },
+    {
+      "id": "AC-ULTRA-3",
+      "input": "quote for new car, picking up tomorrow",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "en",
+      "expected_draft_contains_any": ["quote", "year", "model", "VIN"],
+      "notes": "Add-car gap-closing: English, no make/model; must ask for vehicle details."
+    },
+    {
+      "id": "AC-ULTRA-4",
+      "input": "新车，92705，下周提，多少钱",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["报价", "quote", "车型", "year", "model"],
+      "notes": "Add-car gap-closing: zip+delivery but no year/model; must ask for year/model first."
+    },
+    {
+      "id": "AC-ULTRA-5",
+      "input": "2025 CR-V，下周拿，保费大概多少",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["报价", "quote", "zip", "邮编", "address"],
+      "notes": "Add-car gap-closing: year+model+delivery, missing zip; must ask for zip."
+    },
+    {
+      "id": "FAQ-SR1",
+      "input": "Need SR-22 filing proof for DMV suspension clearance, what should client bring?",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["SR-22", "DMV", "notice", "bring", "发我"],
+      "notes": "FAQ corpus: SR-22/DMV help; high value for high-risk clients."
+    },
+    {
+      "id": "FAQ-W1",
+      "input": "garaging proof 是什么意思",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["garaging", "停放", "发我", "帮你看"],
+      "notes": "FAQ corpus: what_to_send / document clarification; FAST candidate when Turn 2+."
+    },
+    {
+      "id": "FAQ-AS1",
+      "input": "客户说dec page发过了，刚又发了一次",
+      "expected_category": "missing_document",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["declaration", "核对", "发我"],
+      "notes": "FAQ corpus: already_sent_followup; doc + client says sent; hand off to verify."
+    },
+    {
+      "id": "FAQ-RM1",
+      "input": "卖车了，怎么把车从保单删掉",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["拿掉", "卖车", "过户", "发我"],
+      "notes": "FAQ corpus: remove_car; Chinese shorthand; must NOT get unclear."
+    },
+    {
+      "id": "TSH-AD1",
+      "input": "加个司机，我儿子刚拿驾照",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["司机", "驾照", "发我"],
+      "notes": "TOP_SCENARIOS_HARDENING: add driver; must NOT get unclear."
+    },
+    {
+      "id": "TSH-AD2",
+      "input": "想加个人开车，我老婆",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["司机", "驾照", "发我"],
+      "notes": "TOP_SCENARIOS_HARDENING: add driver shorthand."
+    },
+    {
+      "id": "TSH-B1",
+      "input": "home insurance 一起买能打折吗",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["房屋", "折扣", "发我", "车险"],
+      "notes": "TOP_SCENARIOS_HARDENING: bundling; must NOT get unclear."
+    },
+    {
+      "id": "TSH-B2",
+      "input": "bundling discount 能便宜吗",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["折扣", "发我", "车险", "房屋"],
+      "notes": "TOP_SCENARIOS_HARDENING: bundling; mixed language may get zh reply."
+    },
+    {
+      "id": "TSH2-BC1",
+      "input": "账单什么意思",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["账单", "发我", "帮你看"],
+      "notes": "TOP_SCENARIOS_HARDENING_PHASE2: billing clarification; must NOT route to payment_lapse_expiration."
+    },
+    {
+      "id": "TSH2-BC2",
+      "input": "这个账单看不懂",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_contains_any": ["账单", "发我", "帮你看", "bill", "send"],
+      "notes": "TOP_SCENARIOS_HARDENING_PHASE2: billing clarification."
+    },
+    {
+      "id": "TSH2-CL1",
+      "input": "报事故，刚撞了",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["事故", "照片", "报案", "对方"],
+      "notes": "TOP_SCENARIOS_HARDENING_PHASE2: claim first notice; first-response guidance."
+    },
+    {
+      "id": "TSH2-RN1",
+      "input": "续保涨价了怎么办",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["保费", "账单", "保单"],
+      "notes": "TOP_SCENARIOS_HARDENING_PHASE2: renewal increase; must NOT get unclear."
+    },
+    {
+      "id": "TSH2-RV1",
+      "input": "减车，卖掉了",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["拿掉", "卖车", "过户", "发我"],
+      "notes": "TOP_SCENARIOS_HARDENING_PHASE2: remove vehicle 减车 shorthand."
+    },
+    {
+      "id": "TSH-PR1",
+      "input": "帮我看看能不能便宜，我发你账单了",
+      "expected_category": "customer_question",
+      "expected_urgency": "medium",
+      "expected_manual_followup": true,
+      "expected_draft_language": "zh",
+      "expected_draft_contains_any": ["保费", "账单", "核对"],
+      "notes": "TOP_SCENARIOS_HARDENING: premium + bill sent; must NOT route to payment_lapse_expiration."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "version": "1",
+  "description": "Per-category broker_next_step and client_prep for insurance triage. Used when config present; falls back to triage hardcoded. Categories with dynamic client_prep or broker_next_step (missing_document, customer_question) keep logic in code.",
+  "categories": {
+    "cancellation_warning": {
+      "broker_next_step": "Confirm whether the cancellation is still active, verify any payment already made, and call or text the client today with the exact deadline.",
+      "client_prep": "The cancellation notice, any payment confirmation, and the best callback number if they already paid."
+    },
+    "payment_lapse_expiration": {
+      "broker_next_step": "Confirm whether the payment actually failed, check whether the carrier still shows the balance due, and help the client fix it today.",
+      "client_prep": "Updated payment method details, payment confirmation, or the best number to reach them today."
+    },
+    "missing_document": {
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "client_prep": "dynamic"
+    },
+    "missing_signature": {
+      "broker_next_step": "Verify which document and which field still need a signature, then point the client to the exact page to sign.",
+      "client_prep": "Confirmation of which document they signed and where."
+    },
+    "underwriting_followup": {
+      "broker_next_step": "Confirm exactly what underwriting still needs, send the client a short checklist, and respond before the stated deadline.",
+      "client_prep": "The missing underwriting details, questionnaire answers, or supporting documents requested before the deadline."
+    },
+    "renewal_reminder": {
+      "broker_next_step": "Optional outreach for retention. No immediate action required.",
+      "client_prep": "None at this time."
+    },
+    "unclear": {
+      "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+      "client_prep": "Any additional context or the full original message if it was forwarded."
+    },
+    "informational": {
+      "broker_next_step": "No action required. Optional brief confirmation to client.",
+      "client_prep": "None."
+    },
+    "policy_delay_pending": {
+      "broker_next_step": "No action needed right now. Keep the file parked and update the client if the carrier misses the stated timeline.",
+      "client_prep": "None."
+    },
+    "customer_requested_human": {
+      "broker_next_step": "Customer requested human contact. Call or message back promptly.",
+      "client_prep": "Customer wants to speak with office."
+    }
+  }
+}

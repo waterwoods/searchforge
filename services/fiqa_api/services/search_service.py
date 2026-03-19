@@ -232,7 +232,9 @@ def do_search(
                 # Non-fatal: continue if dimension check fails
             
             # Search Qdrant
-            qdrant_results = client.search(
+            from services.fiqa_api.utils.qdrant_adapter import qdrant_search
+            qdrant_results = qdrant_search(
+                client=client,
                 collection_name=actual_collection,
                 query_vector=query_vector,  # Ensure it's 1D, NOT [query_vector]
                 limit=top_k

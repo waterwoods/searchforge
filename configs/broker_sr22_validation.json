@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "created_at": "2026-03-06",
+  "description": "SR-22 / proof-of-insurance validation pack for broker demo. Use with broker_regression_all5.py --longtail or snapshot_demo_answers.py.",
+  "scenario": "proof_of_insurance_sr22",
+  "questions": [
+    {
+      "id": "LT03",
+      "question_zh": "什么是 SR-22？谁需要？怎么办理？",
+      "question_en": "What is SR-22? Who needs it? How to get it?",
+      "required_phrases": ["sr-22", "财务责任", "DUI"],
+      "required_broker_hint": "经纪人可进一步询问",
+      "required_client_prep": "客户可准备"
+    },
+    {
+      "id": "LT04",
+      "question_zh": "客户需要提供什么保险证明？电子卡可以吗？",
+      "question_en": "What proof of insurance does client need? Is electronic card OK?",
+      "required_phrases": ["证明", "电子"],
+      "optional_broker_hint": "经纪人可进一步询问"
+    }
+  ],
+  "fallback_triggers": ["无法回答", "does not contain", "cannot provide"],
+  "authority_note": "详细要求以 DMV 官网为准",
+  "carrier_note": "各公司对 SR-22 承保政策不同"
+}

@@ -1,0 +1,20 @@
+# Curated broker-high-value URLs for auto_insurance_demo_core
+# Use: python3 scripts/build_demo_core_collection.py --url-list configs/broker_demo_urls.txt --limit 25 --recreate
+# Note: dmv sr-22, proof-of-insurance (old paths) return 404; use financial-responsibility-insurance
+# insurance.ca.gov subpages (rate-factors, discounts, etc.) return Document Not Found - kept for license check
+https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/
+https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/suspended-vehicle-registration/
+https://www.dmv.ca.gov/portal/driver-education-and-safety/dmv-safety-guidelines-actions/financial-responsibility-insurance/
+https://www.insurance.ca.gov/01-consumers/help/auto/
+https://www.insurance.ca.gov/01-consumers/help/auto/auto-insurance-basics/
+https://www.insurance.ca.gov/01-consumers/help/auto/rate-factors/
+https://www.insurance.ca.gov/01-consumers/help/auto/discounts/
+https://www.insurance.ca.gov/01-consumers/help/auto/claims/
+https://www.insurance.ca.gov/01-consumers/help/auto/coverage-types/
+https://www.insurance.ca.gov/0200-industry/0008-check-license-status/index.cfm
+https://www.geico.com/information/aboutinsurance/auto/
+https://www.geico.com/save/discounts/car-insurance-discounts/
+https://www.geico.com/claims/claimsprocess/
+https://www.progressive.com/auto/discounts/
+https://www.progressive.com/answers/what-to-do-after-car-accident/
+https://www.progressive.com/claims/auto-process/

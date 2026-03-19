@@ -1,0 +1,21 @@
+{
+  "language_detection": {
+    "enabled": true,
+    "default_language": "en",
+    "supported_languages": ["en", "es", "zh"],
+    "min_confidence": 0.8,
+    "library": "langdetect",
+    "fallback_strategy": {
+      "use_html_lang": true,
+      "use_url_path": true,
+      "use_default": true,
+      "description": "优先使用HTML lang属性，其次URL路径，最后使用默认语言"
+    },
+    "language_mapping": {
+      "espanol": "es",
+      "spanish": "es",
+      "chinese": "zh",
+      "中文": "zh"
+    }
+  }
+}

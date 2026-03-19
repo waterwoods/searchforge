@@ -1,0 +1,845 @@
+{
+  "version": "1",
+  "description": "Multi-turn customer intake simulation pack for Chen Kui high-frequency cases",
+  "categories": [
+    "add_car_quote",
+    "remove_car_policy_change",
+    "premium_review",
+    "payment_failed_cancellation_risk",
+    "english_notice_confusion",
+    "missing_document",
+    "dmv_sr22_help",
+    "claim_intake",
+    "billing_clarification",
+    "talk_to_agent"
+  ],
+  "simulations": [
+    {
+      "id": "MT1",
+      "category": "add_car_quote",
+      "name": "BMW X5 新车报价",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "我买了台宝马X5，想问下保费多少钱"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "2024年的，zip 90210，下周提车"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Short Chinese add-car; second turn provides year, zip, delivery"
+    },
+    {
+      "id": "MT2",
+      "category": "add_car_quote",
+      "name": "English add-car BMW X5",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "I bought a new BMW X5, how much is insurance?"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "2024, 90210, picking up next week"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "English add-car; second turn provides year, zip, delivery"
+    },
+    {
+      "id": "MT3",
+      "category": "remove_car_policy_change",
+      "name": "删车 / 卖车",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "旧车卖掉了，想从保单拿掉"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "2021 Honda Accord，上个月卖的，已经过户了"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Remove car; second turn provides vehicle, sale date, transfer status"
+    },
+    {
+      "id": "MT4",
+      "category": "premium_review",
+      "name": "保费太高续保",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "保费太高了，能不能便宜一点"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "续保通知和账单我发你微信了"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Premium review; second turn says they sent policy/bill"
+    },
+    {
+      "id": "MT5",
+      "category": "payment_failed_cancellation_risk",
+      "name": "付款失败取消风险",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "这个英文 notice 说 payment failed，我现在怎么办？"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "我发了截图在微信"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Payment failed + English notice; second turn says they sent screenshot"
+    },
+    {
+      "id": "MT6",
+      "category": "payment_failed_cancellation_risk",
+      "name": "AutoPay failed cancellation risk",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "AutoPay failed again, please update card to avoid interruption in coverage"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "我昨天已经换了新卡，需要再发什么给你吗"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Payment failed; second turn says they updated card, asks what to send"
+    },
+    {
+      "id": "MT7",
+      "category": "english_notice_confusion",
+      "name": "英文通知看不懂",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "这张DMV信什么意思？我需要做什么？"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "他说是suspension clearance，要带什么去DMV"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "DMV notice confusion; second turn narrows to suspension clearance"
+    },
+    {
+      "id": "MT8",
+      "category": "english_notice_confusion",
+      "name": "English notice Chinese question",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "这个英文 notice 说 payment failed，我现在怎么办？"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "通知我发你了，你看下"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "English notice confusion; second turn says they sent the notice"
+    },
+    {
+      "id": "MT9",
+      "category": "missing_document",
+      "name": "缺材料 declaration page",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "UW follow up - need dec page + garaging proof. 上周发过了"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "declaration page 他又发了一次，garaging proof 还没弄"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Missing doc; second turn clarifies dec page resent, garaging proof still missing"
+    },
+    {
+      "id": "MT10",
+      "category": "missing_document",
+      "name": "缺驾照 follow-up",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "要驾照 copy，我上周就发过了"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "刚又发了一次正反面"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Missing DL; second turn says client resent"
+    },
+    {
+      "id": "MT11",
+      "category": "add_car_quote",
+      "name": "加车 shorthand",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "加一台2021 Tesla Model Y 报价"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "90210"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "下周拿车"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "Add car shorthand; T2 zip only - system asks delivery; T3 delivery → handoff (80% completion)"
+    },
+    {
+      "id": "MT12",
+      "category": "payment_failed_cancellation_risk",
+      "name": "保单要停 vague",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "这个是不是保单要停了？我昨天收到账单 overdue"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "我已经付了，但没收到确认"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Policy stop concern; second turn says paid but no confirmation"
+    },
+    {
+      "id": "MT14",
+      "category": "dmv_sr22_help",
+      "name": "DMV / SR-22 help",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "DMV信说要 SR-22 proof 才能 clear suspension，这个要带什么？"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "通知我发你了，你看下"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "DMV/SR-22 help; second turn says they sent the notice"
+    },
+    {
+      "id": "MT13",
+      "category": "add_car_quote",
+      "name": "加车 partial - ask for zip then delivery",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "我买了台宝马X5，想问下保费多少钱"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "2024年的"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "90210"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "下周提车"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 4,
+      "notes": "Turn 2 year - ask zip; T3 zip - ask delivery; T4 delivery → handoff (80% completion)"
+    },
+    {
+      "id": "MT15",
+      "category": "add_car_quote",
+      "name": "Full info first turn - handoff immediately",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "2025 Honda CR-V, 92705, 下周提车，大概多少钱"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "Customer gives year, model, zip, delivery in first message; hand off immediately"
+    },
+    {
+      "id": "MT16",
+      "category": "add_car_quote",
+      "name": "Existing customer add car - 加车",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "想加车，2024 Tesla Model Y"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "90210，下周拿车"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "我开"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "Add-car shorthand; T2 zip+delivery, T3 driver (deepening: ask driver when delivery present)"
+    },
+    {
+      "id": "MT17",
+      "category": "claim_intake",
+      "name": "事故 first response",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "刚出事故了，要收集什么？"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "拍了照片，对方保险也记了，发你微信"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Claim intake; second turn says they have photos and other driver info"
+    },
+    {
+      "id": "MT18",
+      "category": "add_car_quote",
+      "name": "Ultra-short add-car - delivery in turn 1, year/model in turn 2",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "我新车，下周拿，保险大概？"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "2025 CR-V"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Gap-closing: ultra-short with delivery; system asks year/model; turn 2 gives year+model, handoff (delivery from turn 1)"
+    },
+    {
+      "id": "MT19",
+      "category": "add_car_quote",
+      "name": "No-delivery ultra-short - ask year/model, zip, delivery",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "新车保险多少"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "2025 Honda CR-V"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "90210"
+        },
+        {
+          "role": "system",
+          "text": null
+        },
+        {
+          "role": "customer",
+          "text": "下周拿车"
+        },
+        {
+          "role": "system",
+          "text": null
+        }
+      ],
+      "expected_handoff_after_turn": 4,
+      "notes": "Gap-closing: T2 vehicle, T3 zip - ask delivery; T4 delivery - handoff (80% completion)"
+    },
+    {
+      "id": "MT20",
+      "category": "premium_review",
+      "name": "Renewal messy - 续保涨了好多",
+      "turns": [
+        {"role": "customer", "text": "续保涨了好多，能不能便宜点"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "账单我发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Messier renewal shorthand; second turn says they sent bill"
+    },
+    {
+      "id": "MT21",
+      "category": "premium_review",
+      "name": "Renewal follow-up - 其中一辆去掉会便宜吗",
+      "turns": [
+        {"role": "customer", "text": "其中一辆去掉会便宜吗？我账单发过了。"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2021 Accord 想拿掉"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Premium + remove-vehicle interest; second turn clarifies which vehicle"
+    },
+    {
+      "id": "MT22",
+      "category": "claim_intake",
+      "name": "Claim messy - 刚撞了对方跑了",
+      "turns": [
+        {"role": "customer", "text": "刚撞了，对方跑了，我现在先干嘛"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "拍了现场照，警察也来了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Messier claim; hit-and-run; second turn says photos and police"
+    },
+    {
+      "id": "MT23",
+      "category": "claim_intake",
+      "name": "Claim partial - 有照片但对方保险还没拿到",
+      "turns": [
+        {"role": "customer", "text": "刚出事故了，要收集什么？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "有照片，但对方保险还没拿到"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Claim follow-up; partial info - photos yes, other driver info no"
+    },
+    {
+      "id": "MT24",
+      "category": "english_notice_confusion",
+      "name": "Notice - 这个英文 notice 什么意思",
+      "turns": [
+        {"role": "customer", "text": "这个英文 notice 什么意思？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "通知我发你了，你看下"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Notice confusion; second turn says they sent notice"
+    },
+    {
+      "id": "MT25",
+      "category": "payment_failed_cancellation_risk",
+      "name": "Payment - payment failed 是不是要停保",
+      "turns": [
+        {"role": "customer", "text": "payment failed 是不是要停保？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "我昨天付了，截图发你"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Payment confusion; second turn says paid and sent screenshot"
+    },
+    {
+      "id": "MT26",
+      "category": "payment_failed_cancellation_risk",
+      "name": "Notice correction - 不是 payment failed 是 final notice",
+      "turns": [
+        {"role": "customer", "text": "这个英文 notice 说 payment failed，我现在怎么办？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是 payment failed，是 final notice，我现在要做什么？"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Customer corrects - it is final notice not payment failed; still urgent"
+    },
+    {
+      "id": "MT27",
+      "category": "missing_document",
+      "name": "Missing doc - 要我补 declaration page 和 garaging proof",
+      "turns": [
+        {"role": "customer", "text": "他们要我补 declaration page 和 garaging proof"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "declaration page 发你了，garaging 还没弄"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Missing doc; second turn clarifies dec page sent, garaging not yet"
+    },
+    {
+      "id": "MT28",
+      "category": "missing_document",
+      "name": "Missing doc - garaging proof 是什么意思",
+      "turns": [
+        {"role": "customer", "text": "这个 garaging proof 是什么意思？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "好的，我弄好了发你"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Document confusion; second turn says will send when ready"
+    },
+    {
+      "id": "MT29",
+      "category": "missing_document",
+      "name": "Missing doc - declaration page 我上周就发了怎么还在追",
+      "turns": [
+        {"role": "customer", "text": "declaration page 我上周就发了，怎么还在追？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "刚又发了一次，你帮我对一下"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Frustrated already-sent; second turn says resent and asks to verify"
+    },
+    {
+      "id": "MT30",
+      "category": "add_car_quote",
+      "name": "Add car 4-turn - vague → year/model → zip → delivery",
+      "turns": [
+        {"role": "customer", "text": "新车保险多少"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2025 Honda CR-V"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "90210"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "下周拿车"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 4,
+      "notes": "4-turn add-car; T3 zip - system asks delivery; T4 delivery → handoff (80% completion: zip+delivery required)"
+    },
+    {
+      "id": "MT31",
+      "category": "missing_document",
+      "name": "Missing doc 3-turn - dec page sent T2, garaging sent T3",
+      "turns": [
+        {"role": "customer", "text": "UW 要我补 declaration page 和 garaging proof"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "declaration page 发你了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "garaging proof 刚发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn missing doc; handoff at 2 when first item sent; turn 3 adds second - final output should reflect both"
+    },
+    {
+      "id": "MT32",
+      "category": "payment_failed_cancellation_risk",
+      "name": "Notice 3-turn - vague → correction → sent screenshot",
+      "turns": [
+        {"role": "customer", "text": "这个英文 notice 什么意思？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是 payment failed，是 final notice"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "通知和截图发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn notice; correction at T2, sent at T3; handoff at 2 or 3 with other_corrected then other_received"
+    },
+    {
+      "id": "MT33",
+      "category": "claim_intake",
+      "name": "Claim 3-turn - panic → no photos → photos sent",
+      "turns": [
+        {"role": "customer", "text": "刚撞了对方跑了，我现在先干嘛"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "还没拍照片"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "拍了现场照，发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn claim; T2 says no photos, T3 says sent; handoff at 2 or 3"
+    },
+    {
+      "id": "MT34",
+      "category": "premium_review",
+      "name": "Renewal 3-turn - casual → bill sent → options ask",
+      "turns": [
+        {"role": "customer", "text": "续保涨了好多"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "账单我发你微信了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "其中一辆去掉会便宜吗"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "3-turn renewal; bill sent T2, options ask T3; handoff at 2 with other_received"
+    },
+    {
+      "id": "MT35",
+      "category": "add_car_quote",
+      "name": "Add car 3-turn - model only T1, year+zip T2, delivery T3",
+      "turns": [
+        {"role": "customer", "text": "想加一台 Tesla Model Y"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024年的，90210"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "下周提车"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "3-turn add-car; T2 year+zip - system asks delivery; T3 delivery → handoff (80% completion)"
+    },
+    {
+      "id": "MT36",
+      "category": "missing_document",
+      "name": "Missing doc 4-turn - one item per turn",
+      "turns": [
+        {"role": "customer", "text": "他们要我补 declaration page 和 garaging proof"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "declaration page 发你了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "garaging 是什么意思"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "好的，弄好了发你"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "4-turn missing doc; T2 dec sent, T3 doc confusion, T4 will send; handoff at 2"
+    },
+    {
+      "id": "MT37",
+      "category": "payment_failed_cancellation_risk",
+      "name": "Payment 4-turn - vague → paid → no confirm → screenshot",
+      "turns": [
+        {"role": "customer", "text": "payment failed 是不是要停保"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "我昨天付了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "但没收到确认"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "截图发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "4-turn payment; handoff at 2 or 4 when screenshot sent"
+    },
+    {
+      "id": "MT38",
+      "category": "claim_intake",
+      "name": "Claim 4-turn - panic → no info → photos → other driver",
+      "turns": [
+        {"role": "customer", "text": "刚出事故了要收集什么"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "对方跑了，车牌记了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "现场照拍了发你"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "对方保险也拿到了发你"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "4-turn claim; progressive info; handoff when enough collected"
+    },
+    {
+      "id": "MT39",
+      "category": "add_driver",
+      "name": "Add driver - 加个司机",
+      "turns": [
+        {"role": "customer", "text": "加个司机，我儿子刚拿驾照"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2021 Accord，我儿子18岁"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "TOP_SCENARIOS_HARDENING: add driver; T2 provides vehicle and driver info"
+    },
+    {
+      "id": "MT40",
+      "category": "billing_clarification",
+      "name": "Billing clarification - 账单我发你了",
+      "turns": [
+        {"role": "customer", "text": "账单什么意思"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "账单我发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "TOP_COMMERCIAL_DEEPENING: billing T2 我发你了 → already_sent handoff"
+    },
+    {
+      "id": "MT41",
+      "category": "talk_to_agent",
+      "name": "Talk to Agent mid-flow - 加车后联系人工",
+      "turns": [
+        {"role": "customer", "text": "我买了台宝马X5，想问下保费多少钱"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "算了，我想直接跟人说"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "SALES_READINESS_HARDENING: Talk to Agent mid-flow; T2 联系人工 → immediate handoff"
+    }
+  ]
+}

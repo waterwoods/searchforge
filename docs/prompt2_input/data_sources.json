@@ -1,0 +1,432 @@
+{
+  "version": "1.0",
+  "created_at": "2024-01-15T00:00:00Z",
+  "description": "南加州汽车保险 Broker RAG 数据源清单",
+  "total_sources": 16,
+  "data_sources": [
+    {
+      "id": "ds_001",
+      "name": "California DMV Insurance Requirements",
+      "base_url": "https://www.dmv.ca.gov",
+      "priority": "P0",
+      "content_types": ["eligibility", "compliance", "faq"],
+      "expected_value": "提供加州法定最低责任险要求（15/30/5）、SR-22文件说明、无保险驾驶处罚",
+      "crawl_difficulty": "easy",
+      "legal_note": "公开政府信息，允许抓取。遵守robots.txt，建议延迟1-2秒/请求",
+      "target_urls": [
+        "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/",
+        "https://www.dmv.ca.gov/portal/driver-education/insurance/",
+        "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/suspended-vehicle-registration/",
+        "https://www.dmv.ca.gov/portal/dmv-virtual-office/accident-reporting/",
+        "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/proof-of-insurance/",
+        "https://www.dmv.ca.gov/portal/driver-education/insurance/insurance-requirements/",
+        "https://www.dmv.ca.gov/portal/driver-education/insurance/sr-22/",
+        "https://www.dmv.ca.gov/portal/driver-education/insurance/accidents/",
+        "https://www.dmv.ca.gov/portal/driver-education/insurance/reporting-accidents/",
+        "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/minimum-coverage/",
+        "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/liability-limits/",
+        "https://www.dmv.ca.gov/portal/vehicle-registration/insurance-requirements/uninsured-motorist/"
+      ],
+      "estimated_documents": 50,
+      "language": "en"
+    },
+    {
+      "id": "ds_002",
+      "name": "California Department of Insurance",
+      "base_url": "https://www.insurance.ca.gov",
+      "priority": "P0",
+      "content_types": ["regulations", "consumer_guides", "complaints", "licensing"],
+      "expected_value": "保险法规解释、消费者权益保护、投诉处理流程",
+      "crawl_difficulty": "easy",
+      "legal_note": "政府公开信息，允许抓取",
+      "target_urls": [
+        "https://www.insurance.ca.gov/01-consumers/",
+        "https://www.insurance.ca.gov/01-consumers/help/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/auto-insurance-basics/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/claims/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/complaints/",
+        "https://www.insurance.ca.gov/01-consumers/consumer-alerts/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/coverage-types/",
+        "https://www.insurance.ca.gov/01-consumers/105-type/1-auto/",
+        "https://www.insurance.ca.gov/01-consumers/105-type/1-auto/index.cfm",
+        "https://www.insurance.ca.gov/01-consumers/105-type/95-guides/01-auto/",
+        "https://www.insurance.ca.gov/01-consumers/105-type/95-guides/01-auto/lca/index.cfm",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/liability-coverage/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/comprehensive-collision/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/uninsured-motorist/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/medical-payments/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/rate-factors/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/discounts/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/policy-changes/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/cancellation/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/nonrenewal/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/proof-of-insurance/"
+      ],
+      "estimated_documents": 100,
+      "language": "en"
+    },
+    {
+      "id": "ds_003",
+      "name": "State Farm Auto Insurance",
+      "base_url": "https://www.statefarm.com",
+      "priority": "P1",
+      "content_types": ["coverage", "claims", "faq", "rates", "multi_lang"],
+      "expected_value": "保障差异对比（全险vs责任险）、理赔步骤详解、折扣项目、西语客户支持",
+      "crawl_difficulty": "medium",
+      "legal_note": "检查robots.txt，避免抓取个人账户页面，仅抓取公开帮助中心/FAQ",
+      "target_urls": [
+        "https://www.statefarm.com/insurance/auto",
+        "https://www.statefarm.com/insurance/auto/coverage",
+        "https://www.statefarm.com/insurance/auto/claims",
+        "https://www.statefarm.com/help/faq",
+        "https://www.statefarm.com/espanol",
+        "https://www.statefarm.com/insurance/auto/liability",
+        "https://www.statefarm.com/insurance/auto/uninsured-motorist",
+        "https://www.statefarm.com/insurance/auto/medical-payments",
+        "https://www.statefarm.com/insurance/auto/comprehensive-collision",
+        "https://www.statefarm.com/help/faq/auto-insurance"
+      ],
+      "estimated_documents": 300,
+      "language": "en,es"
+    },
+    {
+      "id": "ds_004",
+      "name": "GEICO Auto Insurance",
+      "base_url": "https://www.geico.com",
+      "priority": "P1",
+      "content_types": ["coverage", "claims", "faq", "multi_lang"],
+      "expected_value": "在线报价流程、保障类型对比、理赔时间线、移动应用功能",
+      "crawl_difficulty": "medium",
+      "legal_note": "遵守robots.txt，仅公开内容",
+      "target_urls": [
+        "https://www.geico.com/auto/",
+        "https://www.geico.com/auto/insurance/",
+        "https://www.geico.com/claims/",
+        "https://www.geico.com/help/",
+        "https://www.geico.com/es/",
+        "https://www.geico.com/information/aboutinsurance/auto/",
+        "https://www.geico.com/information/aboutinsurance/auto/liability-insurance/",
+        "https://www.geico.com/information/aboutinsurance/auto/uninsured-underinsured-motorist/",
+        "https://www.geico.com/information/aboutinsurance/auto/pip/",
+        "https://www.geico.com/information/aboutinsurance/auto/collision-coverage/",
+        "https://www.geico.com/information/aboutinsurance/auto/comp-coverage/",
+        "https://www.geico.com/information/aboutinsurance/auto/med-pay/",
+        "https://www.geico.com/save/discounts/",
+        "https://www.geico.com/save/discounts/car-insurance-discounts/",
+        "https://www.geico.com/information/aboutinsurance/auto/shopping-for-car-insurance/",
+        "https://www.geico.com/information/aboutinsurance/auto/faq/",
+        "https://www.geico.com/auto-insurance/claim-forgiveness/",
+        "https://www.geico.com/information/paymentoptions/auto-methods-and-plans/",
+        "https://www.geico.com/claims/claimsprocess/",
+        "https://www.geico.com/claims/autorepair/",
+        "https://www.geico.com/information/aboutinsurance/auto/coverage/",
+        "https://www.geico.com/information/aboutinsurance/auto/liability/",
+        "https://www.geico.com/information/aboutinsurance/auto/uninsured-motorist/",
+        "https://www.geico.com/information/aboutinsurance/auto/medical-payments/"
+      ],
+      "estimated_documents": 300,
+      "language": "en,es"
+    },
+    {
+      "id": "ds_005",
+      "name": "Progressive Auto Insurance",
+      "base_url": "https://www.progressive.com",
+      "priority": "P1",
+      "content_types": ["coverage", "claims", "faq", "tools"],
+      "expected_value": "快照（Snapshot）程序说明、保障套餐对比、理赔在线跟踪",
+      "crawl_difficulty": "medium",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.progressive.com/auto/",
+        "https://www.progressive.com/auto/insurance-coverages/",
+        "https://www.progressive.com/auto/insurance-coverages/liability/",
+        "https://www.progressive.com/auto/insurance-coverages/comprehensive/",
+        "https://www.progressive.com/auto/insurance-coverages/collision/",
+        "https://www.progressive.com/auto/insurance-coverages/uninsured-underinsured-motorist/",
+        "https://www.progressive.com/auto/insurance-coverages/loan-lease-payoff/",
+        "https://www.progressive.com/auto/insurance-coverages/rideshare/",
+        "https://www.progressive.com/auto/insurance-coverages/vehicle-protection-plan/",
+        "https://www.progressive.com/auto/insurance-coverages/deductible-savings-bank/",
+        "https://www.progressive.com/auto/insurance-coverages/calculator/",
+        "https://www.progressive.com/claims/",
+        "https://www.progressive.com/claims/auto-process/",
+        "https://www.progressive.com/claims/faq/",
+        "https://www.progressive.com/claims/roadside-assistance/",
+        "https://www.progressive.com/answers/",
+        "https://www.progressive.com/answers/auto-insurance/",
+        "https://www.progressive.com/answers/what-to-do-after-car-accident/",
+        "https://www.progressive.com/answers/how-to-report-a-claim/",
+        "https://www.progressive.com/answers/car-insurance/",
+        "https://www.progressive.com/answers/car-insurance-premium/",
+        "https://www.progressive.com/answers/car-insurance-deductible/",
+        "https://www.progressive.com/answers/full-coverage-car-insurance/",
+        "https://www.progressive.com/answers/how-much-car-insurance-do-i-need/",
+        "https://www.progressive.com/auto/discounts/",
+        "https://www.progressive.com/auto/discounts/snapshot/",
+        "https://www.progressive.com/auto/discounts/compare-car-insurance-rates/",
+        "https://www.progressive.com/auto/faq/"
+      ],
+      "estimated_documents": 300,
+      "language": "en"
+    },
+    {
+      "id": "ds_006",
+      "name": "Allstate Auto Insurance",
+      "base_url": "https://www.allstate.com",
+      "priority": "P1",
+      "content_types": ["coverage", "claims", "faq", "multi_lang"],
+      "expected_value": "保障差异说明、理赔时间承诺、折扣项目",
+      "crawl_difficulty": "medium",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.allstate.com/auto-insurance",
+        "https://www.allstate.com/auto-insurance/coverage",
+        "https://www.allstate.com/claims",
+        "https://www.allstate.com/help"
+      ],
+      "estimated_documents": 250,
+      "language": "en,es"
+    },
+    {
+      "id": "ds_007",
+      "name": "Farmers Insurance",
+      "base_url": "https://www.farmers.com",
+      "priority": "P1",
+      "content_types": ["coverage", "claims", "faq"],
+      "expected_value": "保障类型说明、理赔流程",
+      "crawl_difficulty": "medium",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.farmers.com/insurance/auto",
+        "https://www.farmers.com/insurance/auto/coverage",
+        "https://www.farmers.com/claims"
+      ],
+      "estimated_documents": 200,
+      "language": "en"
+    },
+    {
+      "id": "ds_007a",
+      "name": "Nationwide Auto Insurance",
+      "base_url": "https://www.nationwide.com",
+      "priority": "P1",
+      "content_types": ["coverage", "claims", "faq", "multi_lang"],
+      "expected_value": "保障类型说明与对比、理赔流程详解、折扣项目说明、多语言客户支持",
+      "crawl_difficulty": "medium",
+      "legal_note": "遵守robots.txt，仅抓取公开帮助中心/FAQ",
+      "target_urls": [
+        "https://www.nationwide.com/personal/insurance/auto/",
+        "https://www.nationwide.com/personal/insurance/auto/coverage/",
+        "https://www.nationwide.com/personal/insurance/auto/claims/",
+        "https://www.nationwide.com/help/"
+      ],
+      "estimated_documents": 250,
+      "language": "en"
+    },
+    {
+      "id": "ds_008",
+      "name": "NerdWallet Auto Insurance Guide",
+      "base_url": "https://www.nerdwallet.com",
+      "priority": "P2",
+      "content_types": ["comparison", "guides", "faq"],
+      "expected_value": "多公司对比、购买建议、费率因素解释",
+      "crawl_difficulty": "easy",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.nerdwallet.com/article/insurance/car-insurance",
+        "https://www.nerdwallet.com/article/insurance/car-insurance-guide"
+      ],
+      "estimated_documents": 150,
+      "language": "en"
+    },
+    {
+      "id": "ds_009",
+      "name": "ValuePenguin Auto Insurance",
+      "base_url": "https://www.valuepenguin.com",
+      "priority": "P2",
+      "content_types": ["comparison", "guides", "rates"],
+      "expected_value": "保障类型对比、费率因素、省钱技巧",
+      "crawl_difficulty": "easy",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.valuepenguin.com/auto-insurance",
+        "https://www.valuepenguin.com/auto-insurance/california"
+      ],
+      "estimated_documents": 150,
+      "language": "en"
+    },
+    {
+      "id": "ds_010",
+      "name": "The Zebra Auto Insurance",
+      "base_url": "https://www.thezebra.com",
+      "priority": "P2",
+      "content_types": ["comparison", "guides", "faq"],
+      "expected_value": "实时报价对比、保障解释",
+      "crawl_difficulty": "easy",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.thezebra.com/auto-insurance/",
+        "https://www.thezebra.com/auto-insurance/guides/"
+      ],
+      "estimated_documents": 150,
+      "language": "en"
+    },
+    {
+      "id": "ds_011",
+      "name": "California Department of Insurance - Chinese Consumer Information",
+      "base_url": "https://www.insurance.ca.gov",
+      "priority": "P2.5",
+      "content_types": ["guides", "faq", "regulations"],
+      "expected_value": "服务中文客户（加州重要群体）、保险基本概念中文解释、消费者权益保护中文说明、投诉流程中文指南",
+      "crawl_difficulty": "easy",
+      "legal_note": "政府公开信息，允许抓取。遵守robots.txt",
+      "target_urls": [
+        "https://www.insurance.ca.gov/01-consumers/chinese/"
+      ],
+      "estimated_documents": 100,
+      "language": "zh",
+      "note": "占位数据源，后续 Prompt 2 实现抓取"
+    },
+    {
+      "id": "ds_012",
+      "name": "California DMV - Chinese Vehicle/Insurance Information",
+      "base_url": "https://www.dmv.ca.gov",
+      "priority": "P0",
+      "content_types": ["eligibility", "compliance", "faq"],
+      "expected_value": "最低保险要求中文解释、SR-22文件中文说明、车辆注册保险要求中文指南",
+      "crawl_difficulty": "easy",
+      "legal_note": "公开政府信息，允许抓取。遵守robots.txt",
+      "target_urls": [
+        "https://www.dmv.ca.gov/portal/chinese/",
+        "https://www.dmv.ca.gov/portal/chinese/vehicle-registration/insurance-requirements/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/sr-22/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/accidents/"
+      ],
+      "estimated_documents": 30,
+      "language": "zh"
+    },
+    {
+      "id": "ds_013",
+      "name": "Major Insurers - Chinese Language Assistance Pages",
+      "base_url": "https://www.geico.com",
+      "priority": "P0",
+      "content_types": ["multi_lang", "guides", "faq", "claims"],
+      "expected_value": "服务中文客户、保险产品中文说明、理赔流程中文指南、多语言客户支持信息",
+      "crawl_difficulty": "medium",
+      "legal_note": "遵守robots.txt，仅抓取公开帮助页面",
+      "target_urls": [
+        "https://www.geico.com/help/language-assistance/",
+        "https://www.progressive.com/help/language-assistance/",
+        "https://www.geico.com/information/aboutinsurance/auto/",
+        "https://www.progressive.com/answers/auto-insurance/"
+      ],
+      "estimated_documents": 20,
+      "language": "zh"
+    },
+    {
+      "id": "ds_014",
+      "name": "California Department of Insurance - Spanish",
+      "base_url": "https://www.insurance.ca.gov",
+      "priority": "P0",
+      "content_types": ["guides", "faq"],
+      "expected_value": "服务西语客户（加州重要群体）、基本概念解释",
+      "crawl_difficulty": "easy",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.insurance.ca.gov/01-consumers/spanish/",
+        "https://www.insurance.ca.gov/01-consumers/spanish/help/auto/",
+        "https://www.insurance.ca.gov/01-consumers/spanish/help/auto/auto-insurance-basics/"
+      ],
+      "estimated_documents": 30,
+      "language": "es"
+    },
+    {
+      "id": "ds_017",
+      "name": "California Department of Insurance - Chinese Consumer Guides",
+      "base_url": "https://www.insurance.ca.gov",
+      "priority": "P0",
+      "content_types": ["consumer_guides", "regulations", "faq"],
+      "expected_value": "中文消费者指南、保险要求中文说明、投诉流程中文指南",
+      "crawl_difficulty": "easy",
+      "legal_note": "政府公开信息，允许抓取",
+      "target_urls": [
+        "https://www.insurance.ca.gov/01-consumers/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/auto-insurance-basics/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/claims/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/complaints/"
+      ],
+      "estimated_documents": 20,
+      "language": "zh"
+    },
+    {
+      "id": "ds_zh_001",
+      "name": "California Auto Insurance - Chinese Authoritative Sources",
+      "base_url": "https://www.dmv.ca.gov",
+      "priority": "P0",
+      "content_types": ["eligibility", "compliance", "faq", "consumer_guides", "claims"],
+      "expected_value": "中文权威页面：DMV保险要求、CDI消费者指南、保险公司中文支持页、理赔流程中文说明",
+      "crawl_difficulty": "easy",
+      "legal_note": "仅官方权威来源，遵守robots.txt",
+      "target_urls": [
+        "https://www.dmv.ca.gov/portal/chinese/",
+        "https://www.dmv.ca.gov/portal/chinese/vehicle-registration/insurance-requirements/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/sr-22/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/accidents/",
+        "https://www.dmv.ca.gov/portal/chinese/driver-education/insurance/reporting-accidents/",
+        "https://www.insurance.ca.gov/01-consumers/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/auto-insurance-basics/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/claims/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/complaints/",
+        "https://www.insurance.ca.gov/01-consumers/help/auto/coverage-types/",
+        "https://www.geico.com/help/language-assistance/",
+        "https://www.progressive.com/help/language-assistance/",
+        "https://www.geico.com/information/aboutinsurance/auto/",
+        "https://www.progressive.com/answers/auto-insurance/"
+      ],
+      "estimated_documents": 50,
+      "language": "zh"
+    },
+    {
+      "id": "ds_015",
+      "name": "Insurance.com",
+      "base_url": "https://www.insurance.com",
+      "priority": "P4",
+      "content_types": ["comparison", "guides"],
+      "expected_value": "补充对比信息",
+      "crawl_difficulty": "easy",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.insurance.com/auto-insurance"
+      ],
+      "estimated_documents": 100,
+      "language": "en"
+    },
+    {
+      "id": "ds_016",
+      "name": "Bankrate Auto Insurance",
+      "base_url": "https://www.bankrate.com",
+      "priority": "P4",
+      "content_types": ["guides", "rates"],
+      "expected_value": "补充指南信息",
+      "crawl_difficulty": "easy",
+      "legal_note": "遵守robots.txt",
+      "target_urls": [
+        "https://www.bankrate.com/insurance/car/"
+      ],
+      "estimated_documents": 100,
+      "language": "en"
+    }
+  ],
+  "mvp_sources": [
+    "ds_001",
+    "ds_002",
+    "ds_003",
+    "ds_004",
+    "ds_005"
+  ],
+  "chinese_sources": [
+    "ds_zh_001"
+  ]
+}

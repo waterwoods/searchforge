@@ -531,6 +531,33 @@ export interface CachedJobAnalysis {
     recommendation: string | null;
     /** Last analyzed timestamp in ISO format (from backend updated_at) */
     last_analyzed_at: string | null;
+    /** Whether this job should be auto-skipped (Lv0 filter) */
+    autoSkip: boolean;
+    /** List of reasons for auto-skip (e.g., ["low_fit_grade", "visa_unavailable"]) */
+    autoSkipReasons: string[] | null;
+}
+
+// Optional JobHunter JD summary fields used on the frontend only.
+// These mirror common backend fields when present.
+export interface JobhunterJDSummary {
+    job_id?: string;
+    title?: string;
+    company?: string;
+    [key: string]: any;
+}
+
+// Full JobHunter analysis result used in cache detail views.
+// Mirrors backend analysis JSON shape and includes the CN fast-read field.
+export interface JobhunterAnalysisResult {
+    jd_summary?: JobhunterJDSummary;
+    fit_summary?: Record<string, any>;
+    constraints?: Record<string, any>;
+    lifecycle?: Record<string, any>;
+    spotlight_stories?: any[];
+    core_signals?: any[];
+    graph_steps?: any[];
+    cn_fast_read?: string;
+    [key: string]: any;
 }
 
 // ========================================

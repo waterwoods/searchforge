@@ -1,0 +1,128 @@
+{
+  "version": "1",
+  "description": "Long-context / memory-shift simulation pack — vague follow-ups, corrections, contradictions",
+  "simulations": [
+    {
+      "id": "LC-AC1",
+      "category": "add_car_quote",
+      "name": "不是这个，是另一辆车",
+      "turns": [
+        {"role": "customer", "text": "想加一台车，2021 Honda Accord"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是这个，是另一辆车，2024 Tesla Model Y"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Correction: customer corrects which car; system must use corrected vehicle"
+    },
+    {
+      "id": "LC-AC2",
+      "category": "add_car_quote",
+      "name": "VIN 还没有，但车已经买了",
+      "turns": [
+        {"role": "customer", "text": "我买了台宝马X5，想问下保费多少钱"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "VIN 还没有，但车已经买了，90210，下周提车"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Partial info: VIN missing but year+model+zip+delivery present; should hand off"
+    },
+    {
+      "id": "LC-AC3",
+      "category": "add_car_quote",
+      "name": "我刚才说错了，是我老婆开那辆",
+      "turns": [
+        {"role": "customer", "text": "加一台2024 Tesla Model Y"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "90210，下周拿车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "我刚才说错了，是我老婆开那辆"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "Correction: customer corrects driver; broker handoff should carry corrected driver"
+    },
+    {
+      "id": "LC-AC4",
+      "category": "add_car_quote",
+      "name": "不是续保，是新保单",
+      "turns": [
+        {"role": "customer", "text": "想加车，2024 Honda CR-V"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是续保，是新保单，90210"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Clarification: new policy not renewal; avoid premium_review confusion"
+    },
+    {
+      "id": "LC-D1",
+      "category": "missing_document",
+      "name": "就是上次那个材料，我又发了",
+      "turns": [
+        {"role": "customer", "text": "UW follow up - need dec page + garaging proof. 客户说上周发过了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "就是上次那个材料，我又发了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Vague follow-up: \"上次那个材料\" refers to prior; should preserve \"already sent\" context"
+    },
+    {
+      "id": "LC-D2",
+      "category": "missing_document",
+      "name": "那个文件我微信又发了一次",
+      "turns": [
+        {"role": "customer", "text": "缺 declaration page，客户说发过了"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "那个文件我微信又发了一次"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Vague follow-up: \"那个文件\" = dec page; \"又发了一次\" = resent"
+    },
+    {
+      "id": "LC-N1",
+      "category": "payment_failed_cancellation_risk",
+      "name": "不是 payment failed，是 final notice",
+      "turns": [
+        {"role": "customer", "text": "客户问：这个英文 notice 说 payment failed，我现在怎么办？"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是 payment failed，是 final notice，我发你截图"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Correction: customer corrects notice type; handoff should reflect final notice"
+    },
+    {
+      "id": "LC-N2",
+      "category": "payment_failed_cancellation_risk",
+      "name": "通知我发你了，你看下",
+      "turns": [
+        {"role": "customer", "text": "这个英文 notice 是不是要停了 我没看懂"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "通知我发你了，你看下"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Vague follow-up: \"通知\" = the notice; \"发你了\" = sent"
+    },
+    {
+      "id": "LC-CL1",
+      "category": "claim_intake",
+      "name": "对方跑了，我现在只有车牌",
+      "turns": [
+        {"role": "customer", "text": "刚撞了，对方跑了，我现在先干嘛"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "对方跑了，我现在只有车牌，发你"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Correction: hit-and-run, only license plate; handoff should preserve this"
+    },
+    {
+      "id": "LC-AC5",
+      "category": "add_car_quote",
+      "name": "另一辆车 — 删车语境",
+      "turns": [
+        {"role": "customer", "text": "旧车卖掉了，想从保单拿掉"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是这个，是另一辆车，2021 Honda Accord"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "Correction: \"另一辆车\" = the vehicle to remove; clarify which car"
+    }
+  ]
+}
