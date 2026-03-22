@@ -43,12 +43,18 @@ export interface TriageResult {
     case_persisted?: boolean;
     handoff_ready?: boolean;
     conversation_summary?: string;
+    /** Mixed-intent: customer also asked about this (e.g. "Also asked: garaging/dec page meaning") */
+    secondary_issue_note?: string;
+    /** Append flow: same thread vs new-issue boundary hint (rule-based) */
+    case_boundary?: 'new_issue' | 'borderline' | 'same_case';
     follow_up_type?: string;
     collection_stage?: 'collecting' | 'enough_for_handoff';
     /** Add-car / new quote: structured fields already collected (year, make_model, zip, delivery_date, primary_driver, vin) */
     collected_fields?: string[];
     /** Add-car / new quote: fields still needed before quote */
     still_needed_fields?: string[];
+    /** Add-car only: quote_ready | almost_ready | need_more — for broker visibility (ADD_CAR_REAL_INTAKE_LITE) */
+    quote_ready_status?: 'quote_ready' | 'almost_ready' | 'need_more';
     /** Whether broker should explicitly confirm high‑risk fields before acting */
     human_confirmation_required?: boolean;
     /** Which structured fields are driving the confirmation recommendation */
@@ -77,16 +83,31 @@ export interface TriageResult {
 export type CaseStatus = 'new' | 'reviewing' | 'waiting_client' | 'done';
 export type WaitingOn = 'none' | 'client' | 'broker' | 'carrier' | 'underwriting';
 
+/** ADD_CAR_ATTACHMENT_READY_LITE: attachment metadata on case */
+export interface CaseAttachment {
+    attachment_id: string;
+    filename: string;
+    type: 'registration' | 'vin_photo' | 'dec_page' | 'screenshot';
+    size_bytes: number;
+    created_at: string;
+}
+
 export interface SavedCase extends TriageResult {
     case_id: string;
     case_status: CaseStatus;
     created_at: string;
     updated_at: string;
     source_text: string;
+    /** ADD_CAR_ATTACHMENT_READY_LITE: uploaded materials */
+    case_attachments?: CaseAttachment[];
     /** Optional: session_id that created this case (Minimal Production Backbone traceability) */
     origin_session_id?: string;
     /** Optional: client_id for append/reopen lifecycle (Client Identity Persistence) */
     client_id?: string;
+    /** ADD_CAR_IDENTITY_CONTACT_LITE: lightweight customer contact */
+    customer_name?: string;
+    customer_phone?: string;
+    customer_email?: string;
 }
 
 /** Soft-route intent from quick-start button (add_car, remove_car, claim_intake, cancellation_warning, missing_document, talk_to_agent) */
@@ -199,6 +220,28 @@ export async function updateSavedCaseFollowUp(
         waiting_on: waitingOn,
         next_contact_by: nextContactBy.trim(),
     });
+    return response.data;
+}
+
+/** Upload attachment to a case (ADD_CAR_ATTACHMENT_READY_LITE) */
+export async function uploadCaseAttachment(caseId: string, file: File): Promise<SavedCase> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await request.post<SavedCase>(`/api/inbox/cases/${caseId}/attachments`, formData);
+    return response.data;
+}
+
+/** Get attachment download URL (relative to API base) */
+export function getAttachmentDownloadUrl(caseId: string, attachmentId: string): string {
+    return `/api/inbox/cases/${caseId}/attachments/${attachmentId}`;
+}
+
+/** Update customer contact fields on a saved case (ADD_CAR_IDENTITY_CONTACT_LITE) */
+export async function updateSavedCaseCustomer(
+    caseId: string,
+    updates: { customer_name?: string; customer_phone?: string; customer_email?: string },
+): Promise<SavedCase> {
+    const response = await request.patch<SavedCase>(`/api/inbox/cases/${caseId}/customer`, updates);
     return response.data;
 }
 

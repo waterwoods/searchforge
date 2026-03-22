@@ -293,18 +293,25 @@ echo ""
 # Wait a few seconds for service to be ready
 sleep 5
 
-HEALTHZ_OK=false
+# Liveness: Cloud Run’s Google HTTP frontend returns 404 for top-level /healthz before the
+# request reaches the container (not an app bug). Canonical probes: /health/live, /readyz.
+# See docs/runbooks/KNOWN_DEPLOYMENT_GOTCHAS.md § Cloud Run /healthz.
+LIVE_OK=false
 READYZ_OK=false
 
-# Check /healthz
-if curl -sf --max-time 10 "${SERVICE_URL}/healthz" > /dev/null 2>&1; then
-    HEALTHZ_OK=true
-    echo "✅ /healthz: OK"
+if curl -sf --max-time 10 "${SERVICE_URL}/health/live" > /dev/null 2>&1; then
+    LIVE_OK=true
+    echo "✅ /health/live: OK (liveness)"
+elif curl -sf --max-time 10 "${SERVICE_URL}/api/healthz" > /dev/null 2>&1; then
+    LIVE_OK=true
+    echo "✅ /api/healthz: OK (liveness alias)"
+elif curl -sf --max-time 10 "${SERVICE_URL}/healthz" > /dev/null 2>&1; then
+    LIVE_OK=true
+    echo "✅ /healthz: OK (non–Cloud Run or future frontend behavior)"
 else
-    echo "❌ /healthz: FAILED"
+    echo "❌ Liveness: FAILED (/health/live and /api/healthz unreachable)"
 fi
 
-# Check /readyz
 if curl -sf --max-time 10 "${SERVICE_URL}/readyz" > /dev/null 2>&1; then
     READYZ_OK=true
     echo "✅ /readyz: OK"
@@ -312,9 +319,9 @@ else
     echo "⚠️  /readyz: FAILED (may be normal if Qdrant not ready yet)"
 fi
 
-if [ "$HEALTHZ_OK" = false ]; then
+if [ "$LIVE_OK" = false ]; then
     echo ""
-    echo "⚠️  Health check failed. Service may still be starting up."
+    echo "⚠️  Liveness check failed. Service may still be starting up."
     echo "   Check logs:"
     echo "     gcloud run services logs read $SERVICE_NAME --region $REGION --project $PROJECT_ID"
     echo "   Or describe service:"
@@ -335,8 +342,9 @@ echo "   $SERVICE_URL"
 echo ""
 echo "🧪 Test Commands:"
 echo ""
-echo "   # Health check"
-echo "   curl $SERVICE_URL/healthz"
+echo "   # Liveness (use on Cloud Run — /healthz may 404 at Google edge)"
+echo "   curl $SERVICE_URL/health/live"
+echo "   curl $SERVICE_URL/readyz"
 echo ""
 echo "   # Query API (example)"
 echo "   curl -X POST $SERVICE_URL/api/query \\"

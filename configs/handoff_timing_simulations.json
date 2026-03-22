@@ -1,0 +1,159 @@
+{
+  "version": "1",
+  "description": "Handoff Timing Audit — simulate customer-not-finished-yet, correction-after-handoff, mixed-intent-before-handoff",
+  "simulations": [
+    {
+      "id": "HT1",
+      "category": "add_car",
+      "name": "Add-car + driver detail in T3",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Tesla Model Y"},
+        {"role": "customer", "text": "90210 下周提车"},
+        {"role": "customer", "text": "对了 是我老婆开"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "expected_no_handoff_turn2": true,
+      "notes": "T2 has zip+delivery; system should ask driver; T3 adds driver; handoff at T3"
+    },
+    {
+      "id": "HT2",
+      "category": "missing_document",
+      "name": "Missing doc + garaging question in T3",
+      "turns": [
+        {"role": "customer", "text": "要dec page和garaging proof"},
+        {"role": "customer", "text": "dec page发你了"},
+        {"role": "customer", "text": "garaging proof 是什么意思"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "handoff_too_early_risk": true,
+      "notes": "T2 enough for handoff; T3 asks question — if handoff T2, T3 never processed. Acceptable: handoff T2 with broker seeing both; or defer."
+    },
+    {
+      "id": "HT3",
+      "category": "premium_review",
+      "name": "Premium + remove-vehicle in T3",
+      "turns": [
+        {"role": "customer", "text": "续保涨了好多"},
+        {"role": "customer", "text": "账单发你了"},
+        {"role": "customer", "text": "其中一辆去掉会便宜吗"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 bill sent; handoff at T2. T3 would append in real flow. Acceptable-for-trial; fix-next: defer when bill_sent but no remove_vehicle (scope to 3+ turn)."
+    },
+    {
+      "id": "HT4",
+      "category": "talk_to_agent",
+      "name": "Talk to agent — fast handoff",
+      "turns": [
+        {"role": "customer", "text": "联系人工"}
+      ],
+      "expected_handoff_after_turn": 1,
+      "expected_category": "customer_requested_human",
+      "notes": "Must hand off T1"
+    },
+    {
+      "id": "HT5",
+      "category": "add_car",
+      "name": "Correction: 不是这个车",
+      "turns": [
+        {"role": "customer", "text": "加车 2021 Honda"},
+        {"role": "customer", "text": "不是这个 是另一辆 2024 Tesla Model Y"},
+        {"role": "customer", "text": "90210 下周提车"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "T2 correction; T3 zip+delivery; collected should show 2024 Tesla"
+    },
+    {
+      "id": "HT6",
+      "category": "mixed_intent",
+      "name": "Mixed: add-car + garaging question",
+      "turns": [
+        {"role": "customer", "text": "想加车 顺便 garaging proof 是什么"}
+      ],
+      "expected_handoff_after_turn": null,
+      "expected_no_handoff_turn1": true,
+      "notes": "Should answer garaging; collect add-car; not close on one only"
+    },
+    {
+      "id": "HT7",
+      "category": "vague",
+      "name": "Vague: 帮我",
+      "turns": [
+        {"role": "customer", "text": "帮我"}
+      ],
+      "expected_handoff_after_turn": null,
+      "expected_no_handoff_turn1": true,
+      "notes": "Must NOT hand off T1"
+    },
+    {
+      "id": "HT8",
+      "category": "add_car",
+      "name": "Add-car + side question in same turn",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 X5"},
+        {"role": "customer", "text": "90210 下周提车 对了 garaging proof 是什么"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 has full add-car + clarification; answer question; hand off"
+    },
+    {
+      "id": "HT9",
+      "category": "payment_failed",
+      "name": "Payment + screenshot in T3",
+      "turns": [
+        {"role": "customer", "text": "payment failed 怎么办"},
+        {"role": "customer", "text": "我昨天付了"},
+        {"role": "customer", "text": "截图发你微信了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 paid; handoff at T2. T3 screenshot would append. Acceptable-for-trial; fix-next: ask 截图发了吗 when paid but no screenshot (scope to 3+ turn)."
+    },
+    {
+      "id": "HT10",
+      "category": "premium_review",
+      "name": "Premium + which vehicle in T3",
+      "turns": [
+        {"role": "customer", "text": "续保涨了好多"},
+        {"role": "customer", "text": "账单发你了"},
+        {"role": "customer", "text": "2021 Accord 想拿掉"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 bill; handoff at T2. T3 which vehicle would append. Acceptable-for-trial; fix-next: defer when bill_sent but no remove_vehicle (scope to 3+ turn)."
+    },
+    {
+      "id": "HT11",
+      "category": "add_car",
+      "name": "Add-car + coverage question in same turn",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Tesla Model Y"},
+        {"role": "customer", "text": "90210 下周提车 顺便问一下 coverage 可以调吗"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 has full add-car + coverage question; answer coverage briefly; hand off"
+    },
+    {
+      "id": "HT12",
+      "category": "add_car",
+      "name": "Add-car correction: 不是X5 是X3",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 BMW X5"},
+        {"role": "customer", "text": "不是X5 是X3"},
+        {"role": "customer", "text": "90210 下周提车 我开"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "T2 correction; T3 zip+delivery+driver; collected should show X3"
+    },
+    {
+      "id": "HT13",
+      "category": "add_car",
+      "name": "Add-car + materials sent T3 (我已经发你微信了)",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Honda Accord 90210"},
+        {"role": "customer", "text": "下周提车"},
+        {"role": "customer", "text": "材料我已经发你微信了"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "COMMERCIAL_FLOW_HARDENING: T2 delivery triggers driver ask; T3 materials_sent overrides, handoff with verify"
+    }
+  ]
+}

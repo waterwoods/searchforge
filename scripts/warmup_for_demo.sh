@@ -32,12 +32,16 @@ fi
 echo "Warming backend at $BASE_URL..."
 echo ""
 
-# 1. Health / readiness (healthz for local; readyz/health fallback for Cloud Run)
+# 1. Liveness / readiness (/health/live first — Cloud Run intercepts bare /healthz at Google edge)
 echo "[1] Health check..."
-if curl -sf --max-time 15 "$BASE_URL/healthz" > /dev/null 2>&1; then
-  echo "  OK (/healthz)"
+if curl -sf --max-time 15 "$BASE_URL/health/live" > /dev/null 2>&1; then
+  echo "  OK (/health/live)"
+elif curl -sf --max-time 15 "$BASE_URL/api/healthz" > /dev/null 2>&1; then
+  echo "  OK (/api/healthz)"
+elif curl -sf --max-time 15 "$BASE_URL/healthz" > /dev/null 2>&1; then
+  echo "  OK (/healthz — local or non-CR)"
 elif curl -sf --max-time 15 "$BASE_URL/readyz" > /dev/null 2>&1; then
-  echo "  OK (/readyz — Cloud Run)"
+  echo "  OK (/readyz — fallback)"
 elif curl -sf --max-time 15 "$BASE_URL/health" > /dev/null 2>&1; then
   echo "  OK (/health — fallback)"
 else

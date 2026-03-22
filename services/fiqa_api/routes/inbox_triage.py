@@ -16,14 +16,17 @@ import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from services.fiqa_api.inbox_triage.case_store import (
     CASE_STATUS_VALUES,
     CASE_WAITING_ON_VALUES,
+    add_attachment_to_case,
     add_case_note,
     append_follow_up_message,
+    get_attachment_file_path,
     get_case_by_id,
     list_recent_cases,
     save_case,
@@ -42,6 +45,7 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_add_car_rules,
     get_handoff_phrases,
     get_reply_templates,
+    get_soft_route_inbox_copy,
     get_ui_copy,
     save_add_car_rules,
 )
@@ -85,24 +89,6 @@ def _infer_intent_from_result(text: str, result: dict[str, Any]) -> str | None:
     if _is_premium_review_request(lowered) or cat == "renewal_reminder":
         return "renewal_premium"  # maps to remove_car or separate; treat as different from add_car/claim
     return None
-
-
-REROUTE_MESSAGES: dict[str, str] = {
-    "add_car": "看起来这是加车报价相关的问题，我先帮您处理这个。",
-    "remove_car": "看起来这是保单变更相关的问题，我先帮您处理这个。",
-    "claim_intake": "看起来这是事故理赔相关的问题，我先帮您处理这个。",
-    "cancellation_warning": "看起来这是付款/取消相关的问题，我先帮您处理这个。",
-    "missing_document": "看起来这是上传材料相关的问题，我先帮您处理这个。",
-}
-
-# Intent-specific first replies when soft_route is set but triage returned unclear/generic (button-starter fallback)
-SOFT_ROUTE_STARTER_REPLIES: dict[str, str] = {
-    "add_car": "好的，我来帮您看新车报价。先把年份和车型发我，我就能帮你算。",
-    "remove_car": "好的，可以处理。把卖车日期、车辆信息和是否已经过户发我，我先帮你确认。",
-    "claim_intake": "先别慌，我先按事故来帮您处理。先把事故经过、现场照片和对方车牌发我，我帮你确认下一步怎么报案。",
-    "cancellation_warning": "这像是付款问题。先把最新通知或付款截图发我，我先帮你确认；如果还没付，今天尽快处理，避免停保。",
-    "missing_document": "好的，材料补交我来帮您处理。把完整通知和要补的材料发我，我整理后尽快帮你回复。",
-}
 
 
 class ConversationTurn(BaseModel):
@@ -254,8 +240,9 @@ async def get_add_car_rules_api() -> dict[str, Any]:
     Used by Rules Center to display and edit.
     """
     rules = get_add_car_rules()
-    templates = get_reply_templates()
-    handoff = get_handoff_phrases()
+    active = get_active_client_id()
+    templates = get_reply_templates(active)
+    handoff = get_handoff_phrases(active)
     add_car_template = templates.get("add_car") or {}
     add_car_handoff = handoff.get("add_car") or {}
     return {
@@ -416,6 +403,8 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         client_id=client_id,
     )
 
+    reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
+
     # Rerouting: when soft_route from button conflicts with inferred intent from text, acknowledge
     soft_route = (request.soft_route or "").strip().lower() or None
     if soft_route:
@@ -426,7 +415,9 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         )
         if inferred and inferred != soft_route and not compatible:
             result["reroute_occurred"] = True
-            result["reroute_message"] = REROUTE_MESSAGES.get(inferred, "看起来这是不同的问题，我先帮您处理这个。")
+            result["reroute_message"] = reroute_messages.get(
+                inferred, "看起来这是不同的问题，我先帮您处理这个。"
+            )
             result["previous_soft_route"] = soft_route
             result["new_intent"] = inferred
         else:
@@ -440,8 +431,8 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             or "请提供更多信息" in draft
             or "Could you please provide more" in draft
         )
-        if is_generic and soft_route in SOFT_ROUTE_STARTER_REPLIES:
-            result["client_reply_draft"] = SOFT_ROUTE_STARTER_REPLIES[soft_route]
+        if is_generic and soft_route in soft_route_starter_replies:
+            result["client_reply_draft"] = soft_route_starter_replies[soft_route]
             result["issue_category"] = (
                 "payment_lapse_expiration" if soft_route == "cancellation_warning" else "customer_question"
             )
@@ -586,6 +577,41 @@ async def patch_case_customer(case_id: str, request: CaseCustomerRequest) -> dic
     if updated is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     return updated
+
+
+@router.post("/cases/{case_id}/attachments")
+async def upload_case_attachment(case_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    """
+    Upload an attachment to a case. ADD_CAR_ATTACHMENT_READY_LITE.
+    Accepts: image/*, application/pdf. Max 10 MB.
+    """
+    case = get_case_by_id(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    content = await file.read()
+    filename = file.filename or "attachment"
+    content_type = file.content_type or ""
+    try:
+        updated = add_attachment_to_case(
+            case_id=case_id,
+            filename=filename,
+            content=content,
+            content_type=content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    return updated
+
+
+@router.get("/cases/{case_id}/attachments/{attachment_id}")
+async def download_case_attachment(case_id: str, attachment_id: str):
+    """Download an attachment file. ADD_CAR_ATTACHMENT_READY_LITE."""
+    path = get_attachment_file_path(case_id, attachment_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="attachment not found")
+    return FileResponse(path, filename=path.name.split("_", 1)[-1] if "_" in path.name else path.name)
 
 
 @router.post("/cases/{case_id}/append-message")

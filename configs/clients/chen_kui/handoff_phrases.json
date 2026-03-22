@@ -7,8 +7,8 @@
       "en": "Got it. We've forwarded your request to the office. They will contact you shortly."
     },
     "add_car": {
-      "zh": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
-      "en": "Got your quote details. Our office will review and follow up with you."
+      "zh": "您的加车报价请求已正式提交办公室。办公室会核对资料并尽快出价，有结果会联系您（工作时间内处理，周末及公共假期顺延）。",
+      "en": "Your add-car quote request has been formally submitted to our office. They will verify details and price the risk, then follow up—typically within one to two business days (weekends/holidays may extend this)."
     },
     "remove_car": {
       "zh": "您说的卖车信息已整理好了，办公室会尽快处理，有结果会联系您。",

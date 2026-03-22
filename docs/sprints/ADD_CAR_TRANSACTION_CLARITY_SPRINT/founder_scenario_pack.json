@@ -1,0 +1,92 @@
+{
+  "version": "1",
+  "sprint": "ADD_CAR_TRANSACTION_CLARITY_SPRINT",
+  "description": "Founder inspection pack — transaction identity + closure (manual UI + automated triage checks).",
+  "scenarios": [
+    {
+      "id": "ATC-01",
+      "name": "Clean Add-Car → collect → handoff",
+      "goal": "Ribbon + progress title + closure headline + boundary",
+      "turns": [
+        "我想加新车报价",
+        "2024 Tesla Model Y，邮编95131，下周五提车，主要驾驶人本人"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_draft_contains_any_zh": ["办公室", "加车", "报价"]
+    },
+    {
+      "id": "ATC-02",
+      "name": "Partial Add-Car → later completion → handoff",
+      "goal": "Transaction strip persists across turns",
+      "turns": [
+        "我想给新车加保报价。年份2023；车型Honda CR-V",
+        "邮编90012，下周三提车，老婆开"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_draft_contains_any_zh": ["办公室"]
+    },
+    {
+      "id": "ATC-03",
+      "name": "Add-Car with correction → handoff",
+      "goal": "Closure still reads as office-submitted after correction",
+      "turns": [
+        "加一台2022宝马X5，邮编94506，明天提车，我开",
+        "不对，是2023宝马X5"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_draft_contains_any_zh": ["办公室"]
+    },
+    {
+      "id": "ATC-04",
+      "name": "Materials sent → handoff",
+      "goal": "Materials branch states office flow + submitted",
+      "turns": [
+        "2024 Tesla Model 3 加保 邮编95110 明天提车 本人开 行驶证照片发你微信了"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_draft_contains_any_zh": ["办公室", "材料"]
+    },
+    {
+      "id": "ATC-05",
+      "name": "Quote-ready single turn (dense)",
+      "goal": "Quote-ready status + handoff wording",
+      "turns": [
+        "我想加新车报价。年份2025；车型Tesla Model Y；邮编95131；预计下周五提车；主要驾驶人本人。"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ATC-06",
+      "name": "Complete → customer asks something else (simulated follow-up)",
+      "goal": "Mixed follow-up: triage may still hand off; founder judges separation vs UI boundary copy",
+      "turns": [
+        "2024 Ford F-150 邮编94501 下周提车 本人开",
+        "顺便问一下我续保什么时候到期？"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_draft_contains_any_zh": ["办公室"],
+      "notes": "Current rules often hand off after full add-car + any extra ask; UI boundary still pushes 提交新问题 for the next topic."
+    },
+    {
+      "id": "ATC-07",
+      "name": "In progress → side question (coverage)",
+      "goal": "Coverage answer + office handoff suffix",
+      "turns": [
+        "加车 2024 RAV4 邮编90210 周五提车 我开，顺便 coverage 可以调吗"
+      ],
+      "expect_handoff_last_turn": true,
+      "expect_draft_contains_any_zh": ["保额", "办公室"]
+    },
+    {
+      "id": "ATC-08",
+      "name": "New issue guidance (post-handoff mental model)",
+      "goal": "After handoff UI shows 提交新问题 (manual)",
+      "turns": [
+        "2024 Camry 邮编92101 明天提车 配偶开"
+      ],
+      "expect_handoff_last_turn": true,
+      "notes": "Founder confirms closure card shows boundary hint."
+    }
+  ]
+}

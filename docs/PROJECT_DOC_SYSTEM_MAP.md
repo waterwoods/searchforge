@@ -30,6 +30,7 @@ Then use this map to find specific docs.
 | `docs/BROKER_DEMO_DRIFT_GUARDRAIL.md` | Drift detection, when to run |
 | `docs/MULTI_AGENT_OPERATING_MODEL_V1.md` | Roles, working loop, handoffs |
 | `docs/MATURE_INTAKE_SKELETON.md` | Shared intake flow: detect → ask → enough? → hand off |
+| `docs/sprints/MATURE_SKELETON_COMMERCIAL_INTAKE_BACKBONE/03_PAGE_FLOW_STATE_HANDOFF_BACKBONE_SPEC.md` | **Mature backbone** — page, flow, state, handoff structure; borrow from Stripe/Amazon/Intercom/Zendesk; future-sprint reference |
 | `docs/LIGHTWEIGHT_STATE_MACHINE_BLUEPRINT.md` | Lightweight state machine, field progress, follow-up type strategy |
 | `docs/KNOWLEDGE_ARCHITECTURE_AND_CONFIG_LAYER.md` | Architecture layers: rules, knowledge, client, state, tests |
 | `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | Platform blueprint: product definition, 3-layer architecture, trust boundaries, monetization |

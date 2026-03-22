@@ -1,0 +1,18 @@
+{
+  "version": "1",
+  "description": "Soft-route reroute line + first-turn starter replies for POST /api/inbox/triage. Industry/common copy; override per deployment without code edits.",
+  "reroute_messages": {
+    "add_car": "看起来这是加车报价相关的问题，我先帮您处理这个。",
+    "remove_car": "看起来这是保单变更相关的问题，我先帮您处理这个。",
+    "claim_intake": "看起来这是事故理赔相关的问题，我先帮您处理这个。",
+    "cancellation_warning": "看起来这是付款/取消相关的问题，我先帮您处理这个。",
+    "missing_document": "看起来这是上传材料相关的问题，我先帮您处理这个。"
+  },
+  "soft_route_starter_replies": {
+    "add_car": "好的，我来帮您看新车报价。先把年份和车型发我，我就能帮你算。",
+    "remove_car": "好的，可以处理。把卖车日期、车辆信息和是否已经过户发我，我先帮你确认。",
+    "claim_intake": "先别慌，我先按事故来帮您处理。先把事故经过、现场照片和对方车牌发我，我帮你确认下一步怎么报案。",
+    "cancellation_warning": "这像是付款问题。先把最新通知或付款截图发我，我先帮你确认；如果还没付，今天尽快处理，避免停保。",
+    "missing_document": "好的，材料补交我来帮您处理。把完整通知和要补的材料发我，我整理后尽快帮你回复。"
+  }
+}

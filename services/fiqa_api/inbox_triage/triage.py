@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 _MARKERS_CACHE: dict[str, tuple[str, ...]] | None = None
 _DOCUMENT_ITEMS_CACHE: tuple[tuple[tuple[str, ...], str, str], ...] | None = None
 _HANDOFF_CACHE: dict[str, dict[str, dict[str, str]]] = {}  # client_id -> phrases
-_REPLY_TEMPLATES_CACHE: dict[str, Any] | None = None
+_REPLY_TEMPLATES_CACHE: dict[str, dict[str, Any]] = {}  # client_id -> merged templates
 _CATEGORY_TEMPLATES_CACHE: dict[str, dict[str, str]] | None = None
 _WORKFLOW_FALLBACKS_CACHE: dict[str, str] | None = None
 
@@ -195,12 +195,13 @@ def _get_handoff_phrases(client_id: str | None = None) -> dict[str, dict[str, st
     return _HANDOFF_CACHE.get(cid, {})
 
 
-def _get_reply_templates() -> dict[str, Any]:
-    """Get reply templates from config or empty dict (caller uses hardcoded fallback)."""
+def _get_reply_templates(client_id: str | None = None) -> dict[str, Any]:
+    """Get reply templates from config or empty dict (caller uses hardcoded fallback). Per-client cache."""
     global _REPLY_TEMPLATES_CACHE
-    if _REPLY_TEMPLATES_CACHE is None:
-        _REPLY_TEMPLATES_CACHE = get_reply_templates()
-    return _REPLY_TEMPLATES_CACHE
+    cid = (client_id or "").strip() or get_active_client_id()
+    if cid not in _REPLY_TEMPLATES_CACHE:
+        _REPLY_TEMPLATES_CACHE[cid] = get_reply_templates(cid)
+    return _REPLY_TEMPLATES_CACHE[cid]
 
 
 def _get_category_templates_config() -> dict[str, dict[str, str]]:
@@ -436,6 +437,17 @@ def _is_premium_review_request(text: str) -> bool:
 def _is_add_vehicle_request(text: str) -> bool:
     """Add-car/quote: requires add_vehicle markers AND (vehicle_context OR quote/报价 OR delivery/pickup)."""
     lowered = (text or "").lower()
+    # VIN + send-permission / materials question — add-car context without explicit 加车 (WIRC first-turn tolerance)
+    if re.search(r"\bvin\b", lowered) or "vin码" in lowered:
+        if _is_prospective_send_offer_message(lowered) and any(
+            k in lowered for k in ("截图", "screenshot", "照片", "材料", "行驶证", "registration", "微信")
+        ):
+            return True
+    # 行驶证 / registration + send-permission — common add-car doc offer, route off generic unclear
+    if _is_prospective_send_offer_message(lowered) and (
+        "行驶证" in (text or "") or "registration" in lowered
+    ):
+        return True
     if not _contains_any(lowered, _get_markers("add_vehicle")):
         return False
     if _contains_any(lowered, _get_markers("vehicle_context")) or "quote" in lowered or "报价" in lowered:
@@ -486,10 +498,11 @@ def _build_customer_question_broker_next_step(text: str) -> str:
         return "Confirm whether DMV wants SR-22 filing proof, check any deadline, and tell the client exactly what to bring or what still needs to be filed."
     if _is_claim_intake_request(lowered):
         return "Guide client to collect evidence and start claim reporting; confirm photos and other-driver info received."
-    if _is_premium_review_request(lowered):
-        return "Review renewal notice and current premium; confirm remove-vehicle or coverage-adjust intent, then send 1–2 realistic options."
+    # Add-car before premium review: mixed "加车 + 能便宜吗" stays on quote intake, not renewal review.
     if _is_add_vehicle_request(lowered):
         return "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day."
+    if _is_premium_review_request(lowered):
+        return "Review renewal notice and current premium; confirm remove-vehicle or coverage-adjust intent, then send 1–2 realistic options."
     if _is_remove_vehicle_request(lowered):
         return "Confirm the sold vehicle details and sale date, then remove it cleanly without leaving the client unclear on what stays covered."
     if _is_add_driver_request(lowered):
@@ -513,10 +526,10 @@ def _build_customer_question_client_prep(text: str) -> str:
         return "DMV notice, any suspension letter, and any SR-22 filing proof already received."
     if _is_claim_intake_request(lowered):
         return "Accident details, photos, other driver's license and insurance info, and policy number."
-    if _is_premium_review_request(lowered):
-        return "Current declaration page, latest bill, and any recent vehicle, driver, address, or coverage changes."
     if _is_add_vehicle_request(lowered):
         return "Year, make/model, VIN if available, delivery date, zip or address, lienholder if any, and primary driver details."
+    if _is_premium_review_request(lowered):
+        return "Current declaration page, latest bill, and any recent vehicle, driver, address, or coverage changes."
     if _is_remove_vehicle_request(lowered):
         return "Vehicle details, sale date, replacement-vehicle timing if any, and whether title or registration already transferred."
     if _is_add_driver_request(lowered):
@@ -530,12 +543,12 @@ def _build_customer_question_client_prep(text: str) -> str:
     return "The full text or a clear photo of the notice, plus any deadline shown on it."
 
 
-def _build_client_reply_draft(text: str, category: str) -> str:
+def _build_client_reply_draft(text: str, category: str, client_id: str | None = None) -> str:
     language = _detect_client_language(text)
     items = _extract_requested_items(text, language)
     item_text = _join_readable(items, language)
     lowered = (text or "").lower()
-    templates = _get_reply_templates()
+    templates = _get_reply_templates(client_id)
 
     if language == "zh":
         if category == "cancellation_warning":
@@ -592,6 +605,44 @@ def _build_client_reply_draft(text: str, category: str) -> str:
                     hit_t = templates.get("claim_intake_hit_and_run", {})
                     return hit_t.get("zh") or "刚出事故一定很着急，先别慌。对方跑了的话，最关键的是车牌号、现场照片和事故经过。先把这些发我，我帮你确认下一步怎么报案和报保险。"
                 return t.get("zh") or "事故刚发生的话，先确保人没事，再拍现场照片、记下对方车牌和保险信息。把事故经过、对方信息和照片发我，我帮你确认下一步怎么报案。"
+            if _is_add_vehicle_request(lowered):
+                t = templates.get("add_car", {})
+                # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
+                merged_slots, _last_cust = _merged_and_last_customer_for_add_car_draft(text)
+                fields = _extract_add_car_fields(merged_slots)
+                vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
+                if vehicle_ok and not fields.get("zip"):
+                    base = "先把邮编发我，我就能继续帮您报价。"
+                elif vehicle_ok and fields.get("zip") and fields.get("delivery") and not fields.get("driver"):
+                    base = "主要驾驶人发我一下，我好安排报价。"
+                elif vehicle_ok and fields.get("zip") and not fields.get("delivery") and not fields.get("driver"):
+                    base = "提车日期和主要驾驶人发我一下，我好安排报价。"
+                elif fields.get("model") and not vehicle_ok:
+                    base = "先把年份和地址邮编发我，我就能继续帮您报价。"
+                elif fields.get("year") and not fields.get("model"):
+                    base = "先把车型和地址邮编发我，我就能继续帮您报价。"
+                elif not vehicle_ok:
+                    base = "可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。"
+                else:
+                    base = t.get("zh") or "可以先帮你看这台车的报价。把车子的年份、车型、VIN（有的话）、提车日期、地址邮编和主要驾驶人发我，我先帮你算。"
+                lead_ps = _get_prospective_send_materials_lead(text, "zh")
+                ack = _get_add_car_acknowledgement(text, fields, "zh", merged_slots)
+                if ack:
+                    base = ack + base
+                if lead_ps:
+                    base = lead_ps + base
+                # Side question: price sensitivity during add-car — brief office-realistic line, still collect slots.
+                if any(m in lowered for m in ("便宜", "能便宜", "保费多少", "多少钱", "大概多少", "先帮我看看大概")):
+                    base = base.rstrip("。") + "；具体数字要等办公室按车型和地址算出来。"
+                # Mixed-intent: add-car + garaging proof confusion — add brief explanation
+                if _is_document_confusion_request(lowered) and ("garaging" in lowered or "停放" in lowered):
+                    snippet = retrieve_document_explanation(text)
+                    if snippet:
+                        augment = format_retrieval_augment(snippet, "zh")
+                        if augment:
+                            return augment + base
+                    return "garaging proof（车辆停放地址证明）是证明车平时停哪里的材料。\n\n" + base
+                return base
             if _is_premium_review_request(lowered):
                 t = templates.get("premium_review", {})
                 # "有办法吗" / "有办法" — add reassurance that options exist
@@ -605,47 +656,6 @@ def _build_client_reply_draft(text: str, category: str) -> str:
                     m in lowered for m in ["发过", "发过了", "又发", "sent"]
                 ):
                     base = base.rstrip("。") + "；如果材料说发过了，我这边也帮你核对。"
-                return base
-            if _is_add_vehicle_request(lowered):
-                t = templates.get("add_car", {})
-                # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
-                single_ctx = f"[客户] {text}"
-                fields = _extract_add_car_fields(single_ctx)
-                vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
-                if vehicle_ok and not fields.get("zip"):
-                    base = "先把地址邮编发我，我就能帮你算报价。"
-                elif vehicle_ok and fields.get("zip") and not fields.get("delivery") and not fields.get("driver"):
-                    base = "提车日期和主要驾驶人发我一下，我好安排报价。"
-                elif fields.get("model") and not vehicle_ok:
-                    base = "先把年份和地址邮编发我，我就能帮你算报价。"
-                elif fields.get("year") and not fields.get("model"):
-                    base = "先把车型和地址邮编发我，我就能帮你算报价。"
-                elif not vehicle_ok:
-                    base = "可以先帮你看这台车的报价。先把年份和车型发我，我就能帮你算。"
-                else:
-                    base = t.get("zh") or "可以先帮你看这台车的报价。把车子的年份、车型、VIN（有的话）、提车日期、地址邮编和主要驾驶人发我，我先帮你算。"
-                # Add acknowledgement when we have partial vehicle info (office-natural flow)
-                ack = ""
-                if fields.get("model") or fields.get("year"):
-                    year_m = re.search(r"(20[12][0-9])", text)
-                    model_m = re.search(
-                        r"(宝马\s*[xX]?[0-9]{1,2}|特斯拉\s*[Mm]odel\s*[Yy3]|[Hh]onda\s+[Cc]r-[Vv]|[Tt]oyota\s+[Cc]amry|[Tt]oyota\s+[Cc]orolla|丰田\s*花冠|[Bb]mw\s+[xX][0-9])",
-                        text,
-                    )
-                    if model_m:
-                        ack = f"好的，{model_m.group(1).strip()}。"
-                    elif year_m:
-                        ack = f"好的，{year_m.group(1)}年的。"
-                if ack:
-                    base = ack + base
-                # Mixed-intent: add-car + garaging proof confusion — add brief explanation
-                if _is_document_confusion_request(lowered) and ("garaging" in lowered or "停放" in lowered):
-                    snippet = retrieve_document_explanation(text)
-                    if snippet:
-                        augment = format_retrieval_augment(snippet, "zh")
-                        if augment:
-                            return augment + base
-                    return "garaging proof（车辆停放地址证明）是证明车平时停哪里的材料。\n\n" + base
                 return base
             if _is_remove_vehicle_request(lowered):
                 t = templates.get("remove_vehicle", {})
@@ -680,7 +690,10 @@ def _build_client_reply_draft(text: str, category: str) -> str:
             return "把完整通知或更清楚的照片发我。我先帮你看一下，再告诉你重点和下一步怎么处理。"
         if category == "unclear":
             # Minimal "发你了"/"发我" — acknowledge first, then ask (THREE_CRITICAL_ENTRY_SPRINT)
-            if len((text or "").strip()) <= 20 and any(m in (text or "") for m in ["发你", "发我", "发您", "发了", "sent"]):
+            tstrip = (text or "").strip()
+            if len(tstrip) <= 20 and _message_claims_completed_material_send(tstrip) and not _is_prospective_send_offer_message(
+                tstrip.lower()
+            ):
                 return "您是说发过了吗？我这边帮你核对。把完整通知或相关材料也发我一下，我好确认。"
             return "这段内容还不够完整。把完整通知或前后内容再发我一下，我帮你确认下一步。"
         if category == "informational":
@@ -742,6 +755,43 @@ def _build_client_reply_draft(text: str, category: str) -> str:
                 hit_t = templates.get("claim_intake_hit_and_run", {})
                 return hit_t.get("en") or "Accidents can be stressful—first make sure everyone is okay. If the other driver left, the most important things are the license plate, photos, and what happened. Send me those and I will help you with the next steps to report the claim."
             return t.get("en") or "If the accident just happened, first make sure everyone is okay, then take photos and get the other driver's license and insurance info. Send me what happened, the other driver's info and photos, and I will help you with the next steps to report the claim."
+        if _is_add_vehicle_request(lowered):
+            t = templates.get("add_car", {})
+            # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
+            merged_slots, _last_cust = _merged_and_last_customer_for_add_car_draft(text)
+            fields = _extract_add_car_fields(merged_slots)
+            vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
+            if vehicle_ok and not fields.get("zip"):
+                base = "Send me the zip or address and I will run the quote."
+            elif vehicle_ok and fields.get("zip") and fields.get("delivery") and not fields.get("driver"):
+                base = "Send me the main driver so I can prepare the quote."
+            elif vehicle_ok and fields.get("zip") and not fields.get("delivery") and not fields.get("driver"):
+                base = "Send me the delivery date and main driver so I can prepare the quote."
+            elif fields.get("model") and not vehicle_ok:
+                base = "Send me the year and zip or address so I can run the quote."
+            elif fields.get("year") and not fields.get("model"):
+                base = "Send me the make/model and zip or address so I can run the quote."
+            elif not vehicle_ok:
+                base = "I can start a quote for the new car. Send me the year and make/model so I can run it."
+            else:
+                base = t.get("en") or "I can start a quote for the new car. Send me the year, make/model, VIN if you have it, delivery date, zip or address, and main driver and I will check it."
+            lead_ps = _get_prospective_send_materials_lead(text, "en")
+            ack = _get_add_car_acknowledgement(text, fields, "en", merged_slots)
+            if ack:
+                base = ack + base
+            if lead_ps:
+                base = lead_ps + base
+            if any(m in lowered for m in ("cheaper", "lower premium", "how much", "ballpark", "roughly")):
+                base = base.rstrip(".") + "; exact premium depends on the vehicle and garaging—our office will run the numbers."
+            # Mixed-intent: add-car + garaging proof confusion — add brief explanation
+            if _is_document_confusion_request(lowered) and "garaging" in lowered:
+                snippet = retrieve_document_explanation(text)
+                if snippet:
+                    augment = format_retrieval_augment(snippet, "en")
+                    if augment:
+                        return augment + base
+                return "Garaging proof shows where the car is usually parked.\n\n" + base
+            return base
         if _is_premium_review_request(lowered):
             t = templates.get("premium_review", {})
             if any(m in lowered for m in ("有办法", "有办法吗", "options", "any way", "anything we can")):
@@ -754,49 +804,6 @@ def _build_client_reply_draft(text: str, category: str) -> str:
                 m in lowered for m in ["sent", "already sent", "发过", "发过了"]
             ):
                 base = base.rstrip(".") + "; if you already sent documents, I will check on my side."
-            return base
-        if _is_add_vehicle_request(lowered):
-            t = templates.get("add_car", {})
-            # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
-            single_ctx = f"[客户] {text}"
-            fields = _extract_add_car_fields(single_ctx)
-            vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
-            if vehicle_ok and not fields.get("zip"):
-                base = "Send me the zip or address and I will run the quote."
-            elif vehicle_ok and fields.get("zip") and not fields.get("delivery") and not fields.get("driver"):
-                base = "Send me the delivery date and main driver so I can prepare the quote."
-            elif fields.get("model") and not vehicle_ok:
-                base = "Send me the year and zip or address so I can run the quote."
-            elif fields.get("year") and not fields.get("model"):
-                base = "Send me the make/model and zip or address so I can run the quote."
-            elif not vehicle_ok:
-                base = "I can start a quote for the new car. Send me the year and make/model so I can run it."
-            else:
-                base = t.get("en") or "I can start a quote for the new car. Send me the year, make/model, VIN if you have it, delivery date, zip or address, and main driver and I will check it."
-            # Add acknowledgement when we have partial vehicle info
-            ack = ""
-            if fields.get("model") or fields.get("year"):
-                year_m = re.search(r"(20[12][0-9])", text)
-                model_m = re.search(
-                    r"([Bb][Mm][Ww]\s+[Xx][0-9]|[Tt]esla\s+[Mm]odel\s+[Yy3]|[Hh]onda\s+[Cc]r-[Vv]|[Tt]oyota\s+[Cc]amry)",
-                    text,
-                )
-                if model_m:
-                    ack = f"Got it, {model_m.group(1).strip()}. "
-                elif year_m:
-                    ack = f"Got it, {year_m.group(1)}. "
-                elif fields.get("model"):
-                    ack = "I can help with that. "
-            if ack:
-                base = ack + base
-            # Mixed-intent: add-car + garaging proof confusion — add brief explanation
-            if _is_document_confusion_request(lowered) and "garaging" in lowered:
-                snippet = retrieve_document_explanation(text)
-                if snippet:
-                    augment = format_retrieval_augment(snippet, "en")
-                    if augment:
-                        return augment + base
-                return "Garaging proof shows where the car is usually parked.\n\n" + base
             return base
         if _is_remove_vehicle_request(lowered):
             t = templates.get("remove_vehicle", {})
@@ -828,7 +835,10 @@ def _build_client_reply_draft(text: str, category: str) -> str:
         return "Send me the full notice or a clearer photo and I will tell you what it means and what needs to be handled next."
     if category == "unclear":
         # Minimal "sent"/"I sent it" — acknowledge first (THREE_CRITICAL_ENTRY_SPRINT)
-        if len((text or "").strip()) <= 20 and any(m in (text or "").lower() for m in ["sent", "already sent", "i sent"]):
+        _ut = (text or "").strip()
+        if len(_ut) <= 20 and _message_claims_completed_material_send(_ut) and not _is_prospective_send_offer_message(
+            _ut.lower()
+        ):
             return "You said you sent it—I will check on my side. Send me the full notice or the document so I can verify."
         return "This part is still unclear. Send me the full notice or a little more context and I will confirm the next step."
     if category == "informational":
@@ -865,7 +875,7 @@ def _get_category_templates(
         return (
             _build_customer_question_broker_next_step(text),
             _build_customer_question_client_prep(text),
-            _build_client_reply_draft(text, "customer_question"),
+            _build_client_reply_draft(text, "customer_question", client_id),
         )
 
     # missing_document: broker_next_step from config; client_prep dynamic
@@ -874,7 +884,7 @@ def _get_category_templates(
         return (
             bns,
             _build_missing_document_client_prep(text),
-            _build_client_reply_draft(text, "missing_document"),
+            _build_client_reply_draft(text, "missing_document", client_id),
         )
 
     # customer_requested_human: broker_next_step, client_prep from config; draft from handoff_phrases
@@ -922,7 +932,7 @@ def _get_category_templates(
     }
     bns = _bns(category) or (_HARDCODED.get(category, (None, None))[0] if category in _HARDCODED else None)
     cp = _cp(category) or (_HARDCODED.get(category, (None, None))[1] if category in _HARDCODED else None)
-    draft = _build_client_reply_draft(text, category)
+    draft = _build_client_reply_draft(text, category, client_id)
     return (bns, cp, draft)
 
 
@@ -1079,7 +1089,10 @@ def _rule_based_triage(text: str, client_id: str | None = None) -> dict[str, Any
     # Category-specific broker guidance and client drafts (rule-based path)
     _broker_next_step, _client_prep, _client_reply_draft = _get_category_templates(category, text, client_id)
     fallbacks = _get_workflow_fallbacks()
-    broker_next_step = _broker_next_step or fallbacks.get("broker_next_step", "Review and act on {category}.").replace("{category}", category.replace("_", " "))
+    broker_next_step = _broker_next_step or fallbacks.get(
+        "broker_next_step",
+        "Review the {category} message; confirm what the client needs and take the next step.",
+    ).replace("{category}", category.replace("_", " "))
     client_prep = _client_prep or fallbacks.get("client_prep", "Please have any relevant documents or information ready.")
     client_reply_draft = _client_reply_draft or fallbacks.get(
         "client_reply_draft",
@@ -1240,8 +1253,69 @@ def _normalize_output(raw: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], customer_count: int) -> str:
-    """Build a short broker-facing summary of the conversation."""
+def _detect_secondary_intent_hint(merged_text: str, category: str, intent_hint: str) -> str:
+    """Detect secondary intent when 2+ goals mixed. Returns ' Also asked: X. ' or ''."""
+    last = merged_text.split("[客户]")[-1].strip() if "[客户]" in merged_text else (merged_text or "").strip()
+    lowered = last.lower()
+    flows = []
+    if _is_add_vehicle_request(last):
+        flows.append("add_car")
+    if _is_premium_review_request(last):
+        flows.append("premium_review")
+    if _contains_any(lowered, _get_markers("payment")) or _contains_any(lowered, _get_markers("payment_risk")):
+        flows.append("payment")
+    if _contains_any(lowered, _get_markers("missing_document_object")) and _contains_any(lowered, _get_markers("missing_document_request")):
+        flows.append("missing_document")
+    if _is_claim_intake_request(last):
+        flows.append("claim_intake")
+    if _is_remove_vehicle_request(last):
+        flows.append("remove_car")
+    if _is_english_notice_confusion(lowered) or ("notice" in lowered and ("什么意思" in last or "what does" in lowered)):
+        flows.append("notice_confusion")
+    if _is_document_confusion_request(lowered) and ("garaging" in lowered or "dec page" in lowered):
+        flows.append("document_confusion")
+    if len(flows) < 2:
+        return ""
+    primary = None
+    if intent_hint:
+        if "Add car" in intent_hint or "New quote" in intent_hint:
+            primary = "add_car"
+        elif "Remove vehicle" in intent_hint:
+            primary = "remove_car"
+        elif "Premium review" in intent_hint:
+            primary = "premium_review"
+        elif "Payment" in intent_hint or "Cancellation" in intent_hint:
+            primary = "payment"
+        elif "Missing document" in intent_hint:
+            primary = "missing_document"
+        elif "Claim" in intent_hint:
+            primary = "claim_intake"
+        elif "notice" in intent_hint.lower() or "DMV" in intent_hint:
+            primary = "notice_confusion"
+    if primary is None:
+        if category in ("payment_lapse_expiration", "cancellation_warning"):
+            primary = "payment"
+        elif category == "missing_document":
+            primary = "missing_document"
+        elif _is_claim_intake_request(last):
+            primary = "claim_intake"
+        elif _is_add_vehicle_request(last):
+            primary = "add_car"
+        elif _is_premium_review_request(last):
+            primary = "premium_review"
+        elif _is_remove_vehicle_request(last):
+            primary = "remove_car"
+    secondaries = [f for f in flows if f != primary]
+    if not secondaries:
+        return ""
+    s = secondaries[0]
+    labels = {"add_car": "add car", "premium_review": "premium review", "payment": "payment/notice", "missing_document": "missing document", "claim_intake": "claim", "remove_car": "remove vehicle", "notice_confusion": "notice meaning", "document_confusion": "garaging/dec page meaning"}
+    label = labels.get(s, s.replace("_", " "))
+    return f" Also asked: {label}. "
+
+
+def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], customer_count: int) -> tuple[str, str]:
+    """Build a short broker-facing summary of the conversation. Returns (summary, secondary_issue_note)."""
     category = base_result.get("issue_category", "unclear")
     lowered = (merged_text or "").lower()
 
@@ -1273,11 +1347,15 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
     still_needed_hint = ""
     if _is_add_vehicle_request(lowered):
         fields = _extract_add_car_fields(merged_text)
+        vehicle_concrete = _extract_add_car_vehicle_concrete(merged_text)
         parts: list[str] = []
-        if fields.get("year"):
-            parts.append("year")
-        if fields.get("model"):
-            parts.append("model")
+        if vehicle_concrete:
+            parts.append(vehicle_concrete)
+        else:
+            if fields.get("year"):
+                parts.append("year")
+            if fields.get("model"):
+                parts.append("model")
         if fields.get("vin"):
             parts.append("VIN")
         if fields.get("zip"):
@@ -1322,9 +1400,13 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
             if still:
                 collected_hint += f"Still needed: {', '.join(_h(i) for i in still)}. "
     elif category in ("payment_lapse_expiration", "cancellation_warning"):
+        _pay_segs = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+        _pay_last_c = (_pay_segs[-1] if _pay_segs else (merged_text or "")).strip()
         if any(m in lowered for m in ["付了", "paid", "已经付", "already paid", "换了新卡", "updated card"]):
             collected_hint = " Collected: client says already paid. "
-        elif any(m in lowered for m in ["发", "sent", "截图", "screenshot", "发你", "发我"]):
+        elif _message_claims_completed_material_send(_pay_last_c) and not _is_prospective_send_offer_message(
+            _pay_last_c.lower()
+        ):
             collected_hint = " Collected: client says sent notice/screenshot. "
 
     # Context hints: corrections, "already sent"
@@ -1339,14 +1421,23 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
         or "说错" in customer_only
     ):
         context_hint = " Customer corrected/clarified. "
-    if any(m in customer_only for m in ["又发了", "又发了一次", "发你了", "发你", "我发你"]):
+    cust_segs_for_sent = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    _sent_bodies = [x.strip() for x in cust_segs_for_sent] if cust_segs_for_sent else [customer_only.strip()]
+    if any(_message_claims_completed_material_send(b) for b in _sent_bodies if b):
         context_hint += " Client says already sent. "
+
+    # Mixed-intent: secondary issue note (MIXED_INTENT_SECONDARY_CASE_SPRINT)
+    secondary_hint = _detect_secondary_intent_hint(merged_text, category, intent_hint)
+    if secondary_hint:
+        context_hint += secondary_hint
 
     msg_count = f"{customer_count} customer message(s)."
     latest_snip = (merged_text.split("[客户]")[-1].strip() if "[客户]" in merged_text else merged_text)[:80]
     if latest_snip:
-        return f"{intent_hint}{collected_hint}{still_needed_hint}{context_hint}{msg_count} Latest: {latest_snip}..."
-    return f"{intent_hint}{collected_hint}{still_needed_hint}{context_hint}{msg_count}"
+        summary = f"{intent_hint}{collected_hint}{still_needed_hint}{context_hint}{msg_count} Latest: {latest_snip}..."
+    else:
+        summary = f"{intent_hint}{collected_hint}{still_needed_hint}{context_hint}{msg_count}"
+    return summary, (secondary_hint.strip() if secondary_hint else "")
 
 
 def _build_conversation_text_for_triage(turns: list[dict[str, str]], latest_text: str) -> str:
@@ -1362,6 +1453,208 @@ def _build_conversation_text_for_triage(turns: list[dict[str, str]], latest_text
     if latest_text.strip():
         parts.append(f"[客户] {latest_text.strip()}")
     return "\n\n".join(parts) if parts else latest_text.strip()
+
+
+# --- Add-car field signals (ADD_CAR_HIGH_ROI_EXTRACTION_GUARD_FIX) ---
+# CA garage ZIP focus: 9xxxx; (?<![0-9])/(?![0-9]) avoids \b failing beside Chinese (e.g. 邮编95131).
+_CA_ZIP_STRICT_RE = re.compile(r"(?<![0-9])(9[0-9]{4})(?![0-9])", re.IGNORECASE)
+
+_ADD_CAR_DRIVER_MARKERS: tuple[str, ...] = (
+    "driver",
+    "驾驶人",
+    "谁开",
+    "main driver",
+    "primary driver",
+    "老婆开",
+    "老公开",
+    "我开",
+    "我自己开",
+    "本人开",
+    "孩子开",
+    "儿子开",
+    "女儿开",
+    "我老婆开",
+    "我老公开",
+    "我一个人开",
+    "spouse",
+    "teen",
+    "only me",
+    "就我",
+    "我一个人",
+    "主要驾驶人是我",
+)
+
+
+def _text_has_ca_zip_signal(t: str) -> bool:
+    if not t:
+        return False
+    return bool(_CA_ZIP_STRICT_RE.search(t.lower()))
+
+
+def _extract_ca_zip_from_message(msg: str) -> str | None:
+    if not msg:
+        return None
+    m = _CA_ZIP_STRICT_RE.search(msg.lower())
+    return m.group(1) if m else None
+
+
+def _text_has_add_car_driver_signal(t: str) -> bool:
+    """High-frequency primary/additional driver phrasing (CN/EN); substring match on lowered text."""
+    tl = (t or "").lower()
+    return any(m in tl for m in _ADD_CAR_DRIVER_MARKERS)
+
+
+def _is_prospective_send_offer_message(msg: str) -> bool:
+    """
+    Question or suggestion about sending materials — NOT a completed 'already sent' statement.
+    Intent guard: must run before loose '发你' / screenshot / sent-keyword matching.
+    """
+    raw = (msg or "").strip()
+    if not raw:
+        return False
+    s = raw.lower()
+    # Completed-send statements are never "prospective offer"
+    if any(m in s for m in ("发你了", "发您了", "发过了", "又发了", "发过", "已经发", "已经给你发", "already sent")):
+        return False
+    if re.search(r"\b(i'?ve|i have)\s+sent\b", s) or re.search(r"\b(i\s+sent|sent\s+it|sent\s+them)\b", s):
+        return False
+    if re.search(r"要不要[^。！？\n]{0,28}发", s):
+        return True
+    # "要不要先给你看一下" has 给你 but not always 发
+    if re.search(r"要不要先", s) and ("发" in s or "给你" in raw):
+        return True
+    if re.search(r"要不\s*我[^。！？\n]{0,22}发", s):
+        return True
+    # Permission / offer: can I / could I send first (CN)
+    if re.search(r"(我可以|可不可以|能不能|可以吗).{0,22}先发", s):
+        return True
+    if re.search(r"(我可以|可不可以|能不能).{0,26}发[你我您]", s):
+        return True
+    if re.search(r"(我先)?发给你看看行吗?|先发给你看看行吗|发给你.{0,8}行吗", s):
+        return True
+    if re.search(r"先发[你我您].{0,18}(行吗|可以吗|好不好|吗|嘛|么)[?？]?\s*$", s):
+        return True
+    if re.search(r"先发[你我您].{0,20}(行吗|可以吗|好不好)", s):
+        return True
+    # "先给你看(一下)" offers
+    if re.search(r"先给你.{0,8}看", s) and (
+        re.search(r"[吗嘛呢吧?？]\s*$", raw.strip()) or "行吗" in s or "可不可以" in s
+    ):
+        return True
+    if "行不行" in s and "发" in s and not any(m in s for m in ("发过了", "已经发", "发了", "发你了", "发您了")):
+        return True
+    # Question mark + send vocabulary (screenshot / VIN / 材料 / 行驶证) without past-tense send
+    if (
+        re.search(r"[?？]|吗\s*$|嘛\s*$|行吗\s*$|可以吗\s*$", raw)
+        and ("发" in s or "给" in raw)
+        and any(k in s for k in ("截图", "screenshot", "vin", "材料", "行驶证", "registration", "微信"))
+        and not re.search(r"(发你了|发过了|已经发|又发了|发了|sent it|already sent)", s)
+    ):
+        return True
+    # English permission-to-send
+    if re.search(r"\b(can|could|should|may)\s+i\s+send\b", s):
+        return True
+    if re.search(r"\b(ok|okay)\s+(if|to)\s+i\s+send\b", s):
+        return True
+    return False
+
+
+def _message_claims_completed_material_send(msg: str) -> bool:
+    """
+    True when the customer states materials were already sent — not asking permission to send.
+    Uses high-precision phrases; avoids substring traps like 先发你 / bare 截图.
+    """
+    raw = (msg or "").strip()
+    if not raw:
+        return False
+    s = raw.lower()
+    if _is_prospective_send_offer_message(s):
+        return False
+    if re.search(r"\b(can|could|should|may)\s+i\s+send\b", s):
+        return False
+    if any(
+        m in raw
+        for m in (
+            "发过了",
+            "又发了",
+            "又发了一次",
+            "发你了",
+            "发您了",
+            "发过",
+            "已经发",
+            "已经给你发",
+            "早就发",
+            "刚才发",
+            "刚发",
+            "上午发",
+            "昨天发",
+            "寄了",
+            "发你微信了",
+            "发我微信了",
+            "微信发你了",
+            "微信发您了",
+            "材料发你了",
+            "截图发你了",
+            "截图发过去了",
+            "我已经把",
+            "我早就发",
+        )
+    ):
+        return True
+    if "又发" in raw and "要不要" not in s and not re.search(r"又发.{0,8}[吗?？]", raw):
+        return True
+    if "发了" in raw and "发现" not in raw:
+        if re.search(r"发了吗|发了没|发了么|发了没有", raw):
+            return False
+        return True
+    if re.search(r"\b(i'?ve|i have)\s+sent\b", s) or re.search(
+        r"\b(i\s+sent|already\s+sent|sent\s+it|sent\s+them|sent\s+via|sent\s+on\s+wechat)\b", s
+    ):
+        return True
+    if re.search(r"\bsent\b", s) and len(raw) <= 36:
+        if re.search(r"\b(can|could|should|may|want to|going to)\b", s):
+            return False
+        return True
+    if ("截图" in raw or "screenshot" in s) and any(
+        x in s for x in ("发了", "发你了", "发过了", "发过", "已经", "sent", "微信了", "给您了", "给你了")
+    ):
+        return True
+    if re.search(r"发[你我您](微信)?[了过]", raw):
+        return True
+    if re.search(r"[材料证件单证].{0,8}发[你我您]了", raw):
+        return True
+    return False
+
+
+def _get_prospective_send_materials_lead(last_customer_msg: str, language: str) -> str:
+    """
+    Short office-style answer when the customer asks whether to send materials (WeChat/screenshot/etc.).
+    Empty string when not a prospective-send question. Caller prepends before normal add-car ask/handoff.
+    """
+    raw = (last_customer_msg or "").strip()
+    if not raw:
+        return ""
+    msg = raw
+    if "[客户]" in raw:
+        segs = re.findall(r"\[客户\]\s*([^[]+)", raw)
+        if segs:
+            msg = (segs[-1] or "").strip()
+    if not _is_prospective_send_offer_message(msg.lower()):
+        return ""
+    ml = msg.lower()
+    if language == "zh":
+        if "微信" in msg:
+            return "可以，微信发我就行。"
+        if "截图" in msg:
+            return "可以，截图先发我，我这边一起看。"
+        if any(m in msg for m in ("行驶证", "照片", "材料")) or "dec" in ml or "declaration" in ml:
+            return "可以，先发我就行，我这边一起整理给办公室。"
+        return "可以，先发我就行，我这边一起整理给办公室。"
+    if "wechat" in ml or "微信" in msg:
+        return "Yes—WeChat works. "
+    if "screenshot" in ml or "截图" in msg:
+        return "Yes—send the screenshot and I will review it with your file. "
+    return "Yes—send it over and I will bundle it for the office. "
 
 
 # Follow-up type constants (LIGHTWEIGHT_STATE_MACHINE_BLUEPRINT)
@@ -1387,7 +1680,19 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
         return "unknown"
 
     # Correction: "不是", "不是这个", "说错了", "其实已经" (actually already paid/sent)
-    correction_markers = ("不是", "不是这个", "不是 payment", "不是续保", "是另一辆", "说错了", "actually", "i meant", "其实已经")
+    correction_markers = (
+        "不是",
+        "不是这个",
+        "不是 payment",
+        "不是续保",
+        "是另一辆",
+        "另一辆",
+        "不是这辆",
+        "说错了",
+        "actually",
+        "i meant",
+        "其实已经",
+    )
     if any(m in msg for m in correction_markers):
         return "correction"
 
@@ -1408,9 +1713,12 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
     if any(m in msg for m in clarification_markers):
         return "clarification_question"
 
-    # Already sent: "发了", "发你", "sent" (after clarification so "发你了，garaging 是什么意思" → clarification)
-    sent_markers = ("发了", "发你", "发我", "sent", "截图", "screenshot", "发你微信", "发我微信", "又发", "发过了")
-    if any(m in msg for m in sent_markers):
+    # Offer / question to send — not a claim that materials were already sent (guards e.g. 要不要发你).
+    if _is_prospective_send_offer_message(msg):
+        return "new_info"
+
+    # Already sent: completed-send only (WIRC: bare 截图 / 先发你 substring is NOT enough).
+    if _message_claims_completed_material_send((last_customer_msg or "").strip()):
         return "already_sent"
 
     # Urgency question: is this urgent, what matters most today
@@ -1517,7 +1825,7 @@ def _is_fast_path_candidate(merged_text: str, customer_count: int) -> bool:
     # Simple add-car field: short message with year/zip/delivery/model/driver
     if follow_up == "new_info" and len(last_customer) <= 80:
         has_year = bool(re.search(r"20[12][0-9]", last_lower))
-        has_zip = bool(re.search(r"\b9[0-9]{4}\b", last_lower))
+        has_zip = _text_has_ca_zip_signal(last_lower)
         has_delivery = any(
             m in last_lower
             for m in ["下周", "提车", "拿车", "next week", "picking up", "pick up", "delivery", "明天"]
@@ -1528,12 +1836,12 @@ def _is_fast_path_candidate(merged_text: str, customer_count: int) -> bool:
                 "bmw", "x5", "tesla", "honda", "toyota", "accord", "camry", "宝马", "本田", "丰田", "车型",
             ]
         )
-        has_driver = any(m in last_lower for m in ["driver", "驾驶人", "谁开", "main driver", "primary driver", "我老公开", "我开"])
+        has_driver = _text_has_add_car_driver_signal(last_lower)
         if has_year or has_zip or has_delivery or has_model or has_driver:
             return True
 
-    # Minimal "发你了" / "发您" style (short already-sent)
-    if len(last_customer) <= 15 and any(m in last_lower for m in ("发你", "发我", "发您", "sent", "发了")):
+    # Minimal completed-send style (short) — not bare 发你 / 先发你 questions
+    if len(last_customer) <= 18 and _message_claims_completed_material_send(last_customer):
         return True
 
     # Handoff confirmation: "可以了", "就这样", "好了", "ok" (short)
@@ -1583,6 +1891,385 @@ def _parse_source_to_turns(source_text: str) -> list[dict[str, str]]:
     return turns if turns else [{"role": "customer", "text": raw}]
 
 
+# --- Case boundary / new-issue separation (append / office_followup flow) ---
+_SYSTEM_ADD_CAR_HANDOFF_MARKERS: tuple[str, ...] = (
+    "办公室会尽快出价",
+    "报价资料",
+    "安排报价",
+    "帮您报价",
+    "尽快出价",
+    "Run quote",
+    "prepare the quote",
+    "quote details received",
+)
+
+_TOPIC_PIVOT_STRONG: tuple[str, ...] = (
+    "另外一个",
+    "另一個",
+    "另一个问题",
+    "另一个事情",
+    "另一个保险",
+    "另外一个保险",
+    "别的保险",
+    "不是这个车",
+    "不是这车",
+    "不是这个加车",
+    "再问",
+    "还想问",
+    "顺便问",
+    "加车先这样",
+    "那这个先这样",
+    "我先问个",
+    "我再问",
+    "我还有个账单",
+    "账单的问题",
+    "理赔的事",
+    "还有一个问题",
+    "另外一件事",
+    "另外个事",
+)
+
+_BILLING_PIVOT_MARKERS: tuple[str, ...] = (
+    "账单",
+    "扣款",
+    "缴费",
+    "付款问题",
+    "自动扣款",
+    "billing",
+    "autopay",
+    "invoice",
+    "past due",
+    "overdue",
+)
+
+_OFFICE_HOURS_MARKERS: tuple[str, ...] = (
+    "office",
+    "周末",
+    "周六",
+    "周日",
+    "营业时间",
+    "几点下班",
+    "放假",
+    "开门吗",
+    "open on",
+    "office hour",
+)
+
+_SAME_THREAD_EXTRA_VEHICLE_MARKERS: tuple[str, ...] = (
+    "另一台",
+    "还有一台",
+    "第二辆",
+    "另一辆",
+    "再加",
+    "还有一辆",
+    "两台车",
+    "第二台",
+)
+
+
+def _source_customer_concat(source_text: str) -> str:
+    parts = re.findall(r"\[客户\]\s*([^[]+)", source_text or "", flags=re.IGNORECASE)
+    return " ".join(p.strip() for p in parts if p.strip())
+
+
+def _source_system_concat(source_text: str) -> str:
+    parts = re.findall(r"\[系统\]\s*([^[]+)", source_text or "", flags=re.IGNORECASE)
+    return " ".join(p.strip() for p in parts if p.strip())
+
+
+def _prior_thread_signals_add_car(source_text: str) -> bool:
+    cust = _source_customer_concat(source_text)
+    sys_t = _source_system_concat(source_text)
+    cl = cust.lower()
+    if _is_add_vehicle_request(cl):
+        return True
+    return any(m in sys_t for m in _SYSTEM_ADD_CAR_HANDOFF_MARKERS)
+
+
+def _infer_prior_case_domain(source_text: str) -> str:
+    """Coarse domain for boundary checks."""
+    cust = _source_customer_concat(source_text)
+    sys_t = _source_system_concat(source_text)
+    cl = cust.lower()
+    if _prior_thread_signals_add_car(source_text):
+        return "add_car"
+    if _is_claim_intake_request(cust):
+        return "claim"
+    if _is_remove_vehicle_request(cl):
+        return "remove_car"
+    if _is_premium_review_request(cl):
+        return "premium"
+    if _contains_any(cl, _get_markers("payment")) or _contains_any(cl, _get_markers("payment_risk")):
+        return "payment"
+    if _contains_any(cl, _get_markers("strong_cancellation")) or _contains_any(cl, _get_markers("weak_cancellation")):
+        return "payment"
+    md_obj = _contains_any(cl, _get_markers("missing_document_object"))
+    md_req = _contains_any(cl, _get_markers("missing_document_request"))
+    if md_obj and md_req:
+        return "missing_doc"
+    return "generic"
+
+
+def _last_message_issue_domains(last_msg: str) -> set[str]:
+    out: set[str] = set()
+    raw = (last_msg or "").strip()
+    if not raw:
+        return out
+    ml = raw.lower()
+    if _is_claim_intake_request(raw):
+        out.add("claim")
+    if _is_remove_vehicle_request(ml):
+        out.add("remove_car")
+    if _is_add_vehicle_request(ml):
+        out.add("add_car")
+    if _is_premium_review_request(raw) or _is_premium_review_request(ml):
+        out.add("premium")
+    if any(m in raw for m in _BILLING_PIVOT_MARKERS) or any(
+        m in ml for m in ("billing", "autopay", "invoice", "past due", "overdue")
+    ):
+        out.add("billing")
+    if any(m in raw for m in _OFFICE_HOURS_MARKERS) or "office hour" in ml or "open saturday" in ml:
+        out.add("office")
+    return out
+
+
+def _has_topic_pivot_phrase(last_msg: str) -> bool:
+    t = (last_msg or "").strip()
+    return any(p in t for p in _TOPIC_PIVOT_STRONG)
+
+
+def _correction_is_cross_topic_pivot_not_vehicle_fix(msg: str) -> bool:
+    """'不是理赔，是账单' / '另外一个保险问题' — topic pivot; not a vehicle-field correction."""
+    t = (msg or "").strip()
+    return any(
+        x in t
+        for x in (
+            "另外一个保险",
+            "另一个保险",
+            "另外一个事情",
+            "另外一个问题",
+            "另一个事情",
+            "另一个问题",
+            "不是理赔",
+            "不是这个车",
+            "不是这车",
+        )
+    )
+
+
+def _cross_issue_domains_for_prior(prior: str) -> set[str]:
+    if prior == "add_car":
+        return {"claim", "billing", "remove_car", "premium"}
+    if prior == "claim":
+        return {"add_car", "billing", "remove_car", "premium", "payment", "missing_doc"}
+    if prior == "remove_car":
+        return {"add_car", "claim", "billing", "premium"}
+    if prior == "premium":
+        return {"add_car", "claim", "billing", "remove_car"}
+    if prior == "payment":
+        return {"add_car", "claim", "remove_car", "premium", "missing_doc"}
+    if prior == "missing_doc":
+        return {"add_car", "claim", "billing", "remove_car", "premium"}
+    return {"add_car", "claim", "billing", "remove_car", "payment", "premium", "missing_doc"}
+
+
+def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
+    """
+    Returns:
+      '' = continue current case (no boundary override)
+      'new_issue' = clear pivot to a different operational issue
+      'borderline' = pivot unclear; broker should confirm
+    """
+    prior = _infer_prior_case_domain(source_text)
+    domains_quick = _last_message_issue_domains(last_msg)
+    cross_early = _cross_issue_domains_for_prior(prior)
+    if domains_quick & cross_early:
+        return "new_issue"
+
+    fu = _derive_follow_up_type(last_msg)
+    if fu == "correction" and not _correction_is_cross_topic_pivot_not_vehicle_fix(last_msg):
+        return ""
+    if fu in ("already_sent", "clarification_question"):
+        return ""
+    last_lower = (last_msg or "").strip().lower()
+    # Add-car quote thread: coverage / quote-side questions stay same-case even if "顺便问" appears
+    if prior == "add_car" and any(
+        m in last_lower
+        for m in (
+            "coverage 可以调",
+            "coverage 能调",
+            "coverage 能改",
+            "顺便 coverage",
+            "保额",
+            "collision",
+            "deductible",
+            "全险",
+            "半险",
+        )
+    ):
+        return ""
+    domains = domains_quick
+    pivot = _has_topic_pivot_phrase(last_msg)
+
+    # Same add-car thread: factual slot fill or extra vehicle on same quote
+    if prior == "add_car":
+        if not domains:
+            if len((last_msg or "").strip()) <= 96 and (
+                re.search(r"20[12][0-9]", last_msg or "")
+                or _text_has_ca_zip_signal(last_lower)
+                or _text_has_add_car_driver_signal(last_lower)
+            ):
+                return ""
+        if domains <= {"add_car"} and not pivot:
+            return ""
+        if domains <= {"add_car"} and pivot and any(m in (last_msg or "") for m in _SAME_THREAD_EXTRA_VEHICLE_MARKERS):
+            return ""
+
+    cross_new: set[str]
+    if prior == "add_car":
+        cross_new = {"claim", "billing", "remove_car", "premium"}
+    elif prior == "claim":
+        cross_new = {"add_car", "billing", "remove_car", "premium", "payment", "missing_doc"}
+    elif prior == "remove_car":
+        cross_new = {"add_car", "claim", "billing", "premium"}
+    elif prior == "premium":
+        cross_new = {"add_car", "claim", "billing", "remove_car"}
+    elif prior == "payment":
+        cross_new = {"add_car", "claim", "remove_car", "premium", "missing_doc"}
+    elif prior == "missing_doc":
+        cross_new = {"add_car", "claim", "billing", "remove_car", "premium"}
+    else:
+        cross_new = {"add_car", "claim", "billing", "remove_car", "payment", "premium", "missing_doc"}
+
+    hit = domains & cross_new
+    if prior == "add_car" and hit:
+        return "new_issue"
+    if prior != "generic" and prior != "add_car" and hit:
+        return "new_issue"
+
+    if "office" in domains and prior == "add_car":
+        return "borderline"
+
+    if pivot and not domains:
+        return "borderline"
+    if pivot and domains <= {"add_car"} and prior == "add_car":
+        return "borderline"
+
+    if prior == "generic" and hit and pivot:
+        return "borderline"
+
+    return ""
+
+
+def _apply_append_case_boundary(
+    result: dict[str, Any],
+    existing_source_text: str,
+    new_message: str,
+) -> None:
+    """Mutates triage result for append flow: clearer portal-style boundary semantics."""
+    boundary = _classify_append_case_boundary(existing_source_text, new_message)
+    if not boundary:
+        return
+    prior = _infer_prior_case_domain(existing_source_text)
+    domains = _last_message_issue_domains(new_message)
+    merged_for_lang = f"{existing_source_text}\n\n{new_message}"
+    language = _detect_client_language(merged_for_lang)
+
+    if boundary == "new_issue":
+        result["case_boundary"] = "new_issue"
+        if language == "zh":
+            if prior == "add_car":
+                continuity = "加车这边办公室会继续跟进。"
+            elif prior == "claim":
+                continuity = "理赔这边办公室会继续跟进。"
+            elif prior == "remove_car":
+                continuity = "车辆变更这边办公室会继续跟进。"
+            elif prior == "payment":
+                continuity = "付款/通知相关办公室会继续跟进。"
+            elif prior == "missing_doc":
+                continuity = "材料补件这边办公室会继续跟进。"
+            elif prior == "premium":
+                continuity = "续保/保费这边办公室会继续跟进。"
+            else:
+                continuity = "前一件事办公室会继续跟进。"
+
+            if "claim" in domains or _is_claim_intake_request(new_message):
+                draft = continuity + "您这条理赔我先转给办公室，请他们尽快联系您。"
+            elif "billing" in domains:
+                draft = continuity + "账单问题我也一起转给办公室核实。"
+            elif "remove_car" in domains:
+                draft = continuity + "删车/卖车我也转给办公室一并处理。"
+            elif "premium" in domains:
+                draft = continuity + "续保/保费相关我也转给办公室一并跟进。"
+            elif "add_car" in domains or _is_add_vehicle_request((new_message or "").lower()):
+                draft = continuity + "加车报价需求我也转给办公室一并处理。"
+            else:
+                draft = continuity + "您这条新问题我也转给办公室一并处理。"
+        else:
+            if prior == "add_car":
+                continuity = "We'll keep your add-car quote with the office. "
+            else:
+                continuity = "We'll keep your prior request with the office. "
+            if "claim" in domains or _is_claim_intake_request(new_message):
+                draft = continuity + "I've flagged this claim item for them to follow up."
+            elif "billing" in domains:
+                draft = continuity + "I've asked them to review the billing question too."
+            elif "remove_car" in domains:
+                draft = continuity + "I've included the vehicle-removal request as well."
+            elif "premium" in domains:
+                draft = continuity + "I've also flagged the renewal/premium question for the office."
+            elif "add_car" in domains or _is_add_vehicle_request((new_message or "").lower()):
+                draft = continuity + "I've passed along the new vehicle quote request as well."
+            else:
+                draft = continuity + "I've shared this new item with them to handle."
+        if language == "zh" and prior == "add_car":
+            draft = (draft or "").rstrip() + (
+                " 如属完全不同的事项，建议您用「提交新问题」另开服务记录，不要和本条加车混在同一对话里。"
+            )
+        elif language != "zh" and prior == "add_car":
+            draft = (draft or "").rstrip() + (
+                " If this is a separate topic, please start a new request next time so the office can track it cleanly."
+            )
+        result["client_reply_draft"] = draft
+        prefix = (
+            "Case boundary: possible new issue in the same thread—confirm whether to split. "
+        )
+        cur = (result.get("broker_next_step") or "").strip()
+        if not cur.startswith("Case boundary:"):
+            result["broker_next_step"] = (prefix + cur).strip()
+        summary = (result.get("conversation_summary") or "").strip()
+        dom = ",".join(sorted(domains)) or "unspecified"
+        tag = f"Boundary: new_issue (prior={prior}; last={dom}). "
+        if not summary.startswith("Boundary:"):
+            result["conversation_summary"] = (tag + summary).strip()
+
+    elif boundary == "borderline":
+        result["case_boundary"] = "borderline"
+        if language == "zh":
+            draft = (
+                "收到。我先按您这条整理给办公室；如果和前面不是同一件事，也请简单说明一下，方便分开跟进。"
+            )
+        else:
+            draft = (
+                "Got it—I'm forwarding this to the office. "
+                "If this is separate from what we discussed before, a quick note helps us track it cleanly."
+            )
+        result["client_reply_draft"] = draft
+        prefix2 = "Case boundary unclear—confirm topic scope before acting. "
+        cur = (result.get("broker_next_step") or "").strip()
+        if not cur.startswith("Case boundary"):
+            result["broker_next_step"] = (prefix2 + cur).strip()
+        hf = list(result.get("human_confirmation_fields") or [])
+        if "case_topic_boundary" not in hf:
+            hf.append("case_topic_boundary")
+        result["human_confirmation_fields"] = hf
+        result["human_confirmation_required"] = True
+        summary = (result.get("conversation_summary") or "").strip()
+        tag2 = f"Boundary: borderline (prior={prior}). "
+        if not summary.startswith("Boundary:"):
+            result["conversation_summary"] = (tag2 + summary).strip()
+
+
 def triage_for_append(
     existing_source_text: str,
     new_message: str,
@@ -1599,7 +2286,24 @@ def triage_for_append(
     result["handoff_ready"] = True
     result["lifecycle_status"] = "handoff_pending"
     result["next_best_question"] = ""
+    _apply_append_case_boundary(result, existing_source_text, new_message.strip())
     return result
+
+
+def _merged_and_last_customer_for_add_car_draft(raw: str) -> tuple[str, str]:
+    """
+    Normalize triage text for add-car slot extraction and acknowledgements.
+    When `raw` is already merged ([客户] lines), use it as-is and take the last bubble.
+    Otherwise wrap a single utterance as one customer line.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ("", "")
+    if "[客户]" in s:
+        matches = re.findall(r"\[客户\]\s*([^[]+)", s)
+        last = (matches[-1] or "").strip() if matches else s
+        return (s, last)
+    return (f"[客户] {s}", s.strip())
 
 
 def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
@@ -1608,13 +2312,14 @@ def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
     customer_text = " ".join(matches).lower()
     t = customer_text
     has_year = bool(re.search(r"20[12][0-9]", t))  # 2010-2029
-    has_zip = bool(re.search(r"\b9[0-9]{4}\b", t)) or ("zip" in t and "9" in t)
+    has_zip = _text_has_ca_zip_signal(t)
     has_model = any(
         m in t
         for m in [
             "bmw", "x5", "x3", "x1", "x7", "tesla", "model y", "model 3", "model s", "model x",
             "honda", "accord", "civic", "cr-v", "crv", "pilot", "odyssey", "hr-v", "hrv",
             "toyota", "camry", "corolla", "rav4", "highlander", "4runner", "sienna", "tacoma",
+            "nissan", "altima", "rogue", "sentra", "pathfinder",
             "lexus", "rx", "es", "nx", "mercedes", "benz", "gla", "glc",
             "mazda", "cx-5", "cx5", "cx-9", "subaru", "outback", "forester",
             "ford", "f-150", "f150", "mustang", "ram", "chevy", "chevrolet", "silverado",
@@ -1629,14 +2334,7 @@ def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
             "明天", "tomorrow", "下周拿", "明天拿", "下周提", "明天提",
         ]
     )
-    has_driver = any(
-        m in t
-        for m in [
-            "driver", "驾驶人", "谁开", "main driver", "primary driver",
-            "老婆开", "老公开", "我开", "孩子开", "我老婆开", "我老公开",
-            "spouse", "teen", "only me", "就我", "我一个人",
-        ]
-    )
+    has_driver = _text_has_add_car_driver_signal(t)
     # VIN: 17 alphanumeric (excluding I,O,Q) or explicit "vin" mention
     has_vin = bool(re.search(r"\b[0-9a-hj-npr-z]{17}\b", t)) or "vin" in t
     # Insurance status: add-to-existing vs new customer
@@ -1648,7 +2346,13 @@ def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
     ) and not has_add_to_existing
     # Additional drivers
     has_additional_drivers = any(
-        m in t for m in ["还有别人", "别人开", "老婆开", "老公开", "孩子开", "spouse", "teen", "other driver"]
+        m in t
+        for m in [
+            "还有别人", "别人开", "老婆开", "老公开", "孩子开", "儿子开", "女儿开",
+            "主要驾驶人是我老婆",
+            "主要驾驶人是我老公",
+            "spouse", "teen", "other driver",
+        ]
     )
     has_only_me = any(
         m in t for m in ["就我", "我一个人", "only me", "only i"]
@@ -1665,6 +2369,53 @@ def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
         "additional_drivers": has_additional_drivers,
         "only_me": has_only_me,
     }
+
+
+def _extract_contact_fields(merged_text: str) -> tuple[str | None, str | None]:
+    """Extract name and phone from customer messages. ADD_CAR_IDENTITY_CONTACT_LITE.
+    Returns (name, phone); each is None if not found. Uses customer messages only."""
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    customer_text = " ".join(matches)
+    if not customer_text:
+        return (None, None)
+    t = customer_text
+    extracted_name: str | None = None
+    extracted_phone: str | None = None
+
+    # Phone: US format (xxx) xxx-xxxx, xxx-xxx-xxxx, xxx.xxx.xxxx, xxx xxx xxxx, xxxxxxxxxx
+    phone_patterns = [
+        r"\(?(\d{3})\)?[-.\s]*(\d{3})[-.\s]*(\d{4})\b",
+        r"\b(\d{3})[-.\s](\d{3})[-.\s](\d{4})\b",
+        r"(?:电话|phone|call me|我电话|联系方式)[：:\s]*\(?(\d{3})\)?[-.\s]*(\d{3})[-.\s]*(\d{4})\b",
+    ]
+    for pat in phone_patterns:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            g = m.groups()
+            if len(g) == 3:
+                extracted_phone = f"{g[0]}-{g[1]}-{g[2]}"
+            break
+
+    # Name: 我是X, 我姓X, 我叫X, call me X, I'm X, — X at end
+    name_patterns = [
+        (r"我是\s*([^\s,，.。]+)", 1, 2),
+        (r"我姓\s*([^\s,，.。]+)", 1, 1),
+        (r"我叫\s*([^\s,，.。]+)", 1, 2),
+        (r"call me\s+([a-zA-Z][a-zA-Z\s-]{1,20})\b", 1, 2),
+        (r"i'?m\s+([a-zA-Z][a-zA-Z\s-]{1,20})\b", 1, 2),
+        (r"this is\s+([a-zA-Z][a-zA-Z\s-]{1,20})\b", 1, 2),
+        (r"[—\-]\s*([^\s\d,，.。]{2,6})\s*$", 1, 2),
+    ]
+    exclude = {"bmw", "tesla", "honda", "toyota", "model", "zip", "90210", "accord", "camry"}
+    for pat, grp, min_len in name_patterns:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            name_cand = m.group(grp).strip()
+            if len(name_cand) >= min_len and name_cand.lower() not in exclude and not re.match(r"^\d+$", name_cand):
+                extracted_name = name_cand[:120]
+                break
+
+    return (extracted_name, extracted_phone)
 
 
 def _extract_remove_car_fields(merged_text: str) -> dict[str, bool]:
@@ -1774,9 +2525,8 @@ def _extract_cancellation_fields(merged_text: str) -> dict[str, bool]:
     notice_present = any(
         m in t for m in ["notice", "通知", "final notice", "last notice", "cancellation", "cancel"]
     )
-    screenshot_sent = any(
-        m in t for m in ["截图", "screenshot", "发你", "发我", "发过", "sent", "发你微信", "发我微信"]
-    )
+    _cx_bodies = [x.strip() for x in matches] if matches else [(merged_text or "").strip()]
+    screenshot_sent = any(_message_claims_completed_material_send(b) for b in _cx_bodies if b)
     already_paid = any(
         m in t for m in ["付了", "paid", "已经付", "already paid", "换了新卡", "updated card"]
     )
@@ -1811,6 +2561,102 @@ def _cancellation_structured_fields(merged_text: str) -> tuple[list[str], list[s
     return (collected, still_needed)
 
 
+def _is_add_car_vehicle_correction_signal(text: str) -> bool:
+    """
+    True when the customer is clearly correcting *which vehicle* (not e.g. driver-only fixes).
+    Used for correction-aware customer-facing replies (trust / office-realism).
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    # Chinese: negation + correction clause (allow comma between 不是…是, e.g. 不是X5，是X3)
+    if re.search(r"不是[^，。\n]{0,40}是\s*", raw):
+        return True
+    if re.search(r"不是.{1,48}是\s*", raw) and re.search(
+        r"(20[12][0-9]|tesla|特斯拉|bmw|x[0-9]\b|宝马|本田|丰田|雷克萨斯|honda|toyota|lexus|accord|civic|camry|corolla)",
+        tl,
+    ):
+        return True
+    if re.search(r"不对[,，]?\s*是\s*", raw) and re.search(
+        r"(20[12][0-9]|tesla|特斯拉|bmw|x[0-9]\b|宝马|本田|丰田|honda|toyota)",
+        tl,
+    ):
+        return True
+    if "搞错了" in raw and re.search(
+        r"是\s*(20[12][0-9]|tesla|特斯拉|bmw|宝马|本田|丰田|honda|toyota|x[0-9]\b)",
+        tl,
+    ):
+        return True
+    if any(m in raw for m in ("不是这个", "不是这辆", "不是那辆", "不是这台车", "不是那台", "另一辆")):
+        return True
+    if any(m in tl for m in ("not that one", "wrong car", "wrong vehicle", "meant the", "meant a")):
+        return True
+    if re.search(r"\b(i meant|actually)\b.+\b(20[12][0-9]|tesla|bmw|honda|toyota|lexus)\b", tl):
+        return True
+    # 说错了 only when the same bubble also re-specifies the car (avoid driver-only 说错了)
+    if "说错了" in raw and re.search(
+        r"(20[12][0-9]|特斯拉|宝马|本田|丰田|雷克萨斯|[xX][35]\b|tesla|bmw|honda|toyota|lexus|accord|civic|camry)",
+        tl,
+    ):
+        return True
+    return False
+
+
+def _add_car_vehicle_concrete_from_scope(scope: str, year_pool: str) -> str:
+    """Resolve year (prefer digits in scope, else latest in year_pool) + model from scope text."""
+    if not (scope or "").strip():
+        return ""
+    customer_text = scope
+    t = scope.lower()
+    ys = re.findall(r"(20[12][0-9])", scope)
+    yp = re.findall(r"(20[12][0-9])", year_pool)
+    year = ys[-1] if ys else (yp[-1] if yp else "")
+    model = ""
+    if "model y" in t or ("tesla" in t and re.search(r"\by\b", t) and "model" in t):
+        model = "Tesla Model Y"
+    elif "model 3" in t or ("tesla" in t and re.search(r"\b3\b", t) and "model" in t):
+        model = "Tesla Model 3"
+    elif "tesla" in t or "特斯拉" in customer_text:
+        model = "Tesla" if "特斯拉" not in customer_text else "特斯拉"
+    elif list(re.finditer(r"[xX]([35])(?![0-9])", scope)):
+        xi = list(re.finditer(r"[xX]([35])(?![0-9])", scope))[-1].group(1)
+        model = f"BMW X{xi}"
+    elif "宝马" in customer_text:
+        model = "宝马"
+    elif "honda" in t and ("accord" in t or "civic" in t or "cr-v" in t):
+        model = "Honda " + ("Accord" if "accord" in t else "Civic" if "civic" in t else "CR-V")
+    elif "toyota" in t and ("camry" in t or "corolla" in t or "rav4" in t):
+        model = "Toyota " + ("Camry" if "camry" in t else "Corolla" if "corolla" in t else "RAV4")
+    elif "nissan" in t and "altima" in t:
+        model = "Nissan Altima"
+    elif any(m in t for m in ["bmw", "honda", "toyota", "lexus", "nissan"]):
+        model = next((m.title() for m in ["tesla", "bmw", "honda", "toyota", "lexus", "nissan"] if m in t), "")
+    elif any(m in customer_text for m in ["特斯拉", "宝马", "本田", "丰田"]):
+        model = next((m for m in ["特斯拉", "宝马", "本田", "丰田"] if m in customer_text), "")
+    if year and model:
+        return f"{year} {model}"
+    if year:
+        return year
+    return model if model else ""
+
+
+def _extract_add_car_vehicle_concrete(merged_text: str) -> str:
+    """Extract concrete vehicle string (e.g. '2024 Tesla Model Y') for broker summary.
+    Uses customer messages only; on vehicle-correction turns, model/year resolve from the last bubble
+    so X5→X3 and similar overrides beat earlier mentions."""
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    customer_text = " ".join(matches).replace("\n", " ")
+    if not customer_text:
+        return ""
+    last_seg = (matches[-1] or "").strip() if matches else ""
+    if last_seg and _is_add_car_vehicle_correction_signal(last_seg):
+        hit = _add_car_vehicle_concrete_from_scope(last_seg, customer_text)
+        if hit:
+            return hit
+    return _add_car_vehicle_concrete_from_scope(customer_text, customer_text)
+
+
 def _add_car_enough_for_handoff(fields: dict[str, bool]) -> bool:
     """Add-car case is ready when we have vehicle (year+model or VIN) + zip + (delivery or driver).
     Stricter than before: zip alone is not enough; office needs delivery or driver context for quote.
@@ -1823,10 +2669,25 @@ def _add_car_enough_for_handoff(fields: dict[str, bool]) -> bool:
     return has_zip and has_delivery_or_driver
 
 
-def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str]]:
-    """Return (collected_fields, still_needed_fields) for add-car broker handoff.
-    Used for structured broker output; complements conversation_summary free text.
-    Includes insurance_status and additional_drivers when detected (80% completion)."""
+def _add_car_quote_ready_status(fields: dict[str, bool]) -> str:
+    """Return quote_ready_status for add-car: quote_ready | almost_ready | need_more.
+    ADD_CAR_REAL_INTAKE_LITE: Simple, explainable status for broker visibility."""
+    vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
+    has_zip = bool(fields.get("zip"))
+    has_delivery = bool(fields.get("delivery"))
+    has_driver = bool(fields.get("driver"))
+    has_delivery_or_driver = has_delivery or has_driver
+
+    if not vehicle_ok or not has_zip:
+        return "need_more"
+    if has_delivery_or_driver:
+        return "quote_ready"
+    return "almost_ready"
+
+
+def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str], str | None, str | None]:
+    """Return (collected_fields, still_needed_fields, extracted_name, extracted_phone) for add-car broker handoff.
+    ADD_CAR_IDENTITY_CONTACT_LITE: Includes name/phone in collected when extracted; in still_needed when quote-ready but missing."""
     fields = _extract_add_car_fields(merged_text)
     collected: list[str] = []
     if fields.get("year"):
@@ -1849,6 +2710,14 @@ def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str]]:
         collected.append("additional_drivers_yes")
     if fields.get("only_me"):
         collected.append("additional_drivers_no")
+
+    # ADD_CAR_IDENTITY_CONTACT_LITE: contact extraction
+    extracted_name, extracted_phone = _extract_contact_fields(merged_text)
+    if extracted_name:
+        collected.append("name")
+    if extracted_phone:
+        collected.append("phone")
+
     still_needed: list[str] = []
     if not _add_car_enough_for_handoff(fields):
         vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
@@ -1865,7 +2734,16 @@ def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str]]:
             still_needed.append("delivery_date")
         if not fields.get("driver"):
             still_needed.append("primary_driver")
-    return (collected, still_needed)
+
+    # Contact still needed when quote-ready or almost-ready
+    qrs = _add_car_quote_ready_status(fields)
+    if qrs in ("quote_ready", "almost_ready"):
+        if not extracted_name:
+            still_needed.append("name")
+        if not extracted_phone:
+            still_needed.append("phone")
+
+    return (collected, still_needed, extracted_name, extracted_phone)
 
 
 def _extract_renewal_fields(merged_text: str) -> dict[str, bool]:
@@ -2089,29 +2967,69 @@ def _derive_human_confirmation_fields(
     return ordered_generic
 
 
-def _get_add_car_acknowledgement(last_customer_msg: str, fields: dict[str, bool], language: str) -> str:
+def _get_add_car_acknowledgement(
+    last_customer_msg: str,
+    fields: dict[str, bool],
+    language: str,
+    merged_text_for_vehicle: str | None = None,
+) -> str:
     """Build a short acknowledgement of what the customer just said, for office-natural flow.
-    E.g. '2024年的' -> '好的，2024年的。' ; '90210' -> '好的，邮编90210。'"""
-    msg = (last_customer_msg or "").strip()
-    if not msg or len(msg) > 80:
+    Correction turns: explicitly confirm the effective vehicle (trust). Uses merged conversation
+    for concrete vehicle so corrections override earlier messages."""
+    raw_in = (last_customer_msg or "").strip()
+    msg = raw_in
+    # Callers sometimes pass full merged triage text here; always anchor on the latest bubble.
+    if "[客户]" in raw_in:
+        segs = re.findall(r"\[客户\]\s*([^[]+)", raw_in)
+        if segs:
+            msg = (segs[-1] or "").strip()
+    if not msg or len(msg) > 120:
         return ""
-    lowered = msg.lower()
+    ctx = (
+        merged_text_for_vehicle.strip()
+        if (merged_text_for_vehicle and merged_text_for_vehicle.strip())
+        else f"[客户] {msg}"
+    )
+    concrete = _extract_add_car_vehicle_concrete(ctx)
+
+    if _is_add_car_vehicle_correction_signal(msg) and concrete:
+        if language == "zh":
+            lead = f"好的，我按 {concrete} 这台车继续。"
+        else:
+            lead = f"Got it, we'll proceed with the {concrete}."
+        zm_zip = _extract_ca_zip_from_message(msg)
+        if fields.get("zip") and zm_zip:
+            if language == "zh":
+                lead += f" 邮编{zm_zip}也收到了。"
+            else:
+                lead += f" I have zip {zm_zip} as well."
+        return lead if language == "zh" else lead + " "
+
     parts: list[str] = []
-    if fields.get("year") and re.search(r"20[12][0-9]", msg):
+    # Prefer full year+make over year-only (fixes thin “好的，2024年的。” when model is known)
+    if concrete and fields.get("year") and fields.get("model"):
+        parts.append(f"{concrete}。" if language == "zh" else f"{concrete}.")
+    elif concrete and len(concrete.strip()) >= 5 and language == "zh":
+        # Merged text resolved a vehicle label but slot flags are incomplete — still echo it (trust).
+        parts.append(f"{concrete}。")
+    elif concrete and len(concrete.strip()) >= 5 and language != "zh":
+        parts.append(f"{concrete}.")
+    elif fields.get("year") and re.search(r"20[12][0-9]", msg):
         m = re.search(r"(20[12][0-9][年的]*)", msg)
         if m:
             parts.append(m.group(1) + ("的。" if "的" not in m.group(1) else "。"))
-    if fields.get("zip") and re.search(r"\b9[0-9]{4}\b", msg):
-        m = re.search(r"(9[0-9]{4})", msg)
-        if m:
-            if language == "zh":
-                parts.append(f"邮编{m.group(1)}。")
-            else:
-                parts.append(f"zip {m.group(1)}.")
+    ack_zip = _extract_ca_zip_from_message(msg)
+    if fields.get("zip") and ack_zip:
+        if language == "zh":
+            parts.append(f"邮编{ack_zip}。")
+        else:
+            parts.append(f"zip {ack_zip}.")
     if fields.get("model") and not parts:
         model_snippets = [
             (r"宝马\s*[xX]?[3571]", "宝马"),
             (r"tesla\s*model\s*[yY3sSxX]", "Tesla"),
+            (r"\btesla\b", "Tesla"),
+            (r"特斯拉", "特斯拉"),
             (r"honda\s*(accord|civic|cr-v|crv)", "Honda"),
             (r"toyota\s*(camry|corolla|rav4)", "Toyota"),
             (r"丰田\s*花冠", "丰田花冠"),
@@ -2120,10 +3038,11 @@ def _get_add_car_acknowledgement(last_customer_msg: str, fields: dict[str, bool]
         for pat, _ in model_snippets:
             m = re.search(pat, msg, re.I)
             if m:
-                parts.append(m.group(0) + "。")
+                parts.append(m.group(0) + "。" if language == "zh" else m.group(0) + ".")
                 break
-    if not parts and len(msg) <= 40:
-        parts.append(msg.rstrip("。，, ") + "。")
+    # Do not echo short prospective-send questions ("要不要发你") — answered via _get_prospective_send_materials_lead.
+    if not parts and len(msg) <= 40 and not _is_prospective_send_offer_message(msg.lower()):
+        parts.append(msg.rstrip("。，, ") + "。" if language == "zh" else msg.rstrip("。，, ") + ".")
     if not parts:
         return ""
     ack = "好的，" + " ".join(parts) if language == "zh" else "Got it, " + " ".join(parts).rstrip(".")
@@ -2150,12 +3069,40 @@ def _get_next_ask_for_add_car(
             and fields.get("delivery")
             and not fields.get("driver")
         ):
-            rules = add_car_rules or get_add_car_rules()
             matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-            last_customer = matches[-1].strip() if matches else ""
-            ack = _get_add_car_acknowledgement(last_customer, fields, language)
+            last_seg_raw = (matches[-1] or "").strip() if matches else ""
+            last_customer = last_seg_raw.lower()
+            # HANDOFF_TIMING_AUDIT: When customer asks document clarification (garaging, dec page) in same
+            # turn as add-car info, answer the question and hand off — don't ask for driver.
+            # ADD_CAR_QUOTE_EXCELLENCE: Same for coverage-adjust question — answer and hand off.
+            # ADD_CAR_COMMERCIAL_FLOW_HARDENING: When customer says materials sent (发你微信了), hand off
+            # — don't ask for driver; broker will verify materials and run quote.
+            doc_clarification = any(
+                m in last_customer
+                for m in (
+                    "garaging", "garaging proof", "declaration page", "dec page",
+                    "是什么意思", "是什么", "要发什么", "what does", "what is",
+                )
+            )
+            coverage_question = any(
+                m in last_customer for m in ("coverage 可以调", "coverage 可以调吗", "coverage 能调", "顺便 coverage", "coverage 能改", "coverage adjust")
+            )
+            # Substring "发你" matches "要不要发你" — exclude prospective-send questions (PROSPECTIVE_SEND_AWARE_REPLY_POLISH).
+            materials_sent = not _is_prospective_send_offer_message(
+                last_customer
+            ) and any(
+                m in last_customer for m in ("发你", "发我", "sent", "发你微信", "发我微信", "发过了", "又发")
+            )
+            if doc_clarification or coverage_question or materials_sent:
+                return None
+            rules = add_car_rules or get_add_car_rules()
+            ack = _get_add_car_acknowledgement(last_seg_raw, fields, language, merged_text)
             prefix = (ack.rstrip("。") + "。") if ack else ""
-            prefix = prefix + " " if prefix else ""
+            if prefix and language != "zh":
+                prefix = prefix + " "
+            ps_lead = _get_prospective_send_materials_lead(last_seg_raw, language)
+            if ps_lead:
+                prefix = ps_lead + prefix
             ask = rules.get("ask_driver_only", {}).get(language) or (
                 "主要驾驶人发我一下，我好安排报价。"
                 if language == "zh"
@@ -2166,21 +3113,25 @@ def _get_next_ask_for_add_car(
     rules = add_car_rules or get_add_car_rules()
     matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
     last_customer = matches[-1].strip() if matches else ""
-    ack = _get_add_car_acknowledgement(last_customer, fields, language)
+    ps_lead = _get_prospective_send_materials_lead(last_customer, language)
+    ack = _get_add_car_acknowledgement(last_customer, fields, language, merged_text)
     prefix = (ack.rstrip("。") + "。") if ack else ""
-    prefix = prefix + " " if prefix else ""
+    if prefix and language != "zh":
+        prefix = prefix + " "
+    if ps_lead:
+        prefix = ps_lead + prefix
 
     vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
     if not vehicle_ok:
         ask = rules.get("ask_vehicle", {}).get(language) or (
-            "先把年份和车型发我，我就能帮你算。"
+            "先把年份和车型发我，我就能继续帮您报价。"
             if language == "zh"
             else "Send me the year and make/model first so I can run the quote."
         )
         return prefix + ask
     if not fields.get("zip"):
         ask = rules.get("ask_zip", {}).get(language) or (
-            "先把地址邮编发我，我就能帮你算。"
+            "先把邮编发我，我就能继续帮您报价。"
             if language == "zh"
             else "Send me the zip or address first and I will run the quote."
         )
@@ -2208,6 +3159,8 @@ def _get_next_ask_draft(
     Only applies when customer_turn_count >= 2 (second or third turn).
     Focus: add-car quote (ask for zip/delivery/driver when missing).
     Other categories: hand off after 2 turns to avoid repeating the same ask.
+    HANDOFF_TIMING_REGRESSION: Premium/payment "one more ask" deferred — would break
+    2-turn scenarios (SIM7, SIM9, R1, R6, SIM13); fix-next when we can scope to 3+ turn only.
     """
     if customer_turn_count < 2:
         return None
@@ -2401,20 +3354,61 @@ def triage_conversation(
 
     # Document clarification: when customer asks "what does garaging proof mean? what to send?"
     # after handoff, answer the question first instead of generic handoff (SIM2 fix)
-    if handoff and key == "other_clarification":
-        last_customer_lower = last_customer_raw.lower() if last_customer_raw else ""
-        if _is_document_confusion_request(last_customer_lower) and any(
-            m in last_customer_lower for m in ("garaging", "garaging proof", "停放", "declaration page", "dec page", "保单首页")
+    # HANDOFF_TIMING_AUDIT: Same for add-car when customer asks doc question in same turn as vehicle info
+    last_customer_lower = last_customer_raw.lower() if last_customer_raw else ""
+    has_doc_clarification = (
+        _is_document_confusion_request(last_customer_lower)
+        and any(
+            m in last_customer_lower
+            for m in ("garaging", "garaging proof", "停放", "declaration page", "dec page", "保单首页")
+        )
+    )
+    if handoff and has_doc_clarification and (key == "other_clarification" or is_add_car):
+        tailored = _build_client_reply_draft(merged_text, "customer_question", resolved_client_id)
+        if tailored and len(tailored) > 30 and (
+            "garaging" in tailored.lower() or "停放" in tailored or "declaration" in tailored.lower()
         ):
-            # Build explanation as customer_question (document confusion) not missing_document
-            tailored = _build_client_reply_draft(merged_text, "customer_question")
-            if tailored and len(tailored) > 30 and (
-                "garaging" in tailored.lower() or "停放" in tailored or "declaration" in tailored.lower()
-            ):
-                handoff_suffix_zh = "。办公室会尽快处理，有结果会联系您。"
-                handoff_suffix_en = ". Our office will process this and follow up with you."
-                handoff_suffix = handoff_suffix_zh if language == "zh" else handoff_suffix_en
-                handoff_reply = tailored.rstrip("。.") + handoff_suffix
+            handoff_suffix_zh = (
+                "。本次加车报价资料已提交办公室跟进，有结果会联系您。" if is_add_car else "。办公室会尽快处理，有结果会联系您。"
+            )
+            handoff_suffix_en = (
+                " Your add-car request is with our office for follow-up."
+                if is_add_car
+                else ". Our office will process this and follow up with you."
+            )
+            handoff_suffix = handoff_suffix_zh if language == "zh" else handoff_suffix_en
+            handoff_reply = tailored.rstrip("。.") + handoff_suffix
+
+    # ADD_CAR_QUOTE_EXCELLENCE: Coverage-adjust side question in same turn — brief answer, then hand off.
+    has_coverage_question = any(
+        m in last_customer_lower
+        for m in ("coverage 可以调", "coverage 可以调吗", "coverage 能调", "顺便 coverage", "coverage 能改", "coverage adjust")
+    )
+    if handoff and is_add_car and has_coverage_question:
+        coverage_answer_zh = "保额可以调整，报价时办公室会跟您确认。"
+        coverage_answer_en = "Coverage can be adjusted; the office will confirm options when quoting."
+        coverage_answer = coverage_answer_zh if language == "zh" else coverage_answer_en
+        handoff_suffix_zh = "本次加车报价资料已提交办公室跟进，办公室会尽快出价，有结果会联系您。"
+        handoff_suffix_en = "Your add-car details are with our office; they will price and follow up with you."
+        handoff_suffix = handoff_suffix_zh if language == "zh" else handoff_suffix_en
+        handoff_reply = coverage_answer + " " + handoff_suffix
+
+    # Prospective-send question + quote-ready handoff: answer "要不要发你" style asks before office line.
+    prospective_send_lead = _get_prospective_send_materials_lead(last_customer_raw, language)
+    if handoff and is_add_car and prospective_send_lead:
+        handoff_reply = prospective_send_lead + handoff_reply
+
+    # ADD_CAR_COMMERCIAL_FLOW_HARDENING: Warmer handoff when customer says materials sent (发你微信了)
+    add_car_materials_sent = handoff and is_add_car and follow_up_type == "already_sent" and _message_claims_completed_material_send(
+        last_customer_raw
+    )
+    if add_car_materials_sent:
+        handoff_reply_zh = "您说材料已发，办公室会按加车报价流程核对并继续处理，本次请求已交办公室跟进，有结果会联系您。"
+        handoff_reply_en = (
+            "You mentioned you sent the materials—our office will verify under the add-car flow; "
+            "your request is with them and they will follow up."
+        )
+        handoff_reply = handoff_reply_zh if language == "zh" else handoff_reply_en
 
     # Correction + embedded urgency/next-step question: answer the question first (SIM1 Turn 3 fix)
     # When user says "其实已经付了...那我现在最要紧做什么？", don't just say "好的明白了" — answer the ask
@@ -2439,6 +3433,20 @@ def triage_conversation(
                     "Our office will process this and follow up with you."
                 )
 
+    # Correction-aware add-car handoff: lead with effective vehicle when customer just corrected it.
+    if (
+        handoff
+        and is_add_car
+        and last_customer_raw
+        and _is_add_car_vehicle_correction_signal(last_customer_raw)
+    ):
+        vc = _extract_add_car_vehicle_concrete(merged_text)
+        if vc:
+            if language == "zh" and "这台车继续" not in handoff_reply:
+                handoff_reply = f"好的，我按 {vc} 这台车继续。" + handoff_reply
+            elif language != "zh" and "proceeding with the" not in handoff_reply.lower():
+                handoff_reply = f"Got it—proceeding with the {vc}. " + handoff_reply
+
     result = dict(base_result)
     result["handoff_ready"] = handoff
     result["follow_up_type"] = follow_up_type
@@ -2455,9 +3463,12 @@ def triage_conversation(
             or base_result.get("issue_category") in ("cancellation_warning", "payment_lapse_expiration", "missing_document")
         )
     )
-    result["conversation_summary"] = _build_conversation_summary(
+    summary, secondary_note = _build_conversation_summary(
         merged_text, base_result, customer_count + 1
     )
+    result["conversation_summary"] = summary
+    if secondary_note:
+        result["secondary_issue_note"] = secondary_note
     if handoff:
         result["client_reply_draft"] = handoff_reply
     else:
@@ -2465,9 +3476,17 @@ def triage_conversation(
 
     lowered = (merged_text or "").lower()
     if is_add_car:
-        collected, still_needed = _add_car_structured_fields(merged_text)
+        collected, still_needed, extracted_name, extracted_phone = _add_car_structured_fields(merged_text)
         result["collected_fields"] = collected
         result["still_needed_fields"] = still_needed
+        # ADD_CAR_REAL_INTAKE_LITE: quote_ready_status for broker visibility
+        fields = _extract_add_car_fields(merged_text)
+        result["quote_ready_status"] = _add_car_quote_ready_status(fields)
+        # ADD_CAR_IDENTITY_CONTACT_LITE: extracted contact for case persistence
+        if extracted_name:
+            result["extracted_contact_name"] = extracted_name
+        if extracted_phone:
+            result["extracted_contact_phone"] = extracted_phone
     elif _is_premium_review_request(lowered):
         collected, still_needed = _renewal_structured_fields(merged_text)
         result["collected_fields"] = collected
@@ -2525,14 +3544,66 @@ def triage_conversation(
             "confirm remove-vehicle intent if client asked, then send 1–2 realistic options."
         )
 
+    # Package 2.0 Loop 2: Remove-vehicle handoff — concrete broker_next_step (WORKBENCH_HANDOFF_PROFESSIONALIZATION).
+    if handoff and is_remove_car:
+        result["broker_next_step"] = (
+            "Verify sale date and transfer status; process removal and confirm what stays covered."
+        )
+
     # Package 2.0 Loop 2: Add-car handoff — more concrete broker_next_step when we have vehicle+zip.
+    # ADD_CAR_QUOTE_EXCELLENCE: Include concrete vehicle when extractable.
+    # ADD_CAR_REAL_INTAKE_LITE: Tailor confirm step — only ask for what's still missing.
+    # ADD_CAR_IDENTITY_CONTACT_LITE: Mention contact when quote-ready but name/phone missing.
+    # ADD_CAR_COMMERCIAL_FLOW_HARDENING: When customer says "发你微信了" / "sent" in add-car context,
+    # broker_next_step must say "Verify materials received" — reduces broker rework, feels office-ready.
     if handoff and is_add_car:
         fields = _extract_add_car_fields(merged_text)
         if _add_car_enough_for_handoff(fields):
-            result["broker_next_step"] = (
-                "Run quote for collected vehicle details (year, model, zip). "
-                "Confirm delivery date and driver with client before binding."
+            vehicle_concrete = _extract_add_car_vehicle_concrete(merged_text)
+            has_delivery = bool(fields.get("delivery"))
+            has_driver = bool(fields.get("driver"))
+            if has_delivery and not has_driver:
+                confirm_step = "Confirm main driver with client before binding."
+            elif has_driver and not has_delivery:
+                confirm_step = "Confirm delivery date with client before binding."
+            else:
+                confirm_step = "Confirm delivery date and driver with client before binding."
+            # ADD_CAR_COMMERCIAL_FLOW_HARDENING: already_sent (materials) in add-car context
+            add_car_already_sent = follow_up_type == "already_sent" and _message_claims_completed_material_send(
+                last_customer_raw
             )
+            if add_car_already_sent:
+                verify_lead = "Verify materials received via WeChat; "
+                if vehicle_concrete:
+                    result["broker_next_step"] = f"{verify_lead}run quote for {vehicle_concrete} when confirmed."
+                else:
+                    result["broker_next_step"] = f"{verify_lead}run quote for collected vehicle details when confirmed."
+                collected_list = result.get("collected_fields") or []
+                collected_list = list(collected_list)
+                if "customer_says_sent_materials" not in collected_list:
+                    collected_list.append("customer_says_sent_materials")
+                result["collected_fields"] = collected_list
+            else:
+                if vehicle_concrete:
+                    result["broker_next_step"] = f"Run quote for {vehicle_concrete}. {confirm_step}"
+                else:
+                    result["broker_next_step"] = (
+                        f"Run quote for collected vehicle details (year, model, zip). {confirm_step}"
+                    )
+            # Contact hint when quote-ready but name or phone missing (unless already_sent branch)
+            if not add_car_already_sent:
+                collected_list = result.get("collected_fields") or []
+                has_name = "name" in collected_list
+                has_phone = "phone" in collected_list
+                if not has_name or not has_phone:
+                    contact_hint = "Confirm name and phone for follow-up."
+                    result["broker_next_step"] = f"{result['broker_next_step']} {contact_hint}"
+            elif add_car_already_sent:
+                collected_list = result.get("collected_fields") or []
+                has_name = "name" in collected_list
+                has_phone = "phone" in collected_list
+                if not has_name or not has_phone:
+                    result["broker_next_step"] = f"{result['broker_next_step']} Confirm name and phone for follow-up."
 
     return result
 

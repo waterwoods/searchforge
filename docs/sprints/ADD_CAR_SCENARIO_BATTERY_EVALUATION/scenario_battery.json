@@ -1,0 +1,209 @@
+{
+  "version": "1",
+  "sprint": "ADD_CAR_SCENARIO_BATTERY_EVALUATION",
+  "description": "17 realistic Add-Car multi-turn scenarios for triage.py evaluation (rule path; LLM off).",
+  "scenarios": [
+    {
+      "id": "ACB-C01",
+      "messiness": "clean",
+      "name": "标准两回合：先问价再给全量信息",
+      "why_matters": "Most common broker pattern: customer asks price, then supplies slots in one follow-up.",
+      "expected_good_behavior": "Turn 1 asks for missing year/zip/delivery or driver; turn 2 hands off with concrete vehicle + broker_next_step.",
+      "failure_looks_like": "Generic 'more context', wrong category (premium_review), or handoff before zip/driver.",
+      "turns": [
+        { "role": "customer", "text": "我买了台2024丰田凯美瑞，想问下加车保费大概多少钱" },
+        { "role": "customer", "text": "zip 90210，下周三提车，主要我老公开" }
+      ]
+    },
+    {
+      "id": "ACB-C02",
+      "messiness": "clean",
+      "name": "英文单泡：信息一次给齐",
+      "why_matters": "English-speaking household; tests extraction and natural EN draft.",
+      "expected_good_behavior": "Single-turn handoff with quote_ready_status quote_ready, broker step mentions vehicle and confirm contact if missing.",
+      "failure_looks_like": "Asks for fields already present; Chinese reply to English customer.",
+      "turns": [
+        { "role": "customer", "text": "Adding a car — 2024 Honda CR-V, VIN ends 1234, zip 94102, picking up Friday, only I drive." }
+      ]
+    },
+    {
+      "id": "ACB-C03",
+      "messiness": "clean",
+      "name": "中英混排车型名",
+      "why_matters": "California WeChat style: English model name + Chinese function words.",
+      "expected_good_behavior": "Recognizes Tesla Model Y, collects zip + driver/delivery, office-realistic Chinese reply.",
+      "failure_looks_like": "Drops vehicle context or treats as unclear.",
+      "turns": [
+        { "role": "customer", "text": "想加一台2024 Tesla Model Y，先帮我报个价" },
+        { "role": "customer", "text": "邮编95131，明天拿车，就我一个人开" }
+      ]
+    },
+    {
+      "id": "ACB-M01",
+      "messiness": "messy",
+      "name": "极简开场，信息散落在第二泡",
+      "why_matters": "Lazy texters say '加车' then dump details.",
+      "expected_good_behavior": "Turn 1 asks for year/model/zip/delivery/driver; turn 2 handoff.",
+      "failure_looks_like": "Unclear category or robotic thank-you with no next ask.",
+      "turns": [
+        { "role": "customer", "text": "你好我想加车" },
+        { "role": "customer", "text": "2020 civic，94566，这周五提车，我老婆开" }
+      ]
+    },
+    {
+      "id": "ACB-M02",
+      "messiness": "messy",
+      "name": "邮编最后一回合才给",
+      "why_matters": "Customers often forget zip until prompted.",
+      "expected_good_behavior": "First reply asks zip (or zip+driver); after zip + existing delivery/driver, handoff.",
+      "failure_looks_like": "Handoff without zip; asks for year again.",
+      "turns": [
+        { "role": "customer", "text": "新车2023宝马X3，下周提车，我开，想加进保单报价" },
+        { "role": "customer", "text": "哦对 zip 92620" }
+      ]
+    },
+    {
+      "id": "ACB-M03",
+      "messiness": "messy",
+      "name": "驾驶人最后一回合才说",
+      "why_matters": "Office needs primary driver; many clients omit until asked.",
+      "expected_good_behavior": "After vehicle+year+zip+delivery known, ask driver; then handoff.",
+      "failure_looks_like": "Handoff without driver/delivery context when neither was given.",
+      "turns": [
+        { "role": "customer", "text": "加车 2022 Lexus RX，90210，明天拿车" },
+        { "role": "customer", "text": "主要驾驶人是我老公" }
+      ]
+    },
+    {
+      "id": "ACB-M04",
+      "messiness": "messy",
+      "name": "姓名电话晚到第三泡",
+      "why_matters": "ADD_CAR_IDENTITY_CONTACT_LITE: quote-ready cases should nudge contact.",
+      "expected_good_behavior": "Handoff or almost_ready mentions confirming name/phone; third bubble fills contact.",
+      "failure_looks_like": "Ignores contact entirely when policy expects it for case persistence.",
+      "turns": [
+        { "role": "customer", "text": "要加一辆2021 Toyota RAV4，zip 91789，下周末提车，我自己开" },
+        { "role": "customer", "text": "对了材料要不要发你" },
+        { "role": "customer", "text": "我是陈晨 电话 626-555-0142" }
+      ]
+    },
+    {
+      "id": "ACB-M05",
+      "messiness": "messy",
+      "name": "一泡超长口语堆叠",
+      "why_matters": "Dense bubbles mirror real voice-to-text or rushed typing.",
+      "expected_good_behavior": "Parses year/model/zip/delivery/driver; single-turn handoff if complete.",
+      "failure_looks_like": "Misses zip embedded mid-text or wrong slot priority.",
+      "turns": [
+        { "role": "customer", "text": "那个啥我刚定了台车2024 Mazda CX-5然后zip大概是92801吧下周二去dealer拿车平时主要我老婆开偶尔我也开想问下加车保费会不会涨很多你先帮我报一下谢谢" }
+      ]
+    },
+    {
+      "id": "ACB-M06",
+      "messiness": "messy",
+      "name": "先模糊问价再补全",
+      "why_matters": "“先报价”类消息没有车型，容易误判或空转。",
+      "expected_good_behavior": "Stay on add-car; ask year/make or VIN first.",
+      "failure_looks_like": "Routes to premium_review or unclear.",
+      "turns": [
+        { "role": "customer", "text": "能先帮我报个价吗，想加车" },
+        { "role": "customer", "text": "2019 Subaru Outback，95035，pick up next week，就我开" }
+      ]
+    },
+    {
+      "id": "ACB-M07",
+      "messiness": "messy",
+      "name": "犹豫+改口+啰嗦",
+      "why_matters": "Hesitation and filler should not break slot tracking.",
+      "expected_good_behavior": "Collects stable facts; ignores filler.",
+      "failure_looks_like": "Asks same field repeatedly or loses zip.",
+      "turns": [
+        { "role": "customer", "text": "我也不确定要不要现在加…但先问问，我可能会买台新车" },
+        { "role": "customer", "text": "算了先当要加吧，2025 Ford F-150，zip 94587，下个月提车，我一个人开" }
+      ]
+    },
+    {
+      "id": "ACB-E01",
+      "messiness": "edge",
+      "name": "车型纠正：本田→特斯拉",
+      "why_matters": "Correction-aware handoff should reflect final vehicle.",
+      "expected_good_behavior": "Acknowledges correction; broker summary leads with Tesla.",
+      "failure_looks_like": "Handoff still says Honda.",
+      "turns": [
+        { "role": "customer", "text": "加车 2023 Honda Accord，90210，下周提车，我开" },
+        { "role": "customer", "text": "不对，是2023 Tesla Model 3，刚才说错了" }
+      ]
+    },
+    {
+      "id": "ACB-E02",
+      "messiness": "edge",
+      "name": "车型纠正：X5→X3",
+      "why_matters": "BMW trim confusion is common.",
+      "expected_good_behavior": "Concrete vehicle becomes X3 after correction turn.",
+      "failure_looks_like": "Stuck on X5 in broker_next_step.",
+      "turns": [
+        { "role": "customer", "text": "新车2022 BMW X5，zip 91355，明天拿车，老公开" },
+        { "role": "customer", "text": "不是X5，是X3，我看错了" }
+      ]
+    },
+    {
+      "id": "ACB-E03",
+      "messiness": "edge",
+      "name": "材料已发微信",
+      "why_matters": "Commercial hardening: should hand off with verify materials, not chase driver unnecessarily.",
+      "expected_good_behavior": "already_sent path; warm handoff; broker verify + quote.",
+      "failure_looks_like": "Ignores '发你了' and keeps asking for uploads.",
+      "turns": [
+        { "role": "customer", "text": "加车2024 Toyota Camry 92808 周五提车我开" },
+        { "role": "customer", "text": "报价资料截图发你微信了哈" }
+      ]
+    },
+    {
+      "id": "ACB-E04",
+      "messiness": "edge",
+      "name": "加价焦虑+加车同事务",
+      "why_matters": "Must stay on quote intake, not renewal premium_review.",
+      "expected_good_behavior": "customer_question add-car playbook; brief price-expectation line OK; collect slots.",
+      "failure_looks_like": "Classified as premium_review only.",
+      "turns": [
+        { "role": "customer", "text": "想加一辆2020 Civic，zip 90012，下周拿车，我老婆开，能便宜一点吗大概多少钱" }
+      ]
+    },
+    {
+      "id": "ACB-E05",
+      "messiness": "edge",
+      "name": "边问garaging proof边给车信息",
+      "why_matters": "Side documentation questions during intake.",
+      "expected_good_behavior": "Short doc explanation if needed; still collects or hands off add-car.",
+      "failure_looks_like": "Pure missing_document rabbit hole with no quote path.",
+      "turns": [
+        { "role": "customer", "text": "garaging proof 是什么要交吗？我同时要加车 2023 Honda Pilot 95118 明天提车 我开" }
+      ]
+    },
+    {
+      "id": "ACB-E06",
+      "messiness": "edge",
+      "name": "两辆车混淆",
+      "why_matters": "Office needs clarity without derailing.",
+      "expected_good_behavior": "Ask which vehicle to quote first or confirm one VIN; stay helpful.",
+      "failure_looks_like": "Silent merge into one fictional car or handoff garbage.",
+      "turns": [
+        { "role": "customer", "text": "我想把新买的Tesla和旧的那台Camry一起报一下价，加车" },
+        { "role": "customer", "text": "新的那台2024 Model Y zip 94080 下周提，主要我开；旧车先不管也行" }
+      ]
+    },
+    {
+      "id": "ACB-E07",
+      "messiness": "edge",
+      "name": "话题跳跃后再回到加车",
+      "why_matters": "Real chats jump; system should recover.",
+      "expected_good_behavior": "Final turn still achieves add-car collection or handoff.",
+      "failure_looks_like": "Stuck on unrelated thread.",
+      "turns": [
+        { "role": "customer", "text": "对了你们 office 几点关门" },
+        { "role": "customer", "text": "算了先问正事，我要加车" },
+        { "role": "customer", "text": "2021 Mazda CX-9，91770，周五提车，孩子开" }
+      ]
+    }
+  ]
+}

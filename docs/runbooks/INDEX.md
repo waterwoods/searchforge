@@ -4,7 +4,7 @@
 |-----|---------|
 | [DEPLOYMENT_PLAYBOOK](./DEPLOYMENT_PLAYBOOK.md) | **Release operations:** pre/deploy/post, gotchas, roll-forward |
 | [RELEASE_CHECKLIST](./RELEASE_CHECKLIST.md) | **Every release:** must-check before claiming success |
-| [KNOWN_DEPLOYMENT_GOTCHAS](./KNOWN_DEPLOYMENT_GOTCHAS.md) | Repeated pitfalls: readyz, CORS, configs, alias |
+| [KNOWN_DEPLOYMENT_GOTCHAS](./KNOWN_DEPLOYMENT_GOTCHAS.md) | Repeated pitfalls: Cloud Run `/healthz`, readyz, CORS, configs, alias |
 | [CURSOR_RELEASE_PROMPT_TEMPLATE](./CURSOR_RELEASE_PROMPT_TEMPLATE.md) | Reusable Cursor prompt for deploy + verify |
 | [RELEASE_CHECKLIST_DRY_RUN_REPORT](../release/RELEASE_CHECKLIST_DRY_RUN_REPORT.md) | Dry-run validation + release rhythm block |
 | [DEPLOYMENT_MANUAL_STEPS](./DEPLOYMENT_MANUAL_STEPS.md) | Vercel + Cloud Run: manual env vars, deploy steps |

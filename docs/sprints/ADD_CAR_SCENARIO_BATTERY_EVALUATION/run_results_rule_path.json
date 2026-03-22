@@ -1,0 +1,1025 @@
+{
+  "llm_enabled": "false",
+  "results": [
+    {
+      "id": "ACB-C01",
+      "name": "标准两回合：先问价再给全量信息",
+      "messiness": "clean",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "我买了台2024丰田凯美瑞，想问下加车保费大概多少钱",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，2024 丰田。先把邮编发我，我就能继续帮您报价；具体数字要等办公室按车型和地址算出来。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，2024 丰田。先把邮编发我，我就能继续帮您报价；具体数字要等办公室按车型和地址算出来。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "zip 90210，下周三提车，主要我老公开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2024 丰田. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-C02",
+      "name": "英文单泡：信息一次给齐",
+      "messiness": "clean",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "Adding a car — 2024 Honda CR-V, VIN ends 1234, zip 94102, picking up Friday, only I drive.",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2024 Honda CR-V. Confirm main driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "Got your quote details. Our office will review and follow up with you.",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "additional_drivers_no"
+          ],
+          "still_needed_fields": [
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-C03",
+      "name": "中英混排车型名",
+      "messiness": "clean",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "想加一台2024 Tesla Model Y，先帮我报个价",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，2024 Tesla Model Y。先把邮编发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，2024 Tesla Model Y。先把邮编发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "邮编95131，明天拿车，就我一个人开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，2024 Tesla Model Y。先把邮编发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，2024 Tesla Model Y。先把邮编发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_no"
+          ],
+          "still_needed_fields": [
+            "zip"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": false,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "need_more"
+    },
+    {
+      "id": "ACB-M01",
+      "name": "极简开场，信息散落在第二泡",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "你好我想加车",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，你好我想加车。可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，你好我想加车。可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "2020 civic，94566，这周五提车，我老婆开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2020. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-M02",
+      "name": "邮编最后一回合才给",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "新车2023宝马X3，下周提车，我开，想加进保单报价",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，2023 BMW X3。先把邮编发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，2023 BMW X3。先把邮编发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "zip"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "哦对 zip 92620",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2023 BMW X3. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-M03",
+      "name": "驾驶人最后一回合才说",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "加车 2022 Lexus RX，90210，明天拿车",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2022 Lexus. Confirm main driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "主要驾驶人是我老公",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2022 Lexus. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-M04",
+      "name": "姓名电话晚到第三泡",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "要加一辆2021 Toyota RAV4，zip 91789，下周末提车，我自己开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2021 Toyota RAV4. Confirm main driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "对了材料要不要发你",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "already_sent",
+          "next_best_question": "",
+          "broker_next_step": "Verify materials received via WeChat; run quote for 2021 Toyota RAV4 when confirmed. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说材料发过了，办公室会核对后尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "insurance_status_add_to_existing",
+            "customer_says_sent_materials"
+          ],
+          "still_needed_fields": [
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 3,
+          "customer_text": "我是陈晨 电话 626-555-0142",
+          "issue_category": "missing_document",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2021 Toyota RAV4. Confirm main driver with client before binding.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "insurance_status_add_to_existing",
+            "name",
+            "phone"
+          ],
+          "still_needed_fields": [
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "missing_document",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-M05",
+      "name": "一泡超长口语堆叠",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "那个啥我刚定了台车2024 Mazda CX-5然后zip大概是92801吧下周二去dealer拿车平时主要我老婆开偶尔我也开想问下加车保费会不会涨很多你先帮我报一下谢谢",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2024. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-M06",
+      "name": "先模糊问价再补全",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "能先帮我报个价吗，想加车",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，能先帮我报个价吗，想加车。可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，能先帮我报个价吗，想加车。可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "2019 Subaru Outback，95035，pick up next week，就我开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2019. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_no"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-M07",
+      "name": "犹豫+改口+啰嗦",
+      "messiness": "messy",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "我也不确定要不要现在加…但先问问，我可能会买台新车",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，我也不确定要不要现在加…但先问问，我可能会买台新车。可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，我也不确定要不要现在加…但先问问，我可能会买台新车。可以先帮你看这台车的报价。先把年份和车型发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "insurance_status_new_customer"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "算了先当要加吧，2025 Ford F-150，zip 94587，下个月提车，我一个人开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2025. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "additional_drivers_no"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E01",
+      "name": "车型纠正：本田→特斯拉",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "加车 2023 Honda Accord，90210，下周提车，我开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2023 Honda Accord. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "不对，是2023 Tesla Model 3，刚才说错了",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "correction",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2023 Tesla Model 3. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "好的，我按 2023 Tesla Model 3 这台车继续。您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E02",
+      "name": "车型纠正：X5→X3",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "新车2022 BMW X5，zip 91355，明天拿车，老公开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2022 BMW X5. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "不是X5，是X3，我看错了",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "correction",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2022 BMW X3. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "好的，我按 2022 BMW X3 这台车继续。您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E03",
+      "name": "材料已发微信",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "加车2024 Toyota Camry 92808 周五提车我开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2024 Toyota Camry. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "报价资料截图发你微信了哈",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "already_sent",
+          "next_best_question": "",
+          "broker_next_step": "Verify materials received via WeChat; run quote for 2024 Toyota Camry when confirmed. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说材料发过了，办公室会核对后尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "customer_says_sent_materials"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E04",
+      "name": "加价焦虑+加车同事务",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "想加一辆2020 Civic，zip 90012，下周拿车，我老婆开，能便宜一点吗大概多少钱",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2020. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E05",
+      "name": "边问garaging proof边给车信息",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "garaging proof 是什么要交吗？我同时要加车 2023 Honda Pilot 95118 明天提车 我开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2023 Honda. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "garaging proof（车辆停放地址证明）是证明车平时停哪里的材料。\n\n好的，2023 Honda。 邮编95118。可以先帮你看这台车的报价。把车子的年份、车型、VIN（有的话）、提车日期、地址邮编和主要驾驶人发我，我先帮你算。办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E06",
+      "name": "两辆车混淆",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "我想把新买的Tesla和旧的那台Camry一起报一下价，加车",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，Tesla。先把年份和地址邮编发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，Tesla。先把年份和地址邮编发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "make_model",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "新的那台2024 Model Y zip 94080 下周提，主要我开；旧车先不管也行",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2024 Tesla Model Y. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    },
+    {
+      "id": "ACB-E07",
+      "name": "话题跳跃后再回到加车",
+      "messiness": "edge",
+      "turn_results": [
+        {
+          "turn": 1,
+          "customer_text": "对了你们 office 几点关门",
+          "issue_category": "unclear",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": null,
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "这段内容还不够完整。把完整通知或前后内容再发我一下，我帮你确认下一步。",
+          "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+          "client_reply_draft": "这段内容还不够完整。把完整通知或前后内容再发我一下，我帮你确认下一步。",
+          "collected_fields": [],
+          "still_needed_fields": [],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 2,
+          "customer_text": "算了先问正事，我要加车",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": false,
+          "triage_path": "rule",
+          "quote_ready_status": "need_more",
+          "collection_stage": "collecting",
+          "follow_up_type": "new_info",
+          "next_best_question": "好的，算了先问正事，我要加车。先把年份和车型发我，我就能继续帮您报价。",
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "client_reply_draft": "好的，算了先问正事，我要加车。先把年份和车型发我，我就能继续帮您报价。",
+          "collected_fields": [
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "manual_followup_needed": true
+        },
+        {
+          "turn": 3,
+          "customer_text": "2021 Mazda CX-9，91770，周五提车，孩子开",
+          "issue_category": "customer_question",
+          "urgency": "medium",
+          "handoff_ready": true,
+          "triage_path": "rule",
+          "quote_ready_status": "quote_ready",
+          "collection_stage": "enough_for_handoff",
+          "follow_up_type": "new_info",
+          "next_best_question": "",
+          "broker_next_step": "Run quote for 2021. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "client_reply_draft": "您说的报价资料已整理好了，办公室会尽快出价，有结果会联系您。",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "manual_followup_needed": true
+        }
+      ],
+      "final_handoff": true,
+      "final_category": "customer_question",
+      "final_quote_ready_status": "quote_ready"
+    }
+  ]
+}

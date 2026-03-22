@@ -79,9 +79,30 @@ if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_complex_adversari
 fi
 echo "  OK"
 
+echo "[7c] Case boundary append (same case vs new issue vs borderline)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_case_boundary_battery.py 2>/dev/null; then
+  echo "  FAIL: Case boundary append battery did not pass"
+  exit 1
+fi
+echo "  OK"
+
 echo "[8] Simulation Assistant scenarios (15 trial + 8 real-customer)..."
 if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_simulation_assistant_scenarios.py 2>/dev/null; then
   echo "  FAIL: Simulation Assistant scenario pack did not pass"
+  exit 1
+fi
+echo "  OK"
+
+echo "[8b] Broker trial stress (vague, talk-to-agent, already-sent, correction)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_broker_trial_stress_simulations.py 2>/dev/null; then
+  echo "  FAIL: Broker trial stress pack did not pass"
+  exit 1
+fi
+echo "  OK"
+
+echo "[8c] Handoff timing audit (customer-not-finished, add-car+clarification)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_handoff_timing_simulations.py 2>/dev/null; then
+  echo "  FAIL: Handoff timing pack did not pass"
   exit 1
 fi
 echo "  OK"

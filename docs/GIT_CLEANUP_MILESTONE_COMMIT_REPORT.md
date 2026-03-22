@@ -82,7 +82,7 @@ tmp/
 | Field | Value |
 |-------|-------|
 | **Commit message** | `feat: Chen Kui Insurance Unified Entry — broker demo, trial pack, scenario logic center` |
-| **Commit hash** | `ffe3379115f4e7cfea1042a13aebad388dde78a2` |
+| **Commit hash** | `9be547cc9d3f9868e5ec941d567c66a478615a93` |
 | **Why this name** | Captures current product identity: Chen Kui Insurance, broker demo, trial pack, scenario logic center |
 
 **Command used:** `git commit -m "feat: Chen Kui Insurance Unified Entry — broker demo, trial pack, scenario logic center"`
@@ -129,7 +129,7 @@ tmp/
 
 ```
 Branch: chen-kui-insurance
-Milestone commit: ffe3379115f4e7cfea1042a13aebad388dde78a2
+Milestone commit: 9be547cc9d3f9868e5ec941d567c66a478615a93
 Message: feat: Chen Kui Insurance Unified Entry — broker demo, trial pack, scenario logic center
 
 Biggest repo improvement: One clear milestone checkpoint; branch name aligned with product; junk excluded.

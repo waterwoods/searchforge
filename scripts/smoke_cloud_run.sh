@@ -18,19 +18,21 @@ if [ -z "$CLOUD_RUN_URL" ]; then
     exit 1
 fi
 
-# Test healthz
-echo "[1/4] Testing /healthz..."
-HEALTHZ_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${CLOUD_RUN_URL}/healthz" || echo "000")
-if [ "$HEALTHZ_CODE" = "200" ]; then
-    echo "✅ PASS: /healthz returned 200"
-    # Verify response body contains status
-    HEALTHZ_BODY=$(curl -s "${CLOUD_RUN_URL}/healthz")
-    if echo "$HEALTHZ_BODY" | grep -q '"status"'; then
-        echo "  Response: $(echo "$HEALTHZ_BODY" | head -c 100)..."
-    fi
+# Liveness (Cloud Run: top-level /healthz often 404 at Google edge — not the app)
+echo "[1/4] Testing liveness (/health/live)..."
+LIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${CLOUD_RUN_URL}/health/live" || echo "000")
+if [ "$LIVE_CODE" = "200" ]; then
+    echo "✅ PASS: /health/live returned 200"
+elif curl -sf --max-time 10 "${CLOUD_RUN_URL}/api/healthz" > /dev/null 2>&1; then
+    echo "✅ PASS: /api/healthz returned 200 (alias)"
 else
-    echo "❌ FAIL: /healthz returned $HEALTHZ_CODE"
-    exit 1
+    HEALTHZ_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${CLOUD_RUN_URL}/healthz" || echo "000")
+    if [ "$HEALTHZ_CODE" = "200" ]; then
+        echo "✅ PASS: /healthz returned 200 (non–Cloud Run)"
+    else
+        echo "❌ FAIL: liveness (/health/live) returned $LIVE_CODE"
+        exit 1
+    fi
 fi
 
 # Test readyz

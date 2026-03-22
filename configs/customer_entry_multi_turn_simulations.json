@@ -840,6 +840,374 @@
       ],
       "expected_handoff_after_turn": 2,
       "notes": "SALES_READINESS_HARDENING: Talk to Agent mid-flow; T2 联系人工 → immediate handoff"
+    },
+    {
+      "id": "MT42",
+      "category": "add_car_quote",
+      "name": "Add car skip VIN - quote-ready without VIN",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Honda Accord 92620 我开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "ADD_CAR_REAL_INTAKE_LITE: No VIN; year+model+zip+driver = quote-ready"
+    },
+    {
+      "id": "MT43",
+      "category": "add_car_quote",
+      "name": "Add car correction - 不是X5 是X3",
+      "turns": [
+        {"role": "customer", "text": "我想加车 2024 X5"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "90210 下周提车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是X5 是X3"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "ADD_CAR_REAL_INTAKE_LITE: T2 has delivery, system asks driver; T3 correction → handoff"
+    },
+    {
+      "id": "MT44",
+      "category": "add_car_quote",
+      "name": "Add car need_more → almost_ready → quote_ready",
+      "turns": [
+        {"role": "customer", "text": "我买了台车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Tesla Model Y 90210"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "下周提车"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "ADD_CAR_REAL_INTAKE_LITE: Progressive fill; T1 need_more, T2 almost_ready, T3 quote_ready"
+    },
+    {
+      "id": "MT45",
+      "category": "add_car_quote",
+      "name": "Add car + side question - garaging before quote-ready",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 X5 90210，garaging proof 是什么"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "下周提车"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_REAL_INTAKE_LITE: Side question T1; answer + ask delivery; T2 delivery → handoff"
+    },
+    {
+      "id": "MT46",
+      "category": "add_car_quote",
+      "name": "Add car + name/phone in same turn (IDENTITY_CONTACT_LITE)",
+      "turns": [
+        {"role": "customer", "text": "我想加车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Tesla Model Y 90210 下周提车 我是李四 电话 310-123-4567"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "IDENTITY_CONTACT_LITE: T2 has vehicle+zip+delivery+name+phone; expect name, phone in collected"
+    },
+    {
+      "id": "MT47",
+      "category": "add_car_quote",
+      "name": "Add car quote-ready, no contact (IDENTITY_CONTACT_LITE)",
+      "turns": [
+        {"role": "customer", "text": "我想加车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 BMW X5 90210 下周提车"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "IDENTITY_CONTACT_LITE: Quote-ready; name, phone in still_needed; broker_next_step mentions contact"
+    },
+    {
+      "id": "MT48",
+      "category": "add_car_quote",
+      "name": "Add car + name only (IDENTITY_CONTACT_LITE)",
+      "turns": [
+        {"role": "customer", "text": "我想加车 2024 Honda Accord 90210 下周提车 我姓王"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "IDENTITY_CONTACT_LITE: Full vehicle+zip+delivery+name; phone in still_needed"
+    },
+    {
+      "id": "MT49",
+      "category": "add_car_quote",
+      "name": "Add car + phone only (IDENTITY_CONTACT_LITE)",
+      "turns": [
+        {"role": "customer", "text": "我想加车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Tesla Model Y 90210 下周提车 call me at 626-555-1234"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "IDENTITY_CONTACT_LITE: Phone in collected; name in still_needed"
+    },
+    {
+      "id": "MT50",
+      "category": "add_car_quote",
+      "name": "Add car vehicle first, name/phone later (IDENTITY_CONTACT_LITE)",
+      "turns": [
+        {"role": "customer", "text": "我想加车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 BMW X5 90210"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "下周提车 我是张三 电话 310-123-4567"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "IDENTITY_CONTACT_LITE: T3 adds delivery+name+phone; handoff with contact complete"
+    },
+    {
+      "id": "MT51",
+      "category": "add_car_quote",
+      "name": "Add car + materials sent in one turn (COMMERCIAL_FLOW_HARDENING)",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Tesla Model Y 90210 下周提车 registration 发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "COMMERCIAL_FLOW_HARDENING: Full info + materials sent; handoff with verify broker_next_step"
+    },
+    {
+      "id": "ACE01",
+      "category": "add_car_quote",
+      "name": "Edge: zip first + side question + complete",
+      "turns": [
+        {"role": "customer", "text": "加车，我先给你邮编92620"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "对了 garaging proof 要发什么"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Honda Accord 下周提车 我开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "ADD_CAR_EDGE_SPRINT: partial → doc side Q → quote-ready"
+    },
+    {
+      "id": "ACE02",
+      "category": "add_car_quote",
+      "name": "Edge: add-car + 便宜吗 + complete same thread",
+      "turns": [
+        {"role": "customer", "text": "我想加车 2024 Toyota Camry 这个保费能便宜吗"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "90210 下周提车 就我一个人开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_EDGE_SPRINT: premium wording must not hijack add-car broker template"
+    },
+    {
+      "id": "ACE03",
+      "category": "add_car_quote",
+      "name": "Edge: quote-ready T2 then 材料发你微信了",
+      "turns": [
+        {"role": "customer", "text": "加车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Tesla Model Y 90210 下周提车 我开"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "材料发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_EDGE_SPRINT: first handoff when quote-ready; T3 is materials-sent follow-up"
+    },
+    {
+      "id": "ACE04",
+      "category": "add_car_quote",
+      "name": "Edge: 不是这辆 是另一辆 + new model",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 BMW X5 90210 下周提车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是这辆 是另一辆 2024 X3 还是我开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "ADD_CAR_EDGE_SPRINT: quote-ready at T1; T2 correction still tracked in summary"
+    },
+    {
+      "id": "ACE05",
+      "category": "add_car_quote",
+      "name": "Edge: hesitation 先不确定 可能下周提车",
+      "turns": [
+        {"role": "customer", "text": "想加车 2024 Corolla"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "我先不确定哪天提车 可能下周 邮编90210"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "应该是我老婆开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "ADD_CAR_EDGE_SPRINT: vague delivery + spouse driver"
+    },
+    {
+      "id": "ACE06",
+      "category": "add_car_quote",
+      "name": "Edge: 先帮我看看大概多少钱",
+      "turns": [
+        {"role": "customer", "text": "加车 刚买了台车 先帮我看看大概多少钱"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Mazda CX-5 91355 明天提车 我开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_EDGE_SPRINT: ballpark ask + office-realistic reply line"
+    },
+    {
+      "id": "ACE07",
+      "category": "add_car_quote",
+      "name": "Edge: ZIP only then vehicle (multi-turn)",
+      "turns": [
+        {"role": "customer", "text": "加车 我住90210"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "对了 保费大概什么区间"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2024 Lexus RX 下周拿车 老公开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "ADD_CAR_EDGE_SPRINT: zip-first + side premium ask + complete"
+    },
+    {
+      "id": "ACE08",
+      "category": "add_car_quote",
+      "name": "Edge: multiple mini-questions one bubble",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 RAV4 92801 下周提车 我老婆开 需要现在就有保险吗 还是提车那天再买"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "ADD_CAR_EDGE_SPRINT: dense single message; handoff with quote-ready"
+    },
+    {
+      "id": "ACE09",
+      "category": "add_car_quote",
+      "name": "Edge: 宝马中文 summary",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 宝马X3 95123 明天提车 我开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "ADD_CAR_EDGE_SPRINT: vehicle_concrete must include 宝马/X3"
+    },
+    {
+      "id": "ACE10",
+      "category": "add_car_quote",
+      "name": "Edge: vague opener then structured",
+      "turns": [
+        {"role": "customer", "text": "你好 我想加一台车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "2023 Honda Civic 94588 提车这周五 孩子开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_EDGE_SPRINT: two-turn fill"
+    },
+    {
+      "id": "ACE11",
+      "category": "add_car_quote",
+      "name": "Edge: driver correction 说错了",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Accord 92101 下周提车 我开"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不好意思说错了 主要是我老婆开"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "ADD_CAR_EDGE_SPRINT: first turn quote-ready; T2 correction append-style still ok"
+    },
+    {
+      "id": "ACE12",
+      "category": "add_car_quote",
+      "name": "Edge: registration 发你 after almost-ready",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Model 3 90210 下周提车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "registration 照片发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "ADD_CAR_EDGE_SPRINT: T1 quote-ready; T2 materials-sent follow-up"
+    },
+    {
+      "id": "ACE13",
+      "category": "add_car_quote",
+      "name": "Edge: Honda → Tesla vehicle correction (trust copy)",
+      "turns": [
+        {"role": "customer", "text": "我想加车 2021 Honda"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是这个，是 2024 Tesla"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "CORRECTION_AWARE_ADD_CAR: reply must name 2024 Tesla, then ask zip"
+    },
+    {
+      "id": "ACE14",
+      "category": "add_car_quote",
+      "name": "Edge: correction + ZIP same bubble",
+      "turns": [
+        {"role": "customer", "text": "加车 2021 Honda Civic"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是这辆，是 2024 Tesla，邮编90210"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "CORRECTION_AWARE_ADD_CAR: confirm vehicle + zip; ask delivery/driver"
+    },
+    {
+      "id": "ACE15",
+      "category": "add_car_quote",
+      "name": "Edge: partial vehicle then EN correction",
+      "turns": [
+        {"role": "customer", "text": "I want to add a car, 2021 Accord"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "Not that one — meant the 2024 Tesla"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "CORRECTION_AWARE_ADD_CAR: mixed EN correction + concrete vehicle"
+    },
+    {
+      "id": "ACE16",
+      "category": "add_car_quote",
+      "name": "Edge: X5→X3 then materials sent",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 BMW X5 90210 下周提车"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是X5 是X3，材料发你微信了"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 1,
+      "notes": "CORRECTION_AWARE_ADD_CAR: T1 quote-ready hands off first; T2 asserts X3 + materials copy"
+    },
+    {
+      "id": "ACE17",
+      "category": "add_car_quote",
+      "name": "Edge: 不对/搞错了 phrasing → explicit vehicle confirm",
+      "turns": [
+        {"role": "customer", "text": "我想加车 2021 Honda"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不对，是 2024 Tesla"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_CORRECTION_CONFIRMATION_REPLY_FIX: 不对，是 must trigger same trust copy as 不是这个"
+    },
+    {
+      "id": "ACE18",
+      "category": "add_car_quote",
+      "name": "Edge: comma between 不是…是 (X5→X3)",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 BMW X5"},
+        {"role": "system", "text": null},
+        {"role": "customer", "text": "不是X5，是X3"},
+        {"role": "system", "text": null}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "ADD_CAR_CORRECTION_CONFIRMATION_REPLY_FIX: comma variant must still detect vehicle correction"
     }
   ]
 }

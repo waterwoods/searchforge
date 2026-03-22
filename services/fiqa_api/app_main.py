@@ -715,7 +715,9 @@ async def root():
         "status": "operational",
         "note": "All API endpoints use /api prefix. Legacy /ops prefix has been removed (returns 410 Gone).",
         "endpoints": {
+            "liveness": "/health/live",
             "health": "/healthz",
+            "health_cloud_run": "/api/healthz",
             "readiness": "/readyz",
             "api": "/api/*",
             "force_status": "/api/force_status",
@@ -825,6 +827,20 @@ app.include_router(qdrant_info_router)  # /api/qdrant/version.tag
 async def health_live():
     """Liveness probe."""
     return {"ok": True}
+
+
+@app.get("/api/healthz")
+async def api_healthz_cloud_run_safe():
+    """
+    Liveness alias for environments where top-level /healthz never reaches the app.
+
+    Google Cloud Run's HTTP frontend returns its own HTML 404 for ``GET /healthz`` before
+    the request is forwarded to the container (verified 2026-03; see sprint docs). Paths such
+    as ``/health/live``, ``/readyz``, and this ``/api/healthz`` route reach the service
+    normally. Use ``/health/live`` as the canonical liveness URL; this endpoint exists so
+    deploy scripts and tools that insist on the name *healthz* can probe a stable path.
+    """
+    return await health_live()
 
 
 @app.get("/health/ready")
@@ -2549,7 +2565,12 @@ if frontend_dist.exists():
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         # Skip API routes
-        if full_path.startswith(("api/", "ops/", "docs", "openapi.json", "health", "readyz", "reports/")):
+        # Exclude API/static paths from SPA. Do not use prefix "health" alone — it matches
+        # "healthz" and would incorrectly send /healthz through this handler if it were ever
+        # matched before the real route (see health endpoint sprint docs).
+        if full_path in ("healthz", "readyz") or full_path.startswith(
+            ("api/", "ops/", "docs", "openapi.json", "health/", "reports/")
+        ):
             raise HTTPException(status_code=404, detail="Not Found")
         
         # Serve index.html for all other routes (SPA fallback)

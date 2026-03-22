@@ -1,0 +1,107 @@
+{
+  "version": "1",
+  "sprint": "ADD_CAR_BATTERY_RERUN_MUTATION_STRESS",
+  "description": "Mutation-style Add-Car scenarios stressing ZIP formats, driver micro-phrases, and already_sent question-vs-statement intent (rule path; LLM off).",
+  "focus_areas": ["zip_formats", "driver_micro_phrases", "already_sent_intent"],
+  "scenarios": [
+    {
+      "id": "MUT-Z01",
+      "area": "zip",
+      "name": "邮编无空格（第二泡）",
+      "why_matters": "WeChat typing often omits space after 邮编.",
+      "turns": [
+        { "role": "customer", "text": "想加一台2024 Tesla Model Y，先帮我报个价" },
+        { "role": "customer", "text": "邮编95131，明天提车，就我一个人开" }
+      ]
+    },
+    {
+      "id": "MUT-Z02",
+      "area": "zip",
+      "name": "zip 英文粘连",
+      "why_matters": "English zip label jammed against digits.",
+      "turns": [
+        { "role": "customer", "text": "加车 2023 Honda CR-V，周五提车，我开，想报价" },
+        { "role": "customer", "text": "zip95131" }
+      ]
+    },
+    {
+      "id": "MUT-Z03",
+      "area": "zip",
+      "name": "单泡：车型+邮编+驾驶人",
+      "why_matters": "Dense California Chinese bubble with 邮编 mid-sentence.",
+      "turns": [
+        { "role": "customer", "text": "2024 Tesla，邮编95131，我自己开，下周三去dealer拿车，加进保单报个价" }
+      ]
+    },
+    {
+      "id": "MUT-Z04",
+      "area": "zip",
+      "name": "仅五位数邮编第二泡",
+      "why_matters": "Customer sends bare ZIP after being asked.",
+      "turns": [
+        { "role": "customer", "text": "新车2023宝马X3，下周提车，我开，想加进保单报价" },
+        { "role": "customer", "text": "95131" }
+      ]
+    },
+    {
+      "id": "MUT-D01",
+      "area": "driver",
+      "name": "本人开 / 我一个人开",
+      "why_matters": "Short primary-driver phrases without 主要驾驶人.",
+      "turns": [
+        { "role": "customer", "text": "要加一辆2021 RAV4，zip 91789，下周末提车" },
+        { "role": "customer", "text": "本人开" }
+      ]
+    },
+    {
+      "id": "MUT-D02",
+      "area": "driver",
+      "name": "配偶驾驶",
+      "why_matters": "老婆/老公 as primary driver colloquialism.",
+      "turns": [
+        { "role": "customer", "text": "2020 civic，94566，这周五提车" },
+        { "role": "customer", "text": "我老婆开" }
+      ]
+    },
+    {
+      "id": "MUT-D03",
+      "area": "driver",
+      "name": "子女驾驶",
+      "why_matters": "儿子/女儿 as driver phrase.",
+      "turns": [
+        { "role": "customer", "text": "加车 2022 Lexus RX，90210，明天拿车" },
+        { "role": "customer", "text": "儿子开" }
+      ]
+    },
+    {
+      "id": "MUT-A01",
+      "area": "already_sent",
+      "name": "要不要先发给你（问句）",
+      "why_matters": "Question must not trigger false materials_sent handoff tone.",
+      "turns": [
+        { "role": "customer", "text": "要加一辆2021 Toyota RAV4，zip 91789，下周末提车，我自己开" },
+        { "role": "customer", "text": "对了材料要不要先发给你" }
+      ]
+    },
+    {
+      "id": "MUT-A02",
+      "area": "already_sent",
+      "name": "要不我发你微信（提议）",
+      "why_matters": "Soft offer vs completed send.",
+      "turns": [
+        { "role": "customer", "text": "加车2024 Toyota Camry 92808 周五提车我开" },
+        { "role": "customer", "text": "要不我发你微信你看下行不行" }
+      ]
+    },
+    {
+      "id": "MUT-A03",
+      "area": "already_sent",
+      "name": "已发陈述 + 截图",
+      "why_matters": "Strong already-sent cues should get verify-materials broker guidance.",
+      "turns": [
+        { "role": "customer", "text": "加车2024 Toyota Camry 92808 周五提车我开" },
+        { "role": "customer", "text": "我已经发你微信了，截图发你了哈" }
+      ]
+    }
+  ]
+}

@@ -104,8 +104,14 @@ function App() {
                         {/* Vitals Monitor Route */}
                         <Route path="vitals" element={<VitalsDashboardPage />} />
 
-                        {/* Unified Intake MVP — Broker triage */}
-                        <Route path="workbench/unified-intake" element={<UnifiedIntakePage />} />
+                        {/* Unified Intake MVP — Broker triage; light theme for readable cards */}
+                        <Route path="workbench/unified-intake" element={
+                            <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                <div style={{ minHeight: '100%', background: '#e8eaed' }}>
+                                    <UnifiedIntakePage />
+                                </div>
+                            </ConfigProvider>
+                        } />
                         {/* Scenario Logic Center — founder/broker review */}
                         <Route path="workbench/scenario-logic-center" element={<ScenarioLogicCenterPage />} />
                         {/* Add-Car Quote Rules Center */}

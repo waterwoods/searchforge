@@ -1,0 +1,172 @@
+{
+  "sprint": "WIRC Trust-Breaking Fix + 15 Realistic Case Retest",
+  "description": "15 deterministic rule-path checks via triage_conversation (LLM off).",
+  "scenarios": [
+    {
+      "id": "WTR-S01",
+      "bucket": "send_question_vs_sent",
+      "why": "Bare 截图 + permission question must not trigger already-sent / 发过了 tone.",
+      "turns": ["VIN 我可以先发你截图吗"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说发过了", "材料发过了", "You said you sent"],
+        "require_draft_substrings_any": ["截图", "先发", "可以"],
+        "follow_up_type_not": "already_sent"
+      }
+    },
+    {
+      "id": "WTR-S02",
+      "bucket": "send_question_vs_sent",
+      "why": "发你 + 行吗 without completion must not read as materials already sent.",
+      "turns": ["我先发你 VIN 截图行吗"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说发过了"],
+        "require_draft_substrings_any": ["可以", "截图"],
+        "follow_up_type_not": "already_sent"
+      }
+    },
+    {
+      "id": "WTR-S03",
+      "bucket": "send_question_vs_sent",
+      "why": "要不要先发你 — substring 发你 must not hit short unclear already-sent path.",
+      "turns": ["截图要不要先发你"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说发过了"],
+        "follow_up_type_not": "already_sent"
+      }
+    },
+    {
+      "id": "WTR-S04",
+      "bucket": "send_question_vs_sent",
+      "why": "行驶证 + 先发你看看 — offer, not completed send.",
+      "turns": ["行驶证截图我先发你看看行吗"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "材料发过了"],
+        "require_draft_substrings_any": ["可以", "先发"],
+        "follow_up_type_not": "already_sent",
+        "issue_category": "customer_question"
+      }
+    },
+    {
+      "id": "WTR-S05",
+      "bucket": "send_question_vs_sent",
+      "why": "True completed send must still get verify / handoff language.",
+      "turns": ["加车，2024 Toyota Camry，95123，下周提车，我自己开。材料发你微信了。"],
+      "last_turn_expect": {
+        "issue_category": "customer_question",
+        "handoff_ready": true,
+        "require_draft_substrings_any": ["办公室", "出价", "联系"],
+        "forbid_draft_substrings": ["您是说发过了吗"]
+      }
+    },
+    {
+      "id": "WTR-F01",
+      "bucket": "first_turn",
+      "why": "ZIP price worry first — tolerate unclear or soft routing without false sent claim.",
+      "turns": ["这个 ZIP 94102 会不会保费贵一点"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说发过了", "You said you sent"]
+      }
+    },
+    {
+      "id": "WTR-F02",
+      "bucket": "first_turn",
+      "why": "订单截图 + 可以吗 — prospective send inside add-car utterance.",
+      "turns": ["加车，2023 Honda Civic，90210，下周提车。我刚买车，还没正式 registration，先发订单截图可以吗"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说材料发过了"],
+        "require_draft_substrings_any": ["可以", "截图", "办公室"]
+      }
+    },
+    {
+      "id": "WTR-F03",
+      "bucket": "first_turn",
+      "why": "Vague open — no false already-sent; may be unclear.",
+      "turns": ["你好我想加个车"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说发过了"]
+      }
+    },
+    {
+      "id": "WTR-F04",
+      "bucket": "first_turn",
+      "why": "Two-turn: send-permission then concrete add-car.",
+      "turns": [
+        "VIN 要不要先给你看一下",
+        "加车，2024 BMW X3，95128，明天提车，主要驾驶人是我。"
+      ],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了吗"],
+        "handoff_ready": true
+      }
+    },
+    {
+      "id": "WTR-L01",
+      "bucket": "lexicon",
+      "why": "Nissan Altima + prospective VIN screenshot question.",
+      "turns": ["加车，2024 Nissan Altima，95123，下周提车。VIN 我可以先发你截图吗"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "先把车型和地址邮编"],
+        "require_draft_substrings_any": ["截图", "办公室"]
+      }
+    },
+    {
+      "id": "WTR-L02",
+      "bucket": "lexicon",
+      "why": "Chinese model name + send question.",
+      "turns": ["我想加一台2022 丰田塞纳，邮编94501，下周拿车。保险卡截图要不要先发你？"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了"],
+        "require_draft_substrings_any": ["可以", "截图"]
+      }
+    },
+    {
+      "id": "WTR-L03",
+      "bucket": "lexicon",
+      "why": "Model Y English + 先发你可以吗.",
+      "turns": ["加一台 2024 Tesla Model Y，zip 94080，pick up next week。截图我先发你可以吗"],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "You said you sent"],
+        "require_draft_substrings_any": ["可以", "截图"]
+      }
+    },
+    {
+      "id": "WTR-M01",
+      "bucket": "multi_turn",
+      "why": "Correction turn then true materials sent.",
+      "turns": [
+        "加车 2020 Honda Accord 95814 下周提车 我开",
+        "说错了是2021 Accord",
+        "我刚把驾照截图发你微信了"
+      ],
+      "last_turn_expect": {
+        "require_draft_substrings_any": ["办公室", "核对", "出价"],
+        "forbid_draft_substrings": ["您是说发过了吗"]
+      }
+    },
+    {
+      "id": "WTR-M02",
+      "bucket": "multi_turn",
+      "why": "Doc-style question then prospective 行驶证 screenshot.",
+      "turns": [
+        "加车 2022 Toyota Camry 92101 明天提车 我老婆开",
+        "我先发你行驶证截图行吗"
+      ],
+      "last_turn_expect": {
+        "forbid_draft_substrings": ["您是说发过了", "说材料发过了"],
+        "require_draft_substrings_any": ["可以", "截图", "办公室"]
+      }
+    },
+    {
+      "id": "WTR-M03",
+      "bucket": "multi_turn",
+      "why": "Try-this-vehicle-first language + complete quote path.",
+      "turns": [
+        "先按这台车看一下吧，不行我再换另外一台。2023 Mazda CX-5，94112，下周提车，就我开。"
+      ],
+      "last_turn_expect": {
+        "handoff_ready": true,
+        "forbid_draft_substrings": ["您是说发过了"]
+      }
+    }
+  ]
+}

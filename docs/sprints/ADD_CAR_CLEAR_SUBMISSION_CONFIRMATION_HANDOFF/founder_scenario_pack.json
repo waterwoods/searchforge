@@ -1,0 +1,60 @@
+{
+  "version": "1",
+  "description": "Rule-level checks for Add-Car submission/confirmation/handoff sprint. LLM off.",
+  "client_id": "chen_kui",
+  "scenarios": [
+    {
+      "id": "acf_01_clean_handoff",
+      "name": "Clean Add-Car full info → handoff",
+      "turns": [
+        "我想加一台车报价。2022 Honda Accord，邮编94501，下周三提车，我主驾，VIN 1HGCV1F3XNA123456。"
+      ],
+      "expect": { "handoff_ready": true, "min_collected": 4, "quote_ready_status": "quote_ready" }
+    },
+    {
+      "id": "acf_02_partial_then_complete",
+      "name": "Partial then complete",
+      "turns": [
+        "想加车报价，2020 Toyota Camry",
+        "邮编90012，周五提车，我开，VIN JT2BF28K0W0123456"
+      ],
+      "expect": { "handoff_ready": true, "min_collected": 4 }
+    },
+    {
+      "id": "acf_03_correction",
+      "name": "Vehicle correction before handoff",
+      "turns": [
+        "加车 2021 Tesla Model 3 95110 明天提车 我开",
+        "不对，是2022 Model Y，VIN 5YJYGDEE4MF987654"
+      ],
+      "expect": { "handoff_ready": true, "client_reply_contains": ["办公室", "提交"] }
+    },
+    {
+      "id": "acf_04_materials_sent",
+      "name": "Materials sent claim",
+      "turns": [
+        "加车 2019 BMW X5 90210 下周提车 我开 VIN 5UXCR6C50KLL12345 行驶证截图发你微信了"
+      ],
+      "expect": { "handoff_ready": true, "client_reply_contains": ["材料", "办公室"] }
+    },
+    {
+      "id": "acf_05_almost_ready",
+      "name": "Delivery but no explicit driver phrase",
+      "turns": [
+        "加车 2023 Subaru Outback 94102 3月1号提车 VIN 4S4BTADC0P3123456"
+      ],
+      "expect": {
+        "handoff_ready": true,
+        "quote_ready_status_in": ["quote_ready", "almost_ready", "need_more"]
+      }
+    },
+    {
+      "id": "acf_06_handoff_phrase_formal",
+      "name": "Handoff draft mentions formal submission",
+      "turns": [
+        "我想加新车报价 2024 Honda Civic 92101 明天提车 我主开 VIN 2HGFC2F59RH123456"
+      ],
+      "expect": { "handoff_ready": true, "client_reply_contains": ["正式", "办公室"] }
+    }
+  ]
+}

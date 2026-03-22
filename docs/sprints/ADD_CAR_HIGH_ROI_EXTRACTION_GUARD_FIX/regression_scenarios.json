@@ -1,0 +1,95 @@
+{
+  "version": "1",
+  "sprint": "ADD_CAR_HIGH_ROI_EXTRACTION_GUARD_FIX",
+  "description": "Targeted regression: ZIP CN/EN phrasing, driver micro-phrases, follow_up_type already_sent guard.",
+  "follow_up_cases": [
+    {
+      "id": "HR-FU-01",
+      "message": "要不要发你",
+      "expected_follow_up_type": "new_info",
+      "note": "Question-like offer; must not be already_sent"
+    },
+    {
+      "id": "HR-FU-02",
+      "message": "要不要先发给你",
+      "expected_follow_up_type": "new_info",
+      "note": "要不要先 + 发"
+    },
+    {
+      "id": "HR-FU-03",
+      "message": "要不我发你微信",
+      "expected_follow_up_type": "new_info",
+      "note": "Suggestion 要不我…发"
+    },
+    {
+      "id": "HR-FU-04",
+      "message": "材料发你微信了",
+      "expected_follow_up_type": "already_sent",
+      "note": "Completed send statement"
+    },
+    {
+      "id": "HR-FU-05",
+      "message": "我已经发你微信了",
+      "expected_follow_up_type": "already_sent",
+      "note": "已经 + 发"
+    }
+  ],
+  "add_car_field_cases": [
+    {
+      "id": "HR-ZIP-01",
+      "name": "邮编95131",
+      "prior_customer_messages": ["想加一台2024丰田凯美瑞，先帮我报个价"],
+      "last_customer_message": "邮编95131",
+      "expect_collected_contains": ["zip"]
+    },
+    {
+      "id": "HR-ZIP-02",
+      "name": "邮编 95131",
+      "prior_customer_messages": ["想加一台2024丰田凯美瑞，先帮我报个价"],
+      "last_customer_message": "邮编 95131",
+      "expect_collected_contains": ["zip"]
+    },
+    {
+      "id": "HR-ZIP-03",
+      "name": "zip 95131",
+      "prior_customer_messages": ["想加一台2024丰田凯美瑞，先帮我报个价"],
+      "last_customer_message": "zip 95131",
+      "expect_collected_contains": ["zip"]
+    },
+    {
+      "id": "HR-DRV-01",
+      "name": "我自己开",
+      "prior_customer_messages": ["加车 2022 Honda Accord，90210"],
+      "last_customer_message": "我自己开",
+      "expect_collected_contains": ["primary_driver"]
+    },
+    {
+      "id": "HR-DRV-02",
+      "name": "我一个人开",
+      "prior_customer_messages": ["加车 2022 Honda Accord，90210"],
+      "last_customer_message": "我一个人开",
+      "expect_collected_contains": ["primary_driver"]
+    },
+    {
+      "id": "HR-DRV-03",
+      "name": "我老婆开",
+      "prior_customer_messages": ["加车 2022 Honda Accord，90210"],
+      "last_customer_message": "我老婆开",
+      "expect_collected_contains": ["primary_driver"]
+    },
+    {
+      "id": "HR-DRV-04",
+      "name": "儿子开",
+      "prior_customer_messages": ["加车 2022 Honda Accord，90210"],
+      "last_customer_message": "儿子开",
+      "expect_collected_contains": ["primary_driver"]
+    },
+    {
+      "id": "HR-DRV-05",
+      "name": "女儿开",
+      "prior_customer_messages": ["加车 2022 Honda Accord，90210"],
+      "last_customer_message": "女儿开",
+      "expect_collected_contains": ["primary_driver"]
+    }
+  ]
+}

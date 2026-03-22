@@ -1,0 +1,150 @@
+{
+  "version": "1",
+  "description": "Broker Trial Simulation + Fix Queue Hardening — stress tests for realistic broker/customer behavior",
+  "simulations": [
+    {
+      "id": "BS1",
+      "category": "vague_short",
+      "name": "Ultra-vague: 帮我",
+      "turns": [{"role": "customer", "text": "帮我"}],
+      "expected_handoff_after_turn": null,
+      "expected_no_handoff_turn1": true,
+      "notes": "Vague; should NOT hand off turn 1; should ask clarifying question"
+    },
+    {
+      "id": "BS2",
+      "category": "vague_short",
+      "name": "Ultra-vague: 在吗",
+      "turns": [{"role": "customer", "text": "在吗"}],
+      "expected_handoff_after_turn": null,
+      "expected_no_handoff_turn1": true,
+      "notes": "Vague; should NOT hand off turn 1"
+    },
+    {
+      "id": "BS3",
+      "category": "talk_to_agent",
+      "name": "Talk to agent: 联系人工",
+      "turns": [{"role": "customer", "text": "联系人工"}],
+      "expected_category": "customer_requested_human",
+      "expected_handoff_after_turn": 1,
+      "notes": "Must route to customer_requested_human; handoff immediately"
+    },
+    {
+      "id": "BS4",
+      "category": "talk_to_agent",
+      "name": "Talk to agent: 找陈奎",
+      "turns": [{"role": "customer", "text": "找陈奎"}],
+      "expected_category": "customer_requested_human",
+      "expected_handoff_after_turn": 1,
+      "notes": "Must route to customer_requested_human"
+    },
+    {
+      "id": "BS5",
+      "category": "add_car_quote",
+      "name": "Add-car then 联系人工 mid-flow",
+      "turns": [
+        {"role": "customer", "text": "我买了台宝马X5，想问下保费"},
+        {"role": "customer", "text": "算了 联系人工吧"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "expected_category_turn2": "customer_requested_human",
+      "notes": "T2 escalates to talk_to_agent; handoff with customer_requested_human"
+    },
+    {
+      "id": "BS6",
+      "category": "payment_failed_cancellation_risk",
+      "name": "Already paid - 我发了截图",
+      "turns": [
+        {"role": "customer", "text": "这个 notice 说 payment failed"},
+        {"role": "customer", "text": "我其实已经付了，截图发你微信了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 already paid + sent; verify receipt; broker_next_step concrete"
+    },
+    {
+      "id": "BS7",
+      "category": "missing_document",
+      "name": "Already sent - 都发过了怎么还要",
+      "turns": [
+        {"role": "customer", "text": "UW要dec page和garaging proof"},
+        {"role": "customer", "text": "都发过了怎么还要"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "notes": "T2 frustrated already-sent; verify receipt; broker sees correction"
+    },
+    {
+      "id": "BS8",
+      "category": "add_car_quote",
+      "name": "Correction: 不是这个车",
+      "turns": [
+        {"role": "customer", "text": "加车 2021 Honda"},
+        {"role": "customer", "text": "不是这个，是另一辆 2024 Tesla Model Y"},
+        {"role": "customer", "text": "90210，下周提车"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "notes": "T2 correction; T3 zip+delivery; should use 2024 Tesla not 2021 Honda in collected"
+    },
+    {
+      "id": "BS9",
+      "category": "remove_car",
+      "name": "Remove vehicle handoff — sale date + transfer",
+      "turns": [
+        {"role": "customer", "text": "客户卖掉旧车了，想把2014 Honda Accord从保单拿掉"},
+        {"role": "customer", "text": "上周卖的，已经过户了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "expected_broker_next_step_contains": ["sale", "transfer", "removal"],
+      "notes": "WORKBENCH_HANDOFF_PROFESSIONALIZATION: broker_next_step must be concrete for remove-vehicle"
+    },
+    {
+      "id": "BS10",
+      "category": "add_car_quote",
+      "name": "Quote-ready + no contact — contact hint in broker_next_step",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Tesla Model Y 90210"},
+        {"role": "customer", "text": "下周提车 我老婆开"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "expected_quote_ready_status": "quote_ready",
+      "expected_broker_next_step_contains": ["name"],
+      "notes": "Quote-ready but name/phone missing; broker_next_step should mention contact"
+    },
+    {
+      "id": "BS11",
+      "category": "add_car_quote",
+      "name": "Add-car + materials sent (我已经发你微信了)",
+      "turns": [
+        {"role": "customer", "text": "加车 2024 Tesla Model Y 90210"},
+        {"role": "customer", "text": "下周提车 registration 发你微信了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "expected_broker_next_step_contains": ["Verify", "materials"],
+      "notes": "ADD_CAR_COMMERCIAL_FLOW_HARDENING: T2 delivery + materials sent; broker_next_step must say verify materials"
+    },
+    {
+      "id": "BS12",
+      "category": "add_car_quote",
+      "name": "Add-car correction + materials sent (combination)",
+      "turns": [
+        {"role": "customer", "text": "加车 2021 Honda"},
+        {"role": "customer", "text": "不是这个 是 2024 Tesla Model Y"},
+        {"role": "customer", "text": "90210 下周提车 材料发你微信了"}
+      ],
+      "expected_handoff_after_turn": 3,
+      "expected_broker_next_step_contains": ["Verify", "materials"],
+      "notes": "COMMERCIAL_FLOW_HARDENING: T2 correction; T3 zip+delivery+materials_sent; collected shows Tesla"
+    },
+    {
+      "id": "BS13",
+      "category": "premium_review",
+      "name": "Premium review + remove-vehicle + bill sent",
+      "turns": [
+        {"role": "customer", "text": "续保保费太高了，其中一辆去掉会便宜吗"},
+        {"role": "customer", "text": "保单我发过了"}
+      ],
+      "expected_handoff_after_turn": 2,
+      "expected_broker_next_step_contains": ["renewal", "remove"],
+      "notes": "OFFICE_TOOL_PROFESSIONALIZATION: premium review + remove-vehicle interest + policy sent; broker_next_step must mention renewal and remove-vehicle"
+    }
+  ]
+}

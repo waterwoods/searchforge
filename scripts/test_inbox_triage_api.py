@@ -387,11 +387,17 @@ def test_via_http(base_url: str, verbose: bool) -> int:
         print("FAIL: persisted case flow:", e)
 
     # Test 13: append follow-up message to existing case
+    # MULTI_TURN_CONTINUITY: cases persist only when handoff_ready. A partial add-car
+    # (year/model/delivery without zip/contact) stays collecting — use one message that
+    # clears handoff under rules so persist_case returns case_id (matches real broker flow).
     try:
         create_resp = httpx.post(
             url,
             json={
-                "text": "客户要加一台2021 Tesla Model Y，下周提车，问今天能不能先出报价",
+                "text": (
+                    "客户要加一台2021 Tesla Model Y，ZIP 90210，下周一提车，主驾是我自己，"
+                    "姓名张三电话4155550100，问今天能不能先出报价"
+                ),
                 "persist_case": True,
             },
             timeout=10.0,
@@ -399,7 +405,10 @@ def test_via_http(base_url: str, verbose: bool) -> int:
         assert create_resp.status_code == 200, f"Expected 200, got {create_resp.status_code}: {create_resp.text}"
         created = create_resp.json()
         case_id = created.get("case_id")
-        assert case_id, "need case_id for append test"
+        assert case_id, (
+            "need case_id for append test — server must return handoff_ready + persist; "
+            "if this fails under LLM, check triage handoff for full add-car messages"
+        )
 
         append_resp = httpx.post(
             f"{base_url.rstrip('/')}/api/inbox/cases/{case_id}/append-message",

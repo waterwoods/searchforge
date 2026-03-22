@@ -48,8 +48,9 @@ bash scripts/deploy_rag_demo.sh
 
 - Script exits 0
 - Output shows Service URL
-- `curl <URL>/healthz` → 200
+- `curl <URL>/health/live` → 200 (liveness; **do not rely on `/healthz` on Cloud Run** — Google’s edge often returns 404 HTML before the container)
 - `curl <URL>/readyz` → JSON with `ok` field
+- Optional alias: `curl <URL>/api/healthz` → 200 (same liveness semantics; reaches the container on Cloud Run)
 
 ### What `/readyz` means
 
@@ -61,18 +62,18 @@ bash scripts/deploy_rag_demo.sh
 ### What `/readyz` does NOT mean
 
 - **In DEMO_MODE:** Qdrant and embedding are optional. Inbox triage (rule/LLM path) works even when `/readyz` is `not_ready`.
-- **Triage path:** `POST /api/inbox/triage` does not require Qdrant. If `/readyz` fails but `/healthz` passes, triage may still work.
+- **Triage path:** `POST /api/inbox/triage` does not require Qdrant. If `/readyz` fails but liveness (`/health/live`) passes, triage may still work.
 - **Do not trust `/readyz` alone** to decide if the intake path is usable. Run one triage API check.
 
 ### When triage path works
 
-- `/healthz` returns 200
+- Liveness returns 200 (`/health/live` or `/api/healthz`; local dev may still use `/healthz`)
 - `OPENAI_API_KEY` set (for LLM triage) or rule-only fallback
 - `configs/` present in image (Dockerfile copies `configs/`)
 
 ### When not to trust it
 
-- `/healthz` fails → service not running
+- Liveness fails (`/health/live` and fallbacks) → service not running or not reachable
 - CORS errors in browser → `ALLOWED_ORIGINS` mismatch
 - Triage returns 500 → check logs, configs, OpenAI key
 
@@ -112,7 +113,7 @@ vercel --prod
 
 | Check | Command / Action |
 |-------|------------------|
-| Backend health | `curl <Cloud Run URL>/healthz` |
+| Backend liveness | `curl <Cloud Run URL>/health/live` (or `/api/healthz`; see `KNOWN_DEPLOYMENT_GOTCHAS.md` § Cloud Run `/healthz`) |
 | Backend ready | `curl <Cloud Run URL>/readyz` |
 | Triage API | `python3 scripts/test_inbox_triage_api.py --url <Cloud Run URL>` |
 | Frontend loads | Open `https://<Vercel URL>/workbench/unified-intake` |
@@ -168,7 +169,7 @@ Before claiming success:
 | Backend deploy failed | Check gcloud auth, project, logs; fix `.env.cloudrun`; retry |
 | Frontend build failed | Fix build errors; `vercel --prod` again |
 | CORS errors | Add/update `ALLOWED_ORIGINS` in `.env.cloudrun`; redeploy backend |
-| `/readyz` not ready, triage needed | If `/healthz` OK, run triage API test; triage may work |
+| `/readyz` not ready, triage needed | If liveness OK, run triage API test; triage may work |
 | Production alias wrong | Vercel dashboard → Domains → assign production |
 
 ---

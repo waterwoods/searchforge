@@ -1,0 +1,170 @@
+{
+  "description": "Append-flow case boundary pack — Unified Intake new-issue vs same-case (rule-based, LLM off)",
+  "scenarios": [
+    {
+      "id": "CB-01",
+      "prior_thread": "[客户] 我想加一台2024宝马X5，zip 95131，下周提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "发你微信了，行驶证截图",
+      "expected_boundary": "same_case",
+      "notes": "Materials follow-up after add-car handoff"
+    },
+    {
+      "id": "CB-02",
+      "prior_thread": "[客户] 加车资料都发了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "这个先这样，我还有个账单的问题想问",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["账单", "办公室"]
+    },
+    {
+      "id": "CB-03",
+      "prior_thread": "[客户] 我想加一台宝马X5\n\n[系统] 先把年份和邮编发我",
+      "new_message": "coverage 能调吗 顺便问下",
+      "expected_boundary": "same_case",
+      "notes": "Clarification-style follow-up on quote thread"
+    },
+    {
+      "id": "CB-04",
+      "prior_thread": "[客户] 我想加一台宝马X5，zip 90210\n\n[系统] 提车日期和主要驾驶人发我一下",
+      "new_message": "对了，我昨天出事故了，怎么理赔",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["理赔", "办公室"]
+    },
+    {
+      "id": "CB-05",
+      "prior_thread": "[客户] 材料发你了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "还有一个问题",
+      "expected_boundary": "borderline",
+      "draft_must_contain_any": ["办公室", "不是同一件事"]
+    },
+    {
+      "id": "CB-06",
+      "prior_thread": "[客户] 我要加车 2024 Camry zip 95131 下周拿车 我开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "顺便问一下 office 周末开吗",
+      "expected_boundary": "borderline",
+      "draft_must_contain_any": ["办公室"]
+    },
+    {
+      "id": "CB-07",
+      "prior_thread": "[客户] 加车\n\n[系统] Run quote for collected vehicle details when confirmed.",
+      "new_message": "这个搞好了的话，我还有个账单的问题",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["账单"]
+    },
+    {
+      "id": "CB-08",
+      "prior_thread": "[客户] 想加一台特斯拉\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "那加车先这样，我再问你别的，理赔要怎么弄",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["理赔"]
+    },
+    {
+      "id": "CB-09",
+      "prior_thread": "[客户] 资料齐了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "那这个先这样，我再问另一个",
+      "expected_boundary": "borderline",
+      "draft_must_contain_any": ["办公室"]
+    },
+    {
+      "id": "CB-10",
+      "prior_thread": "[客户] 加车报价麻烦了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "哈哈好的，对了旧车卖掉了想拿掉那台车",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["删车", "卖车", "办公室"]
+    },
+    {
+      "id": "CB-11",
+      "prior_thread": "[客户] 加车\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "这个先交给办公室，那我再问个 claim 的事",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["理赔", "办公室"]
+    },
+    {
+      "id": "CB-12",
+      "prior_thread": "[客户] 2024 X5 zip 95131 下周提车\n\n[系统] 主要驾驶人发我一下",
+      "new_message": "不是这辆，是2020凯美瑞，我说错了",
+      "expected_boundary": "same_case",
+      "notes": "Correction should stay same case"
+    },
+    {
+      "id": "CB-13",
+      "prior_thread": "[客户] 想加车 宝马\n\n[系统] 先把邮编发我",
+      "new_message": "95131",
+      "expected_boundary": "same_case",
+      "notes": "Short factual add-car field"
+    },
+    {
+      "id": "CB-14",
+      "prior_thread": "[客户] 我要加车\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "另外一个事情，我想把旧车从保单里删掉",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["删车", "办公室"]
+    },
+    {
+      "id": "CB-15",
+      "prior_thread": "[客户] 续保通知收到了\n\n[系统] Got it. We've noted your info—our office will review and follow up with you.",
+      "new_message": "另外我想加一台新车报价",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["加车", "办公室"],
+      "notes": "Premium thread then add-car pivot"
+    },
+    {
+      "id": "CB-16",
+      "prior_thread": "[客户] 理赔材料发了\n\n[系统] Our office will process this and follow up with you.",
+      "new_message": "还有一个问题，不是理赔，是账单扣款不对",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["账单", "办公室"]
+    },
+    {
+      "id": "CB-17",
+      "prior_thread": "[客户] 想加一台车\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "还有一个问题，不是这个车，是另外一个保险问题",
+      "expected_boundary": "borderline",
+      "draft_must_contain_any": ["办公室"]
+    },
+    {
+      "id": "CB-18",
+      "prior_thread": "[客户] 加车资料发了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "我想再加一台车，2021 Honda Accord zip 94501",
+      "expected_boundary": "same_case",
+      "notes": "Second vehicle on quote — same operational case"
+    },
+    {
+      "id": "CB-19",
+      "prior_thread": "[客户] 加车资料发了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "这个先交给办公室，那我再问个续保",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["续保", "提交新问题"],
+      "notes": "Post-handoff premium pivot from add-car thread"
+    },
+    {
+      "id": "CB-20",
+      "prior_thread": "[客户] 我想加2024凯美瑞 zip 95131\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "要不要把 VIN 发你们？",
+      "expected_boundary": "same_case",
+      "notes": "Post-handoff ask whether to send VIN — same case"
+    },
+    {
+      "id": "CB-21",
+      "prior_thread": "[客户] 加车资料齐\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "VIN是1HGBH41JXMN109186对了，另外我账单有问题",
+      "expected_boundary": "new_issue",
+      "draft_must_contain_any": ["账单", "提交新问题"],
+      "notes": "Mixed VIN + billing after add-car handoff"
+    },
+    {
+      "id": "CB-22",
+      "prior_thread": "[客户] 加车\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "你先帮我处理这个，我再问个别的",
+      "expected_boundary": "borderline",
+      "draft_must_contain_any": ["办公室", "不是同一件事"],
+      "notes": "Vague pivot — human confirm better than guessing"
+    },
+    {
+      "id": "CB-23",
+      "prior_thread": "[客户] 加车宝马X5 zip 95131\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "new_message": "全险大概多少钱能出？还是说我等办公室？",
+      "expected_boundary": "same_case",
+      "notes": "Quote/coverage follow-up stays same-case on add-car thread"
+    }
+  ]
+}

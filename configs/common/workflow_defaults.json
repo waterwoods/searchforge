@@ -2,7 +2,7 @@
   "version": "1",
   "description": "Common workflow fallbacks when category-specific config missing. Used by triage when broker_next_step, client_prep, or client_reply_draft are not found in industry config.",
   "fallbacks": {
-    "broker_next_step": "Review and act on {category}.",
+    "broker_next_step": "Review the {category} message; confirm what the client needs and take the next step.",
     "client_prep": "Please have any relevant documents or information ready.",
     "client_reply_draft": "Thank you for reaching out. We are reviewing your message and will follow up shortly. If you have any documents to share, please send them at your earliest convenience."
   }

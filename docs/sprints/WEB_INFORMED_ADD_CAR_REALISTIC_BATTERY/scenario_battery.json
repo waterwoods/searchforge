@@ -1,0 +1,181 @@
+{
+  "version": "1",
+  "sprint": "WEB_INFORMED_ADD_CAR_REALISTIC_BATTERY",
+  "description": "10 web-informed realistic Add-Car scenarios: Chinese-speaking California customer phrasing, multi-turn fragments, price/materials/ZIP sensitivity. Rule path evaluation (LLM off in runner).",
+  "scenarios": [
+    {
+      "id": "WIRC-001",
+      "category_tags": ["clean_direct", "single_turn"],
+      "name": "一次性说清楚：年份车型邮编提车驾驶人",
+      "pattern": "Clean direct add-car quote request; customer bundles year/model, ZIP, delivery, and self-driver like a prepared WeChat message.",
+      "why_matters": "Baseline: if this fails, nothing downstream is trustworthy.",
+      "expected_good_behavior": "add_car playbook; fields collected; sensible ZH draft; handoff or clear next ask aligned with quote_ready rules.",
+      "failure_looks_like": "Wrong category, dropped vehicle context, or nonsense asks for already-provided slots.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "你好，我想把一台2024本田雅阁加进现在的汽车保险。我家邮编95131，下周三提车，车主要是我自己开。麻烦帮我报个价。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-002",
+      "category_tags": ["price_first", "multi_turn", "messy", "chinese_practical"],
+      "name": "先问大概多少钱 + 英文不好 + 第二泡才给全量信息",
+      "pattern": "Price-first request and language anxiety; real customers often ask 大概多少钱 before listing slots; second message completes office-style facts.",
+      "why_matters": "Tests whether the system stays on add_car while boundary-setting on price, then merges multi-turn slots.",
+      "expected_good_behavior": "Stays add_car; brief handling of price expectation; turn 2 fills year/model/zip/delivery/driver and progresses quote flow.",
+      "failure_looks_like": "Premium_review takeover, generic chit-chat, or lost add-car context after turn 1.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "你好，我英文不太好，你直接告诉我还差什么就行。我刚买了新车想加进保单，能不能先帮我看看大概多少钱？"
+        },
+        {
+          "role": "customer",
+          "text": "车是2024斯巴鲁Outback，我家邮编95928，大概下周四提车，平时就我一个人开。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-003",
+      "category_tags": ["partial_then_fragment", "multi_turn", "messy"],
+      "name": "先只给车型，后面才补邮编提车驾驶人",
+      "pattern": "Partial answer then another fragment later—common in mobile chat.",
+      "why_matters": "Slot merging across turns is the core office realism test.",
+      "expected_good_behavior": "Turn 1 asks for missing slots; turn 2 merges zip + delivery + driver; structured fields update correctly.",
+      "failure_looks_like": "Turn 2 ignores prior vehicle or re-asks for model from scratch.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "我想加一台2024 Toyota Camry。"
+        },
+        {
+          "role": "customer",
+          "text": "对了，邮编90210，这周五去提车，我自己开。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-004",
+      "category_tags": ["materials_question", "registration_gap", "chinese_practical", "single_turn"],
+      "name": "还没正式registration + 问能不能先发截图/VIN",
+      "pattern": "Customer asks whether screenshot or VIN photo is OK; mentions new purchase without hard copy registration.",
+      "why_matters": "Office workflow question layered on add-car; should not derail vehicle quote collection.",
+      "expected_good_behavior": "add_car primary; short practical line on photos/VIN acceptable; still collects or confirms year/model/zip/delivery/driver.",
+      "failure_looks_like": "document_confusion or missing_document swallows add-car with no path back.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "我刚买车，还没拿到正式registration，只有dealer给的纸。VIN我可以先发你截图吗？想把2023 Lexus RX加进保单，邮编92618，下周三提车，我自己开。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-005",
+      "category_tags": ["zip_late", "multi_turn"],
+      "name": "第二泡才说邮编",
+      "pattern": "ZIP disclosed after initial vehicle + timing + driver message.",
+      "why_matters": "California rating is ZIP-sensitive; late ZIP is typical.",
+      "expected_good_behavior": "After turn 2, ZIP merged; quote_ready or correct remaining gap only.",
+      "failure_looks_like": "ZIP still missing in structured output after turn 2.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "想加一台2022 Honda Civic，明天提车，主要驾驶人是我老公。"
+        },
+        {
+          "role": "customer",
+          "text": "我家邮编94103。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-006",
+      "category_tags": ["driver_late", "multi_turn"],
+      "name": "驾驶人第二泡才说",
+      "pattern": "Customer gives vehicle + ZIP + delivery first; driver identity comes later.",
+      "why_matters": "Underwriting-relevant driver info often trails vehicle facts.",
+      "expected_good_behavior": "Turn 1 may ask for driver; turn 2 records driver signal; handoff rules consistent with merged text.",
+      "failure_looks_like": "Handoff without driver or perpetual re-ask after clear 主要驾驶人 phrase.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "加车 2024特斯拉Model Y，zip95131，下周六提车。"
+        },
+        {
+          "role": "customer",
+          "text": "主要驾驶人是我，本人开。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-007",
+      "category_tags": ["vehicle_change", "correction", "multi_turn", "messy", "chinese_practical"],
+      "name": "先说一台车又纠正成另一台",
+      "pattern": "Correction after first vehicle statement; 说错了 / 其实 style.",
+      "why_matters": "Real chats correct typos or wrong trim; extractor should favor latest concrete vehicle scope when signaled.",
+      "expected_good_behavior": "Stays add_car; later turn treated as vehicle correction; broker-facing summary reflects updated vehicle.",
+      "failure_looks_like": "Stuck on obsolete model or split into unrelated threads.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "先按2024丰田RAV4帮我看一下加车，邮编94587，下周末提车，我自己开。"
+        },
+        {
+          "role": "customer",
+          "text": "不好意思我说错了，其实是2025凯美瑞混动Camry hybrid，其他不变。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-008",
+      "category_tags": ["uncertain_delivery", "single_turn"],
+      "name": "提车时间不确定但先把其他信息说满",
+      "pattern": "Customer expresses timing uncertainty while giving other slots.",
+      "why_matters": "Office still needs a workable delivery hint; reply should be flexible, not robotic.",
+      "expected_good_behavior": "add_car; delivery treated as partial or clarified gently; other fields extracted.",
+      "failure_looks_like": "Hard failure or refusal to proceed without exact calendar date when range given.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "想加一台2021 Nissan Altima，邮编94608，提车时间还不太确定，可能下周也可能下下周，我先跟你说一声。平时就我一个人开。你看能不能先帮我走加车流程？"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-009",
+      "category_tags": ["mixed_zh_en_naming", "single_turn"],
+      "name": "中英混排车名",
+      "pattern": "Mixed Chinese and English vehicle naming in one line.",
+      "why_matters": "Common for bilingual customers; lexicon should tolerate 凯美瑞 + Camry style.",
+      "expected_good_behavior": "Vehicle year/model scope preserved; add_car stable.",
+      "failure_looks_like": "Garbled model or wrong intent.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "加一台2024 Toyota 凯美瑞 Camry LE，zip 95131，next week pick up，我自己开。"
+        }
+      ]
+    },
+    {
+      "id": "WIRC-010",
+      "category_tags": ["side_concern_first", "zip_price_anxiety", "wechat_logistics", "multi_turn", "messy", "chinese_practical"],
+      "name": "先问邮编贵不贵和WeChat发资料，再进入加车",
+      "pattern": "Side concern (price by ZIP, channel) before compact vehicle facts; topic jump then add-car core.",
+      "why_matters": "Mirrors anxious shopping behavior; system must return to slot collection without lecture.",
+      "expected_good_behavior": "add_car after full merge; brief boundary on 贵不贵 if needed; materials/WeChat handled briefly; slots for Model Y + timing + driver.",
+      "failure_looks_like": "Stuck in generic insurance education or loses vehicle thread.",
+      "turns": [
+        {
+          "role": "customer",
+          "text": "想问一下这个邮编91367会不会保费贵一点？我习惯用WeChat，资料是不是直接发截图就行？"
+        },
+        {
+          "role": "customer",
+          "text": "另外我想加一台2024 Model Y，明天提车，主要驾驶人是我老婆。"
+        }
+      ]
+    }
+  ]
+}

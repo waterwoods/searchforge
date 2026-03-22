@@ -92,18 +92,24 @@ echo ""
 echo "Step 4: Waiting for service readiness (max 3 minutes)..."
 MAX_TRIES=18
 SLEEP_SEC=10
-HEALTHZ_OK=false
+LIVE_OK=false
 READYZ_OK=false
 
 for i in $(seq 1 $MAX_TRIES); do
     echo -n "  Attempt $i/$MAX_TRIES: "
     
-    # Check /healthz
-    if curl -sf --max-time 10 "${CLOUD_RUN_URL}/healthz" > /dev/null 2>&1; then
-        HEALTHZ_OK=true
+    # Liveness: /healthz is intercepted at Google’s Cloud Run edge (404 HTML). Prefer /health/live.
+    if curl -sf --max-time 10 "${CLOUD_RUN_URL}/health/live" > /dev/null 2>&1; then
+        LIVE_OK=true
+        echo -n "live=OK "
+    elif curl -sf --max-time 10 "${CLOUD_RUN_URL}/api/healthz" > /dev/null 2>&1; then
+        LIVE_OK=true
+        echo -n "api_healthz=OK "
+    elif curl -sf --max-time 10 "${CLOUD_RUN_URL}/healthz" > /dev/null 2>&1; then
+        LIVE_OK=true
         echo -n "healthz=OK "
     else
-        echo -n "healthz=FAIL "
+        echo -n "live=FAIL "
     fi
     
     # Check /readyz
@@ -210,10 +216,10 @@ echo "Final Checklist"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-if [ "$HEALTHZ_OK" = "true" ]; then
-    echo -e "${GREEN}✅ /healthz returns 200${NC}"
+if [ "$LIVE_OK" = "true" ]; then
+    echo -e "${GREEN}✅ Liveness returns 200 (/health/live or /api/healthz)${NC}"
 else
-    echo -e "${RED}❌ /healthz failed${NC}"
+    echo -e "${RED}❌ Liveness failed (/health/live and fallbacks)${NC}"
 fi
 
 if [ "$READYZ_OK" = "true" ]; then
@@ -235,7 +241,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Exit with appropriate code
-if [ "$HEALTHZ_OK" = "true" ] && [ "$READYZ_OK" = "true" ] && [ "$QUERY_OK" = "true" ]; then
+if [ "$LIVE_OK" = "true" ] && [ "$READYZ_OK" = "true" ] && [ "$QUERY_OK" = "true" ]; then
     echo -e "${GREEN}✅ All checks passed!${NC}"
     exit 0
 else

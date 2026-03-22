@@ -4,7 +4,20 @@
 
 ---
 
-## 1. `/readyz` False-Negative for Intake Path
+## 1. Cloud Run: Top-Level `/healthz` Returns Google 404 (Not Your App)
+
+| Symptom | `curl https://<service>.run.app/healthz` returns **HTML** “Error 404 (Not Found)!!1” from Google; `/readyz` and `/health/live` return JSON **200** from FastAPI |
+|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Root cause** | The request **does not reach the container**. Google’s HTTP frontend in front of Cloud Run handles `/healthz` and responds with its own 404 page. This is **not** missing FastAPI routes (the app defines `/healthz` and it works locally). |
+| **How to check** | Compare response bodies: Google 404 is HTML; app 404 is usually `{"detail":"Not Found"}`. |
+| **Canonical contract** | **Liveness:** `GET /health/live` (or `GET /api/healthz` alias). **Readiness / deps:** `GET /readyz`. |
+| **Avoid next time** | Use `scripts/deploy_rag_demo.sh` (checks `/health/live` first). Do not treat `/healthz` on Cloud Run as ground truth. |
+
+**References:** Internal sprint `docs/sprints/HEALTH_ENDPOINT_ROOT_CAUSE_PERMANENT_FIX/`; Stack Overflow and Cloud Run discussions on reserved / colliding paths.
+
+---
+
+## 2. `/readyz` False-Negative for Intake Path
 
 | Symptom | `/readyz` returns `ok: false` (Qdrant/embedding not ready) |
 |---------|-----------------------------------------------------------|
@@ -17,7 +30,7 @@
 
 ---
 
-## 2. Qdrant Lazy-Init Confusion
+## 3. Qdrant Lazy-Init Confusion
 
 | Symptom | `/readyz` flaky; sometimes ready, sometimes not |
 |---------|-----------------------------------------------|
@@ -28,7 +41,7 @@
 
 ---
 
-## 3. Configs Missing from Docker Image
+## 4. Configs Missing from Docker Image
 
 | Symptom | Triage returns 500; logs show "config file not found" or empty markers |
 |---------|----------------------------------------------------------------------|
@@ -39,7 +52,7 @@
 
 ---
 
-## 4. Frontend Build Succeeds but Production Alias Stale
+## 5. Frontend Build Succeeds but Production Alias Stale
 
 | Symptom | `vercel --prod` succeeds but production URL shows old UI |
 |---------|---------------------------------------------------------|
@@ -50,7 +63,7 @@
 
 ---
 
-## 5. CORS Mismatch After Vercel URL Change
+## 6. CORS Mismatch After Vercel URL Change
 
 | Symptom | Browser console: "CORS policy" or "blocked by CORS" |
 |---------|----------------------------------------------------|
@@ -61,7 +74,7 @@
 
 ---
 
-## 6. Backend/Frontend Version Mismatch
+## 7. Backend/Frontend Version Mismatch
 
 | Symptom | Frontend expects new API fields; backend returns old shape |
 |---------|-----------------------------------------------------------|
@@ -72,7 +85,7 @@
 
 ---
 
-## 7. Env/Secrets Drift
+## 8. Env/Secrets Drift
 
 | Symptom | Works locally, fails in production |
 |---------|------------------------------------|
@@ -83,18 +96,18 @@
 
 ---
 
-## 8. "Deployed" vs "Fully Live and Aligned"
+## 9. "Deployed" vs "Fully Live and Aligned"
 
 | Symptom | Deploy script says success but users see errors |
 |---------|-----------------------------------------------|
 | **Likely cause** | Did not run post-deploy verification; assumed success from script exit |
-| **How to check** | Run checklist: healthz, readyz, triage API, browser, CORS |
+| **How to check** | Run checklist: `/health/live` (or `/api/healthz`), `/readyz`, triage API, browser, CORS |
 | **How to fix** | Run full post-deploy verification; fix misalignments |
 | **Avoid next time** | Use RELEASE_CHECKLIST.md every release. Never skip manual browser check for UI changes. |
 
 ---
 
-## 9. Browser/Manual Verification Still Needed
+## 10. Browser/Manual Verification Still Needed
 
 | Symptom | All scripts pass but founder sees broken UI |
 |---------|--------------------------------------------|

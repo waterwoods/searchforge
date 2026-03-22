@@ -33,6 +33,13 @@
           "style": "add-car + notice confusion (English)",
           "primary_intent": "add_car",
           "secondary_intent": "notice_confusion"
+        },
+        {
+          "id": "MI-AC5",
+          "text": "顺便问一下，garaging proof 是什么？我想加一辆2024 X5",
+          "style": "side-question marker + document confusion + add-car",
+          "primary_intent": "add_car",
+          "secondary_intent": "document_confusion"
         }
       ]
     },

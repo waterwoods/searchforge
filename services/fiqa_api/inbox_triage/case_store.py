@@ -31,9 +31,13 @@ MAX_CUSTOMER_PHONE_LENGTH = 40
 MAX_CUSTOMER_EMAIL_LENGTH = 120
 MAX_POLICY_NUMBER_LENGTH = 60
 MAX_CONTACT_NOTE_LENGTH = 200
+MAX_ATTACHMENTS_PER_CASE = 10
+MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+ALLOWED_ATTACHMENT_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_STORE_PATH = REPO_ROOT / "data" / "unified_intake_cases.json"
+DEFAULT_ATTACHMENTS_DIR = REPO_ROOT / "data" / "unified_intake_attachments"
 
 
 def _utc_now_iso() -> str:
@@ -291,6 +295,10 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
         status = (normalized.get("case_status") or "new").strip().lower()
         normalized["lifecycle_status"] = "handed_off" if status == "new" else "office_followup"
 
+    # ADD_CAR_ATTACHMENT_READY_LITE: preserve case_attachments
+    if "case_attachments" not in normalized or not isinstance(normalized.get("case_attachments"), list):
+        normalized["case_attachments"] = []
+
     return normalized
 
 
@@ -373,6 +381,14 @@ def save_case(
     source = (source_text or "").strip()
     case_messages = _parse_source_to_messages(source, timestamp)
 
+    # ADD_CAR_IDENTITY_CONTACT_LITE: populate contact from triage extraction
+    cust_name = (triage_result.get("extracted_contact_name") or "").strip()
+    cust_phone = (triage_result.get("extracted_contact_phone") or "").strip()
+    if cust_name and len(cust_name) > MAX_CUSTOMER_NAME_LENGTH:
+        cust_name = cust_name[: MAX_CUSTOMER_NAME_LENGTH - 1]
+    if cust_phone and len(cust_phone) > MAX_CUSTOMER_PHONE_LENGTH:
+        cust_phone = cust_phone[: MAX_CUSTOMER_PHONE_LENGTH - 1]
+
     case = {
         "case_id": f"case_{uuid4().hex[:12]}",
         "case_status": normalized_status,
@@ -382,8 +398,8 @@ def save_case(
         "case_messages": case_messages,
         "waiting_on": "none",
         "next_contact_by": "",
-        "customer_name": "",
-        "customer_phone": "",
+        "customer_name": cust_name,
+        "customer_phone": cust_phone,
         "customer_email": "",
         "policy_number": "",
         "contact_note": "",
@@ -394,14 +410,19 @@ def save_case(
                 f"Case created with status {_humanize_status(normalized_status)}.",
             )
         ],
+        "case_attachments": [],
         **normalized_result,
     }
     if (summary := (triage_result.get("conversation_summary") or "").strip()):
         case["conversation_summary"] = summary
+    if (sec := (triage_result.get("secondary_issue_note") or "").strip()):
+        case["secondary_issue_note"] = sec
     if (collected := triage_result.get("collected_fields")) is not None and isinstance(collected, list):
         case["collected_fields"] = [str(x) for x in collected]
     if (still_needed := triage_result.get("still_needed_fields")) is not None and isinstance(still_needed, list):
         case["still_needed_fields"] = [str(x) for x in still_needed]
+    if (qrs := (triage_result.get("quote_ready_status") or "").strip()) in ("quote_ready", "almost_ready", "need_more"):
+        case["quote_ready_status"] = qrs
     # Explicit workflow state (Lightweight Production Case Record)
     case["handoff_ready"] = bool(triage_result.get("handoff_ready", True))
     case["case_creation_suggested"] = bool(triage_result.get("case_creation_suggested", False))
@@ -583,6 +604,115 @@ def update_case_status(case_id: str, status: str) -> dict[str, Any] | None:
     return updated_case
 
 
+def _attachments_dir() -> Path:
+    raw = (os.getenv("UNIFIED_INTAKE_ATTACHMENTS_DIR") or "").strip()
+    if raw:
+        return Path(raw) if Path(raw).is_absolute() else REPO_ROOT / raw
+    return DEFAULT_ATTACHMENTS_DIR
+
+
+def _infer_attachment_type(filename: str) -> str:
+    """Infer attachment type from filename for add-car (registration, vin_photo, dec_page, screenshot)."""
+    lower = (filename or "").lower()
+    if "reg" in lower or "registration" in lower or "dmv" in lower:
+        return "registration"
+    if "vin" in lower or "车架" in lower:
+        return "vin_photo"
+    if "dec" in lower or "decl" in lower or "policy" in lower or "保单" in lower:
+        return "dec_page"
+    return "screenshot"
+
+
+def add_attachment_to_case(
+    case_id: str,
+    *,
+    filename: str,
+    content: bytes,
+    content_type: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Add an attachment to a case. Stores file on disk and metadata in case.
+    ADD_CAR_ATTACHMENT_READY_LITE: lightweight attachment support.
+    """
+    if len(content) > MAX_ATTACHMENT_SIZE_BYTES:
+        raise ValueError(f"Attachment exceeds {MAX_ATTACHMENT_SIZE_BYTES // (1024 * 1024)} MB limit")
+    base = (filename or "attachment").strip() or "attachment"
+    # Sanitize: keep extension, safe basename; validate allowed types
+    ext = ""
+    for e in ALLOWED_ATTACHMENT_EXTENSIONS:
+        if base.lower().endswith(e):
+            ext = e
+            base = base[: -len(e)].strip()
+            break
+    if not ext:
+        if "pdf" in (content_type or "").lower():
+            ext = ".pdf"
+        elif (content_type or "").startswith("image/"):
+            ext = ".jpg"
+        else:
+            raise ValueError("Attachment must be image (jpg, png, gif, webp) or PDF")
+    if ext.lower() not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        raise ValueError(f"Attachment type not allowed. Use: {', '.join(ALLOWED_ATTACHMENT_EXTENSIONS)}")
+    safe_base = re.sub(r"[^\w\-_.]", "_", base)[:80] or "file"
+    safe_filename = f"{safe_base}{ext}"
+
+    payload = _read_payload()
+    updated_case: dict[str, Any] | None = None
+    for index, case in enumerate(payload["cases"]):
+        if case.get("case_id") != case_id:
+            continue
+        normalized_case = _normalize_case(case)
+        attachments = list(normalized_case.get("case_attachments") or [])
+        if len(attachments) >= MAX_ATTACHMENTS_PER_CASE:
+            raise ValueError(f"Case already has maximum {MAX_ATTACHMENTS_PER_CASE} attachments")
+        attachment_id = f"att_{uuid4().hex[:12]}"
+        att_type = _infer_attachment_type(safe_filename)
+        timestamp = _utc_now_iso()
+        att_meta = {
+            "attachment_id": attachment_id,
+            "filename": safe_filename,
+            "type": att_type,
+            "size_bytes": len(content),
+            "created_at": timestamp,
+        }
+        # Store file
+        case_dir = _attachments_dir() / case_id
+        case_dir.mkdir(parents=True, exist_ok=True)
+        file_path = case_dir / f"{attachment_id}_{safe_filename}"
+        file_path.write_bytes(content)
+        attachments.append(att_meta)
+        normalized_case["case_attachments"] = attachments[:MAX_ATTACHMENTS_PER_CASE]
+        normalized_case["updated_at"] = timestamp
+        normalized_case["case_activity"] = [
+            _build_activity_entry("attachment_added", f"Attachment added: {safe_filename}"),
+            *normalized_case.get("case_activity", []),
+        ][:MAX_CASE_ACTIVITY]
+        payload["cases"][index] = normalized_case
+        updated_case = normalized_case
+        break
+    if updated_case is None:
+        return None
+    payload["cases"] = _sort_recent(payload["cases"])
+    _write_payload(payload)
+    return updated_case
+
+
+def get_attachment_file_path(case_id: str, attachment_id: str) -> Path | None:
+    """Return filesystem path for an attachment, or None if not found."""
+    case = get_case_by_id(case_id)
+    if not case:
+        return None
+    attachments = case.get("case_attachments") or []
+    for att in attachments:
+        if att.get("attachment_id") == attachment_id:
+            filename = att.get("filename") or "file"
+            file_path = _attachments_dir() / case_id / f"{attachment_id}_{filename}"
+            if file_path.exists():
+                return file_path
+            return None
+    return None
+
+
 def add_case_note(case_id: str, note_text: str) -> dict[str, Any] | None:
     body = (note_text or "").strip()
     if not body:
@@ -676,10 +806,14 @@ def append_follow_up_message(
 
         if (summary := (triage_result.get("conversation_summary") or "").strip()):
             normalized_case["conversation_summary"] = summary
+        if (sec := (triage_result.get("secondary_issue_note") or "").strip()):
+            normalized_case["secondary_issue_note"] = sec
         if (collected := triage_result.get("collected_fields")) is not None and isinstance(collected, list):
             normalized_case["collected_fields"] = [str(x) for x in collected]
         if (still_needed := triage_result.get("still_needed_fields")) is not None and isinstance(still_needed, list):
             normalized_case["still_needed_fields"] = [str(x) for x in still_needed]
+        if (qrs := (triage_result.get("quote_ready_status") or "").strip()) in ("quote_ready", "almost_ready", "need_more"):
+            normalized_case["quote_ready_status"] = qrs
 
         # Explicit workflow state
         normalized_case["handoff_ready"] = bool(triage_result.get("handoff_ready", True))
@@ -693,6 +827,17 @@ def append_follow_up_message(
             normalized_case["collection_stage"] = cs
         if (ft := (triage_result.get("follow_up_type") or "").strip()):
             normalized_case["follow_up_type"] = ft
+        if (cb := (triage_result.get("case_boundary") or "").strip()) in (
+            "new_issue",
+            "borderline",
+            "same_case",
+        ):
+            normalized_case["case_boundary"] = cb
+        # ADD_CAR_IDENTITY_CONTACT_LITE: update contact from triage extraction on append
+        if (en := (triage_result.get("extracted_contact_name") or "").strip()):
+            normalized_case["customer_name"] = _truncate(en, MAX_CUSTOMER_NAME_LENGTH)
+        if (ep := (triage_result.get("extracted_contact_phone") or "").strip()):
+            normalized_case["customer_phone"] = _truncate(ep, MAX_CUSTOMER_PHONE_LENGTH)
         # Minimal Production Backbone: append = office follow-up flow
         normalized_case["lifecycle_status"] = "office_followup"
         # Client Identity Persistence: backfill client_id for legacy cases when provided

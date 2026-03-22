@@ -1,0 +1,254 @@
+{
+  "version": "1",
+  "sprint": "ADD_CAR_DRIVER_ZIP_MATERIALS_STRESS_BATTERY",
+  "description": "22 Add-Car stress cases: realistic Chinese CA phrasing for ZIP variants, driver micro-phrases, and materials question vs already-sent (incl. prospective-send reply polish). Rule path; LLM off in runner.",
+  "scenarios": [
+    {
+      "id": "ADZM-Z01",
+      "focus": ["zip"],
+      "name": "ZIP: 邮编95131（无空格）",
+      "why_matters": "Most common WeChat style; regex must not require word boundaries beside Chinese.",
+      "expected_good_behavior": "zip in collected_fields; quote_ready when combined with year/model + delivery + driver in same merged text.",
+      "failure_looks_like": "zip missing from collected; asks for zip again.",
+      "turns": [
+        { "role": "customer", "text": "想加一台2024本田思域，邮编95131，下周提车，我自己开" }
+      ]
+    },
+    {
+      "id": "ADZM-Z02",
+      "focus": ["zip"],
+      "name": "ZIP: 邮编 95131（有空格）",
+      "why_matters": "Customers often type a space after 邮编.",
+      "expected_good_behavior": "95131 extracted; same as Z01.",
+      "failure_looks_like": "ZIP not detected.",
+      "turns": [
+        { "role": "customer", "text": "加车 2024 Toyota Camry，邮编 95131，明天拿车，就我一个人开" }
+      ]
+    },
+    {
+      "id": "ADZM-Z03",
+      "focus": ["zip"],
+      "name": "ZIP: zip 95131（英文有空格）",
+      "why_matters": "English zip keyword with a space before digits.",
+      "expected_good_behavior": "CA 9xxxx still matches.",
+      "failure_looks_like": "No zip signal.",
+      "turns": [
+        { "role": "customer", "text": "想加2024特斯拉Model Y，zip 95131，下周提车，本人开" }
+      ]
+    },
+    {
+      "id": "ADZM-Z06",
+      "focus": ["zip"],
+      "name": "ZIP: zip95131（英文无空格粘连）",
+      "why_matters": "English zip keyword glued to digits.",
+      "expected_good_behavior": "CA 9xxxx still matches.",
+      "failure_looks_like": "No zip signal.",
+      "turns": [
+        { "role": "customer", "text": "想加2024特斯拉Model Y，zip95131，下周提车，本人开" }
+      ]
+    },
+    {
+      "id": "ADZM-Z04",
+      "focus": ["zip"],
+      "name": "ZIP: 裸95131（无邮编前缀）",
+      "why_matters": "Comma-separated facts; only digits as garage hint.",
+      "expected_good_behavior": "95131 detected from bare token.",
+      "failure_looks_like": "Ignored bare ZIP.",
+      "turns": [
+        { "role": "customer", "text": "2024 Toyota 凯美瑞，95131，下周提车，我开" }
+      ]
+    },
+    {
+      "id": "ADZM-Z05",
+      "focus": ["zip", "multi_turn"],
+      "name": "ZIP: 第二泡才说我的邮编95131+明天提车",
+      "why_matters": "ZIP and timing split across turns like real chats.",
+      "expected_good_behavior": "After turn 2 merged text has zip + delivery; handoff or correct next ask.",
+      "failure_looks_like": "Turn 2 still missing zip in structured fields.",
+      "turns": [
+        { "role": "customer", "text": "你好我想加一台2024宝马X3" },
+        { "role": "customer", "text": "我的邮编95131，明天提车，主要驾驶人是我" }
+      ]
+    },
+    {
+      "id": "ADZM-D01",
+      "focus": ["driver"],
+      "name": "Driver: 我自己开",
+      "why_matters": "High-frequency self-driver phrase.",
+      "expected_good_behavior": "driver in collected_fields; enough_for_handoff with zip+delivery.",
+      "failure_looks_like": "Asks for main driver when already stated.",
+      "turns": [
+        { "role": "customer", "text": "加车 2023 Honda Accord，90210，这周五提车，我自己开" }
+      ]
+    },
+    {
+      "id": "ADZM-D02",
+      "focus": ["driver"],
+      "name": "Driver: 我一个人开",
+      "why_matters": "Variant of self-driver; tests marker list.",
+      "expected_good_behavior": "driver collected.",
+      "failure_looks_like": "still_needed main driver after clear phrase.",
+      "turns": [
+        { "role": "customer", "text": "想加2024凯美瑞，94102，下周拿车，我一个人开" }
+      ]
+    },
+    {
+      "id": "ADZM-D03",
+      "focus": ["driver"],
+      "name": "Driver: 本人开",
+      "why_matters": "Formal/short self phrasing.",
+      "expected_good_behavior": "driver collected.",
+      "failure_looks_like": "Misses 本人开.",
+      "turns": [
+        { "role": "customer", "text": "新车2022 Lexus RX 想加进保单，91355，明天提车，本人开" }
+      ]
+    },
+    {
+      "id": "ADZM-D04",
+      "focus": ["driver"],
+      "name": "Driver: 主要驾驶人是我老婆（无“开”）",
+      "why_matters": "Real phrasing may omit 开; tests substring markers.",
+      "expected_good_behavior": "Ideally driver/spouse recognized; acceptable if broker still asked to confirm.",
+      "failure_looks_like": "Treats as no driver and wrong handoff timing.",
+      "turns": [
+        { "role": "customer", "text": "加车 2024 Honda CR-V，92620，下周提车，主要驾驶人是我老婆" }
+      ]
+    },
+    {
+      "id": "ADZM-D05",
+      "focus": ["driver"],
+      "name": "Driver: 我儿子开",
+      "why_matters": "Child driver; 我儿子开 vs 儿子开.",
+      "expected_good_behavior": "driver signal from 儿子开 substring.",
+      "failure_looks_like": "No driver field.",
+      "turns": [
+        { "role": "customer", "text": "我想加一台2020思域，94588，下周提车，我儿子开" }
+      ]
+    },
+    {
+      "id": "ADZM-M01",
+      "focus": ["materials_qa"],
+      "name": "Materials: 要不要发你（应视为询问/新信息，非已发）",
+      "why_matters": "Regression guard for already_sent false positive.",
+      "expected_good_behavior": "follow_up_type new_info; reply answers or asks cleanly, not “您说发过了”.",
+      "failure_looks_like": "already_sent + 核对发过的材料.",
+      "turns": [
+        { "role": "customer", "text": "2024特斯拉Model 3，95131，明天提车，我自己开，要不要发你行驶证截图" }
+      ]
+    },
+    {
+      "id": "ADZM-M02",
+      "focus": ["materials_qa"],
+      "name": "Materials: 要不要把截图发你",
+      "why_matters": "要不要…发 中间插入宾语.",
+      "expected_good_behavior": "Prospective-send guard; new_info.",
+      "failure_looks_like": "Misclassified already_sent.",
+      "turns": [
+        { "role": "customer", "text": "加车 2024丰田RAV4，92801，下周提车，我老婆开，要不要把截图发你" }
+      ]
+    },
+    {
+      "id": "ADZM-M03",
+      "focus": ["materials_qa"],
+      "name": "Materials: 材料发你微信了（已发）",
+      "why_matters": "Completed send → warmer handoff / verify materials.",
+      "expected_good_behavior": "follow_up_type already_sent; broker mentions verify WeChat; not demanding driver again inappropriately.",
+      "failure_looks_like": "Ignores sent claim; cold repeat ask.",
+      "turns": [
+        { "role": "customer", "text": "2024本田雅阁，91030，明天拿车，我开，材料发你微信了" }
+      ]
+    },
+    {
+      "id": "ADZM-M04",
+      "focus": ["materials_qa"],
+      "name": "Materials: registration 发你微信了",
+      "why_matters": "Mixed EN/CN for registration slip.",
+      "expected_good_behavior": "already_sent; sensible handoff.",
+      "failure_looks_like": "Wrong follow-up type.",
+      "turns": [
+        { "role": "customer", "text": "加车 2023 Mazda CX-5，92708，下周提车，本人开，registration 发你微信了" }
+      ]
+    },
+    {
+      "id": "ADZM-X01",
+      "focus": ["zip", "driver", "mixed"],
+      "name": "Mixed: 2024 Tesla + 邮编95131 + 我自己开",
+      "why_matters": "Single-bubble density like founder demo.",
+      "expected_good_behavior": "quote_ready handoff; concrete vehicle in broker step.",
+      "failure_looks_like": "Missing slot or wrong category.",
+      "turns": [
+        { "role": "customer", "text": "2024 Tesla Model Y，邮编95131，我自己开，想加进现有保单报价" }
+      ]
+    },
+    {
+      "id": "ADZM-X02",
+      "focus": ["zip", "driver", "materials_qa", "mixed"],
+      "name": "Mixed: Honda + 90210 + 老婆开 + 要不要发你",
+      "why_matters": "Non-95131 CA-style zip + spouse + prospective send.",
+      "expected_good_behavior": "ZIP 90210 ok; driver ok; materials = question not sent.",
+      "failure_looks_like": "already_sent on 要不要发你.",
+      "turns": [
+        { "role": "customer", "text": "2024 Honda Accord，90210，下周提车，我老婆开，dec page要不要发你" }
+      ]
+    },
+    {
+      "id": "ADZM-X03",
+      "focus": ["zip", "driver", "materials_qa", "mixed", "multi_turn"],
+      "name": "Mixed: 想加车 → 95131+儿子开+截图发你了",
+      "why_matters": "Progressive disclosure + already-sent closing.",
+      "expected_good_behavior": "Turn 2 recognizes zip/driver/sent; handoff with verify materials.",
+      "failure_looks_like": "Turn 2 asks for screenshot as if not sent.",
+      "turns": [
+        { "role": "customer", "text": "你好我想加车" },
+        { "role": "customer", "text": "2024丰田凯美瑞，95131，我儿子开，截图发你了" }
+      ]
+    },
+    {
+      "id": "ADZM-X04",
+      "focus": ["materials_qa", "mixed", "multi_turn"],
+      "name": "Mixed: 信息先齐 → 第二泡要不要先发给你",
+      "why_matters": "Quote-ready thread then materials-offer question.",
+      "expected_good_behavior": "Turn 2: new_info / clarification, not false already_sent; stays add-car.",
+      "failure_looks_like": "Broken tone or wrong follow-up classification.",
+      "turns": [
+        { "role": "customer", "text": "加车 2024 Subaru Outback，93401，明天提车，我一个人开" },
+        { "role": "customer", "text": "要不要先发给你行驶证照片" }
+      ]
+    },
+    {
+      "id": "ADZM-M05",
+      "focus": ["materials_qa", "wechat"],
+      "name": "Materials: 要不我发你微信你看下行不行（征询发送渠道）",
+      "why_matters": "Office-style permission ask with 行不行; must not hit already_sent.",
+      "expected_good_behavior": "follow_up_type new_info; reply leads with short 可以/微信 line, then normal handoff.",
+      "failure_looks_like": "Generic handoff with no answer to the WeChat question.",
+      "turns": [
+        { "role": "customer", "text": "加车 2024 Toyota Camry，92801，下周提车，我开，要不我发你微信你看下行不行" }
+      ]
+    },
+    {
+      "id": "ADZM-M06",
+      "focus": ["materials_qa", "multi_turn"],
+      "name": "Materials: 我先发给你看看行吗（信息未齐时）",
+      "why_matters": "Customer offers to send docs before slots complete; still collecting.",
+      "expected_good_behavior": "Turn 2 new_info; brief send-ok line + next add-car ask (not echo-only).",
+      "failure_looks_like": "Ignores permission question or misclassifies already_sent.",
+      "turns": [
+        { "role": "customer", "text": "你好我想加车" },
+        { "role": "customer", "text": "我先发给你看看行吗" }
+      ]
+    },
+    {
+      "id": "ADZM-X05",
+      "focus": ["materials_qa", "multi_turn"],
+      "name": "Mixed: 缺邮编 → 第二泡要不要先发给你行驶证",
+      "why_matters": "Incomplete quote slots + prospective-send in same follow-up.",
+      "expected_good_behavior": "Turn 2: new_info; acknowledges send question then continues slot collection.",
+      "failure_looks_like": "Cold repeat ask with no acknowledgment.",
+      "turns": [
+        { "role": "customer", "text": "想加一台2024雅阁下周提车我自己开" },
+        { "role": "customer", "text": "要不要先发给你行驶证" }
+      ]
+    }
+  ]
+}

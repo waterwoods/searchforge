@@ -24,13 +24,13 @@ bash scripts/warmup_for_demo.sh
 ```bash
 bash scripts/warmup_for_demo.sh --url https://fiqa-api-g7zatxrycq-uw.a.run.app
 ```
-*(Warmup uses /readyz when /healthz returns 404 on Cloud Run.)*
+*(Warmup tries `/health/live` first; Cloud Run’s public `/healthz` is often a Google 404 before the container — see `KNOWN_DEPLOYMENT_GOTCHAS.md`.)*
 
 ---
 
 ## 3. What It Does
 
-1. `/healthz` — basic health
+1. `/health/live` (or `/api/healthz`, then `/healthz` on non-CR) — liveness
 2. `/readyz` — Qdrant/embedder readiness
 3. `/api/inbox/triage` — realistic Turn 1 payload (warms triage path)
 

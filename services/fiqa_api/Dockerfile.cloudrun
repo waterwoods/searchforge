@@ -72,9 +72,11 @@ RUN python -c "import sys; sys.path.insert(0, '/app'); import services.fiqa_api.
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
 
-# Health check
+# Liveness: use /health/live (reaches the app on Cloud Run). Top-level /healthz is not
+# reliably reachable through Google’s HTTP frontend for external checks; inside the container
+# /health/live is the stable probe target (see docs/runbooks/KNOWN_DEPLOYMENT_GOTCHAS.md).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://127.0.0.1:${PORT}/healthz || exit 1
+    CMD curl -f http://127.0.0.1:${PORT}/health/live || exit 1
 
 # Run uvicorn with the app
 # Cloud Run sets PORT env var automatically, we use it here
