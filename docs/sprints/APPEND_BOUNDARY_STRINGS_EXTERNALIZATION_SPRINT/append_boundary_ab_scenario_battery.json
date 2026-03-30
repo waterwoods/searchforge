@@ -1,0 +1,138 @@
+{
+  "version": "1",
+  "description": "Append / boundary A/B battery — logic + client-visible wording isolation (chen_kui vs socal_precision vs demo_broker defaults).",
+  "scenarios": [
+    {
+      "id": "abb_01_a_same_case_add_car",
+      "client_id": "chen_kui",
+      "existing_source_text": "[客户] 我想加一台2024宝马X5，zip 95131，下周提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "发你微信了，行驶证截图",
+      "expected_case_boundary": "same_case",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["办公室"],
+      "draft_must_not_contain_any": ["本所"]
+    },
+    {
+      "id": "abb_02_b_same_case_add_car",
+      "client_id": "socal_precision",
+      "existing_source_text": "[客户] 我想加一台2024宝马X5，zip 95131，下周提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "发你微信了，行驶证截图",
+      "expected_case_boundary": "same_case",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所"],
+      "draft_must_not_contain_any": ["陈奎", "陈奎办公室"]
+    },
+    {
+      "id": "abb_03_a_new_issue_billing",
+      "client_id": "chen_kui",
+      "existing_source_text": "[客户] 2024 BMW X5 94102 下周提车 我开\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "另外我账单好像多扣了一笔，能帮我看下吗",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["账单", "办公室", "加车"],
+      "draft_must_not_contain_any": ["本所"]
+    },
+    {
+      "id": "abb_04_b_new_issue_billing",
+      "client_id": "socal_precision",
+      "existing_source_text": "[客户] 2024 BMW X5 94102 下周提车 我开\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "另外我账单好像多扣了一笔，能帮我看下吗",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["账单", "本所"],
+      "draft_must_not_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "abb_05_a_borderline_pivot",
+      "client_id": "chen_kui",
+      "existing_source_text": "[客户] 资料齐了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "还有一个问题",
+      "expected_case_boundary": "borderline",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["办公室", "不是同一件事"],
+      "draft_must_not_contain_any": ["本所"]
+    },
+    {
+      "id": "abb_06_b_borderline_pivot",
+      "client_id": "socal_precision",
+      "existing_source_text": "[客户] 资料齐了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "还有一个问题",
+      "expected_case_boundary": "borderline",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所", "先前"],
+      "draft_must_not_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "abb_07_a_billing_pivot_en",
+      "client_id": "chen_kui",
+      "existing_source_text": "[客户] I want to add a 2024 Camry zip 95131 pick up next week I drive\n\n[系统] Quote details received; our office will price and follow up.",
+      "latest_text": "Also my autopay charged twice—can you check billing?",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["office", "billing"],
+      "draft_must_not_contain_any": ["our desk"]
+    },
+    {
+      "id": "abb_08_b_billing_pivot_en",
+      "client_id": "socal_precision",
+      "existing_source_text": "[客户] I want to add a 2024 Camry zip 95131 pick up next week I drive\n\n[系统] Quote details received; our office will price and follow up.",
+      "latest_text": "Also my autopay charged twice—can you check billing?",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["desk", "billing"],
+      "draft_must_not_contain_any": ["the office."]
+    },
+    {
+      "id": "abb_09_a_premium_pivot",
+      "client_id": "chen_kui",
+      "existing_source_text": "[客户] 续保通知收到了\n\n[系统] Got it. We've noted your info—our office will review and follow up with you.",
+      "latest_text": "另外我想加一台新车报价",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["加车", "办公室"],
+      "draft_must_not_contain_any": ["本所"]
+    },
+    {
+      "id": "abb_10_b_premium_pivot",
+      "client_id": "socal_precision",
+      "existing_source_text": "[客户] 续保通知收到了\n\n[系统] Got it. We've noted your info—our office will review and follow up with you.",
+      "latest_text": "另外我想加一台新车报价",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["加车", "本所"],
+      "draft_must_not_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "abb_11_b_known_leak_path",
+      "client_id": "socal_precision",
+      "existing_source_text": "[客户] 2024 Tesla Model Y 94102 下周提车 我开\n[系统] 好的。",
+      "latest_text": "对了，我昨天出事故了，怎么理赔",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["理赔", "本所"],
+      "draft_must_not_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "abb_12_demo_defaults_no_append_boundary_key",
+      "client_id": "demo_broker",
+      "existing_source_text": "[客户] 2024 BMW X5 94102 下周提车 我开\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "latest_text": "另外账单扣款不对，帮我看下",
+      "expected_case_boundary": "new_issue",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["账单", "办公室"],
+      "notes": "demo_broker has no stitched.append_boundary — engine defaults must remain sane."
+    }
+  ]
+}

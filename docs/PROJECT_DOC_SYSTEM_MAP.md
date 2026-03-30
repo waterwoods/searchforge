@@ -21,6 +21,7 @@ Then use this map to find specific docs.
 | Doc | Purpose |
 |-----|---------|
 | `AGENTS.md` | Single entry point for agents |
+| `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Macro blueprint (north star)** — Unified Intake product direction, business framing, state-driven flow, client-pack strategy, technical evolution; align major sprints |
 | `docs/goals/insurance_paid_pilot_goal.md` | Master goal, scope, deliverables |
 | `docs/STANDARD_SCENARIO_PACKAGE.md` | Sellable package: 7 scenarios, broker value, demo path |
 | `docs/ANDY_QUICK_START.md` | One file before running demo |
@@ -76,6 +77,7 @@ Primary = single source of truth. Supporting = lighter summaries or one-purpose 
 1. **New to project:** `docs/goals/insurance_paid_pilot_goal.md`
 2. **Running a demo:** `docs/ANDY_QUICK_START.md` → `docs/runbooks/BROKER_VALUE_VALIDATION_MEETING_PACK.md`
 3. **Before broker meeting:** `docs/ANDY_2MIN_BEFORE_DEMO.md`
+4. **Major Unified Intake / product-architecture sprint:** Read `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` first; align sprint blueprints with it. If a sprint direction conflicts with the outline, update the outline or explicitly justify the divergence before implementation.
 
 ## Primary for Daily Use
 

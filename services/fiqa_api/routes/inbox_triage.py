@@ -49,9 +49,15 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_ui_copy,
     save_add_car_rules,
 )
+from services.fiqa_api.inbox_triage.role_c_simulation_service import (
+    RoleCMaxTurnsReached,
+    next_role_c_customer_line,
+)
 from services.fiqa_api.inbox_triage.triage import (
     triage_conversation,
     triage_for_append,
+    _add_car_enough_for_handoff,
+    _extract_add_car_fields,
     _is_add_vehicle_request,
     _is_premium_review_request,
     _is_claim_intake_request,
@@ -91,6 +97,93 @@ def _infer_intent_from_result(text: str, result: dict[str, Any]) -> str | None:
     return None
 
 
+def _full_thread_lower(text: str, turns: list[ConversationTurn] | None) -> str:
+    """All roles, for coarse intent detection across turns."""
+    parts: list[str] = []
+    if turns:
+        for t in turns:
+            p = _normalize_input(t.text or "")
+            if p:
+                parts.append(p.lower())
+    tail = _normalize_input(text or "")
+    if tail:
+        parts.append(tail.lower())
+    return " ".join(parts)
+
+
+def _conversation_labeled_for_add_car_extract(text: str, turns: list[ConversationTurn] | None) -> str:
+    """[客户]/[系统] merge so _extract_add_car_fields (customer-only) sees full thread."""
+    parts: list[str] = []
+    if turns:
+        for t in turns:
+            label = "客户" if (t.role or "").strip().lower() == "customer" else "系统"
+            p = _normalize_input(t.text or "")
+            if p:
+                parts.append(f"[{label}] {p}")
+    tail = _normalize_input(text or "")
+    if tail:
+        parts.append(f"[客户] {tail}")
+    return "\n\n".join(parts)
+
+
+def _add_car_customer_lane(soft_route: str | None, thread_lower: str) -> bool:
+    if (soft_route or "").strip().lower() == "add_car":
+        return True
+    return _is_add_vehicle_request(thread_lower)
+
+
+def _add_car_structurally_complete_for_persist(text: str, turns: list[ConversationTurn] | None) -> bool:
+    labeled = _conversation_labeled_for_add_car_extract(text, turns)
+    fields = _extract_add_car_fields(labeled)
+    return _add_car_enough_for_handoff(fields)
+
+
+def _reply_truth_context_for_triage(
+    *,
+    case: dict[str, Any] | None,
+    formal_submit: bool,
+    add_car_lane: bool,
+) -> dict[str, Any] | None:
+    """
+    Structured inputs for Add-Car reply routing (pre- vs post-submit phrasing).
+    See triage.triage_conversation(reply_truth_context=...).
+    """
+    ctx: dict[str, Any] = {}
+    if case:
+        fsa = str(case.get("formal_submitted_at") or "").strip()
+        if fsa:
+            ctx["formal_submitted_at"] = fsa
+        ls = str(case.get("lifecycle_status") or "").strip()
+        if ls:
+            ctx["lifecycle_status"] = ls
+        # Service-record contact: sync still_needed / intent ceiling with persisted identity
+        cn = str(case.get("customer_name") or "").strip()
+        if cn:
+            ctx["record_contact_name"] = cn
+        cp = str(case.get("customer_phone") or "").strip()
+        if cp:
+            ctx["record_contact_phone"] = cp
+    if formal_submit and add_car_lane:
+        ctx["formal_submit_this_turn"] = True
+    return ctx or None
+
+
+def _reply_truth_context_from_case(case: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Truth bundle for POST .../append-message only.
+    Includes persisted gaps for Intent ceiling merges and service_record_append so Add-Car
+    replies stay in post-submit / continuation tone (not pre-submit formal-submit nag).
+    """
+    base = _reply_truth_context_for_triage(case=case, formal_submit=False, add_car_lane=False) or {}
+    out: dict[str, Any] = dict(base)
+    sn = case.get("still_needed_fields")
+    if isinstance(sn, list) and sn:
+        out["still_needed_fields"] = [str(x) for x in sn]
+    out["service_record_append"] = True
+    # record_contact_* already merged in base from case when present
+    return out if out else None
+
+
 class ConversationTurn(BaseModel):
     """One turn in a customer intake conversation."""
 
@@ -121,6 +214,20 @@ class TriageRequest(BaseModel):
     client_id: str | None = Field(
         default=None,
         description="Optional client ID for client-aware handoff phrases. When omitted, uses CLIENT_ID env or chen_kui.",
+    )
+    formal_submit: bool = Field(
+        default=False,
+        description=(
+            "Add-Car bounded: when triage is handoff_pending, set true to create the office-visible case. "
+            "Customer portal sends true only on the formal-submit action; broker/workbench should set true for direct paste."
+        ),
+    )
+    case_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional persisted Unified Intake case id. When set and found, reply routing uses formal_submitted_at / "
+            "lifecycle for Add-Car post-submit phrasing (same thread / continued intake)."
+        ),
     )
 
 
@@ -190,6 +297,23 @@ class AddCarRulesPreviewRequest(BaseModel):
     )
 
 
+class SimulationRoleCCustomerRequest(BaseModel):
+    """Bounded LLM customer line for Add-Car simulation tab (Role C)."""
+
+    persona_id: str = Field(default="price_sensitive", description="Role C persona key")
+    optional_note: str = Field(default="", max_length=220, description="Operator one-line note")
+    difficulty: str = Field(default="realistic", description="smooth | realistic | tough")
+    max_turns: int = Field(default=6, ge=3, le=12, description="Hard cap on customer turns (simulation; include inject buffer)")
+    conversation_turns: list[ConversationTurn] = Field(
+        default_factory=list,
+        description="Completed replay turns before the next customer message (customer/system pairs).",
+    )
+    client_id: str | None = Field(
+        default=None,
+        description="Optional client id for copy context; simulation only.",
+    )
+
+
 class AddCarRulesPublishRequest(BaseModel):
     """Request body for publishing Add-Car Quote rules."""
 
@@ -219,6 +343,54 @@ async def get_scenario_logic_center() -> dict[str, Any]:
     Used by founder/broker review to see what scenarios exist, how they work, what is strong/weak.
     """
     return _load_scenario_logic_center()
+
+
+@router.post("/simulation-role-c-customer")
+async def simulation_role_c_customer(request: SimulationRoleCCustomerRequest) -> dict[str, Any]:
+    """
+    Generate the next Role C (controlled LLM) customer message for Add-Car simulation.
+    Requires OPENAI_API_KEY (or LLM_API_KEY) in the runtime; otherwise returns 503.
+
+    Core logic lives in `role_c_simulation_service.next_role_c_customer_line` so scripts
+    and the UI share the same bounded generation path.
+    """
+    prior = request.conversation_turns or []
+    conv: list[dict[str, Any]] = [
+        {"role": (t.role or "").strip(), "text": _normalize_input(t.text or "")} for t in prior
+    ]
+    try:
+        out = next_role_c_customer_line(
+            persona_id=request.persona_id,
+            optional_note=request.optional_note or "",
+            difficulty=request.difficulty,
+            max_turns=request.max_turns,
+            conversation_turns=conv,
+            client_id=request.client_id,
+        )
+    except RoleCMaxTurnsReached:
+        raise HTTPException(
+            status_code=400,
+            detail="max_turns reached for Role C replay",
+        ) from None
+
+    if not out.customer_message:
+        if not out.llm_attempted:
+            raise HTTPException(
+                status_code=503,
+                detail="Role C LLM unavailable (no API key or OpenAI import error). "
+                "Set OPENAI_API_KEY on the backend to enable controlled LLM customer lines.",
+            )
+        raise HTTPException(
+            status_code=503,
+            detail="Role C LLM call failed or returned empty output; retry or check model availability.",
+        )
+    return {
+        "customer_message": out.customer_message,
+        "llm_used": True,
+        "model": out.model,
+        "turn_index": out.turn_index,
+        "max_turns": out.max_turns,
+    }
 
 
 @router.get("/client-config")
@@ -397,10 +569,22 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     # MULTI_TURN_CONTINUITY_GUARDRAIL: First message must go through triage_conversation,
     # not triage_message + forced handoff_ready. Use triage_conversation(text, []) for first turn.
     turns = request.conversation_turns or []
+    soft_route_pre = (request.soft_route or "").strip().lower() or None
+    thread_lower_pre = _full_thread_lower(text, turns)
+    add_car_lane_pre = _add_car_customer_lane(soft_route_pre, thread_lower_pre)
+    existing_case: dict[str, Any] | None = None
+    if (request.case_id or "").strip():
+        existing_case = get_case_by_id(request.case_id.strip())
+    reply_truth_ctx = _reply_truth_context_for_triage(
+        case=existing_case,
+        formal_submit=bool(request.formal_submit),
+        add_car_lane=add_car_lane_pre,
+    )
     result = triage_conversation(
         text,
         [{"role": t.role, "text": t.text} for t in turns],
         client_id=client_id,
+        reply_truth_context=reply_truth_ctx,
     )
 
     reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
@@ -455,7 +639,18 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     if request.persist_case:
         # MULTI_TURN_CONTINUITY_GUARDRAIL: Only persist when handoff_ready to avoid
         # premature cases and duplicate cases across turns.
-        should_persist = result.get("handoff_ready")
+        # PERSIST_FORMAL_SUBMIT_ALIGNMENT: Add-Car lane requires formal_submit before save_case.
+        # Last turn may be boilerplate-only; triage can drop handoff_ready — still persist when
+        # formal_submit + rule-complete thread (same structured bar as handoff).
+        thread_lower = _full_thread_lower(text, request.conversation_turns)
+        add_car_lane = _add_car_customer_lane(soft_route, thread_lower)
+        handoff_ready = bool(result.get("handoff_ready"))
+        formal = bool(request.formal_submit)
+        struct_ok = _add_car_structurally_complete_for_persist(text, request.conversation_turns)
+        if add_car_lane:
+            should_persist = formal and (struct_ok or handoff_ready)
+        else:
+            should_persist = handoff_ready
         if should_persist:
             try:
                 if turns:
@@ -636,6 +831,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
             existing_source_text=case.get("source_text", ""),
             new_message=new_msg,
             client_id=case_client_id,
+            reply_truth_context=_reply_truth_context_from_case(case),
         )
         updated = append_follow_up_message(
             case_id=case_id,

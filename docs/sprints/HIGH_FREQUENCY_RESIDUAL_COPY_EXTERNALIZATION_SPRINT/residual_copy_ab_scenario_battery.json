@@ -1,0 +1,139 @@
+{
+  "version": "1",
+  "description": "A/B battery for residual customer-visible copy: add-car price caveat, document-already-sent tail, add_driver, bundling; chen_kui vs socal_precision vs engine defaults (demo_broker).",
+  "scenarios": [
+    {
+      "id": "res_ck_add_car_price_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "想加一台特斯拉 Model 3 进保单，大概保费多少？",
+      "draft_must_contain_any": ["办公室按车型", "具体数字要等办公室"],
+      "draft_must_not_contain_any": ["本所按车型"]
+    },
+    {
+      "id": "res_sp_add_car_price_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "想加一台特斯拉 Model 3 进保单，大概保费多少？",
+      "draft_must_contain_any": ["本所按车型", "具体保费须待本所"],
+      "draft_must_not_contain_any": ["办公室按车型", "具体数字要等办公室"]
+    },
+    {
+      "id": "res_demo_add_car_price_engine_default",
+      "client_id": "demo_broker",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "想加一台特斯拉 Model 3 进保单，大概保费多少？",
+      "draft_must_contain_any": ["办公室按车型"],
+      "draft_must_not_contain_any": ["本所按车型"]
+    },
+    {
+      "id": "res_ck_premium_doc_sent_tail_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "续保涨了，账单和驾照我上周发过了，有办法吗",
+      "draft_must_contain_any": ["如果材料说发过了", "我这边也帮你核对"]
+    },
+    {
+      "id": "res_sp_premium_doc_sent_tail_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "续保涨了，账单和驾照我上周发过了，有办法吗",
+      "draft_must_contain_any": ["若您表示材料已发送", "本所将一并核对"],
+      "draft_must_not_contain_any": ["我这边也帮你核对"]
+    },
+    {
+      "id": "res_ck_payment_doc_sent_tail_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "付款通知说要补驾照，我发过了",
+      "draft_must_contain_any": ["如果材料说发过了", "我这边也帮你核对"]
+    },
+    {
+      "id": "res_sp_payment_doc_sent_tail_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "付款通知说要补驾照，我发过了",
+      "draft_must_contain_any": ["若您表示材料已发送"],
+      "draft_must_not_contain_any": ["我这边也帮你核对"]
+    },
+    {
+      "id": "res_ck_add_driver_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "想加个司机，我儿子刚拿驾照",
+      "draft_must_contain_any": ["可以加司机"]
+    },
+    {
+      "id": "res_sp_add_driver_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "想加个司机，我儿子刚拿驾照",
+      "draft_must_contain_any": ["可加司机", "本所将于营业日内"],
+      "draft_must_not_contain_any": ["可以加司机"]
+    },
+    {
+      "id": "res_ck_bundling_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "车险和房屋险一起买能打折吗",
+      "draft_must_contain_any": ["一般有折扣"]
+    },
+    {
+      "id": "res_sp_bundling_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "车险和房屋险一起买能打折吗",
+      "draft_must_contain_any": ["合并投保通常有优惠", "本所帮您查看"],
+      "draft_must_not_contain_any": ["一般有折扣"]
+    },
+    {
+      "id": "res_ck_add_car_handoff_flagship",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开",
+      "expected_handoff_ready": true,
+      "draft_must_contain_any": ["正式提交办公室", "服务记录", "队列"],
+      "draft_must_not_contain_any": ["本所", "加车资料已到办公室", "资料已到办公室"]
+    },
+    {
+      "id": "res_sp_add_car_handoff_flagship",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [],
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开",
+      "expected_handoff_ready": true,
+      "draft_must_contain_any": ["正式提交", "本条服务记录", "队列"],
+      "draft_must_not_contain_any": ["办公室会核对", "提交办公室", "加车资料已到办公室"]
+    },
+    {
+      "id": "res_sp_add_car_price_en_leak_guard",
+      "client_id": "socal_precision",
+      "expected_draft_language": "en",
+      "conversation_turns": [],
+      "latest_text": "I'm adding a Tesla Model 3 to my policy—roughly how much would the insurance be?",
+      "draft_must_contain_any": ["our desk will run the numbers"],
+      "draft_must_not_contain_any": ["our office will run the numbers"]
+    },
+    {
+      "id": "res_ck_add_car_price_en",
+      "client_id": "chen_kui",
+      "expected_draft_language": "en",
+      "conversation_turns": [],
+      "latest_text": "I'm adding a Tesla Model 3 to my policy—roughly how much would the insurance be?",
+      "draft_must_contain_any": ["our office will run the numbers"],
+      "draft_must_not_contain_any": ["our desk will run the numbers"]
+    }
+  ]
+}

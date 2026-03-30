@@ -391,14 +391,32 @@ def test_via_http(base_url: str, verbose: bool) -> int:
     # (year/model/delivery without zip/contact) stays collecting — use one message that
     # clears handoff under rules so persist_case returns case_id (matches real broker flow).
     try:
+        full_add_car = (
+            "客户要加一台2021 Tesla Model Y，ZIP 90210，下周一提车，主驾是我自己，"
+            "姓名张三电话4155550100，问今天能不能先出报价"
+        )
+        # Add-Car formal-submit alignment: handoff_pending alone must not create a case.
+        pre_resp = httpx.post(
+            url,
+            json={"text": full_add_car, "persist_case": True, "formal_submit": False},
+            timeout=10.0,
+        )
+        assert pre_resp.status_code == 200, f"Expected 200, got {pre_resp.status_code}: {pre_resp.text}"
+        pre = pre_resp.json()
+        assert not (pre.get("case_id") or "").strip(), "Add-Car should not persist before formal_submit"
+        assert pre.get("handoff_ready") is True, "full add-car message should be handoff_ready"
+        assert (pre.get("lifecycle_status") or "") == "handoff_pending", "expected handoff_pending pre-submit"
+
         create_resp = httpx.post(
             url,
             json={
-                "text": (
-                    "客户要加一台2021 Tesla Model Y，ZIP 90210，下周一提车，主驾是我自己，"
-                    "姓名张三电话4155550100，问今天能不能先出报价"
-                ),
+                "text": "【正式提交办公室】请按系统要点将本条加车记录交办公室处理。",
                 "persist_case": True,
+                "formal_submit": True,
+                "conversation_turns": [
+                    {"role": "customer", "text": full_add_car},
+                    {"role": "system", "text": pre.get("client_reply_draft", "")},
+                ],
             },
             timeout=10.0,
         )
@@ -406,9 +424,14 @@ def test_via_http(base_url: str, verbose: bool) -> int:
         created = create_resp.json()
         case_id = created.get("case_id")
         assert case_id, (
-            "need case_id for append test — server must return handoff_ready + persist; "
+            "need case_id for append test — formal_submit + handoff should persist; "
             "if this fails under LLM, check triage handoff for full add-car messages"
         )
+        fsa = (created.get("formal_submitted_at") or created.get("created_at") or "").strip()
+        assert fsa, "persisted add-car case should expose formal_submitted_at (or created_at)"
+        assert (created.get("formal_submitted_at") or "").strip() == (
+            created.get("created_at") or ""
+        ).strip(), "formal_submitted_at should match created_at on first persist"
 
         append_resp = httpx.post(
             f"{base_url.rstrip('/')}/api/inbox/cases/{case_id}/append-message",
@@ -425,6 +448,17 @@ def test_via_http(base_url: str, verbose: bool) -> int:
         assert "zip" in [c.lower() for c in collected], f"Expected zip in collected_fields, got {collected}"
         activity_types = [a.get("activity_type") for a in appended.get("case_activity", [])]
         assert "follow_up_added" in activity_types, f"Expected follow_up_added in activity, got {activity_types}"
+        assert (appended.get("formal_submitted_at") or "").strip() == fsa, (
+            "formal_submitted_at must not change on customer append"
+        )
+        assert (appended.get("lifecycle_status") or "") == "office_followup", (
+            "append must stay in post-submit office-followup lifecycle, not pre-submit handoff_pending"
+        )
+        draft_append = (appended.get("client_reply_draft") or "").strip()
+        assert "请在入口完成「正式提交办公室」" not in draft_append, (
+            "append reply must not nag formal submit after office-visible record exists"
+        )
+        assert (appended.get("updated_at") or "").strip(), "append must set updated_at on the case"
         if verbose:
             print("appended case:", json.dumps(appended, indent=2, ensure_ascii=False))
         print("PASS: append follow-up message to existing case")

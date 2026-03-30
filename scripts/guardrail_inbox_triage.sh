@@ -44,6 +44,13 @@ if ! PYTHONPATH=. python3 scripts/test_first_turn_continuity.py 2>/dev/null; the
 fi
 echo "  OK"
 
+echo "[3c] Pre/post-submit reply wording (two-layer oracles, LLM off)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_pre_post_submit_reply_regression.py 2>/dev/null; then
+  echo "  FAIL: Pre/post-submit reply regression failed"
+  exit 1
+fi
+echo "  OK"
+
 echo "[4] Lightweight case persistence..."
 if ! PYTHONPATH=. python3 scripts/verify_inbox_case_persistence.py; then
   echo "  FAIL: case persistence check failed"
@@ -128,6 +135,34 @@ echo "  OK"
 echo "[11] Client identity persistence (append uses case client_id)..."
 if ! PYTHONPATH=. python3 scripts/test_client_identity_append.py --direct 2>/dev/null; then
   echo "  FAIL: Client identity append test did not pass"
+  exit 1
+fi
+echo "  OK"
+
+echo "[12] Cross-client A/B stitched + handoff isolation (chen_kui vs socal_precision)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_cross_client_ab_scenarios.py 2>/dev/null; then
+  echo "  FAIL: Cross-client A/B battery did not pass"
+  exit 1
+fi
+echo "  OK"
+
+echo "[12b] Append / boundary customer-visible strings A/B (chen_kui vs socal_precision vs demo_broker)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_append_boundary_ab_scenarios.py 2>/dev/null; then
+  echo "  FAIL: Append boundary A/B battery did not pass"
+  exit 1
+fi
+echo "  OK"
+
+echo "[12c] Residual high-frequency copy A/B (add-car caveat, doc-sent tail, add_driver, bundling)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_residual_copy_ab_scenarios.py 2>/dev/null; then
+  echo "  FAIL: Residual copy A/B battery did not pass"
+  exit 1
+fi
+echo "  OK"
+
+echo "[12d] Small-batch residual copy A/B (handoff overlay phrase-map isolation)..."
+if ! LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_small_batch_phrase_map_ab_scenarios.py 2>/dev/null; then
+  echo "  FAIL: Small-batch phrase-map A/B battery did not pass"
   exit 1
 fi
 echo "  OK"

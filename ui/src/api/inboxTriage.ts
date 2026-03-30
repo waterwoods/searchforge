@@ -35,6 +35,8 @@ export interface TriageResult {
     case_status?: CaseStatus;
     created_at?: string;
     updated_at?: string;
+    /** First office-visible persist (formal submit); stable across follow-up appends */
+    formal_submitted_at?: string;
     source_text?: string;
     waiting_on?: WaitingOn;
     next_contact_by?: string;
@@ -65,8 +67,13 @@ export interface TriageResult {
     next_best_question?: string;
     /** Phase 2: collecting | handoff_pending | handed_off | office_followup */
     lifecycle_status?: 'collecting' | 'handoff_pending' | 'handed_off' | 'office_followup';
-    /** correction, already_sent, etc. — for handoff context badge */
-    follow_up_type?: string;
+    /** Add-Car: resolved current-turn intent (API may omit or null on non–Add-Car paths) */
+    add_car_turn_intent?: {
+        intent_family?: string;
+        handoff_base_key?: string | null;
+        truth_notes?: string[];
+        phrase_storage_key?: string | null;
+    } | null;
     /** Message-level history: role, text, sequence — for Recent customer messages */
     case_messages?: Array<{ role: string; text: string; sequence?: number; created_at?: string }>;
     /** Signal for UI: suggest persist when handoff_ready and meaningful */
@@ -154,6 +161,40 @@ export function clearSessionId(): void {
     }
 }
 
+/** Role C simulation: next customer line from bounded LLM (backend). */
+export interface SimulationRoleCCustomerResponse {
+    customer_message: string;
+    llm_used: boolean;
+    model: string | null;
+    turn_index: number;
+    max_turns: number;
+}
+
+export async function fetchSimulationRoleCCustomer(params: {
+    persona_id: string;
+    optional_note?: string;
+    difficulty: string;
+    max_turns: number;
+    conversation_turns: ConversationTurn[];
+    client_id?: string | null;
+}): Promise<SimulationRoleCCustomerResponse> {
+    const payload: Record<string, unknown> = {
+        persona_id: params.persona_id,
+        optional_note: (params.optional_note ?? '').trim(),
+        difficulty: params.difficulty,
+        max_turns: params.max_turns,
+        conversation_turns: params.conversation_turns,
+    };
+    if (params.client_id?.trim()) {
+        payload.client_id = params.client_id.trim();
+    }
+    const response = await request.post<SimulationRoleCCustomerResponse>(
+        '/api/inbox/simulation-role-c-customer',
+        payload,
+    );
+    return response.data;
+}
+
 export async function triageMessage(
     text: string,
     persistCase = false,
@@ -161,18 +202,31 @@ export async function triageMessage(
     softRoute?: SoftRouteIntent,
     sessionId?: string | null,
     clientId?: string | null,
+    /** Add-Car: true when customer (or broker direct paste) is performing formal office submit. */
+    formalSubmit = false,
+    /** When customer continues the same persisted record, enables post-submit reply routing. */
+    caseId?: string | null,
 ): Promise<TriageResult> {
     const payload: {
         text: string;
         persist_case: boolean;
+        formal_submit?: boolean;
         conversation_turns?: ConversationTurn[];
         soft_route?: string;
         session_id?: string;
         client_id?: string;
+        case_id?: string;
     } = {
         text: text.trim(),
         persist_case: persistCase,
     };
+    if (formalSubmit) {
+        payload.formal_submit = true;
+    }
+    const cid = (caseId ?? '').trim();
+    if (cid) {
+        payload.case_id = cid;
+    }
     if (conversationTurns && conversationTurns.length > 0) {
         payload.conversation_turns = conversationTurns;
     }

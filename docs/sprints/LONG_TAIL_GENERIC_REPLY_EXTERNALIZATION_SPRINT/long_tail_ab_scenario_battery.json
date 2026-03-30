@@ -1,0 +1,83 @@
+{
+  "version": "1",
+  "sprint": "LONG_TAIL_GENERIC_REPLY_EXTERNALIZATION_SPRINT",
+  "description": "A/B battery for long-tail generic customer-visible reply externalization (wording only).",
+  "scenarios": [
+    {
+      "id": "LTG-A-MISS-SIGN-ZH",
+      "client_id": "chen_kui",
+      "latest_text": "通知说签名还缺一栏，我不知道签哪里",
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["签名", "哪一栏"],
+      "draft_must_not_contain_any": ["本所", "营业日"]
+    },
+    {
+      "id": "LTG-B-MISS-SIGN-ZH",
+      "client_id": "socal_precision",
+      "latest_text": "通知说签名还缺一栏，我不知道签哪里",
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["签名缺口", "本所"],
+      "draft_must_not_contain_any": ["先帮你确认是哪一栏"]
+    },
+    {
+      "id": "LTG-A-UW-EN",
+      "client_id": "chen_kui",
+      "latest_text": "Underwriting needs clarification on prior claims, please respond within 5 days",
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["Underwriting still needs more information"],
+      "draft_must_not_contain_any": ["business-day basis", "our desk"]
+    },
+    {
+      "id": "LTG-B-UW-EN",
+      "client_id": "socal_precision",
+      "latest_text": "Underwriting needs clarification on prior claims, please respond within 5 days",
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["our desk", "business-day basis"],
+      "draft_must_not_contain_any": ["help get this back to them before the deadline"]
+    },
+    {
+      "id": "LTG-A-RENEW-EN",
+      "client_id": "chen_kui",
+      "use_rule_based": true,
+      "latest_text": "Policy renewal notice only, renews in 30 days",
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["renewal reminder", "nothing needs to be handled right now"],
+      "draft_must_not_contain_any": ["business-day basis", "our desk"]
+    },
+    {
+      "id": "LTG-B-RENEW-EN",
+      "client_id": "socal_precision",
+      "use_rule_based": true,
+      "latest_text": "Policy renewal notice only, renews in 30 days",
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["renewal reminder", "our desk"],
+      "draft_must_not_contain_any": ["nothing needs to be handled right now. I will reach out"]
+    },
+    {
+      "id": "LTG-B-NEG-LEAK-INFORMATIONAL",
+      "client_id": "socal_precision",
+      "use_rule_based": true,
+      "latest_text": "Proof of insurance emailed to the DMV, no action needed",
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["informational", "our desk"],
+      "draft_must_not_contain_any": ["This looks fine for now. No extra action is needed at the moment."]
+    },
+    {
+      "id": "LTG-FALLBACK-MISSING-KEY",
+      "client_id": "chen_kui",
+      "use_rule_based": true,
+      "latest_text": "Proof of insurance emailed to the DMV, no action needed",
+      "expected_draft_language": "en",
+      "draft_must_contain_any": ["This looks fine for now. No extra action is needed at the moment."],
+      "draft_must_not_contain_any": []
+    },
+    {
+      "id": "LTG-FLAGSHIP-ADD-CAR-SANITY",
+      "client_id": "chen_kui",
+      "latest_text": "想加一台2024 Honda Civic，95131，下周提车，我自己开",
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["加车", "办公室"],
+      "draft_must_not_contain_any": ["本所"]
+    }
+  ]
+}

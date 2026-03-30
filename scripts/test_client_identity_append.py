@@ -108,6 +108,7 @@ def test_via_http(base_url: str) -> int:
         json={
             "text": "2021 Tesla Model Y, 90210, 下周提车，我开",
             "persist_case": True,
+            "formal_submit": True,
             "client_id": "chen_kui",
             "conversation_turns": [
                 {"role": "customer", "text": "我想加新车报价"},

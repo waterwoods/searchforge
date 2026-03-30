@@ -98,6 +98,58 @@ def get_handoff_phrases(client_id: str | None = None) -> dict[str, dict[str, str
     return {k: v for k, v in handoff.items() if isinstance(v, dict)}
 
 
+def get_stitched_handoff_phrases(client_id: str | None = None) -> dict[str, Any]:
+    """
+    Load optional stitched customer-visible phrases from the same file as handoff_phrases.
+
+    Expected top-level key "stitched" on configs/clients/<client_id>/handoff_phrases.json.
+    Shapes (all optional):
+      - add_car_materials_sent: {\"zh\": \"...\", \"en\": \"...\"}
+      - why_still_chasing_reassurance: {\"zh\": \"...\", \"en\": \"...\"}
+      - prospective_send: {\"zh_wechat\", \"zh_screenshot\", \"zh_bundle\", \"en_wechat\", ...}
+      - append_boundary: customer-visible append / new-issue / borderline wording (merged over
+        engine defaults in triage._apply_append_case_boundary). Subkeys (all optional):
+        continuity_zh: {add_car, claim, remove_car, payment, missing_doc, premium, generic}
+        new_issue_tail_zh: {claim, billing, remove_car, premium, add_car, default}
+        continuity_en_add_car, continuity_en_other (strings)
+        new_issue_tail_en: {claim, billing, remove_car, premium, add_car, default}
+        add_car_split_hint_zh, add_car_split_hint_en, borderline_zh, borderline_en
+      - add_car_price_caveat: {\"zh\", \"en\"} — appended when add-car flow mentions ballpark/cheaper premium
+      - document_already_sent_tail: {\"zh\", \"en\"} — appended for payment/premium mixed-intent when the
+        customer says materials were already sent
+      - handoff_doc_clarification_suffix_add_car: {\"zh\", \"en\"} — suffix after add-car
+        doc clarification when the case is handoff-ready
+      - handoff_doc_clarification_suffix_other: {\"zh\", \"en\"} — suffix after non-add-car
+        doc clarification when the case is handoff-ready
+      - handoff_add_car_coverage_answer: {\"zh\", \"en\"} — short response to add-car
+        coverage-adjust side question
+      - handoff_add_car_coverage_suffix: {\"zh\", \"en\"} — handoff suffix after
+        add-car coverage side question
+      - handoff_payment_correction_urgency: {\"zh\", \"en\"} — correction+urgency answer
+        when payment/cancellation is handoff-ready
+      - handoff_add_car_contact_gap_tail: {\"zh\", \"en\"} — appended when add-car is quote-ready
+        but name/phone are still missing on the record (truthful completeness)
+
+    Client `handoff` entries may also include per-family add-car keys: `add_car_supplement`,
+    `add_car_timeline`, `add_car_quote_detail`, `add_car_correction`, plus optional `zh_alt` /
+    `en_alt` on `add_car` for bounded turn-based variety.
+
+    Post–formal-submit Add-Car routing: optional parallel keys `add_car_submitted`,
+    `add_car_supplement_submitted`, `add_car_timeline_submitted`, `add_car_quote_detail_submitted`,
+    `add_car_correction_submitted` (same zh/en shape). Stitched optional: `add_car_clarification_followup_submitted`,
+    `handoff_doc_clarification_suffix_add_car_submitted`, `handoff_add_car_coverage_suffix_submitted`,
+    `add_car_materials_sent_submitted`.
+
+    No cross-client fallback — missing keys use engine defaults in triage.py (avoids Chen Kui bleed).
+    """
+    cid = (client_id or "").strip() or get_active_client_id()
+    data = _load_json(f"configs/clients/{cid}/handoff_phrases.json")
+    if not data or not isinstance(data, dict):
+        return {}
+    stitched = data.get("stitched")
+    return stitched if isinstance(stitched, dict) else {}
+
+
 def get_workflow_fallbacks() -> dict[str, str]:
     """
     Load common workflow fallbacks from configs/common/workflow_defaults.json.
@@ -165,15 +217,15 @@ def get_reply_templates(client_id: str | None = None) -> dict[str, Any]:
 # Defaults for add_car next-step prompts (used when config missing)
 _ADD_CAR_RULES_DEFAULTS: dict[str, dict[str, str]] = {
     "ask_vehicle": {
-        "zh": "先把年份和车型发我，我就能帮你算。",
-        "en": "Send me the year and make/model first so I can run the quote.",
+        "zh": "年份和车型发我，我好继续报价。",
+        "en": "Send year and make/model so I can run the quote.",
     },
     "ask_zip": {
-        "zh": "先把地址邮编发我，我就能帮你算。",
-        "en": "Send me the zip or address first and I will run the quote.",
+        "zh": "邮编发我一下，我好往下报价。",
+        "en": "Send the zip so I can run the quote.",
     },
     "ask_delivery_driver": {
-        "zh": "提车日期和主要驾驶人发我一下，我好安排报价。",
+        "zh": "提车日和主要驾驶人发我一下，我好安排报价。",
         "en": "Send me the delivery date and main driver so I can prepare the quote.",
     },
     "ask_driver_only": {
@@ -359,6 +411,42 @@ def get_ui_copy(client_id: str | None = None) -> dict[str, Any]:
         "handoff_verify_with_office_note_add_car",
         "handoff_office_followup_timing_add_car",
         "customer_entry_submit_add_car",
+        # SERVICE_ENTRY_PORTAL_CLARITY_SPRINT — portal hierarchy + labels
+        "portal_brand_tagline",
+        "portal_hero_title",
+        "portal_service_tagline",
+        "portal_empty_headline",
+        "portal_empty_secondary",
+        "portal_choose_path_label",
+        "portal_thread_heading",
+        "portal_customer_bubble_label",
+        "portal_office_bubble_label",
+        "portal_loading_status",
+        "portal_progress_annotation",
+        "portal_generic_progress_title",
+        "portal_submit_followup",
+        "portal_add_car_quick_title",
+        "portal_add_car_quick_hint",
+        "portal_add_car_quick_cta",
+        "portal_session_restored_toast",
+        "portal_closure_reply_summary_label",
+        # ADD_CAR_TASK_FIRST_LESS_CHAT_FINAL_POLISH_SPRINT — post-handoff task-first chrome
+        "portal_post_handoff_thread_heading",
+        "portal_post_handoff_thread_hint",
+        "portal_post_handoff_thread_collapse_label",
+        "portal_post_handoff_next_section_label",
+        "portal_post_handoff_closure_section_label",
+        "portal_tab_customer_label",
+        "portal_tab_customer_suffix",
+        "portal_tab_office_suffix",
+        "office_workbench_subtitle",
+        "office_workbench_document_title",
+        "office_workbench_recent_card_title",
+        "office_workbench_recent_card_extra",
+        "office_workbench_paste_card_title",
+        "office_workbench_empty_queue_hint",
+        "portal_input_placeholder_empty",
+        "portal_input_placeholder_continue",
     ):
         val = data.get(key)
         if isinstance(val, str) and val.strip():

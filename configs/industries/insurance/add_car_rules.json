@@ -2,19 +2,19 @@
   "version": "1",
   "description": "Add-Car Quote next-step prompts. Editable by business users via Rules Center.",
   "ask_vehicle": {
-    "zh": "先把年份和车型发我，我就能继续帮您报价。",
-    "en": "Send me the year and make/model first so I can run the quote."
+    "zh": "请先发年份和车型，办公室报价前需要这两项。",
+    "en": "Send year and make/model first—the office needs both to quote."
   },
   "ask_zip": {
-    "zh": "先把邮编发我，我就能继续帮您报价。",
-    "en": "Send me the zip or address first and I will run the quote."
+    "zh": "邮编发我一下，好整理进办公室报价单。",
+    "en": "Send the zip so we can add it to the office quote file."
   },
   "ask_delivery_driver": {
-    "zh": "提车日期和主要驾驶人发我一下，我好安排报价。",
-    "en": "Send me the delivery date and main driver so I can prepare the quote."
+    "zh": "提车日和主要驾驶人发我，好一并交给办公室报价。",
+    "en": "Send the delivery date and main driver so we can hand a complete file to the office."
   },
   "ask_driver_only": {
-    "zh": "主要驾驶人发我一下，我好安排报价。",
-    "en": "Send me the main driver so I can prepare the quote."
+    "zh": "主要驾驶人发我一下，办公室报价前还缺这项。",
+    "en": "Send the main driver—the office still needs that for the quote."
   }
 }

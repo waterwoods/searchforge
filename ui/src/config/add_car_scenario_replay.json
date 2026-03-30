@@ -1,0 +1,34 @@
+{
+  "version": "1",
+  "description": "Add-Car flagship scenario assets for Simulation tab — A/B fixed scripts. Role C (controlled LLM) and Role D (configurable scripted) are built in the UI (roleCReplay.ts, roleDReplay.ts) and omitted here.",
+  "scenarios": [
+    {
+      "id": "ADD_CAR_A",
+      "role": "A",
+      "title": "标准加车（顺畅）",
+      "subtitle": "Happy path：分轮补齐关键字段",
+      "risk": "标准",
+      "placeholder": false,
+      "turns": [
+        { "text": "我想加一台新车报价。" },
+        { "text": "2024 年宝马 X5，邮编 90210，下周五提车。" },
+        { "text": "主驾是我本人。这些够了吗？" }
+      ]
+    },
+    {
+      "id": "ADD_CAR_B",
+      "role": "B",
+      "title": "高风险加车（材料/家庭/追问）",
+      "subtitle": "含「已发过材料」、配偶车辆、多轮追问",
+      "risk": "高风险",
+      "placeholder": false,
+      "turns": [
+        { "text": "帮我给我配偶新买的那台 2023 Lexus RX 加险，下周提车。" },
+        { "text": "驾照复印件我上周已经在微信发过了，你们那边收到了吗？" },
+        { "text": "邮编 91776。VIN 我晚点拍给你可以吗？" },
+        { "text": "另外想问一下，我现在保单里另一台旧车能不能拿掉重新报？" },
+        { "text": "先专注把这台 RX 加进去吧，另一台我之后再单独说。" }
+      ]
+    }
+  ]
+}

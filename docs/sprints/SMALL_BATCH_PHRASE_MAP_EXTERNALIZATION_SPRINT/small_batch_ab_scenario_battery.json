@@ -1,0 +1,141 @@
+{
+  "version": "1",
+  "description": "Small-batch residual copy A/B battery: handoff doc-clarification suffix, add-car coverage handoff overlay, correction+urgency payment handoff overlay, fallback defaults, and flagship add-car regression.",
+  "scenarios": [
+    {
+      "id": "sb_ck_doc_clar_suffix_add_car_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，garaging proof 是什么意思",
+      "draft_must_contain_any": [
+        "正式提交办公室",
+        "队列中跟进"
+      ],
+      "draft_must_not_contain_any": [
+        "本所会尽快处理"
+      ]
+    },
+    {
+      "id": "sb_sp_doc_clar_suffix_add_car_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，garaging proof 是什么意思",
+      "draft_must_contain_any": [
+        "正式提交本所",
+        "队列中跟进",
+        "营业日内联系您"
+      ],
+      "draft_must_not_contain_any": [
+        "提交办公室跟进"
+      ]
+    },
+    {
+      "id": "sb_ck_add_car_coverage_handoff_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "draft_must_contain_any": [
+        "保额可以调整，报价时办公室会跟您确认",
+        "正式提交办公室",
+        "队列"
+      ],
+      "draft_must_not_contain_any": [
+        "本所队列"
+      ]
+    },
+    {
+      "id": "sb_sp_add_car_coverage_handoff_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "draft_must_contain_any": [
+        "保额可调整",
+        "正式提交本所",
+        "队列"
+      ],
+      "draft_must_not_contain_any": [
+        "办公室会尽快出价",
+        "提交办公室"
+      ]
+    },
+    {
+      "id": "sb_sp_payment_correction_urgency_zh",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "conversation_turns": [
+        {
+          "role": "customer",
+          "text": "账单说今天不处理就要停保"
+        }
+      ],
+      "latest_text": "其实已经付了，那我现在最要紧做什么？",
+      "expected_handoff_ready": true,
+      "draft_must_contain_any": [
+        "等本所确认付款是否到账",
+        "营业日内反馈"
+      ],
+      "draft_must_not_contain_any": [
+        "等办公室确认付款"
+      ]
+    },
+    {
+      "id": "sb_ck_payment_correction_urgency_zh",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "conversation_turns": [
+        {
+          "role": "customer",
+          "text": "账单说今天不处理就要停保"
+        }
+      ],
+      "latest_text": "其实已经付了，那我现在最要紧做什么？",
+      "expected_handoff_ready": true,
+      "draft_must_contain_any": [
+        "等办公室确认付款是否到账"
+      ],
+      "draft_must_not_contain_any": [
+        "等本所确认付款是否到账"
+      ]
+    },
+    {
+      "id": "sb_demo_fallback_coverage_suffix_default",
+      "client_id": "demo_broker",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "draft_must_contain_any": [
+        "报价时办公室会跟您确认",
+        "正式提交办公室",
+        "队列"
+      ],
+      "draft_must_not_contain_any": [
+        "本所队列"
+      ]
+    },
+    {
+      "id": "sb_sp_negative_no_chen_kui_office_leak",
+      "client_id": "socal_precision",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "draft_must_not_contain_any": [
+        "办公室",
+        "我这边"
+      ]
+    },
+    {
+      "id": "sb_ck_flagship_add_car_handoff_regression",
+      "client_id": "chen_kui",
+      "expected_draft_language": "zh",
+      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开",
+      "expected_handoff_ready": true,
+      "draft_must_contain_any": [
+        "正式提交办公室",
+        "服务记录",
+        "队列"
+      ],
+      "draft_must_not_contain_any": [
+        "加车资料已到办公室",
+        "资料已到办公室"
+      ]
+    }
+  ]
+}

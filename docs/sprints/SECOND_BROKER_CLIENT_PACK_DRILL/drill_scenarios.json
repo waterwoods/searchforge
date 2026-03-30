@@ -1,0 +1,125 @@
+{
+  "version": "1",
+  "client_id": "socal_precision",
+  "description": "Same-industry second-broker drill: multi-step conversations + config surface checks.",
+  "scenarios": [
+    {
+      "id": "drill_client_config_surfaces",
+      "description": "UI/handoff config loads; no Chen Kui wording in pack-owned strings.",
+      "type": "config_check",
+      "expect_ui_contains_any": ["南加", "事务所", "营业日"],
+      "expect_ui_must_not_contain": ["陈奎"]
+    },
+    {
+      "id": "drill_add_car_clean_handoff",
+      "description": "Add-car one-shot with CA zip + driver → handoff uses client handoff tone.",
+      "steps": [
+        {
+          "conversation_turns": [],
+          "latest_text": "我刚订了2024 Toyota Camry，下周五提车，邮编91745，主要驾驶人是我本人。",
+          "expect": {
+            "handoff_ready": true,
+            "issue_category": "customer_question",
+            "draft_contains_any": ["营业日", "本所", "加车"],
+            "draft_must_not_contain": ["陈奎"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "drill_add_car_partial_then_complete",
+      "description": "Turn 1 incomplete; turn 2 completes → handoff with second-broker phrasing.",
+      "steps": [
+        {
+          "conversation_turns": [],
+          "latest_text": "我想加一台新车，先问一下流程。",
+          "expect": {
+            "handoff_ready": false,
+            "draft_must_not_contain": ["陈奎"]
+          }
+        },
+        {
+          "conversation_turns": [
+            { "role": "customer", "text": "我想加一台新车，先问一下流程。" },
+            { "role": "system", "text": "请先提供年份车型、提车日、邮编和驾驶人，本所好安排核价。" }
+          ],
+          "latest_text": "2023 Honda Accord，下周二提车，zip 92626，我自己开。",
+          "expect": {
+            "handoff_ready": true,
+            "draft_contains_any": ["营业日", "本所"],
+            "draft_must_not_contain": ["陈奎"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "drill_add_car_correction",
+      "description": "Customer corrects zip after first bundle.",
+      "steps": [
+        {
+          "conversation_turns": [],
+          "latest_text": "加车 2022 Mazda CX-5 明天提车 邮编90001 我老公开",
+          "expect": { "handoff_ready": true }
+        },
+        {
+          "conversation_turns": [
+            { "role": "customer", "text": "加车 2022 Mazda CX-5 明天提车 邮编90001 我老公开" },
+            { "role": "system", "text": "收到，已提交本所。" }
+          ],
+          "latest_text": "不好意思邮编写错了，应该是92618。",
+          "expect": {
+            "handoff_ready": true,
+            "draft_contains_any": ["本所", "营业日", "更正", "收到", "办公室"],
+            "draft_must_not_contain": ["陈奎"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "drill_talk_to_agent",
+      "description": "Free-text human request → customer_requested_human draft from client pack.",
+      "steps": [
+        {
+          "conversation_turns": [],
+          "latest_text": "我要转接人工，有急事。",
+          "expect": {
+            "handoff_ready": true,
+            "issue_category": "customer_requested_human",
+            "draft_contains_any": ["事务所", "营业日"],
+            "draft_must_not_contain": ["陈奎"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "drill_add_car_first_turn_template",
+      "description": "Vague add-car interest — reply_overrides may be bypassed when triage stitches premium caveats (see triage.py office line leak).",
+      "steps": [
+        {
+          "conversation_turns": [],
+          "latest_text": "刚定了新车，想问问保费大概多少。",
+          "expect": {
+            "handoff_ready": false,
+            "draft_contains_any": ["车型", "年份", "报价"],
+            "draft_must_not_contain": ["陈奎"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "drill_materials_sent_note",
+      "description": "Customer claims materials sent — may hit core hardcoded warm path (portability leak check).",
+      "steps": [
+        {
+          "conversation_turns": [],
+          "latest_text": "2025 Tesla Model 3 下周提车 95131 我开 VIN 已发你微信了行驶证也发了",
+          "expect": {
+            "handoff_ready": true,
+            "draft_contains_any": ["办公室", "本所", "材料", "加车"],
+            "note": "Core branch may inject 办公室 even for socal_precision — see portability report."
+          }
+        }
+      ]
+    }
+  ]
+}

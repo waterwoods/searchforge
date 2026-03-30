@@ -22,7 +22,7 @@ export const AppLayout: React.FC = () => {
     const location = useLocation();
     const isUnifiedIntake = location.pathname === UNIFIED_INTAKE_PATH;
     const { uiCopy } = useClientConfig();
-    const appTitle = uiCopy.app_title ?? '保险经纪人智能助手';
+    const appTitle = uiCopy.app_title ?? '金盾·陈魁团队 · 客户统一受理';
 
     // --- CONTEXT-AWARE LOGIC ---
     let rightPanelContent;

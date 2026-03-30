@@ -299,7 +299,37 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
     if "case_attachments" not in normalized or not isinstance(normalized.get("case_attachments"), list):
         normalized["case_attachments"] = []
 
+    # Formal submit observability: backfill for legacy JSON before formal_submitted_at existed
+    fsa = str(normalized.get("formal_submitted_at") or "").strip()
+    if not fsa:
+        ca = str(normalized.get("created_at") or "").strip()
+        if ca:
+            normalized["formal_submitted_at"] = ca
+
     return normalized
+
+
+def _normalize_add_car_turn_intent_payload(raw: Any) -> dict[str, Any] | None:
+    """Bounded API/case copy of Add-Car intent (Truth→Intent observability)."""
+    if not isinstance(raw, dict):
+        return None
+    fam = str(raw.get("intent_family") or "").strip()
+    hbk = str(raw.get("handoff_base_key") or "").strip()
+    if not fam or not hbk:
+        return None
+    notes = raw.get("truth_notes")
+    out_notes: list[str] = []
+    if isinstance(notes, list):
+        out_notes = [str(x) for x in notes if str(x).strip()]
+    out: dict[str, Any] = {
+        "intent_family": fam,
+        "handoff_base_key": hbk,
+        "truth_notes": out_notes,
+    }
+    psk = str(raw.get("phrase_storage_key") or "").strip()
+    if psk:
+        out["phrase_storage_key"] = psk
+    return out
 
 
 def _validate_triage_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -318,6 +348,8 @@ def _validate_triage_result(result: dict[str, Any]) -> dict[str, Any]:
         validated[field] = result[field]
     if not isinstance(validated["manual_followup_needed"], bool):
         raise ValueError("manual_followup_needed must be boolean")
+    if ac := _normalize_add_car_turn_intent_payload(result.get("add_car_turn_intent")):
+        validated["add_car_turn_intent"] = ac
     return validated
 
 
@@ -394,6 +426,8 @@ def save_case(
         "case_status": normalized_status,
         "created_at": timestamp,
         "updated_at": timestamp,
+        # First moment this record became office-visible (formal persist). Never moved on append/updates.
+        "formal_submitted_at": timestamp,
         "source_text": source,
         "case_messages": case_messages,
         "waiting_on": "none",
@@ -450,6 +484,12 @@ def save_case(
     cases = [case, *payload["cases"]]
     payload["cases"] = _sort_recent(cases)[:MAX_STORED_CASES]
     _write_payload(payload)
+    try:
+        from services.fiqa_api.db.dual_write import maybe_dual_write_new_case
+
+        maybe_dual_write_new_case(case)
+    except Exception:
+        pass
     return case
 
 
@@ -562,6 +602,12 @@ def update_case_customer(
         return None
     payload["cases"] = _sort_recent(payload["cases"])
     _write_payload(payload)
+    try:
+        from services.fiqa_api.db.dual_write import maybe_dual_write_case_append
+
+        maybe_dual_write_case_append(updated_case)
+    except Exception:
+        pass
     return updated_case
 
 
@@ -827,6 +873,10 @@ def append_follow_up_message(
             normalized_case["collection_stage"] = cs
         if (ft := (triage_result.get("follow_up_type") or "").strip()):
             normalized_case["follow_up_type"] = ft
+        if (ac := _normalize_add_car_turn_intent_payload(triage_result.get("add_car_turn_intent"))):
+            normalized_case["add_car_turn_intent"] = ac
+        elif "add_car_turn_intent" in normalized_case:
+            normalized_case.pop("add_car_turn_intent", None)
         if (cb := (triage_result.get("case_boundary") or "").strip()) in (
             "new_issue",
             "borderline",
@@ -855,4 +905,10 @@ def append_follow_up_message(
         return None
     payload["cases"] = _sort_recent(payload["cases"])
     _write_payload(payload)
+    try:
+        from services.fiqa_api.db.dual_write import maybe_dual_write_case_append
+
+        maybe_dual_write_case_append(updated_case)
+    except Exception:
+        pass
     return updated_case

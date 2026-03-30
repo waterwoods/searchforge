@@ -1,0 +1,131 @@
+{
+  "version": "1",
+  "description": "A/B isolation drills: chen_kui vs socal_precision on Add-Car and handoff-adjacent stitched paths.",
+  "clients": ["chen_kui", "socal_precision"],
+  "scenarios": [
+    {
+      "id": "ab_01_a_add_car_clean",
+      "client_id": "chen_kui",
+      "latest_text": "2024 Tesla Model Y，94102，下周提车，我开",
+      "conversation_turns": [],
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "ab_02_b_add_car_clean",
+      "client_id": "socal_precision",
+      "latest_text": "2024 Tesla Model Y，94102，下周提车，我开",
+      "conversation_turns": [],
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所"],
+      "draft_must_not_contain_any": ["陈奎", "陈奎办公室"]
+    },
+    {
+      "id": "ab_03_a_add_car_materials_sent",
+      "client_id": "chen_kui",
+      "conversation_turns": [
+        { "role": "customer", "text": "2024 Toyota Camry，92705，下周三提车，我开" }
+      ],
+      "latest_text": "发你微信了",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["办公室", "材料"]
+    },
+    {
+      "id": "ab_04_b_add_car_materials_sent",
+      "client_id": "socal_precision",
+      "conversation_turns": [
+        { "role": "customer", "text": "2024 Toyota Camry，92705，下周三提车，我开" }
+      ],
+      "latest_text": "发你微信了",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所"],
+      "draft_must_not_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "ab_05_a_add_car_ask_send",
+      "client_id": "chen_kui",
+      "latest_text": "2024 Honda Accord 92705 下周三提车 我老婆开，declaration page 要不要先发你看看",
+      "conversation_turns": [],
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["办公室", "整理"]
+    },
+    {
+      "id": "ab_06_b_add_car_ask_send",
+      "client_id": "socal_precision",
+      "latest_text": "2024 Honda Accord 92705 下周三提车 我老婆开，declaration page 要不要先发你看看",
+      "conversation_turns": [],
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所"],
+      "draft_must_not_contain_any": ["整理给办公室", "陈奎"]
+    },
+    {
+      "id": "ab_07_a_add_car_correction",
+      "client_id": "chen_kui",
+      "conversation_turns": [
+        { "role": "customer", "text": "2024 camry 92705 周三提车 我开" }
+      ],
+      "latest_text": "不是camry，是accord",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["这台车", "办公室"]
+    },
+    {
+      "id": "ab_08_b_add_car_correction",
+      "client_id": "socal_precision",
+      "conversation_turns": [
+        { "role": "customer", "text": "2024 camry 92705 周三提车 我开" }
+      ],
+      "latest_text": "不是camry，是accord",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所", "这台车"],
+      "draft_must_not_contain_any": ["陈奎"]
+    },
+    {
+      "id": "ab_09_a_append_new_issue_zh",
+      "client_id": "chen_kui",
+      "mode": "append",
+      "existing_source_text": "[客户] 2024 BMW X5 94102 下周提车 我开\n[系统] 好的。",
+      "latest_text": "另外我账单好像多扣了一笔，能帮我看下吗",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["办公室", "账单"]
+    },
+    {
+      "id": "ab_10_b_append_new_issue_zh",
+      "client_id": "socal_precision",
+      "mode": "append",
+      "existing_source_text": "[客户] 2024 BMW X5 94102 下周提车 我开\n[系统] 好的。",
+      "latest_text": "另外我账单好像多扣了一笔，能帮我看下吗",
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["账单", "本所"],
+      "draft_must_not_contain_any": ["办公室", "陈奎"]
+    },
+    {
+      "id": "ab_11_a_talk_to_agent",
+      "client_id": "chen_kui",
+      "latest_text": "我想联系陈奎办公室",
+      "conversation_turns": [],
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["陈奎", "办公室"]
+    },
+    {
+      "id": "ab_12_b_talk_to_agent",
+      "client_id": "socal_precision",
+      "latest_text": "我要找人工，请尽快回我",
+      "conversation_turns": [],
+      "expected_handoff_ready": true,
+      "expected_draft_language": "zh",
+      "draft_must_contain_any": ["本所", "营业日"],
+      "draft_must_not_contain_any": ["陈奎", "陈奎办公室", "办公室"]
+    }
+  ]
+}

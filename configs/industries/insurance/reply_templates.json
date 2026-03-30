@@ -7,8 +7,8 @@
       "en": "This notice means the policy could cancel. The most important thing right now is to send me the notice and any payment confirmation—I will check; if it is still unpaid we will handle it today."
     },
     "add_car": {
-      "zh": "可以先帮你看这台车的报价。把车子的年份、车型、VIN（有的话）、提车日期、地址邮编和主要驾驶人发我，我先帮你算。",
-      "en": "I can start a quote for the new car. Send me the year, make/model, VIN if you have it, delivery date, zip or address, and main driver and I will check it."
+      "zh": "可以帮您走加车报价流程。请补：年份、车型、VIN（有的话）、提车日、邮编、主要驾驶人。",
+      "en": "I can run this as an add-car quote for our office. Send year, make/model, VIN if you have it, delivery date, zip, and main driver."
     },
     "payment_lapse_expiration": {
       "zh": "这看起来是付款出了问题。现在最关键的是把最新通知或付款截图发我，我先帮你确认；如果还没付，今天尽快处理，避免停保。",
@@ -17,12 +17,28 @@
     "missing_document": {
       "zh_with_item": "现在文件里还缺 {item_text}。请再发我一次；如果你之前已经发过，也跟我说一声，我这边帮你核对，核对好后就能往下推。",
       "zh_without_item": "现在文件里还缺资料。请把资料再发我一次；如果你之前已经发过，也跟我说一声，我这边帮你核对。",
-      "zh_already_sent_with_item": "您说发过了，我这边帮你核对。把完整通知和 {item_text} 发我，核对好后就能往下推。",
-      "zh_already_sent_without_item": "您说发过了，我这边帮你核对。把完整通知和您发过的材料发我，核对好后就能往下推。",
+      "zh_already_sent_with_item": "收到。办公室会核对已有材料（含 {item_text}），一般不用重复整套发；若还缺项会明确告诉您。",
+      "zh_already_sent_without_item": "收到。办公室会核对您已发的材料，一般不用重复整套发；若还缺项会明确告诉您。",
       "en_with_item": "They still need the {item_text}. Please send {pronoun} again when you can, and if you already sent {pronoun}, tell me so I can check on my side—once verified we can move forward.",
       "en_without_item": "They still need one document on this file. Please send it again when you can, and if you already sent it, tell me so I can check on my side.",
-      "en_already_sent_with_item": "You said you already sent it—I will check on my side. Send me the full notice and the {item_text} so we can verify and move forward.",
-      "en_already_sent_without_item": "You said you already sent it—I will check on my side. Send me the full notice and what you sent so we can verify and move forward."
+      "en_already_sent_with_item": "Got it. Our office will verify what is already on file (including the {item_text}). You usually do not need to resend everything—we will only ask if something is still missing.",
+      "en_already_sent_without_item": "Got it. Our office will verify what you already sent. You usually do not need to resend everything—we will only ask if something is still missing."
+    },
+    "missing_signature": {
+      "zh": "看起来还有签名没完成。把要签名的那一页发我，我先帮你确认是哪一栏。",
+      "en": "It looks like one signature is still missing. Send me the page they flagged and I will help confirm what still needs to be signed."
+    },
+    "underwriting_followup": {
+      "zh": "保险公司这边还要补一些资料。把通知里要的内容发我，我整理后尽快帮你回复。",
+      "en": "Underwriting still needs more information. Send me the requested details and I will help get this back to them before the deadline."
+    },
+    "renewal_reminder": {
+      "zh": "这是续保提醒，目前先不用处理。到需要确认方案时我再联系你。",
+      "en": "This is just a renewal reminder, so nothing needs to be handled right now. I will reach out when it is time to review options."
+    },
+    "informational": {
+      "zh": "这个目前看起来没问题，先不用额外处理。有新内容我再跟你说。",
+      "en": "This looks fine for now. No extra action is needed at the moment."
     },
     "english_notice_confusion": {
       "zh": "英文通知有些术语看不懂很正常。把完整通知或更清楚的照片发我，我先帮你看一下，再告诉你重点和下一步怎么处理。",
@@ -47,6 +63,14 @@
     "premium_review_reassurance": {
       "zh": "一般有办法的。我先帮你看这次保费为什么变高，再看看有没有能调整的地方。把现在保单和最新账单发我（先发其中一个也行），我先帮你核对。",
       "en": "There are usually options. I can review why the premium went up and see what can realistically be adjusted. Send me the current policy page or latest bill (either one works), and I will check."
+    },
+    "add_driver": {
+      "zh": "好的，可以加司机。把要加的是哪辆车、驾驶人信息和驾照发我，我先帮你确认下一步。",
+      "en": "Got it, I can help add a driver. Send me which vehicle, the driver's info and license, and I will confirm the next step."
+    },
+    "bundling": {
+      "zh": "房屋险和车险一起买一般有折扣。把您现在的车险和房屋险（如果有）情况发我，我先帮你看有没有合适的方案。",
+      "en": "Bundling home and auto usually gets a discount. Send me your current auto and home (if any) policy info and I will check what options we have."
     }
   }
 }
