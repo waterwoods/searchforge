@@ -117,6 +117,9 @@ def _quote_detail_question(msg: str) -> bool:
         "三者",
         "全险",
         "半险",
+        "险种",
+        "条款",
+        "保费",
         "liability",
         "comprehensive",
         "collision",
@@ -135,11 +138,15 @@ def _timeline_question(msg: str) -> bool:
     if not raw:
         return False
     ml = raw.lower()
-    if _office_receipt_question(raw):
-        return False
+    # Do not gate on _office_receipt_question first: phrases like "多久能收到报价？" are timeline,
+    # not materials-receipt checks (that heuristic used to suppress timeline incorrectly).
     timeline_markers = (
         "多久",
+        "这么久",
+        "还要等",
+        "几天了",
         "什么时候",
+        "啥时候",
         "几天",
         "要等",
         "流程",
@@ -149,6 +156,14 @@ def _timeline_question(msg: str) -> bool:
         "多久能",
         "大概多久",
         "何时",
+        "准信",
+        "给我回复",
+        "回我",
+        "回电",
+        "跟进",
+        "没回",
+        "没消息",
+        "没动静",
         "how long",
         "when will",
         "how soon",
@@ -227,17 +242,7 @@ def resolve_add_car_turn_intent(
             truth_notes=tuple(notes),
         )
 
-    # 2) Office receipt / submit visibility — before materials, so "我发了，你们收到了吗" → receipt
-    if _office_receipt_question(msg):
-        if not post:
-            notes.append("office_receipt_no_formal_submit_copy_must_not_claim_office_has_record")
-        return ResolvedAddCarIntent(
-            intent_family=INTENT_OFFICE_RECEIPT_QUESTION,
-            handoff_base_key="add_car_office_receipt",
-            truth_notes=tuple(notes),
-        )
-
-    # 3) Quote detail
+    # 2) Quote detail (before timeline/receipt so product terms win on mixed lines)
     if _quote_detail_question(msg):
         if reply_truth_context and (reply_truth_context.get("still_needed_fields") or []):
             notes.append("still_needed_present_quote_detail_must_not_imply_full_quote_ready")
@@ -247,12 +252,36 @@ def resolve_add_car_turn_intent(
             truth_notes=tuple(notes),
         )
 
-    # 4) Timeline / process
+    # 3) Timeline / process — before office receipt so "多久能收到报价" is timeline, not receipt
     if _timeline_question(msg):
         return ResolvedAddCarIntent(
             intent_family=INTENT_TIMELINE_QUESTION,
             handoff_base_key="add_car_timeline",
             truth_notes=tuple(notes),
+        )
+
+    # 4) Office receipt / submit visibility (materials / queue visibility — not quote-arrival timing)
+    if _office_receipt_question(msg):
+        if not post:
+            notes.append("office_receipt_no_formal_submit_copy_must_not_claim_office_has_record")
+        return ResolvedAddCarIntent(
+            intent_family=INTENT_OFFICE_RECEIPT_QUESTION,
+            handoff_base_key="add_car_office_receipt",
+            truth_notes=tuple(notes),
+        )
+
+    # 4b) Follow-up type from triage (message-only classifiers can miss messy long-thread lines)
+    if fut in ("urgency_question", "next_step_question"):
+        return ResolvedAddCarIntent(
+            intent_family=INTENT_TIMELINE_QUESTION,
+            handoff_base_key="add_car_timeline",
+            truth_notes=tuple(notes + [f"follow_up_{fut}"]),
+        )
+    if fut == "clarification_question":
+        return ResolvedAddCarIntent(
+            intent_family=INTENT_QUOTE_DETAIL_QUESTION,
+            handoff_base_key="add_car_quote_detail",
+            truth_notes=tuple(notes + ["follow_up_clarification_question"]),
         )
 
     # 5) Materials sent (claim only — no primary receipt question)
@@ -282,10 +311,11 @@ def resolve_add_car_turn_intent(
             )
         q_markers = ("?", "？", "吗", "么", "怎么", "为什么", "哪", "是否")
         if any(m in msg for m in q_markers) and len(msg) > 18:
+            # Prefer supplement over generic_followup — reduces INTENT_LATE_GENERIC / INTENT_STICKY_GENERIC in Role C
             return ResolvedAddCarIntent(
-                intent_family=INTENT_GENERIC_FOLLOWUP,
-                handoff_base_key="add_car",
-                truth_notes=tuple(notes),
+                intent_family=INTENT_SUPPLEMENT_INFO,
+                handoff_base_key="add_car_supplement",
+                truth_notes=tuple(notes + ["new_info_long_question_supplement_not_generic"]),
             )
         return ResolvedAddCarIntent(
             intent_family=INTENT_SUPPLEMENT_INFO,

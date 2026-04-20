@@ -72,6 +72,14 @@
 | **How to fix** | Add `ALLOWED_ORIGINS=https://<real-vercel-url>.vercel.app` to `.env.cloudrun`; redeploy backend |
 | **Avoid next time** | After first Vercel deploy, copy exact URL (no trailing slash) into ALLOWED_ORIGINS. |
 
+### 6a. “Old tab has data, new tab shows zero” (workbench)
+
+| Symptom | One browser tab shows cases; a **new** tab on a **different** URL shows an empty queue |
+|---------|----------------------------------------------------------------------------------------|
+| **Likely cause** | New tab’s **Origin** is not in `ALLOWED_ORIGINS` → `GET /api/inbox/cases` fails CORS → list stays at initial empty state; old tab still holds earlier successful fetch in React state. |
+| **Quick server-side check** | `curl -sS -D - -o /dev/null -X OPTIONS "https://<api>/api/inbox/cases?limit=1" -H "Origin: https://<page-origin>" -H "Access-Control-Request-Method: GET"` — disallowed origins often return **400** on preflight; allowed return **200** with `access-control-allow-origin` matching the Origin. |
+| **Fix** | Use the production alias URL (see Deployment Playbook), or add the deployment hostname to `ALLOWED_ORIGINS` in `.env.cloudrun` and redeploy backend so the allowlist is not narrower than live. |
+
 ---
 
 ## 7. Backend/Frontend Version Mismatch

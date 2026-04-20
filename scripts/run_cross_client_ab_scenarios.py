@@ -7,6 +7,7 @@ against triage_conversation / triage_for_append with explicit client_id (no reli
 
 Usage:
   LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_cross_client_ab_scenarios.py [--verbose]
+  LLM_GENERATION_ENABLED=0 PYTHONPATH=. python3 scripts/run_cross_client_ab_scenarios.py --client socal_precision
 """
 from __future__ import annotations
 
@@ -106,7 +107,14 @@ def run_one(s: dict, verbose: bool) -> tuple[bool, str | None]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument(
+        "--client",
+        metavar="CLIENT_ID",
+        default="",
+        help="If set, run only scenarios whose client_id matches (short second-client pack).",
+    )
     args = ap.parse_args()
+    client_filter = (args.client or "").strip()
 
     if not BATTERY.exists():
         print(f"ERROR: battery missing: {BATTERY}", file=sys.stderr)
@@ -118,6 +126,15 @@ def main() -> int:
         print("ERROR: no scenarios in battery", file=sys.stderr)
         return 1
 
+    if client_filter:
+        scenarios = [s for s in scenarios if (s.get("client_id") or "").strip() == client_filter]
+        if not scenarios:
+            print(
+                f"ERROR: no scenarios for client_id={client_filter!r} in battery",
+                file=sys.stderr,
+            )
+            return 1
+
     failed = 0
     for s in scenarios:
         ok, err = run_one(s, args.verbose)
@@ -126,7 +143,8 @@ def main() -> int:
             print(f"FAIL {s.get('id')}: {err}")
 
     n = len(scenarios)
-    print(f"Cross-client A/B battery: {n - failed}/{n} passed")
+    suffix = f" (client={client_filter})" if client_filter else ""
+    print(f"Cross-client A/B battery: {n - failed}/{n} passed{suffix}")
     return 0 if failed == 0 else 1
 
 

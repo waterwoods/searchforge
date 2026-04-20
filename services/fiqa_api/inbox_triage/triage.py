@@ -7,6 +7,7 @@ Loads markers and handoff phrases from config when available; falls back to hard
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -20,9 +21,26 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_document_item_markers,
     get_handoff_phrases,
     get_insurance_markers,
+    get_intake_evolution_variant,
+    get_v6_auto_input_variant,
     get_reply_templates,
     get_stitched_handoff_phrases,
     get_workflow_fallbacks,
+)
+from services.fiqa_api.inbox_triage.case_draft_engine import (
+    augment_next_ask_with_variant,
+    build_generic_case_draft,
+    build_v4_case_draft_bundle,
+    build_v4_confirmation_client_reply_from_bundle,
+    estimate_v4_error_risk_score,
+    estimate_v5_handoff_risk_score,
+    evaluate_v5_case_usable,
+)
+from services.fiqa_api.inbox_triage.field_strategy import should_skip_user_prompt_for_missing_field
+from services.fiqa_api.inbox_triage.add_car_field_contract import (
+    dedupe_preserve_order,
+    quote_ready_matches_still_needed,
+    validate_add_car_field_lists,
 )
 from services.fiqa_api.inbox_triage.add_car_intent import (
     INTENT_CORRECTION,
@@ -36,10 +54,33 @@ from services.fiqa_api.inbox_triage.add_car_intent import (
     nudge_append_generic_to_supplement_intent,
     resolve_add_car_turn_intent,
 )
+from services.fiqa_api.inbox_triage.add_car_llm_slot_candidates import (
+    maybe_augment_merged_text_for_add_car_slots,
+)
+from services.fiqa_api.inbox_triage.add_car_vehicle_signals import (
+    _VIN_17_RE,
+    text_has_vehicle_make_model_signal,
+    text_has_vehicle_year_signal,
+)
 from services.fiqa_api.inbox_triage.notice_retrieval import (
     format_retrieval_augment,
     retrieve_document_explanation,
     retrieve_notice_explanation,
+)
+from services.fiqa_api.inbox_triage.routing_guard import (
+    append_turn_signals_extra_vehicle_intent,
+    detect_vehicle_conflict,
+    text_suggests_vehicle_scope_ambiguity,
+)
+from services.fiqa_api.inbox_triage.truth_field_guardrails import (
+    _context_reuse_signal,
+    _vin_deferral_signal,
+    _vin_intent_mentioned,
+    apply_strict_truth_guardrails_to_add_car_fields,
+    log_truth_guardrail_blocked,
+    maybe_attach_truth_guardrail_debug_to_triage,
+    should_accept_field,
+    truth_guardrail_debug_session_start,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +117,7 @@ WORKFLOW_STATE_KEYS = (
     "human_confirmation_fields",
     "next_best_question",  # Phase 2: what to ask when handoff_ready=false
     "lifecycle_status",  # Phase 2: collecting | handoff_pending | handed_off | office_followup
+    "triage_mode",  # greenfield | append — disambiguates handoff_ready (see PILOT_CONTRACT_ADD_CAR_V1.md §4.3)
 )
 
 VALID_URGENCIES = ("low", "medium", "high", "critical")
@@ -309,6 +351,10 @@ _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS: dict[str, list[tuple[str, str]]] = {
             "办公室已收到本条正式提交；后续核对与联系会以当前服务记录为准。",
             "Your formal submission is on file with our office; verification and follow-up will use your current service record.",
         ),
+        (
+            "同事已能在队列里看到本条正式提交；后续以当前记录为准继续处理。",
+            "Your formal submission is visible in the office queue; next steps follow from your current service record.",
+        ),
     ],
     "add_car_supplement": [
         (
@@ -329,6 +375,18 @@ _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS: dict[str, list[tuple[str, str]]] = {
             "进度与排队以办公室实际处理为准；有节点变化会联系您。",
             "Timing follows the office queue and verification steps; we will reach out when there is a meaningful update.",
         ),
+        (
+            "具体节点要看办公室核对顺序；有能对外说的进展会主动联系您。",
+            "Exact timing follows the office verification order; we will reach out when there is a shareable update.",
+        ),
+        (
+            "办公室侧会按队列核对；若出现可同步给您的节点，会主动联系。",
+            "Our office verifies in queue order; we will reach out when there is a customer-visible milestone.",
+        ),
+        (
+            "当前阶段以记录核对与排队为准；不建议用聊天承诺具体日期。",
+            "At this stage timing follows verification and queue load; we avoid promising a fixed date in chat.",
+        ),
     ],
     "add_car_quote_detail": [
         (
@@ -338,6 +396,18 @@ _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS: dict[str, list[tuple[str, str]]] = {
         (
             "条款/额度类细节要办公室结合记录核对后才能定；你的问题已记在记录里便于报价时对照。",
             "Coverage and limit details must be confirmed against your record by our office; your question is noted for quoting.",
+        ),
+        (
+            "免赔/保额组合要以核保与记录为准；你的偏好已记在案，便于同事对照。",
+            "Deductible/limit combinations depend on underwriting and your record; your preferences are noted for the team.",
+        ),
+        (
+            "比价时看到的数字往往不含全部条件；最终以办公室核对后的方案为准，你的问题已记在案。",
+            "Quoted numbers you see online may omit conditions; final options follow office verification—your note is on the record.",
+        ),
+        (
+            "这类取舍需要结合车辆与驾驶信息核对；你的关注点已写入记录，报价时会一并考虑。",
+            "These tradeoffs need vehicle and driver context; your points are on the record for quoting.",
         ),
     ],
     "add_car_correction": [
@@ -374,6 +444,12 @@ _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN = (
 )
 
 
+def _post_submit_rot_idx(turn: int, base_key: str, intent_family: str | None) -> int:
+    """Spread pool / opener rotation so late-thread turns rarely align on the same slot."""
+    h = int(hashlib.md5(f"{base_key}|{intent_family or ''}".encode()).hexdigest()[:8], 16)
+    return turn * 7 + h
+
+
 def _post_submit_add_car_fallback_line(base_key: str, lang: str, *, rot_idx: int = 0) -> str | None:
     pool = _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS.get(base_key)
     if not pool:
@@ -382,14 +458,35 @@ def _post_submit_add_car_fallback_line(base_key: str, lang: str, *, rot_idx: int
     return pair[0] if lang == "zh" else pair[1]
 
 
-# Late-turn post-submit: short intent-specific openers so distinct jobs do not read as one office block.
-_ADD_CAR_POST_SUBMIT_INTENT_HEADS: dict[str, tuple[str, str]] = {
-    INTENT_TIMELINE_QUESTION: ("关于时间安排与进度：", "On timing and next steps—"),
-    INTENT_QUOTE_DETAIL_QUESTION: ("关于保额、免赔或条款细节：", "On coverage limits and deductible details—"),
-    INTENT_OFFICE_RECEIPT_QUESTION: ("关于办公室是否已能看到本条记录：", "On whether the office can see this record yet—"),
-    INTENT_MATERIALS_CLAIM: ("关于你提到的资料发送情况：", "On what you mentioned sending—"),
-    INTENT_SUPPLEMENT_INFO: ("收到你补充的信息。", "Thanks for the additional detail—"),
-    INTENT_CORRECTION: ("已记录你希望更正的内容。", "Noted your correction—"),
+# Late-turn post-submit: short intent-specific openers (rotate so long threads don't share one 96-char stem).
+_ADD_CAR_POST_SUBMIT_INTENT_HEADS: dict[str, list[tuple[str, str]]] = {
+    INTENT_TIMELINE_QUESTION: [
+        ("关于时间安排与进度：", "On timing and next steps—"),
+        ("进度与排队：", "On queue timing—"),
+        ("后续联络节奏：", "On follow-up cadence—"),
+    ],
+    INTENT_QUOTE_DETAIL_QUESTION: [
+        ("关于保额、免赔或条款细节：", "On coverage limits and deductible details—"),
+        ("关于比价/条款取舍：", "On tradeoffs and coverage options—"),
+        ("关于自付额与保额组合：", "On deductible and limit combinations—"),
+    ],
+    INTENT_OFFICE_RECEIPT_QUESTION: [
+        ("关于办公室是否已能看到本条记录：", "On whether the office can see this record yet—"),
+        ("关于入口提交状态：", "On portal submit status—"),
+        ("关于是否已进办公室队列：", "On whether this is in the office queue—"),
+    ],
+    INTENT_MATERIALS_CLAIM: [
+        ("关于你提到的资料发送情况：", "On what you mentioned sending—"),
+        ("关于材料与发送渠道：", "On materials and how you sent them—"),
+    ],
+    INTENT_SUPPLEMENT_INFO: [
+        ("收到你补充的信息。", "Thanks for the additional detail—"),
+        ("补充已看到。", "Thanks for the update—"),
+    ],
+    INTENT_CORRECTION: [
+        ("已记录你希望更正的内容。", "Noted your correction—"),
+        ("按你最新一条更新理解。", "Interpreting from your latest message—"),
+    ],
 }
 
 
@@ -398,15 +495,17 @@ def _prepend_add_car_post_submit_intent_head(
     *,
     lang: str,
     intent_family: str,
+    variant_idx: int = 0,
 ) -> str:
     body = (reply or "").strip()
     if not body:
         return body
     if intent_family == INTENT_GENERIC_FOLLOWUP:
         return body
-    pair = _ADD_CAR_POST_SUBMIT_INTENT_HEADS.get(intent_family)
-    if not pair:
+    variants = _ADD_CAR_POST_SUBMIT_INTENT_HEADS.get(intent_family)
+    if not variants:
         return body
+    pair = variants[variant_idx % len(variants)]
     head = pair[0] if lang == "zh" else pair[1]
     if not head:
         return body
@@ -728,7 +827,40 @@ def _is_add_vehicle_request(text: str) -> bool:
     """Add-car/quote: requires add_vehicle markers AND (vehicle_context OR quote/报价 OR delivery/pickup)."""
     lowered = (text or "").lower()
     raw = text or ""
+    # Pilot contract: literal VIN, VIN deferral, context-reuse, and thin English VIN lines must
+    # still land in the Add-Car lane (truth remains guardrail-gated).
+    if _VIN_17_RE.search(raw):
+        return True
+    if re.search(r"\bvin\s+is\b", lowered) or re.search(
+        r"(?i)vin\s*是\s*[0-9a-hj-npr-z]", raw
+    ):
+        return True
+    if _vin_intent_mentioned(lowered, raw) and _vin_deferral_signal(lowered, raw):
+        return True
+    if _context_reuse_signal(raw, lowered):
+        return True
+    if re.search(
+        r"\b(my wife|my husband)\b.{0,48}\bdriv|\bwife drives\b|\bhusband drives\b|\bdrives mostly\b",
+        lowered,
+    ):
+        return True
     if _is_add_car_multi_driver_quote_question(raw):
+        return True
+    # English colloquial add-car entry (minimal phrases — do not require vehicle_context / quote substring)
+    _en_add_car = (
+        r"\badd\s+car\b",
+        r"\badd\s+a\s+car\b",
+        r"\badd\s+another\s+car\b",
+        r"\badd\s+vehicle\b",
+        r"\badd\s+a\s+vehicle\b",
+        r"\badd\s+my\s+car\b",
+        r"\bneed\s+to\s+add\s+(my\s+)?car\b",
+        r"\bneed\s+to\s+add\s+a\s+(car|vehicle)\b",
+        r"\bquote\s+for\s+a\s+car\b",
+        r"\bquote\s+for\s+a\s+vehicle\b",
+        r"\binsurance\s+for\s+a\s+new\s+car\b",
+    )
+    if any(re.search(p, lowered) for p in _en_add_car):
         return True
     # Spouse / household vehicle quote ("老婆那台塞纳也报一下价") — 报+价 without contiguous "报价" substring
     if ("报" in raw and "价" in raw) and any(
@@ -1032,7 +1164,7 @@ def _build_client_reply_draft(text: str, category: str, client_id: str | None = 
                 t = templates.get("add_car", {})
                 # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
                 merged_slots, _last_cust = _merged_and_last_customer_for_add_car_draft(text)
-                fields = _extract_add_car_fields(merged_slots)
+                fields = _extract_add_car_fields_truth_safe(merged_slots)
                 vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
                 if vehicle_ok and not fields.get("zip"):
                     base = "邮编发我一下，我好往下报价。"
@@ -1201,7 +1333,7 @@ def _build_client_reply_draft(text: str, category: str, client_id: str | None = 
             t = templates.get("add_car", {})
             # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
             merged_slots, _last_cust = _merged_and_last_customer_for_add_car_draft(text)
-            fields = _extract_add_car_fields(merged_slots)
+            fields = _extract_add_car_fields_truth_safe(merged_slots)
             vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
             if vehicle_ok and not fields.get("zip"):
                 base = "Send the zip and I will run the quote."
@@ -1762,6 +1894,28 @@ def _normalize_output(raw: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+def _add_car_mentions_multiple_vehicles(customer_only: str) -> bool:
+    """True when customer text suggests two+ vehicles in one intake (MVP: single primary record)."""
+    t = (customer_only or "").strip()
+    if not t:
+        return False
+    if len(re.findall(r"(20[12][0-9])", t)) >= 2 and re.search(
+        r"(还有|另一辆|第二辆|两辆|两台|两辆车|同时|and\s+also|plus\s+a)", t, re.I
+    ):
+        return True
+    if re.search(r"(还有一辆|另一辆|第二辆)", t) and len(re.findall(r"(20[12][0-9])", t)) >= 2:
+        return True
+    # Explicit two-vehicle quote phrasing without relying on two year tokens
+    if re.search(r"(两辆车|两台车|两辆|两台).{0,48}(报价|一起|同时|一起报)", t):
+        return True
+    if re.search(r"(同时|一起).{0,24}(两辆车|两台车|两辆|两台)", t):
+        return True
+    # Same-garage second vehicle ("同地址还有…") with a second year
+    if re.search(r"同地址", t) and len(re.findall(r"(20[12][0-9])", t)) >= 2:
+        return True
+    return False
+
+
 def _detect_secondary_intent_hint(merged_text: str, category: str, intent_hint: str) -> str:
     """Detect secondary intent when 2+ goals mixed. Returns ' Also asked: X. ' or ''."""
     last = merged_text.split("[客户]")[-1].strip() if "[客户]" in merged_text else (merged_text or "").strip()
@@ -1855,8 +2009,8 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
     collected_hint = ""
     still_needed_hint = ""
     if _is_add_vehicle_request(lowered):
-        fields = _extract_add_car_fields(merged_text)
-        vehicle_concrete = _extract_add_car_vehicle_concrete(merged_text)
+        fields = _extract_add_car_fields_truth_safe(merged_text)
+        vehicle_concrete = _extract_primary_add_car_vehicle_concrete(merged_text)
         parts: list[str] = []
         if vehicle_concrete:
             parts.append(vehicle_concrete)
@@ -1935,6 +2089,13 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
     if any(_message_claims_completed_material_send(b) for b in _sent_bodies if b):
         context_hint += " Client says already sent. "
 
+    # One-message multi-vehicle MVP: record stays single-primary; avoid implying full CRM coverage.
+    if _is_add_vehicle_request(lowered) and _add_car_mentions_multiple_vehicles(customer_only):
+        context_hint += (
+            " MVP scope: one primary vehicle on this record; another vehicle was also mentioned—"
+            "confirm which unit to quote first. "
+        )
+
     # Mixed-intent: secondary issue note (MIXED_INTENT_SECONDARY_CASE_SPRINT)
     secondary_hint = _detect_secondary_intent_hint(merged_text, category, intent_hint)
     if secondary_hint:
@@ -1971,6 +2132,8 @@ _CA_ZIP_STRICT_RE = re.compile(r"(?<![0-9])(9[0-9]{4})(?![0-9])", re.IGNORECASE)
 _ADD_CAR_DRIVER_MARKERS: tuple[str, ...] = (
     "driver",
     "驾驶人",
+    "主驾",
+    "主驾驶人",
     "谁开",
     "main driver",
     "primary driver",
@@ -1999,6 +2162,19 @@ _ADD_CAR_DRIVER_MARKERS: tuple[str, ...] = (
     "我跟我老婆",
 )
 
+# Explicit primary-driver identity (narrow regex — not "my wife drives mostly" style ambiguity).
+_EXPLICIT_NAMED_DRIVER_RE = re.compile(
+    r"(?i)\b(?:her|his|their)\s+name\s+is\s+([A-Za-z][A-Za-z'`\u2019-]*(?:\s+[A-Za-z][A-Za-z'`\u2019-]*)+)"
+)
+_EXPLICIT_ZH_NAMED_DRIVER_RE = re.compile(
+    r"(?:她叫|他叫|姓名\s*[:：]\s*|名字\s*[:：]\s*)([^\s，,。]{2,24})"
+)
+_EXPLICIT_ME_PRIMARY_DRIVER_RE = re.compile(
+    r"(?i)\b(?:i\s+am|i'?m)\s+the\s+primary\s+driver\b|"
+    r"\b(?:primary|main)\s+driver\s+is\s+me\b|"
+    r"\bthe\s+primary\s+driver\s+is\s+me\b"
+)
+
 
 def _text_has_ca_zip_signal(t: str) -> bool:
     if not t:
@@ -2015,8 +2191,19 @@ def _extract_ca_zip_from_message(msg: str) -> str | None:
 
 def _text_has_add_car_driver_signal(t: str) -> bool:
     """High-frequency primary/additional driver phrasing (CN/EN); substring match on lowered text."""
-    tl = (t or "").lower()
-    return any(m in tl for m in _ADD_CAR_DRIVER_MARKERS)
+    raw = (t or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    if any(m in tl for m in _ADD_CAR_DRIVER_MARKERS):
+        return True
+    if _EXPLICIT_NAMED_DRIVER_RE.search(raw):
+        return True
+    if _EXPLICIT_ZH_NAMED_DRIVER_RE.search(raw):
+        return True
+    if _EXPLICIT_ME_PRIMARY_DRIVER_RE.search(raw):
+        return True
+    return False
 
 
 def _is_prospective_send_offer_message(msg: str) -> bool:
@@ -2218,6 +2405,15 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
         "actually",
         "i meant",
         "其实已经",
+        "更正",
+        "更正一下",
+        "写错了",
+        "之前写错",
+        "改一下",
+        "vin 写错",
+        "电话不是",
+        "手机不是",
+        "wrong number",
     )
     if any(m in msg for m in correction_markers):
         return "correction"
@@ -2560,6 +2756,20 @@ def _is_add_car_price_reshop_or_requote_followup(msg: str) -> bool:
         x in ml for x in ("quote", "报价", "加车", "再报", "company", "换公司", "换一家", "coverage")
     ):
         return False
+    # Same-car same-day re-confirm / re-quote (deictic vehicle + quote ask — not a separate renewal case).
+    if ("确认" in raw or "再看看" in raw or "给我看看" in raw) and (
+        "报价" in raw or "保费" in raw or "coverage" in ml
+    ) and any(x in raw for x in ("那辆", "那台", "这辆", "这台", "刚才", "那部")):
+        return True
+    if "那台车再报" in raw or "那辆车再报" in raw or "再报一次" in raw:
+        return True
+    # High-frequency NA-Chinese price pushback often omits 报价/保费 but still targets the same vehicle.
+    if any(x in raw for x in ("便宜", "便宜点", "便宜一点", "能不能便宜")):
+        if any(
+            x in raw
+            for x in ("那辆", "那台", "这辆", "这台", "刚才", "那部", "那台车", "那辆车", "这台车")
+        ) or any(x in raw for x in ("保费", "报价", "全险", "半险")):
+            return True
     return any(
         x in raw
         for x in (
@@ -2584,9 +2794,30 @@ def _is_add_car_price_reshop_or_requote_followup(msg: str) -> bool:
     ) or any(x in ml for x in ("too expensive", "another carrier", "re-shop", "reshop", "re-quote", "requote"))
 
 
+def _is_renewal_policy_coordination_followup(msg: str) -> bool:
+    """
+    Customer asks to coordinate a *different* renewal policy with the current add-car thread.
+    Hard-split is unsafe; prefer borderline so the office can confirm whether to track together.
+    """
+    raw = (msg or "").strip()
+    if not raw:
+        return False
+    if not ("续保" in raw or "renewal" in raw.lower()):
+        return False
+    if not any(x in raw for x in ("另一张", "另一条", "别的保单", "另外一张", "另一份")):
+        return False
+    return any(x in raw for x in ("一起", "同时", "办公室", "能不能", "可以不可以", "一并"))
+
+
 def _source_customer_concat(source_text: str) -> str:
+    """All [客户] bubbles joined; if none, treat whole thread as customer (persisted cases often omit tags)."""
     parts = re.findall(r"\[客户\]\s*([^[]+)", source_text or "", flags=re.IGNORECASE)
-    return " ".join(p.strip() for p in parts if p.strip())
+    if parts:
+        return " ".join(p.strip() for p in parts if p.strip())
+    raw = (source_text or "").strip()
+    if raw and "[客户]" not in raw and "[系统]" not in raw:
+        return raw
+    return ""
 
 
 def _source_system_concat(source_text: str) -> str:
@@ -2601,6 +2832,86 @@ def _prior_thread_signals_add_car(source_text: str) -> bool:
     if _is_add_vehicle_request(cl):
         return True
     return any(m in sys_t for m in _SYSTEM_ADD_CAR_HANDOFF_MARKERS)
+
+
+# Add-Car lane beyond literal _is_add_vehicle_request: CASE_CONTRACT_V1 envelope must stay
+# when an office-visible / in-flight Add-Car record exists or the labeled thread already signals add-car.
+_ADD_CAR_LANE_STRUCTURAL_FIELD_IDS: frozenset[str] = frozenset(
+    {
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin",
+    }
+)
+_ADD_CAR_LANE_AUX_FIELD_IDS: frozenset[str] = frozenset(
+    {
+        "materials_send_question",
+        "materials_still_pending",
+        "customer_says_materials_sent",
+        "customer_says_sent_materials",
+        "insurance_status_add_to_existing",
+        "insurance_status_new_customer",
+        "additional_drivers_yes",
+        "additional_drivers_no",
+    }
+)
+
+
+def _field_list_implies_add_car_lane(field_list: object) -> bool:
+    if not isinstance(field_list, list) or not field_list:
+        return False
+    for x in field_list:
+        s = str(x).strip().lower()
+        if s in _ADD_CAR_LANE_STRUCTURAL_FIELD_IDS or s in _ADD_CAR_LANE_AUX_FIELD_IDS:
+            return True
+    return False
+
+
+def _reply_truth_context_implies_add_car_lane(ctx: dict[str, Any] | None) -> bool:
+    if not ctx:
+        return False
+    pq = str(ctx.get("persisted_quote_ready_status") or "").strip().lower()
+    if pq in ("need_more", "almost_ready", "quote_ready"):
+        return True
+    if _field_list_implies_add_car_lane(ctx.get("persisted_collected_fields")):
+        return True
+    if _field_list_implies_add_car_lane(ctx.get("still_needed_fields")):
+        return True
+    return False
+
+
+def _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw: str) -> bool:
+    """Strong same-turn pivot away from Add-Car; do not force lane from persisted context."""
+    t = (last_customer_raw or "").strip()
+    if not t:
+        return False
+    tl = t.lower()
+    if _is_remove_vehicle_request(tl):
+        return True
+    if _is_claim_intake_request(t):
+        return True
+    return False
+
+
+def _effective_add_car_lane_active(
+    *,
+    lowered_merged: str,
+    merged_text: str,
+    reply_truth_context: dict[str, Any] | None,
+    last_customer_raw: str,
+) -> bool:
+    if _is_add_vehicle_request(lowered_merged):
+        return True
+    if _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw):
+        return False
+    if _reply_truth_context_implies_add_car_lane(reply_truth_context):
+        return True
+    if _prior_thread_signals_add_car(merged_text):
+        return True
+    return False
 
 
 def _infer_prior_case_domain(source_text: str) -> str:
@@ -2701,11 +3012,20 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
     domains_quick = _last_message_issue_domains(last_msg)
     cross_early = _cross_issue_domains_for_prior(prior)
     if domains_quick & cross_early:
-        # Open add-car quote + "太贵/换公司/再报" hits premium_review markers on the last bubble only — same record
-        if prior == "add_car" and domains_quick <= {"premium"} and _is_add_car_price_reshop_or_requote_followup(
-            last_msg
+        # Open add-car quote: last bubble may hit BOTH premium_review and add_vehicle markers
+        # ("太贵…那台车再报价") — still the same add-car matter; do not hard-split.
+        if prior == "add_car" and _is_add_car_price_reshop_or_requote_followup(last_msg) and (
+            domains_quick <= {"premium"} or ({"premium", "add_car"} <= domains_quick)
         ):
             pass
+        elif (
+            prior == "add_car"
+            and "premium" in domains_quick
+            and _is_renewal_policy_coordination_followup(last_msg)
+            and not _is_add_car_price_reshop_or_requote_followup(last_msg)
+        ):
+            # Renewal-of-other-policy + this add-car thread: domains may be {premium} only or {premium, add_car}.
+            return "borderline"
         else:
             return "new_issue"
 
@@ -2746,7 +3066,8 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
         if domains <= {"add_car"} and not pivot:
             return ""
         if domains <= {"add_car"} and pivot and any(m in (last_msg or "") for m in _SAME_THREAD_EXTRA_VEHICLE_MARKERS):
-            return ""
+            # Do not silently absorb an extra-vehicle pivot into the same case (vehicle routing + broker confirm).
+            return "borderline"
 
     cross_new: set[str]
     if prior == "add_car":
@@ -2784,6 +3105,204 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
         return "borderline"
 
     return ""
+
+
+def _customer_text_for_add_car_extraction(merged_text: str) -> str:
+    """Customer-only body text (same convention as _extract_add_car_fields)."""
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    base = " ".join(matches).strip() if matches else (merged_text or "").strip()
+    ocr_m = re.search(r"\[OCR\]\s*([\s\S]*)$", merged_text or "", flags=re.IGNORECASE)
+    if ocr_m:
+        ocr_part = ocr_m.group(1).strip()
+        if ocr_part:
+            base = f"{base} {ocr_part}".strip()
+    return base
+
+
+def _extract_add_car_fields_truth_safe(merged_text: str) -> dict[str, bool]:
+    """Rule extract + strict Truth guardrails (Add-Car slots only)."""
+    raw = _customer_text_for_add_car_extraction(merged_text)
+    fields = _extract_add_car_fields(merged_text)
+    return apply_strict_truth_guardrails_to_add_car_fields(fields, raw, merged_labeled_text=merged_text)
+
+
+def _extract_vehicle_identity_for_key_scoped(
+    scope: str, full_customer_lower: str
+) -> dict[str, str | None]:
+    """
+    Identity for vehicle_key from one customer bubble (e.g. correction turn).
+    Prefer last 20xx in the bubble; zip from bubble first, else full thread.
+    """
+    tl = (scope or "").lower()
+    if not tl.strip():
+        return {"vin": None, "year": None, "model": None, "zip": None}
+    vin_all = list(_VIN_17_RE.finditer(tl))
+    if vin_all:
+        return {"vin": vin_all[-1].group(1).upper(), "year": None, "model": None, "zip": None}
+    year = ""
+    year_m = None
+    for m in re.finditer(r"(?<![0-9])(20[12][0-9])(?:\s*款)?", tl):
+        year_m = m
+    if year_m:
+        year = year_m.group(1)
+        sub = tl[year_m.end() :]
+    else:
+        # No year in correction bubble — inherit latest year from full customer text
+        for m in re.finditer(r"(?<![0-9])(20[12][0-9])(?:\s*款)?", full_customer_lower):
+            year_m = m
+        if year_m:
+            year = year_m.group(1)
+            sub = tl
+        else:
+            z_only = _CA_ZIP_STRICT_RE.search(tl) or _CA_ZIP_STRICT_RE.search(full_customer_lower)
+            return {
+                "vin": None,
+                "year": None,
+                "model": None,
+                "zip": z_only.group(1) if z_only else None,
+            }
+    seg = re.split(r"还有|另一辆|第二辆|;", sub, maxsplit=1)[0]
+    zip_code = None
+    z_m = _CA_ZIP_STRICT_RE.search(seg)
+    if z_m:
+        zip_code = z_m.group(1)
+        mid = seg[: z_m.start()].strip()
+    else:
+        z_tl = _CA_ZIP_STRICT_RE.search(tl)
+        if z_tl:
+            zip_code = z_tl.group(1)
+            mid = seg[: z_tl.start()].strip() if z_tl.start() < len(seg) else seg.strip()
+        else:
+            z_full = _CA_ZIP_STRICT_RE.search(full_customer_lower)
+            if z_full:
+                zip_code = z_full.group(1)
+            mid = re.split(r"[,，]|还有", seg, maxsplit=1)[0].strip()
+    mid = re.sub(r"^\s*款\s*", "", mid)
+    mid = re.sub(r"\(?\d{3}\)?[-.\s]*\d{3}[-.\s]*\d{4}\b", " ", mid, flags=re.IGNORECASE)
+    mid = re.sub(r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b", " ", mid)
+    mid = re.sub(r"\s+", " ", mid).strip()
+    parts = re.findall(r"[a-z0-9]+", mid)
+    model_slug = "_".join(parts)[:96].strip("_") if parts else ""
+    return {"vin": None, "year": year or None, "model": model_slug or None, "zip": zip_code}
+
+
+def _extract_vehicle_identity_for_key(merged_text: str) -> dict[str, str | None]:
+    """
+    Pull literal vehicle identity strings from customer text for vehicle_key.
+
+    Must NOT use _extract_add_car_fields() here: that dict maps slot names to booleans
+    (e.g. year=True), which stringifies to junk keys like ymz:True|true|True.
+
+    When the latest customer bubble is a vehicle correction, scope identity to that bubble
+    (last year/model in the bubble) so vehicle_key stays aligned with broker_next_step /
+    conversation_summary — same policy as _extract_add_car_vehicle_concrete.
+    """
+    raw = _customer_text_for_add_car_extraction(merged_text)
+    tl = raw.lower()
+    if not tl.strip():
+        return {"vin": None, "year": None, "model": None, "zip": None}
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    last_seg = (matches[-1] or "").strip() if matches else ""
+    if last_seg and _is_add_car_vehicle_correction_signal(last_seg):
+        return _extract_vehicle_identity_for_key_scoped(last_seg, tl)
+
+    vin_matches = list(_VIN_17_RE.finditer(tl))
+    if vin_matches:
+        return {"vin": vin_matches[-1].group(1).upper(), "year": None, "model": None, "zip": None}
+    # 款 immediately after year has no ASCII \\b boundary (Unicode "word" char); allow optional 款.
+    year_m = re.search(r"(?<![0-9])(20[12][0-9])(?:\s*款)?", tl)
+    if not year_m:
+        z_only = _CA_ZIP_STRICT_RE.search(tl)
+        return {
+            "vin": None,
+            "year": None,
+            "model": None,
+            "zip": z_only.group(1) if z_only else None,
+        }
+    year = year_m.group(1)
+    sub = tl[year_m.end() :]
+    seg = re.split(r"还有|另一辆|第二辆|;", sub, maxsplit=1)[0]
+    z_m = _CA_ZIP_STRICT_RE.search(seg)
+    if z_m:
+        zip_code = z_m.group(1)
+        mid = seg[: z_m.start()].strip()
+    else:
+        z_m2 = _CA_ZIP_STRICT_RE.search(sub)
+        if z_m2:
+            zip_code = z_m2.group(1)
+            mid = sub[: z_m2.start()].strip()
+        else:
+            zip_code = None
+            mid = re.split(r"[,，]|还有", seg, maxsplit=1)[0].strip()
+    mid = re.sub(r"^\s*款\s*", "", mid)
+    # Drop US phone patterns so digits do not become part of model_slug (e.g. Tesla line + phone before zip).
+    mid = re.sub(r"\(?\d{3}\)?[-.\s]*\d{3}[-.\s]*\d{4}\b", " ", mid, flags=re.IGNORECASE)
+    mid = re.sub(r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b", " ", mid)
+    mid = re.sub(r"\s+", " ", mid).strip()
+    parts = re.findall(r"[a-z0-9]+", mid)
+    model_slug = "_".join(parts)[:96].strip("_") if parts else ""
+    return {"vin": None, "year": year, "model": model_slug or None, "zip": zip_code}
+
+
+def _derive_vehicle_key_from_add_car_text(merged_text: str) -> str | None:
+    """Build a lightweight Add-Car vehicle identity key (nullable) from merged triage text."""
+    ident = dict(_extract_vehicle_identity_for_key(merged_text))
+    raw = _customer_text_for_add_car_extraction(merged_text)
+    vin = (ident.get("vin") or "").strip().upper()
+    _bubbles = [m.strip() for m in re.findall(r"\[客户\]\s*([^[]+)", merged_text or "") if m.strip()]
+    _cb = _bubbles or None
+    if vin:
+        v_ok, v_rs, _v_dbg = should_accept_field("vin", raw, vin, customer_bubbles=_cb)
+        if not v_ok:
+            log_truth_guardrail_blocked("vin", v_rs or "blocked", raw)
+            ident["vin"] = None
+            vin = ""
+    if vin:
+        return f"vin:{vin}"
+    zip_code = (ident.get("zip") or "").strip()
+    if zip_code:
+        z_ok, z_rs, _z_dbg = should_accept_field("zip", raw, zip_code, customer_bubbles=_cb)
+        if not z_ok:
+            log_truth_guardrail_blocked("zip", z_rs or "blocked", raw)
+            ident["zip"] = None
+            zip_code = ""
+    year = (ident.get("year") or "").strip()
+    model_norm = (ident.get("model") or "").strip().lower()
+    if year and not re.fullmatch(r"20[12][0-9]", year):
+        year = ""
+    if zip_code and not re.fullmatch(r"9[0-9]{4}", zip_code):
+        zip_code = ""
+    if model_norm in {"", "true", "false", "none"}:
+        model_norm = ""
+    if year and model_norm and zip_code:
+        return f"ymz:{year}|{model_norm}|{zip_code}"
+    if year and model_norm:
+        return f"ym:{year}|{model_norm}"
+    return None
+
+
+def _derive_service_type(
+    *,
+    issue_category: str,
+    lowered_text: str,
+    is_add_car: bool,
+    is_remove_car: bool,
+) -> str:
+    """Return explicit lightweight service type for Stage-1 boundary and storage."""
+    cat = (issue_category or "").strip().lower()
+    if is_add_car:
+        return "add_car"
+    if is_remove_car:
+        return "remove_car"
+    if _is_claim_intake_request(lowered_text):
+        return "claim_intake"
+    if _is_premium_review_request(lowered_text):
+        return "renewal_premium"
+    if cat in ("cancellation_warning", "payment_lapse_expiration"):
+        return "billing"
+    if cat == "missing_document":
+        return "missing_document"
+    return "general_inquiry"
 
 
 def _merge_append_boundary_str_subdict(base: dict[str, str], override: Any) -> dict[str, str]:
@@ -2874,6 +3393,9 @@ def _apply_append_case_boundary(
     client_id: str | None = None,
 ) -> None:
     """Mutates triage result for append flow: clearer portal-style boundary semantics."""
+    if str(result.get("case_boundary_action") or "").strip() == "requires_new_case":
+        result["append_allowed"] = False
+        return
     boundary = _classify_append_case_boundary(existing_source_text, new_message)
     if not boundary:
         return
@@ -2941,7 +3463,10 @@ def _apply_append_case_boundary(
         result["case_boundary"] = "borderline"
         draft = bc["borderline_zh"] if language == "zh" else bc["borderline_en"]
         result["client_reply_draft"] = draft
-        prefix2 = "Case boundary unclear—confirm topic scope before acting. "
+        prefix2 = (
+            "Case boundary unclear—office should confirm topic scope; "
+            "customer message is still appended to this record for traceability. "
+        )
         cur = (result.get("broker_next_step") or "").strip()
         if not cur.startswith("Case boundary"):
             result["broker_next_step"] = (prefix2 + cur).strip()
@@ -2956,11 +3481,23 @@ def _apply_append_case_boundary(
             result["conversation_summary"] = (tag2 + summary).strip()
 
 
+def _append_last_turn_carries_vehicle_identity(last_msg: str) -> bool:
+    """True when the latest customer line plausibly asserts year/make/VIN (vs ack / zip-only)."""
+    t = (last_msg or "").strip()
+    if not t:
+        return False
+    if _VIN_17_RE.search(t.lower()):
+        return True
+    return bool(re.search(r"(?<![0-9])(20[12][0-9])(?:\s*款)?", t))
+
+
 def triage_for_append(
     existing_source_text: str,
     new_message: str,
     client_id: str | None = None,
     reply_truth_context: dict[str, Any] | None = None,
+    *,
+    v6_ocr_signals: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Triage a new customer follow-up in the context of an existing case.
@@ -2976,7 +3513,11 @@ def triage_for_append(
         turns,
         client_id=client_id,
         reply_truth_context=reply_truth_context,
+        for_append=True,
+        v6_ocr_signals=v6_ocr_signals,
     )
+    result["triage_mode"] = "append"
+    # Append path: broker must see the update on the service record; not the same semantic as greenfield quote_ready gating.
     result["handoff_ready"] = True
     # Append continues an office-visible service record — do not surface pre-submit lifecycle.
     ctx = reply_truth_context or {}
@@ -2985,7 +3526,92 @@ def triage_for_append(
     else:
         result["lifecycle_status"] = "handoff_pending"
     result["next_best_question"] = ""
+    merged_for_lane = _build_conversation_text_for_triage(turns, new_message.strip())
+    lowered_merged = (merged_for_lane or "").lower()
+    _lane_matches = re.findall(r"\[客户\]\s*([^[]+)", merged_for_lane or "")
+    _last_cust_lane = (_lane_matches[-1] or "").strip() if _lane_matches else new_message.strip()
+    is_add_car_lane = _effective_add_car_lane_active(
+        lowered_merged=lowered_merged,
+        merged_text=merged_for_lane,
+        reply_truth_context=ctx,
+        last_customer_raw=_last_cust_lane,
+    )
+    if is_add_car_lane:
+        pv_raw = ctx.get("vehicle_key")
+        persisted_vk = str(pv_raw).strip() if isinstance(pv_raw, str) and str(pv_raw).strip() else None
+        extra_signal = bool(result.get("additional_vehicle_mentioned")) or append_turn_signals_extra_vehicle_intent(
+            new_message.strip()
+        )
+        amb = text_suggests_vehicle_scope_ambiguity(new_message.strip())
+        last_turn = new_message.strip()
+        # Short acknowledgements should not lose persisted VIN scope when merged extract yields ymz vs vin:*.
+        short_scope_carryover = bool(persisted_vk) and not extra_signal and not amb and (
+            not _append_last_turn_carries_vehicle_identity(last_turn)
+        )
+        conflict = (
+            "same_vehicle"
+            if short_scope_carryover
+            else detect_vehicle_conflict(
+                persisted_vehicle_key=persisted_vk,
+                new_vehicle_key=result.get("vehicle_key"),
+                additional_vehicle_mentioned=extra_signal,
+                message_suggests_vehicle_scope_ambiguity=amb,
+            )
+        )
+        if conflict == "new_vehicle":
+            result["case_boundary"] = "new_issue"
+            result["case_boundary_action"] = "requires_new_case"
+            result["append_allowed"] = False
+            if not (result.get("boundary_reason") or "").strip():
+                result["boundary_reason"] = (
+                    "Vehicle scope differs from this case; open a new service record for the other vehicle."
+                )
+        elif conflict == "ambiguous":
+            result["case_boundary"] = "borderline"
+            result["case_boundary_action"] = "requires_confirmation"
+            result["append_allowed"] = False
+            if not (result.get("boundary_reason") or "").strip():
+                result["boundary_reason"] = (
+                    "Vehicle scope is unclear on this thread; confirm with the customer before updating this record."
+                )
+            hf = list(result.get("human_confirmation_fields") or [])
+            if "case_topic_boundary" not in hf:
+                hf.append("case_topic_boundary")
+            result["human_confirmation_fields"] = hf
+            result["human_confirmation_required"] = True
+
     _apply_append_case_boundary(result, existing_source_text, new_message.strip(), client_id=client_id)
+    boundary = str(result.get("case_boundary") or "").strip()
+    if boundary == "new_issue":
+        result["case_boundary_action"] = "requires_new_case"
+        result["append_allowed"] = False
+        if not (result.get("boundary_reason") or "").strip():
+            result["boundary_reason"] = "Detected clear matter separation from current case."
+        bns_pre = (result.get("broker_next_step") or "").strip()
+        if not bns_pre.startswith("Case boundary:"):
+            prefix_nb = (
+                "Case boundary: possible new issue in the same thread—confirm whether to split. "
+            )
+            result["broker_next_step"] = (prefix_nb + bns_pre).strip()
+        summ = (result.get("conversation_summary") or "").strip()
+        if not summ.startswith("Boundary:"):
+            result["conversation_summary"] = (
+                "Boundary: new_issue (matter or vehicle scope). " + summ
+            ).strip()
+    elif boundary == "borderline":
+        result["case_boundary_action"] = "requires_confirmation"
+        if result.get("append_allowed") is not False:
+            result["append_allowed"] = True
+        if not (result.get("boundary_reason") or "").strip():
+            result["boundary_reason"] = (
+                "Topic continuity is borderline; message was appended to this record for audit; "
+                "office should confirm whether it belongs on the same matter."
+            )
+    else:
+        result["case_boundary"] = "same_case"
+        result["case_boundary_action"] = "append_allowed"
+        result["append_allowed"] = True
+        result["boundary_reason"] = "No clear boundary conflict detected; append stays on current case."
     return result
 
 
@@ -3049,22 +3675,9 @@ def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
     matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
     customer_text = " ".join(matches).lower()
     t = customer_text
-    has_year = bool(re.search(r"20[12][0-9]", t))  # 2010-2029
+    has_year = text_has_vehicle_year_signal(t)
     has_zip = _text_has_ca_zip_signal(t)
-    has_model = any(
-        m in t
-        for m in [
-            "bmw", "x5", "x3", "x1", "x7", "tesla", "model y", "model 3", "model s", "model x",
-            "honda", "accord", "civic", "cr-v", "crv", "pilot", "odyssey", "hr-v", "hrv",
-            "toyota", "camry", "corolla", "rav4", "highlander", "4runner", "sienna", "tacoma",
-            "nissan", "altima", "rogue", "sentra", "pathfinder",
-            "lexus", "rx", "es", "nx", "mercedes", "benz", "gla", "glc",
-            "mazda", "cx-5", "cx5", "cx-9", "subaru", "outback", "forester",
-            "ford", "f-150", "f150", "mustang", "ram", "chevy", "chevrolet", "silverado",
-            "rivian", "lucid", "hyundai", "kia",
-            "宝马", "特斯拉", "本田", "丰田", "车型", "model", "凯美瑞", "思域", "马自达", "花冠",
-        ]
-    )
+    has_model = text_has_vehicle_make_model_signal(t)
     has_delivery = any(
         m in t
         for m in [
@@ -3097,9 +3710,15 @@ def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
         has_delivery = bool(re.search(r"\d{1,2}月\d{1,2}[号日]", t)) and any(
             x in t for x in ("提", "拿车", "到车", "取车", "pick")
         )
+    if not has_delivery:
+        # Effective / policy start date (delivery-equivalent for quote readiness).
+        if re.search(r"(?i)\b(start|effective|begin)\b", t) and re.search(
+            r"\b(0?[1-9]|1[0-2])/(0?[1-9]|[12]\d|3[01])/(19|20)\d{2}\b", t
+        ):
+            has_delivery = True
     has_driver = _text_has_add_car_driver_signal(t)
     # VIN: 17-char VIN, or explicit VIN intent — exclude "VIN还没拿到" / "VIN 还没拿到" style negatives
-    has_vin_17 = bool(re.search(r"\b[0-9a-hj-npr-z]{17}\b", t))
+    has_vin_17 = bool(_VIN_17_RE.search(t))
     _t_no_ws = re.sub(r"\s+", "", t)
     _vin_negative = any(
         m in _t_no_ws
@@ -3206,8 +3825,9 @@ def _extract_contact_fields(merged_text: str) -> tuple[str | None, str | None]:
                 extracted_phone = f"{g[0]}-{g[1]}-{g[2]}"
             break
 
-    # Name: 我是X, 我姓X, 我叫X, 姓名/名字 labeled, call me X, I'm X, — X at end
+    # Name: 我是X, 我姓X, 我叫X, 姓名/名字 labeled (with or without :), call me X, I'm X, — X at end
     name_patterns = [
+        (r"(?:姓名|名字)\s*[:：]?\s*([^\s,，.。手机电话\d:：]{2,24})", 1, 2),
         (r"我是\s*([^\s,，.。]+)", 1, 2),
         (r"我姓\s*([^\s,，.。]+)", 1, 1),
         (r"我叫\s*([^\s,，.。]+)", 1, 2),
@@ -3416,6 +4036,8 @@ def _is_add_car_vehicle_correction_signal(text: str) -> bool:
         tl,
     ):
         return True
+    if _is_add_car_vin_field_correction_signal(raw) and _VIN_17_RE.search(tl):
+        return True
     return False
 
 
@@ -3457,6 +4079,37 @@ def _add_car_vehicle_concrete_from_scope(scope: str, year_pool: str) -> str:
     return model if model else ""
 
 
+def _count_prior_system_contact_gap_tails_in_thread(merged_text: str, language: str) -> int:
+    """Count prior [系统] turns that already included a name/phone contact-gap reminder.
+
+    Used to avoid repeating the same tail across consecutive assistant turns (REPLY_CONTACT_GAP_TAIL_MISMATCH).
+    """
+    segs = re.findall(r"\[系统\]\s*([^[]+)", merged_text or "")
+    markers_zh = (
+        "若姓名或电话尚未",
+        "（若方便：请在本对话补一行姓名与电话",
+        "办公室后续联系时可能会先确认联系方式",
+    )
+    markers_en = (
+        "name or phone isn't clear on this record",
+        "add your name and phone in one line",
+        "confirm contact details when they reach out",
+    )
+    n = 0
+    for seg in segs:
+        s = (seg or "").strip()
+        if not s:
+            continue
+        if language == "zh":
+            if any(m in s for m in markers_zh):
+                n += 1
+        else:
+            lo = s.lower()
+            if any(m.lower() in lo for m in markers_en):
+                n += 1
+    return n
+
+
 def _extract_add_car_vehicle_concrete(merged_text: str) -> str:
     """Extract concrete vehicle string (e.g. '2024 Tesla Model Y') for broker summary.
     Uses customer messages only; on vehicle-correction turns, model/year resolve from the last bubble
@@ -3473,38 +4126,408 @@ def _extract_add_car_vehicle_concrete(merged_text: str) -> str:
     return _add_car_vehicle_concrete_from_scope(customer_text, customer_text)
 
 
+def _extract_primary_add_car_vehicle_concrete(merged_text: str) -> str:
+    """Office-facing primary vehicle line: matches vehicle_key first-segment policy when multi-vehicle."""
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    customer_text = " ".join(matches).replace("\n", " ")
+    if not customer_text:
+        return ""
+    last_seg = (matches[-1] or "").strip() if matches else ""
+    if last_seg and _is_add_car_vehicle_correction_signal(last_seg):
+        hit = _add_car_vehicle_concrete_from_scope(last_seg, customer_text)
+        if hit:
+            return hit
+    cust_only = customer_text.strip()
+    if _add_car_mentions_multiple_vehicles(cust_only):
+        first = re.split(r"还有|另一辆|第二辆|;", cust_only, maxsplit=1)[0]
+        hit = _add_car_vehicle_concrete_from_scope(first, first)
+        if hit:
+            return hit
+    return _add_car_vehicle_concrete_from_scope(customer_text, customer_text)
+
+
 def _add_car_enough_for_handoff(fields: dict[str, bool]) -> bool:
-    """Add-car case is ready when we have vehicle (year+model or VIN) + zip + (delivery or driver).
-    Stricter than before: zip alone is not enough; office needs delivery or driver context for quote.
-    See docs/sprints/add_car_quote_80_completion/03_CONVERSATION_SLOT_COLLECTION_SPEC.md"""
-    vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
-    if not vehicle_ok:
+    """Pilot: broker-visible completeness requires VIN + garaging zip + delivery + primary driver.
+
+    Year/make alone must not unlock handoff (operator trust).
+    """
+    if not fields.get("vin"):
         return False
-    has_zip = bool(fields.get("zip"))
-    has_delivery_or_driver = bool(fields.get("delivery") or fields.get("driver"))
-    return has_zip and has_delivery_or_driver
+    if not fields.get("zip"):
+        return False
+    if not fields.get("delivery"):
+        return False
+    if not fields.get("driver"):
+        return False
+    return True
+
+
+def _add_car_llm_slot_should_invoke(
+    rule_fields: dict[str, bool], merged_text: str, last_bubble: str
+) -> tuple[bool, str]:
+    """Token discipline: call bounded slot LLM only when rules/contact are incomplete or bubble is long."""
+    enough = _add_car_enough_for_handoff(rule_fields)
+    en, ph = _extract_contact_fields(merged_text)
+    if enough and en and ph:
+        return False, "rule_complete_with_contact"
+    if not enough:
+        return True, "structural_incomplete"
+    if enough and (not en or not ph) and len((last_bubble or "").strip()) >= 8:
+        return True, "contact_gap"
+    if len((last_bubble or "").strip()) > 140:
+        return True, "long_bubble"
+    return False, "no_heuristic"
 
 
 def _add_car_quote_ready_status(fields: dict[str, bool]) -> str:
     """Return quote_ready_status for add-car: quote_ready | almost_ready | need_more.
-    ADD_CAR_REAL_INTAKE_LITE: Simple, explainable status for broker visibility."""
-    vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
+
+    Pilot: ``quote_ready`` requires truth-gated VIN + ZIP + primary driver + explicit calendar
+    delivery/effective date. Never ``almost_ready`` without VIN (avoid false operator readiness).
+    """
     has_zip = bool(fields.get("zip"))
     has_delivery = bool(fields.get("delivery"))
     has_driver = bool(fields.get("driver"))
-    has_delivery_or_driver = has_delivery or has_driver
+    has_vin = bool(fields.get("vin"))
 
-    if not vehicle_ok or not has_zip:
+    if not has_vin:
         return "need_more"
-    if has_delivery_or_driver:
+    if has_vin and has_zip and has_driver and has_delivery:
         return "quote_ready"
     return "almost_ready"
+
+
+def _add_car_is_quote_ready(fields: dict[str, bool]) -> bool:
+    """True iff all four pilot quote slots are truth-complete (same bar as quote_ready_status == quote_ready)."""
+    return _add_car_quote_ready_status(fields) == "quote_ready"
+
+
+# Persisted-case coherence: merge office-visible collected slots with fresh extraction (case_id / append).
+_PERSISTED_LIST_FIELD_TO_EXTRACT_FLAG: dict[str, str] = {
+    "year": "year",
+    "make_model": "model",
+    "vin": "vin",
+    "zip": "zip",
+    "delivery_date": "delivery",
+    "primary_driver": "driver",
+}
+
+
+def _augment_add_car_fields_from_persisted_collected(
+    fields: dict[str, bool],
+    persisted: list[str] | None,
+) -> dict[str, bool]:
+    """Treat structural slots saved on the service record as satisfied for quote_ready_status."""
+    if not persisted:
+        return fields
+    out = dict(fields)
+    pl = {str(x).lower() for x in persisted}
+    for lid, fk in _PERSISTED_LIST_FIELD_TO_EXTRACT_FLAG.items():
+        if lid.lower() in pl:
+            out[fk] = True
+    return out
+
+
+def _reconcile_add_car_lists_with_persisted_record(
+    collected: list[str],
+    still_needed: list[str],
+    reply_truth_context: dict[str, Any] | None,
+    *,
+    persisted_collected_override: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """
+    Drop still_needed entries already satisfied on the persisted case; extend collected for UI/API.
+    Keeps post-submit and same-record continuation from contradicting durable record truth.
+    When persisted_collected_override is set (e.g. after correction invalidation), use that list instead.
+    """
+    ctx = reply_truth_context or {}
+    if persisted_collected_override is not None:
+        persisted = list(persisted_collected_override)
+    else:
+        persisted = list(ctx.get("persisted_collected_fields") or [])
+    if not persisted:
+        return collected, still_needed
+    pers_l = {str(x).lower() for x in persisted}
+    new_still = [x for x in still_needed if str(x).lower() not in pers_l]
+    coll_seen = {str(x).lower() for x in collected}
+    new_collected = list(collected)
+    for p in persisted:
+        pl = str(p).lower()
+        if pl and pl not in coll_seen:
+            new_collected.append(p)
+            coll_seen.add(pl)
+    return dedupe_preserve_order(new_collected), dedupe_preserve_order(new_still)
+
+
+def _compute_add_car_collected_still_lists(
+    merged_for_add_car_extraction: str,
+    last_customer_raw: str,
+    reply_truth_context: dict[str, Any] | None,
+    follow_up_type: str,
+) -> tuple[list[str], list[str], dict[str, Any], str | None, str | None]:
+    """Single spine for add-car collected/still lists (structured extraction + persisted reconcile)."""
+    collected, still_needed, extracted_name, extracted_phone = _add_car_structured_fields(
+        merged_for_add_car_extraction
+    )
+    if last_customer_raw:
+        lt_n, lt_p = _extract_contact_fields(f"[客户] {last_customer_raw.strip()}")
+        if lt_n:
+            extracted_name = extracted_name or lt_n
+            if "name" not in collected:
+                collected.append("name")
+        if lt_p:
+            extracted_phone = extracted_phone or lt_p
+            if "phone" not in collected:
+                collected.append("phone")
+    pc = reply_truth_context or {}
+    if str(pc.get("record_contact_name") or "").strip():
+        still_needed = [x for x in still_needed if str(x).lower() != "name"]
+    if str(pc.get("record_contact_phone") or "").strip():
+        still_needed = [x for x in still_needed if str(x).lower() != "phone"]
+    if extracted_name:
+        still_needed = [x for x in still_needed if str(x).lower() != "name"]
+    if extracted_phone:
+        still_needed = [x for x in still_needed if str(x).lower() != "phone"]
+    if str(pc.get("formal_submitted_at") or "").strip():
+        still_needed = [x for x in still_needed if str(x).lower() not in ("name", "phone")]
+    effective_persisted, merge_meta = _effective_persisted_for_add_car_merge(
+        reply_truth_context, last_customer_raw, follow_up_type
+    )
+    collected, still_needed = _reconcile_add_car_lists_with_persisted_record(
+        collected,
+        still_needed,
+        reply_truth_context,
+        persisted_collected_override=effective_persisted,
+    )
+    return collected, still_needed, merge_meta, extracted_name, extracted_phone
+
+
+_VEHICLE_CORRECTION_TOKEN_RE = re.compile(
+    r"(20[12][0-9]|accord|camry|corolla|civic|cr-v|crv|tesla|model\s*y|model\s*3|bmw|x[357]|honda|toyota|lexus|"
+    r"vin|车架|车型|雅阁|凯美瑞|思域|特斯拉|宝马|丰田|本田|另一辆|这辆|那辆|雷克萨斯|suv|sedan|vehicle|car\b)",
+    re.IGNORECASE,
+)
+
+
+def _is_add_car_vehicle_correction_for_merge(last_msg: str) -> bool:
+    """When invalidating persisted vehicle slots: require vehicle-industry cues; skip topic pivots."""
+    raw = (last_msg or "").strip()
+    if not raw:
+        return False
+    if _correction_is_cross_topic_pivot_not_vehicle_fix(raw):
+        return False
+    tl = raw.lower()
+    if not _VEHICLE_CORRECTION_TOKEN_RE.search(tl):
+        return False
+    if _is_add_car_vehicle_correction_signal(raw):
+        return True
+    if re.search(r"不是[^，。\n]{0,40}是\s*", raw):
+        return True
+    if any(m in raw for m in ("不是这个", "不是这辆", "另一辆", "不是那辆", "不是这台车")):
+        return True
+    return False
+
+
+def _is_add_car_zip_correction_signal(last_msg: str) -> bool:
+    raw = (last_msg or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    has_zip_sig = bool(re.search(r"\b9[0-9]{4}\b", raw)) or "邮编" in raw or re.search(r"\bzip\b", tl)
+    if not has_zip_sig:
+        return False
+    return any(
+        m in raw
+        for m in (
+            "不是",
+            "更正",
+            "改",
+            "写错",
+            "写错了",
+            "换成",
+            "不对",
+            "更正一下",
+            "改一下",
+            "其实",
+        )
+    ) or any(m in tl for m in ("wrong zip", "wrong area code"))
+
+
+def _is_add_car_contact_phone_correction_signal(last_msg: str) -> bool:
+    raw = (last_msg or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    has_phone = bool(re.search(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", raw))
+    if not has_phone:
+        return False
+    if any(
+        m in raw
+        for m in (
+            "不是",
+            "更正",
+            "改",
+            "换成",
+            "写错",
+            "写错了",
+            "之前",
+            "电话",
+            "手机",
+            "更正电话",
+            "新的电话",
+            "新手机",
+            "新号码",
+        )
+    ):
+        return True
+    if "phone" in tl and any(m in tl for m in ("wrong", "not the", "not this", "new number", "update")):
+        return True
+    if "wrong number" in tl:
+        return True
+    return False
+
+
+def _is_add_car_contact_name_correction_signal(last_msg: str) -> bool:
+    raw = (last_msg or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    if any(m in raw for m in ("名字写错", "姓名写错", "名字更正", "实际我是", "更正名字")):
+        return True
+    if "我是" in raw and any(m in raw for m in ("不是", "更正", "改", "其实")):
+        return True
+    if any(m in tl for m in ("correct name", "wrong name", "my name is actually")):
+        return True
+    return False
+
+
+def _is_add_car_vin_field_correction_signal(last_msg: str) -> bool:
+    raw = (last_msg or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    if not any(m in tl for m in ("vin", "车架")):
+        return False
+    if any(
+        m in tl
+        for m in (
+            "wrong vin",
+            "vin is wrong",
+            "incorrect vin",
+            "vin should be",
+            "actually the vin",
+            "the vin is actually",
+            "correct vin",
+            "sorry the vin",
+            "vin is actually",
+        )
+    ):
+        return True
+    return any(m in raw for m in ("写错", "错了", "不对", "更正", "改", "不是", "改一下"))
+
+
+def _is_add_car_delivery_or_driver_correction_signal(last_msg: str) -> bool:
+    raw = (last_msg or "").strip()
+    if not raw:
+        return False
+    tl = raw.lower()
+    has_dd = any(
+        m in raw
+        for m in ("提车", "拿车", "delivery", "driver", "驾驶人", "下周", "明天", "primary", "老婆开", "老公开")
+    ) or bool(re.search(r"\d{1,2}月\d{1,2}", raw))
+    if not has_dd:
+        return False
+    return any(
+        m in raw
+        for m in ("不是", "更正", "改", "写错", "写错了", "说错了", "其实", "更正一下")
+    ) or any(m in tl for m in ("wrong", "actually", "meant", "i meant"))
+
+
+def _effective_persisted_for_add_car_merge(
+    reply_truth_context: dict[str, Any] | None,
+    last_customer_raw: str,
+    follow_up_type: str,
+) -> tuple[list[str], dict[str, Any]]:
+    """
+    Correction vs persisted record (Add-Car): drop selected persisted slot ids so fresh extraction
+    wins for those fields instead of blindly merging stale office-visible lists.
+    """
+    meta: dict[str, Any] = {"correction_turn": False, "invalidated_slots": []}
+    ctx = reply_truth_context or {}
+    persisted = [str(x) for x in (ctx.get("persisted_collected_fields") or []) if str(x).strip()]
+    if not persisted:
+        return persisted, meta
+    if not str(ctx.get("formal_submitted_at") or "").strip():
+        return persisted, meta
+
+    last = (last_customer_raw or "").strip()
+    ft = (follow_up_type or "").strip().lower()
+    strip: set[str] = set()
+
+    if _is_add_car_vehicle_correction_for_merge(last):
+        strip.update(["year", "make_model", "vin"])
+        meta["correction_turn"] = True
+    elif (
+        not _correction_is_cross_topic_pivot_not_vehicle_fix(last)
+        and ft == "correction"
+        and _VEHICLE_CORRECTION_TOKEN_RE.search(last.lower())
+    ):
+        strip.update(["year", "make_model", "vin"])
+        meta["correction_turn"] = True
+    elif _is_add_car_vin_field_correction_signal(last):
+        strip.update({"vin", "year", "make_model"})
+        meta["correction_turn"] = True
+
+    if _is_add_car_zip_correction_signal(last):
+        strip.add("zip")
+        meta["correction_turn"] = True
+
+    if _is_add_car_delivery_or_driver_correction_signal(last):
+        strip.update(["delivery_date", "primary_driver"])
+        meta["correction_turn"] = True
+
+    if _is_add_car_contact_phone_correction_signal(last):
+        strip.add("phone")
+        meta["correction_turn"] = True
+
+    if _is_add_car_contact_name_correction_signal(last):
+        strip.add("name")
+        meta["correction_turn"] = True
+
+    from services.fiqa_api.inbox_triage.date_normalization import (
+        relative_delivery_should_invalidate_persisted_calendar,
+    )
+
+    if relative_delivery_should_invalidate_persisted_calendar(last):
+        strip.add("delivery_date")
+        meta["correction_turn"] = True
+
+    if not strip:
+        return persisted, meta
+
+    new_p = [x for x in persisted if str(x).lower() not in strip]
+    meta["invalidated_slots"] = sorted(strip)
+    return new_p, meta
+
+
+def _add_car_augmented_truth_fields(
+    merged_text: str,
+    reply_truth_context: dict[str, Any] | None,
+    last_customer_raw: str,
+    follow_up_type: str,
+) -> dict[str, bool]:
+    """Chat extraction after strict Truth guardrails, merged with persisted collected_fields (office truth)."""
+    effective_persisted, _ = _effective_persisted_for_add_car_merge(
+        reply_truth_context, last_customer_raw, follow_up_type
+    )
+    base = _extract_add_car_fields_truth_safe(merged_text)
+    return _augment_add_car_fields_from_persisted_collected(base, effective_persisted)
 
 
 def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str], str | None, str | None]:
     """Return (collected_fields, still_needed_fields, extracted_name, extracted_phone) for add-car broker handoff.
     ADD_CAR_IDENTITY_CONTACT_LITE: Includes name/phone in collected when extracted; in still_needed when quote-ready but missing."""
-    fields = _extract_add_car_fields(merged_text)
+    fields = _extract_add_car_fields_truth_safe(merged_text)
     collected: list[str] = []
     if fields.get("year"):
         collected.append("year")
@@ -3547,6 +4570,14 @@ def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str], 
         vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
         if not vehicle_ok:
             still_needed.extend(["year", "make_model"])
+        elif fields.get("vin"):
+            # VIN alone does not remove year/make from operator-visible gaps (contract structural_still_needed_ids).
+            if not fields.get("year"):
+                still_needed.append("year")
+            if not fields.get("model"):
+                still_needed.append("make_model")
+        if not fields.get("vin"):
+            still_needed.append("vin")
         if not fields.get("zip"):
             still_needed.append("zip")
         if not fields.get("delivery"):
@@ -3559,14 +4590,18 @@ def _add_car_structured_fields(merged_text: str) -> tuple[list[str], list[str], 
         if not fields.get("driver"):
             still_needed.append("primary_driver")
 
-    # Contact still needed when quote-ready or almost-ready
+    # Contact still needed only when truth-derived quote state is almost_ready or quote_ready (no rule-layer shortcuts).
     qrs = _add_car_quote_ready_status(fields)
-    if qrs in ("quote_ready", "almost_ready"):
+    contact_tail = qrs in ("quote_ready", "almost_ready")
+    if contact_tail:
         if not extracted_name:
             still_needed.append("name")
         if not extracted_phone:
             still_needed.append("phone")
 
+    collected = dedupe_preserve_order(collected)
+    still_needed = dedupe_preserve_order(still_needed)
+    validate_add_car_field_lists(collected, still_needed)
     return (collected, still_needed, extracted_name, extracted_phone)
 
 
@@ -3883,6 +4918,7 @@ def _get_next_ask_for_add_car(
     add_car_rules: dict[str, dict[str, str]] | None = None,
     customer_turn_count: int = 0,
     client_id: str | None = None,
+    questioning_variant: str = "A",
 ) -> str | None:
     """Return the next most useful ask for add-car, or None if we should hand off.
     Ask order: vehicle (year+model) first when missing, then zip, then delivery+driver.
@@ -3949,13 +4985,48 @@ def _get_next_ask_for_add_car(
     if ps_lead:
         prefix = ps_lead + prefix
 
+    from services.fiqa_api.inbox_triage.date_normalization import (
+        focused_ask_for_delivery_date,
+        normalize_delivery_date_or_flag,
+    )
+
+    _iso_d, _dmode = normalize_delivery_date_or_flag(last_customer)
+    if not fields.get("delivery") and _dmode == "ask_exact":
+        return _maybe_append_add_car_price_caveat(
+            merged_text,
+            prefix + focused_ask_for_delivery_date(language),
+            language,
+            client_id,
+        )
+
     vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
     if not vehicle_ok:
-        ask = rules.get("ask_vehicle", {}).get(language) or (
-            "先把年份和车型发我，我就能继续帮您报价。"
-            if language == "zh"
-            else "Send me the year and make/model first so I can run the quote."
-        )
+        pvc_for_confirm = (_extract_primary_add_car_vehicle_concrete(merged_text) or "").strip()
+        qv = (questioning_variant or "A").strip().upper()
+        if qv == "C" and pvc_for_confirm:
+            ask = (
+                f"我先按「{pvc_for_confirm}」理解这台车，对吗？不对请发年份+车型或 VIN。"
+                if language == "zh"
+                else f"Confirming the vehicle as «{pvc_for_confirm}»—reply OK or send year/make or VIN if wrong."
+            )
+        else:
+            ask = rules.get("ask_vehicle", {}).get(language) or (
+                "先把年份和车型发我，我就能继续帮您报价。"
+                if language == "zh"
+                else "Send me the year and make/model first so I can run the quote."
+            )
+        return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
+    if fields.get("vin") and (not fields.get("year") or not fields.get("model")):
+        if not fields.get("year") and not fields.get("model"):
+            ask = (
+                "VIN 已收到。还请补一下年份和车型，方便办公室核对。"
+                if language == "zh"
+                else "Got the VIN—please send the year and make/model for our office records."
+            )
+        elif not fields.get("year"):
+            ask = "再发一下车辆年份。" if language == "zh" else "Please send the vehicle year."
+        else:
+            ask = "再发一下车型（品牌/型号）。" if language == "zh" else "Please send the make and model."
         return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
     if not fields.get("zip"):
         ask = rules.get("ask_zip", {}).get(language) or (
@@ -3971,6 +5042,16 @@ def _get_next_ask_for_add_car(
             else "Send me the delivery date and main driver so I can prepare the quote."
         )
         return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
+    if not fields.get("vin"):
+        # PTD §9: defer_to_broker — do not extend the chat interview for VIN when strategy defers.
+        if should_skip_user_prompt_for_missing_field("vin"):
+            return None
+        ask = rules.get("ask_vin", {}).get(language) or (
+            "VIN（17位车架号）发我一下，我好让办公室出正式报价。"
+            if language == "zh"
+            else "Send the 17-digit VIN when you have it so we can run the formal quote."
+        )
+        return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
     return None
 
 
@@ -3981,25 +5062,30 @@ def _get_next_ask_draft(
     customer_turn_count: int,
     add_car_rules: dict[str, dict[str, str]] | None = None,
     client_id: str | None = None,
+    *,
+    add_car_lane_active: bool = False,
+    questioning_variant: str = "A",
 ) -> str | None:
     """
     If we should ask one more thing instead of handing off, return the draft.
     Otherwise return None (hand off).
-    Only applies when customer_turn_count >= 2 (second or third turn).
-    Focus: add-car quote (ask for zip/delivery/driver when missing).
-    Other categories: hand off after 2 turns to avoid repeating the same ask.
-    HANDOFF_TIMING_REGRESSION: Premium/payment "one more ask" deferred — would break
-    2-turn scenarios (SIM7, SIM9, R1, R6, SIM13); fix-next when we can scope to 3+ turn only.
+    Add-car: from turn 1 onward (minimal-question path). Other categories: turn >= 2 only.
     """
-    if customer_turn_count < 2:
+    if (not add_car_lane_active) and customer_turn_count < 2:
         return None
     language = "zh" if _contains_chinese(merged_text) else "en"
     lowered = (merged_text or "").lower()
 
-    if _is_add_vehicle_request(lowered):
-        fields = _extract_add_car_fields(merged_text)
+    if _is_add_vehicle_request(lowered) or add_car_lane_active:
+        fields = _extract_add_car_fields_truth_safe(merged_text)
         return _get_next_ask_for_add_car(
-            merged_text, fields, language, add_car_rules, customer_turn_count, client_id
+            merged_text,
+            fields,
+            language,
+            add_car_rules,
+            customer_turn_count,
+            client_id,
+            questioning_variant,
         )
 
     return None
@@ -4024,6 +5110,11 @@ def triage_conversation(
     add_car_rules_override: dict[str, dict[str, str]] | None = None,
     client_id: str | None = None,
     reply_truth_context: dict[str, Any] | None = None,
+    *,
+    for_append: bool = False,
+    prior_workflow_state: dict[str, Any] | None = None,
+    v6_ocr_signals: dict[str, Any] | None = None,
+    v6_auto_input_variant: str | None = None,
 ) -> dict[str, Any]:
     """
     Triage within a multi-turn conversation.
@@ -4034,14 +5125,22 @@ def triage_conversation(
     reply_truth_context: optional structured truth for reply layer — formal_submitted_at,
         lifecycle_status (handed_off | office_followup), formal_submit_this_turn (API formal submit).
         Handoff phrasing stays pre-submit unless this context allows post-submit office-receipt language.
+    prior_workflow_state: optional prior session workflow (e.g. conversion_stage) for quote-ready
+        conversion progression without repeating the same announcement block each turn.
     """
     resolved_client_id = (client_id or "").strip() or get_active_client_id()
+    intake_evolution_variant = get_intake_evolution_variant(resolved_client_id)
+    v6_variant_eff = (v6_auto_input_variant or "").strip().upper() or get_v6_auto_input_variant(resolved_client_id)
+    if v6_variant_eff not in ("A", "B", "C"):
+        v6_variant_eff = "A"
+    v4_bundle_early: dict[str, Any] | None = None
+    truth_guardrail_debug_session_start()
     customer_turns = [t for t in conversation_turns if (t.get("role") or "").strip().lower() == "customer"]
     customer_count = len(customer_turns)
 
     merged_text = _build_conversation_text_for_triage(conversation_turns, latest_text)
     if not merged_text.strip():
-        return {
+        out_empty = {
             "issue_category": "unclear",
             "urgency": "medium",
             "broker_next_step": "Request clarification from sender.",
@@ -4050,13 +5149,16 @@ def triage_conversation(
             "manual_followup_needed": True,
             "handoff_ready": False,
             "conversation_summary": "",
+            "triage_mode": "greenfield",
         }
+        maybe_attach_truth_guardrail_debug_to_triage(out_empty)
+        return out_empty
 
     # SALES_READINESS_HARDENING: Talk to Agent free-text detection.
     # If last customer message requests human contact, hand off immediately (any turn).
     matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    last_customer_msg = (matches[-1] or "").strip() if matches else (latest_text or "").strip()
-    if _is_talk_to_agent_request(last_customer_msg):
+    last_customer_raw = (matches[-1] or "").strip() if matches else (latest_text or "").strip()
+    if _is_talk_to_agent_request(last_customer_raw):
         handoff_phrases = _get_handoff_phrases(resolved_client_id)
         phrases = handoff_phrases.get("customer_requested_human", {}) if handoff_phrases else {}
         draft_zh = phrases.get("zh") or "好的，已帮您转给办公室，他们会尽快联系您。"
@@ -4071,7 +5173,7 @@ def triage_conversation(
                     prior_parts.append(txt[:80] + ("…" if len(txt) > 80 else ""))
             if prior_parts:
                 prior_context = " Prior context: " + "; ".join(prior_parts[-2:])
-        return {
+        out_human = {
             "issue_category": "customer_requested_human",
             "urgency": "medium",
             "manual_followup_needed": True,
@@ -4086,7 +5188,42 @@ def triage_conversation(
             "next_best_question": "",
             "lifecycle_status": "handoff_pending",
             "collection_stage": "enough_for_handoff",
+            "triage_mode": "greenfield",
         }
+        maybe_attach_truth_guardrail_debug_to_triage(out_human)
+        return out_human
+
+    lowered_merged = (merged_text or "").lower()
+    is_add_car = _effective_add_car_lane_active(
+        lowered_merged=lowered_merged,
+        merged_text=merged_text,
+        reply_truth_context=reply_truth_context,
+        last_customer_raw=last_customer_raw,
+    )
+
+    ocr_blob = ""
+    if v6_ocr_signals and isinstance(v6_ocr_signals, dict):
+        from services.fiqa_api.inbox_triage.ocr_case_fusion import build_supplemental_extraction_blob
+
+        ocr_blob = build_supplemental_extraction_blob(v6_ocr_signals)
+    merged_text_for_ocr = merged_text
+    if ocr_blob:
+        merged_text_for_ocr = f"{merged_text}\n\n[OCR]\n{ocr_blob}"
+
+    merged_for_add_car_extraction = merged_text_for_ocr
+    add_car_llm_slot_meta: dict[str, Any] = {"called": False, "skip_reason": "not_add_car_lane"}
+    if is_add_car:
+        _rf_slot = _extract_add_car_fields_truth_safe(merged_text_for_ocr)
+        _invoke_slot_llm, _skip_slot = _add_car_llm_slot_should_invoke(
+            _rf_slot, merged_text_for_ocr, last_customer_raw
+        )
+        merged_for_add_car_extraction, add_car_llm_slot_meta = maybe_augment_merged_text_for_add_car_slots(
+            merged_text_for_ocr,
+            last_customer_raw,
+            rule_fields=_rf_slot,
+            invoke_llm=_invoke_slot_llm,
+            skip_reason=_skip_slot,
+        )
 
     # Selective LLM routing: simple turns use fast path (SIMULATION_ASSISTANT_SPEED_LAYER_BLUEPRINT)
     use_fast_path = (
@@ -4109,24 +5246,95 @@ def triage_conversation(
         base_result.get("issue_category", "unclear"),
     )
 
-    # Add-car: first turn with enough info → hand off immediately (MATURE_INTAKE_SKELETON)
-    if (
-        base_result.get("issue_category") == "customer_question"
-        and _is_add_vehicle_request((merged_text or "").lower())
-        and customer_count + 1 == 1
-    ):
-        fields = _extract_add_car_fields(merged_text)
-        if _add_car_enough_for_handoff(fields):
-            would_handoff = True
+    # V5: infer → draft → confirm (turn 1) → immediate broker handoff when case_usable (not quote_ready)
+    if is_add_car and customer_count + 1 == 1:
+        would_handoff = False
 
-    next_ask = _get_next_ask_draft(
-        merged_text,
-        base_result.get("issue_category", "unclear"),
-        base_result,
-        customer_count + 1,
-        add_car_rules_override,
-        resolved_client_id,
+    _follow_v4_pre = _derive_follow_up_type(last_customer_raw)
+    _col_v4_pre, _still_v4_pre, _, _, _ = _compute_add_car_collected_still_lists(
+        merged_for_add_car_extraction,
+        last_customer_raw,
+        reply_truth_context,
+        _follow_v4_pre,
     )
+    _tf_v4_pre = _add_car_augmented_truth_fields(
+        merged_for_add_car_extraction,
+        reply_truth_context,
+        last_customer_raw,
+        _follow_v4_pre,
+    )
+    _qrs_v4_pre = _add_car_quote_ready_status(_tf_v4_pre)
+    _pvc_raw = _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction)
+    _pvc_v4_pre_arg = None
+    if isinstance(_pvc_raw, str) and _pvc_raw.strip():
+        _pvc_v4_pre_arg = _pvc_raw.strip()
+    _lang_v4_pre = "zh" if _contains_chinese(merged_text) else "en"
+    if is_add_car:
+        v4_bundle_early = build_v4_case_draft_bundle(
+            merged_text=merged_for_add_car_extraction,
+            collected_fields=_col_v4_pre,
+            missing_fields=_still_v4_pre,
+            primary_vehicle_summary=_pvc_v4_pre_arg,
+            quote_ready_status=_qrs_v4_pre,
+            human_confirmation_fields=[],
+            issue_category=str(base_result.get("issue_category") or ""),
+            language=_lang_v4_pre,
+            variant=intake_evolution_variant,
+            ocr_context=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
+            v6_auto_input_variant=v6_variant_eff,
+        )
+
+    if is_add_car and v4_bundle_early is not None:
+        if customer_count + 1 == 1:
+            next_ask = build_v4_confirmation_client_reply_from_bundle(
+                v4_bundle_early,
+                merged_text=merged_for_add_car_extraction,
+                primary_vehicle_summary=_pvc_v4_pre_arg,
+                language=_lang_v4_pre,
+                variant=intake_evolution_variant,
+            )
+        else:
+            _usable, _, _ = evaluate_v5_case_usable(
+                v4_bundle_early,
+                merged_text=merged_for_add_car_extraction,
+                primary_vehicle_summary=_pvc_v4_pre_arg,
+                variant=intake_evolution_variant,
+            )
+            if _usable:
+                next_ask = None
+            else:
+                next_ask = _get_next_ask_draft(
+                    merged_for_add_car_extraction,
+                    base_result.get("issue_category", "unclear"),
+                    base_result,
+                    customer_count + 1,
+                    add_car_rules_override,
+                    resolved_client_id,
+                    add_car_lane_active=is_add_car,
+                    questioning_variant=intake_evolution_variant,
+                )
+    else:
+        next_ask = _get_next_ask_draft(
+            merged_for_add_car_extraction,
+            base_result.get("issue_category", "unclear"),
+            base_result,
+            customer_count + 1,
+            add_car_rules_override,
+            resolved_client_id,
+            add_car_lane_active=is_add_car,
+            questioning_variant=intake_evolution_variant,
+        )
+    _next_lang_pre = "zh" if _contains_chinese(merged_text) else "en"
+    if is_add_car and next_ask and customer_count + 1 > 1:
+        _f_aug = _extract_add_car_fields_truth_safe(merged_for_add_car_extraction)
+        _pvc_aug = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip() or None
+        next_ask = augment_next_ask_with_variant(
+            next_ask,
+            variant=intake_evolution_variant,
+            language=_next_lang_pre,
+            primary_vehicle_summary=_pvc_aug,
+            fields=_f_aug,
+        )
 
     if would_handoff and next_ask:
         handoff = False
@@ -4134,15 +5342,26 @@ def triage_conversation(
     else:
         handoff = would_handoff
         result_draft = base_result.get("client_reply_draft", "")
+        if is_add_car and next_ask and not handoff:
+            result_draft = next_ask
+
+    _matches_gate = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    _last_c_gate = (_matches_gate[-1] or "").strip() if _matches_gate else (latest_text or "").strip()
+    _follow_gate = _derive_follow_up_type(_last_c_gate)
+    if handoff and is_add_car and v4_bundle_early is not None:
+        _vu, _, _ = evaluate_v5_case_usable(
+            v4_bundle_early,
+            merged_text=merged_for_add_car_extraction,
+            primary_vehicle_summary=_pvc_v4_pre_arg,
+            variant=intake_evolution_variant,
+        )
+        if not _vu:
+            handoff = False
 
     handoff_phrases = _get_handoff_phrases(resolved_client_id)
     stitched_cfg = _get_stitched_phrases(resolved_client_id)
-    lowered_merged = (merged_text or "").lower()
-    is_add_car = _is_add_vehicle_request(lowered_merged)
     is_remove_car = _is_remove_vehicle_request(lowered_merged)
     post_submit_phrasing = _truth_allows_post_submit_handoff_phrasing(reply_truth_context)
-    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    last_customer_raw = (matches[-1] or "").strip() if matches else ""
     follow_up_type = _derive_follow_up_type(last_customer_raw)
     collection_stage = _derive_collection_stage(
         base_result.get("issue_category", "unclear"),
@@ -4158,7 +5377,7 @@ def triage_conversation(
             follow_up_type,
             handoff_phrases,
             customer_count + 1,
-            merged_text,
+            merged_for_add_car_extraction,
             reply_truth_context,
         )
         key = _effective_add_car_handoff_storage_key(
@@ -4180,6 +5399,13 @@ def triage_conversation(
             key = "other"
     phrases = handoff_phrases.get(key, {}) if handoff_phrases else {}
     language = _detect_client_language(merged_text)
+    _turn_idx = customer_count + 1
+    _intent_f = (
+        add_car_resolved_intent.intent_family
+        if add_car_resolved_intent is not None
+        else None
+    )
+    _rot = _post_submit_rot_idx(_turn_idx, add_car_handoff_base_key or "", _intent_f)
     # Reassure-first: when already_sent + "why still chasing", answer first then hand off
     why_still_chasing = any(
         m in last_customer_raw.lower()
@@ -4204,20 +5430,20 @@ def triage_conversation(
             and bool(zh_alt or en_alt)
             and ((customer_count + 1) % 2 == 0)
         )
-        _turn_idx = customer_count + 1
-        fb_zh = _post_submit_add_car_fallback_line(
-            add_car_handoff_base_key, "zh", rot_idx=_turn_idx
-        ) if (is_add_car and post_submit_phrasing and add_car_handoff_base_key) else None
-        fb_en = _post_submit_add_car_fallback_line(
-            add_car_handoff_base_key, "en", rot_idx=_turn_idx
-        ) if (is_add_car and post_submit_phrasing and add_car_handoff_base_key) else None
-        pack_missing_post_submit = bool(
+        _engine_post_submit_pool = bool(
             is_add_car
             and post_submit_phrasing
             and add_car_handoff_base_key
-            and key == add_car_handoff_base_key
+            and add_car_handoff_base_key in _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS
         )
-        if pack_missing_post_submit and fb_zh:
+        fb_zh = _post_submit_add_car_fallback_line(
+            add_car_handoff_base_key, "zh", rot_idx=_rot
+        ) if _engine_post_submit_pool else None
+        fb_en = _post_submit_add_car_fallback_line(
+            add_car_handoff_base_key, "en", rot_idx=_rot
+        ) if _engine_post_submit_pool else None
+        # Engine pool beats static *_submitted pack lines (otherwise key != base_key skips pool → REPLY_REPEATED_BLOCK).
+        if _engine_post_submit_pool and fb_zh:
             handoff_reply_zh = fb_zh
         else:
             handoff_reply_zh = (phrases.get("zh") or "").strip() or (
@@ -4234,7 +5460,7 @@ def triage_conversation(
                     else "您说的情况已整理好了，办公室会尽快处理，有结果会联系您。"
                 )
             )
-        if pack_missing_post_submit and fb_en:
+        if _engine_post_submit_pool and fb_en:
             handoff_reply_en = fb_en
         else:
             handoff_reply_en = (phrases.get("en") or "").strip() or (
@@ -4263,6 +5489,7 @@ def triage_conversation(
             and (customer_count + 1) >= 3
             and bool(zh_alt or en_alt)
             and ((customer_count + 1) % 2 == 0)
+            and not _engine_post_submit_pool
         )
         if use_alt_post_submit:
             if zh_alt and language == "zh":
@@ -4479,7 +5706,7 @@ def triage_conversation(
         and last_customer_raw
         and _is_add_car_vehicle_correction_signal(last_customer_raw)
     ):
-        vc = _extract_add_car_vehicle_concrete(merged_text)
+        vc = _extract_add_car_vehicle_concrete(merged_for_add_car_extraction)
         if vc:
             if language == "zh" and "这台车继续" not in handoff_reply:
                 handoff_reply = f"收到，按 {vc} 这台车继续。" + handoff_reply
@@ -4488,7 +5715,7 @@ def triage_conversation(
 
     # Truth: quote-ready / almost-ready but name or phone not on the record — do not imply contact is complete
     if handoff and is_add_car:
-        _col_gap, _still_gap, _gap_name, _gap_phone = _add_car_structured_fields(merged_text)
+        _col_gap, _still_gap, _gap_name, _gap_phone = _add_car_structured_fields(merged_for_add_car_extraction)
         if last_customer_raw:
             _ltn, _ltp = _extract_contact_fields(f"[客户] {last_customer_raw.strip()}")
             if _ltn:
@@ -4506,6 +5733,20 @@ def triage_conversation(
         if _gap_phone:
             _sg_adj = [x for x in _sg_adj if str(x).lower() != "phone"]
         if _sg_adj and ("name" in _sg_adj or "phone" in _sg_adj):
+            # Long contact-gap tails drown timeline / quote-detail / receipt questions (Role C).
+            # Also lighten for materials/supplement/correction turns—main answer stays primary (outline §4.10).
+            _intent_short_contact_tail = (
+                add_car_resolved_intent is not None
+                and add_car_resolved_intent.intent_family
+                in (
+                    INTENT_TIMELINE_QUESTION,
+                    INTENT_QUOTE_DETAIL_QUESTION,
+                    INTENT_OFFICE_RECEIPT_QUESTION,
+                    INTENT_MATERIALS_CLAIM,
+                    INTENT_SUPPLEMENT_INFO,
+                    INTENT_CORRECTION,
+                )
+            )
             gap = stitched_cfg.get("handoff_add_car_contact_gap_tail")
             gap_d: dict[str, str] = gap if isinstance(gap, dict) else {}
             gap_line = (
@@ -4517,7 +5758,21 @@ def triage_conversation(
                 if language == "zh"
                 else " If your name or phone isn't clear on this record yet, the office may confirm contact details when they reach out."
             )
+            if _intent_short_contact_tail:
+                gap_line = (
+                    (gap_d.get("zh_short") or "").strip()
+                    if language == "zh"
+                    else (gap_d.get("en_short") or "").strip()
+                ) or (
+                    "（若方便：请在本对话补一行姓名与电话，便于办公室联系。）"
+                    if language == "zh"
+                    else " (If you can, add your name and phone in one line here so the office can reach you.)"
+                )
             hr = handoff_reply or ""
+            _prior_contact_tails = _count_prior_system_contact_gap_tails_in_thread(merged_text, language)
+            # After two prior reminders in-thread, stop appending—truth/ office summary still carry gaps (§4.10).
+            if _prior_contact_tails >= 2:
+                gap_line = ""
             if gap_line and gap_line.strip() not in hr:
                 handoff_reply = hr.rstrip() + gap_line
 
@@ -4532,6 +5787,7 @@ def triage_conversation(
             handoff_reply,
             lang=language,
             intent_family=add_car_resolved_intent.intent_family,
+            variant_idx=_rot,
         )
 
     result = dict(base_result)
@@ -4568,6 +5824,15 @@ def triage_conversation(
         and reply_truth_context.get("formal_submit_this_turn") is True
     ):
         result["lifecycle_status"] = "handed_off"
+    # Persisted case + same-thread continuation: handoff_ready must not read as "awaiting first submit".
+    elif (
+        handoff
+        and is_add_car
+        and reply_truth_context
+        and str(reply_truth_context.get("formal_submitted_at") or "").strip()
+        and reply_truth_context.get("formal_submit_this_turn") is not True
+    ):
+        result["lifecycle_status"] = "office_followup"
     # Reassure-then-route: signal when case creation is appropriate (for UI confirmation)
     result["case_creation_suggested"] = (
         handoff
@@ -4577,7 +5842,7 @@ def triage_conversation(
         )
     )
     summary, secondary_note = _build_conversation_summary(
-        merged_text, base_result, customer_count + 1
+        merged_for_add_car_extraction, base_result, customer_count + 1
     )
     result["conversation_summary"] = summary
     if secondary_note:
@@ -4589,61 +5854,32 @@ def triage_conversation(
 
     lowered = (merged_text or "").lower()
     if is_add_car:
-        collected, still_needed, extracted_name, extracted_phone = _add_car_structured_fields(merged_text)
-        if last_customer_raw:
-            lt_n, lt_p = _extract_contact_fields(f"[客户] {last_customer_raw.strip()}")
-            if lt_n:
-                extracted_name = extracted_name or lt_n
-                if "name" not in collected:
-                    collected.append("name")
-            if lt_p:
-                extracted_phone = extracted_phone or lt_p
-                if "phone" not in collected:
-                    collected.append("phone")
-        pc = reply_truth_context or {}
-        if str(pc.get("record_contact_name") or "").strip():
-            still_needed = [x for x in still_needed if str(x).lower() != "name"]
-        if str(pc.get("record_contact_phone") or "").strip():
-            still_needed = [x for x in still_needed if str(x).lower() != "phone"]
-        if extracted_name:
-            still_needed = [x for x in still_needed if str(x).lower() != "name"]
-        if extracted_phone:
-            still_needed = [x for x in still_needed if str(x).lower() != "phone"]
-        # After formal office-visible submit, do not keep name/phone in still_needed from chat extraction alone;
-        # identity is on the service record (avoids TRUTH_HANDOFF_READY_CONTACT_GAP on post-submit turns).
-        if str(pc.get("formal_submitted_at") or "").strip():
-            still_needed = [x for x in still_needed if str(x).lower() not in ("name", "phone")]
+        collected, still_needed, merge_meta, extracted_name, extracted_phone = _compute_add_car_collected_still_lists(
+            merged_for_add_car_extraction,
+            last_customer_raw,
+            reply_truth_context,
+            follow_up_type,
+        )
         result["collected_fields"] = collected
         result["still_needed_fields"] = still_needed
+        if merge_meta.get("correction_turn"):
+            result["add_car_merge"] = merge_meta
+        result["add_car_llm_slot_layer"] = add_car_llm_slot_meta
         # ADD_CAR_REAL_INTAKE_LITE: quote_ready_status for broker visibility
-        fields = _extract_add_car_fields(merged_text)
-        result["quote_ready_status"] = _add_car_quote_ready_status(fields)
+        truth_fields = _add_car_augmented_truth_fields(
+            merged_for_add_car_extraction,
+            reply_truth_context,
+            last_customer_raw,
+            follow_up_type,
+        )
+        result["quote_ready_status"] = _add_car_quote_ready_status(truth_fields)
         # ADD_CAR_IDENTITY_CONTACT_LITE: extracted contact for case persistence
         if extracted_name:
             result["extracted_contact_name"] = extracted_name
         if extracted_phone:
             result["extracted_contact_phone"] = extracted_phone
-        # Truth gate: do not expose handoff_ready while name/phone are still missing from the thread
-        # (quote-ready vs contact identity). Exception: office-visible submit already recorded.
-        post_office = bool(str(pc.get("formal_submitted_at") or "").strip()) or (
-            pc.get("formal_submit_this_turn") is True
-        )
-        sn_lower = {str(x).lower() for x in still_needed}
-        # Turn 1 may satisfy quote slots without name/phone in the bubble (contact tail appended instead).
-        # Turns 2–3 often complete driver/zip; from turn 4 onward tighten so "ready" does not outrun contact identity.
-        if (
-            handoff
-            and (sn_lower & {"name", "phone"})
-            and not post_office
-            and (customer_count + 1) >= 4
-        ):
-            result["handoff_ready"] = False
-            result["lifecycle_status"] = "collecting"
-            result["next_best_question"] = (
-                "请在本对话补充您的姓名与联系电话，方便办公室核对后联系您。"
-                if language == "zh"
-                else "Please share your name and a phone number in this thread so the office can reach you."
-            )
+        # Conversion Flow V3: customer-facing contact completion is handled in conversion_layer; do not
+        # force handoff_ready false here when name/phone are still missing (avoids quote_ready → handoff funnel stall).
     elif _is_premium_review_request(lowered):
         collected, still_needed = _renewal_structured_fields(merged_text)
         result["collected_fields"] = collected
@@ -4670,6 +5906,14 @@ def triage_conversation(
         result.get("collected_fields"),
         result.get("still_needed_fields"),
     )
+    # Reduce noisy "double caution" when structural quote bar is met: driver already captured
+    # and broker_next_step already says to confirm — still flag VIN / payment-risk as before.
+    if (
+        is_add_car
+        and str(result.get("quote_ready_status") or "").strip() == "quote_ready"
+        and human_fields == ["primary_driver"]
+    ):
+        human_fields = []
     result["human_confirmation_fields"] = human_fields
     result["human_confirmation_required"] = bool(human_fields)
 
@@ -4714,11 +5958,16 @@ def triage_conversation(
     # ADD_CAR_COMMERCIAL_FLOW_HARDENING: When customer says "发你微信了" / "sent" in add-car context,
     # broker_next_step must say "Verify materials received" — reduces broker rework, feels office-ready.
     if handoff and is_add_car:
-        fields = _extract_add_car_fields(merged_text)
-        if _add_car_enough_for_handoff(fields):
-            vehicle_concrete = _extract_add_car_vehicle_concrete(merged_text)
-            has_delivery = bool(fields.get("delivery"))
-            has_driver = bool(fields.get("driver"))
+        truth_fields = _add_car_augmented_truth_fields(
+            merged_for_add_car_extraction,
+            reply_truth_context,
+            last_customer_raw,
+            follow_up_type,
+        )
+        if _add_car_is_quote_ready(truth_fields):
+            vehicle_concrete = _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction)
+            has_delivery = bool(truth_fields.get("delivery"))
+            has_driver = bool(truth_fields.get("driver"))
             if has_delivery and not has_driver:
                 confirm_step = "Confirm main driver with client before binding."
             elif has_driver and not has_delivery:
@@ -4762,6 +6011,157 @@ def triage_conversation(
                 if not has_name or not has_phone:
                     result["broker_next_step"] = f"{result['broker_next_step']} Confirm name and phone for follow-up."
 
+    result["service_type"] = _derive_service_type(
+        issue_category=str(base_result.get("issue_category") or ""),
+        lowered_text=lowered,
+        is_add_car=is_add_car,
+        is_remove_car=is_remove_car,
+    )
+    if is_add_car:
+        result["vehicle_key"] = _derive_vehicle_key_from_add_car_text(merged_for_add_car_extraction)
+        cust_only = " ".join(
+            re.findall(r"\[客户\]\s*([^[]+)", merged_for_add_car_extraction or "")
+        ).strip()
+        multi = _add_car_mentions_multiple_vehicles(cust_only)
+        result["additional_vehicle_mentioned"] = multi
+        pvc = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip()
+        result["primary_vehicle_summary"] = pvc if pvc else None
+        result["additional_vehicle_count_hint"] = 2 if multi else None
+        if multi and is_add_car:
+            bns = (result.get("broker_next_step") or "").strip()
+            suffix = "Multiple vehicles mentioned—confirm primary quote scope vs any second vehicle."
+            if suffix not in bns:
+                result["broker_next_step"] = f"{bns} {suffix}".strip() if bns else suffix
+    else:
+        result["vehicle_key"] = None
+        result["additional_vehicle_mentioned"] = None
+        result["primary_vehicle_summary"] = None
+        result["additional_vehicle_count_hint"] = None
+
+    result["triage_mode"] = "greenfield"
+
+    from services.fiqa_api.inbox_triage.conversion_layer import maybe_apply_quote_ready_conversion_reply
+    from services.fiqa_api.inbox_triage.intake_engine import run_intake_engine
+
+    result = run_intake_engine(result, persisted=reply_truth_context)
+
+    if is_add_car:
+        maybe_apply_quote_ready_conversion_reply(
+            result,
+            language=language,
+            client_id=resolved_client_id,
+            merged_text=merged_text,
+            post_submit_phrasing=post_submit_phrasing,
+            customer_turn_index=customer_count + 1,
+            last_customer_message=last_customer_raw,
+            prior_workflow_state=prior_workflow_state,
+            conversation_turns=conversation_turns,
+        )
+        validate_add_car_field_lists(result.get("collected_fields"), result.get("still_needed_fields"))
+        if not quote_ready_matches_still_needed(
+            str(result.get("quote_ready_status") or ""),
+            result.get("still_needed_fields"),
+        ):
+            logger.warning(
+                "add_car quote_ready_status vs still_needed_fields mismatch (contract check): qrs=%s still=%s",
+                result.get("quote_ready_status"),
+                result.get("still_needed_fields"),
+            )
+
+    # Greenfield /triage with persisted vehicle_key: mirror append vehicle boundary signals.
+    # Only when a persisted vehicle scope exists — otherwise triage_for_append / office flow
+    # owns boundary copy (e.g. borderline matter without VIN on file yet).
+    if is_add_car:
+        _ctx_pc = reply_truth_context or {}
+        pv_raw = _ctx_pc.get("vehicle_key")
+        persisted_vk = str(pv_raw).strip() if isinstance(pv_raw, str) and str(pv_raw).strip() else None
+        if persisted_vk:
+            extra_signal = bool(result.get("additional_vehicle_mentioned")) or append_turn_signals_extra_vehicle_intent(
+                last_customer_raw.strip()
+            )
+            amb = text_suggests_vehicle_scope_ambiguity(last_customer_raw.strip())
+            last_turn = last_customer_raw.strip()
+            short_scope_carryover = bool(persisted_vk) and not extra_signal and not amb and (
+                not _append_last_turn_carries_vehicle_identity(last_turn)
+            )
+            conflict = (
+                "same_vehicle"
+                if short_scope_carryover
+                else detect_vehicle_conflict(
+                    persisted_vehicle_key=persisted_vk,
+                    new_vehicle_key=result.get("vehicle_key"),
+                    additional_vehicle_mentioned=extra_signal,
+                    message_suggests_vehicle_scope_ambiguity=amb,
+                )
+            )
+            if conflict == "new_vehicle":
+                result["case_boundary"] = "new_issue"
+                result["case_boundary_action"] = "requires_new_case"
+                result["append_allowed"] = False
+                if not (result.get("boundary_reason") or "").strip():
+                    result["boundary_reason"] = (
+                        "Vehicle scope differs from this case; open a new service record for the other vehicle."
+                    )
+            elif conflict == "ambiguous":
+                result["case_boundary"] = "borderline"
+                result["case_boundary_action"] = "requires_confirmation"
+                result["append_allowed"] = False
+                if not (result.get("boundary_reason") or "").strip():
+                    result["boundary_reason"] = (
+                        "Vehicle scope is unclear on this thread; confirm with the customer before updating this record."
+                    )
+                hf = list(result.get("human_confirmation_fields") or [])
+                if "case_topic_boundary" not in hf:
+                    hf.append("case_topic_boundary")
+                result["human_confirmation_fields"] = hf
+                result["human_confirmation_required"] = True
+            else:
+                result["case_boundary"] = "same_case"
+                result["case_boundary_action"] = "append_allowed"
+                result["append_allowed"] = True
+                result["boundary_reason"] = (
+                    "No clear boundary conflict detected; continuation stays on current case."
+                )
+
+    maybe_attach_truth_guardrail_debug_to_triage(result)
+    result["intake_evolution_variant"] = intake_evolution_variant
+    result["v6_auto_input_variant"] = v6_variant_eff
+    _lang_cd = "zh" if _contains_chinese(merged_text) else "en"
+    if str(result.get("service_type") or "").strip().lower() == "add_car":
+        result["case_draft"] = build_v4_case_draft_bundle(
+            merged_text=merged_for_add_car_extraction,
+            collected_fields=list(result.get("collected_fields") or []),
+            missing_fields=list(result.get("still_needed_fields") or []),
+            primary_vehicle_summary=result.get("primary_vehicle_summary"),
+            quote_ready_status=str(result.get("quote_ready_status") or ""),
+            human_confirmation_fields=list(result.get("human_confirmation_fields") or []),
+            issue_category=str(result.get("issue_category") or ""),
+            language=_lang_cd,
+            variant=intake_evolution_variant,
+            ocr_context=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
+            v6_auto_input_variant=v6_variant_eff,
+        )
+        _cd = result["case_draft"]
+        result["case_usable"] = bool(_cd.get("case_usable"))
+        result["still_needed_user_flow"] = list(_cd.get("still_needed_user_flow") or [])
+        result["deferred_to_broker_fields"] = list(_cd.get("deferred_to_broker_fields") or [])
+        result["broker_completion"] = dict(_cd.get("broker_completion") or {})
+        result["v4_error_risk_score"] = estimate_v4_error_risk_score(
+            _cd,
+            quote_ready_status=str(result.get("quote_ready_status") or ""),
+        )
+        result["v5_handoff_risk_score"] = estimate_v5_handoff_risk_score(
+            _cd,
+            quote_ready_status=str(result.get("quote_ready_status") or ""),
+            case_usable=bool(_cd.get("case_usable")),
+        )
+        result["zero_question_intake"] = True
+    else:
+        result["case_draft"] = build_generic_case_draft(
+            merged_text=merged_text,
+            issue_category=str(result.get("issue_category") or ""),
+            language=_lang_cd,
+        )
     return result
 
 

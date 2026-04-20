@@ -1,34 +1,16 @@
-/** Add-Car record rail — Chinese labels for structured field ids (aligned with UnifiedIntakePage CUSTOMER_FIELD_LABELS_ZH). */
-export const ADD_CAR_RAIL_FIELD_LABELS_ZH: Record<string, string> = {
-    year: '年份',
-    make_model: '车型',
-    zip: '邮编',
-    delivery_date: '提车日期',
-    primary_driver: '主驾信息',
-    vin: '车架号',
-    name: '姓名',
-    phone: '电话',
-    model: '车型',
-    notice_present: '有通知',
-    payment_proof_or_screenshot: '付款凭证/截图',
-    verify_carrier_received: '需核实保险公司收到',
-    requested_declaration_page: '需保单首页',
-    requested_driver_license: '需驾照',
-    requested_garaging_proof: '需停放证明',
-    customer_says_sent_declaration_page: '客户说已发保单首页',
-    customer_says_sent_driver_license: '客户说已发驾照',
-    customer_says_sent_garaging_proof: '客户说已发停放证明',
-    already_sent_claimed: '客户说已发过',
-    customer_says_sent_questionnaire: '客户说已发问卷',
-    requested_questionnaire: '需问卷',
-    declaration_page: '保单首页',
-    garaging_proof: '停放证明',
-    driver_license: '驾照',
-    questionnaire: '问卷',
-};
+/**
+ * Add-Car record rail — Chinese labels for structured field ids.
+ * Source of truth: configs/common/add_car_stage1_field_contract.json (labels_zh).
+ */
+import addCarStage1Contract from '../../contracts/add_car_stage1_field_contract.json';
+
+const ADD_CAR_LABELS_ZH = addCarStage1Contract.labels_zh as Record<string, string>;
+
+/** @deprecated use contract JSON — kept for callers that imported the map */
+export const ADD_CAR_RAIL_FIELD_LABELS_ZH: Record<string, string> = ADD_CAR_LABELS_ZH;
 
 export function railFieldLabel(field: string): string {
-    return ADD_CAR_RAIL_FIELD_LABELS_ZH[field] ?? field.replace(/_/g, ' ');
+    return ADD_CAR_LABELS_ZH[field] ?? field.replace(/_/g, ' ');
 }
 
 const VEHICLE_IDS = new Set(['year', 'make_model', 'model', 'zip', 'delivery_date', 'vin']);

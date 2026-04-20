@@ -5,7 +5,7 @@
     {
       "id": "abb_01_a_same_case_add_car",
       "client_id": "chen_kui",
-      "existing_source_text": "[客户] 我想加一台2024宝马X5，zip 95131，下周提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "existing_source_text": "[客户] 我想加一台2024宝马X5，zip 95131，VIN 1HGCM82633A123456，2026年4月20日提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
       "latest_text": "发你微信了，行驶证截图",
       "expected_case_boundary": "same_case",
       "expected_handoff_ready": true,
@@ -16,7 +16,7 @@
     {
       "id": "abb_02_b_same_case_add_car",
       "client_id": "socal_precision",
-      "existing_source_text": "[客户] 我想加一台2024宝马X5，zip 95131，下周提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
+      "existing_source_text": "[客户] 我想加一台2024宝马X5，zip 95131，VIN 1HGCM82633A123456，2026年4月20日提车，我自己开\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
       "latest_text": "发你微信了，行驶证截图",
       "expected_case_boundary": "same_case",
       "expected_handoff_ready": true,

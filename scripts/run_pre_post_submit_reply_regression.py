@@ -42,8 +42,10 @@ POST_SUBMIT_FORMAL_SUBMIT_NAG = (
 
 CLIENT = "chen_kui"
 
+# Pilot contract: quote handoff requires truth-complete VIN + ZIP + calendar delivery + primary_driver;
+# relative-only pickup (e.g. 下周一) does not satisfy delivery_date.
 _FULL_ADD_CAR = (
-    "客户要加一台2021 Tesla Model Y，ZIP 90210，下周一提车，主驾是我自己，"
+    "客户要加一台2021 Tesla Model Y，VIN 1HGCM82633A123456，ZIP 90210，2026年4月20日提车，主驾是我自己，"
     "姓名张三电话4155550100，问今天能不能先出报价"
 )
 

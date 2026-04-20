@@ -58,6 +58,13 @@ if ! PYTHONPATH=. python3 scripts/verify_inbox_case_persistence.py; then
 fi
 echo "  OK"
 
+echo "[4a] Add-Car service record lane + JSON↔Postgres consistency (warn-only; skipped if no DB/dual-write)..."
+if ! PYTHONPATH=. python3 scripts/check_add_car_service_record_consistency.py 2>/dev/null; then
+  echo "  WARN: Add-Car service record consistency script failed to run (non-fatal)"
+else
+  echo "  OK (check completed; see script JSON for mismatches when dual-write is on)"
+fi
+
 echo "[4b] State/Workflow backbone (workflow state keys, handoff semantics, terminal status)..."
 if ! PYTHONPATH=. python3 scripts/test_state_workflow_backbone.py; then
   echo "  FAIL: State/Workflow backbone regression failed"

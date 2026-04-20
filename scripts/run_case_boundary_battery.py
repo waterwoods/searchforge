@@ -68,8 +68,11 @@ def main() -> int:
             if not result.get("human_confirmation_required"):
                 errs.append("borderline should set human_confirmation_required")
         elif exp == "same_case":
-            if result.get("case_boundary"):
-                errs.append(f"same_case should omit case_boundary, got {result.get('case_boundary')!r}")
+            # Explicit contract: append-allowed paths may omit `case_boundary` or set it to
+            # `same_case` (both mean "no split"); see triage_for_append + boundary sprint tests.
+            cb = (result.get("case_boundary") or "").strip()
+            if cb and cb != "same_case":
+                errs.append(f"same_case expected omitted or 'same_case', got {cb!r}")
             if bns.startswith("Case boundary"):
                 errs.append("same_case should not prefix broker_next_step with Case boundary")
 

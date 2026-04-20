@@ -130,6 +130,7 @@ from services.fiqa_api.routes.ops_copilot import router as ops_copilot_router
 from services.fiqa_api.routes.ecommerce_agent import router as ecommerce_agent_router
 from services.fiqa_api.routes.jobhunter import router as jobhunter_router
 from services.fiqa_api.routes.inbox_triage import router as inbox_triage_router
+from services.fiqa_api.routes.analytics_dashboard import router as analytics_dashboard_router
 from services.fiqa_api.routes.health_monitor import router as health_monitor_router
 from services.fiqa_api import obs
 try:
@@ -934,6 +935,7 @@ app.include_router(ops_copilot_router, prefix="/api")  # /api/ops-copilot/system
 app.include_router(ecommerce_agent_router, prefix="/api")  # /api/ecommerce-agent/run
 app.include_router(jobhunter_router, prefix="/api")  # /api/jobhunter/analyze
 app.include_router(inbox_triage_router)  # /api/inbox/triage
+app.include_router(analytics_dashboard_router)  # /api/analytics/dashboard
 app.include_router(health_monitor_router)  # [health] include_router - /api/vitals/ingest, /api/vitals/latest
 app.include_router(code_lookup_router)  # /api/agent/code_lookup
 app.include_router(code_graph_router)  # /api/codemap/*

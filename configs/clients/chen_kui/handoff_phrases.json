@@ -131,7 +131,9 @@
     },
     "handoff_add_car_contact_gap_tail": {
       "zh": " 若姓名或电话尚未在本对话中写清，办公室后续联系时可能会先确认联系方式。",
-      "en": " If your name or phone isn't clear on this record yet, the office may confirm contact details when they reach out."
+      "en": " If your name or phone isn't clear on this record yet, the office may confirm contact details when they reach out.",
+      "zh_short": "（若方便：请在本对话补一行姓名与电话，便于办公室联系。）",
+      "en_short": " (If you can, add your name and phone in one line here so the office can reach you.)"
     },
     "add_car_clarification_followup_submitted": {
       "zh": "收到。办公室会按当前服务记录与您已发资料继续核对；仅在有缺项时再联系您。",

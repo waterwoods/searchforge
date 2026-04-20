@@ -33,6 +33,16 @@ export interface UiCopy {
     handoff_received_summary_intro_add_car?: string;
     handoff_verify_with_office_note_add_car?: string;
     handoff_office_followup_timing_add_car?: string;
+    /** Quote-ready conversion — portal banner (server may also set conversion_layer_active on triage). */
+    conversion_ui_ready_title?: string;
+    conversion_ui_next_line?: string;
+    /** Collapsed “still needed” rail label at quote_ready + handoff */
+    conversion_still_needed_collapse_label?: string;
+    /** Intake evolution A | B | C (optional; server env can override) */
+    intake_evolution_variant?: string;
+    /** When quote_ready + conversion: only name/phone missing — primary send is chat, not formal queue */
+    portal_contact_only_primary_label?: string;
+    portal_contact_only_input_hint?: string;
     customer_entry_submit_add_car?: string;
     /** ADD_CAR_RESULT_CARD_STATUS_FLOW_HARDENING_SPRINT — case card + status strip */
     add_car_status_strip_label?: string;
@@ -109,6 +119,18 @@ export interface UiCopy {
     portal_post_handoff_closure_section_label?: string;
     portal_tab_customer_label?: string;
     portal_tab_customer_suffix?: string;
+    /** User-facing case list + progress tab (Unified Intake) */
+    portal_tab_my_requests_label?: string;
+    portal_tab_my_requests_suffix?: string;
+    portal_my_requests_hero_title?: string;
+    portal_my_requests_hero_subtitle?: string;
+    portal_my_requests_list_title?: string;
+    portal_my_requests_empty_hint?: string;
+    portal_my_requests_detail_title?: string;
+    portal_my_requests_collected_heading?: string;
+    portal_my_requests_missing_heading?: string;
+    portal_my_requests_next_heading?: string;
+    portal_my_requests_go_customer_cta?: string;
     /** Office workbench tab suffix — Add-Car-first echo (ADD_CAR_FIRST_WORKBENCH_ECHO_SPRINT) */
     portal_tab_office_suffix?: string;
     /** Simulation tab (§4.6) — Add-Car scenario replay */
@@ -196,11 +218,17 @@ export interface UiCopy {
     /** Queue card: prefix before broker_next_step preview (parity with add_car_broker_next_step_heading) */
     office_workbench_broker_next_preview_label?: string;
     office_workbench_open_record_cta?: string;
+    /** Queue list: label on the card for the case currently open in the detail pane */
+    office_workbench_active_case_label?: string;
+    /** Queue list: compact bar above cards — prefix before short id + preview (WORKBENCH_QUEUE_ANCHOR sprint) */
+    office_workbench_queue_open_anchor_prefix?: string;
     /** Add-Car workbench: mirror customer readiness (SUBMIT_PATH_CLARITY sprint) */
     office_add_car_readiness_panel_title?: string;
     office_readiness_handoff_pending_headline?: string;
     office_readiness_handoff_pending_body?: string;
     office_readiness_submitted_headline?: string;
+    /** When submitted Add-Car still has structured still_needed_fields */
+    office_readiness_submitted_gaps_headline?: string;
     office_readiness_submitted_body?: string;
     office_readiness_collecting_headline?: string;
     office_readiness_collecting_body?: string;
@@ -237,6 +265,21 @@ export interface UiCopy {
         string,
         { label?: string; shortLabel?: string; starterMessage?: string }
     >;
+    /** LIGHT_IDENTITY_ENTRY_STUB — client-pack gate + copy profile (optional binding strip) */
+    light_identity?: {
+        show_optional_binding?: boolean;
+        binding_copy_profile?: 'wechat_preferred' | 'neutral';
+        /** Next sprint: `live` wires real WeChat; until then UI stays non-OAuth */
+        wechat_binding_mode?: 'stub' | 'live';
+        strip_primary_line?: string;
+        wechat_cta_label?: string;
+        defer_cta_label?: string;
+        dismiss_cta_label?: string;
+        modal_title?: string;
+        modal_body?: string;
+        /** Shown as muted hint next to optional links (e.g. phone/email later) */
+        phone_email_fallback_hint?: string;
+    };
 }
 
 export interface ClientConfigResponse {
@@ -278,6 +321,9 @@ export const DEFAULT_UI_COPY: UiCopy = {
         '其中标出的项目（如 VIN、驾驶人、材料是否已到齐）办公室仍会最终核实；若您发现不对，也请一并更正。',
     handoff_office_followup_timing_add_car:
         '我们会在工作时间内尽快处理；多数情况下一至两个工作日会有跟进（周末及公共假期顺延）。具体时间以办公室联系为准。',
+    conversion_ui_ready_title: '已准备报价',
+    conversion_ui_next_line: '等待报价 · 办公室将尽快处理',
+    conversion_still_needed_collapse_label: '仍标缺项（多为可选，可点开查看）',
     customer_entry_submit_add_car: '提交加车请求',
     add_car_status_strip_label: '当前状态',
     add_car_result_card_eyebrow: '加车报价 · 受理结果卡',
@@ -363,14 +409,14 @@ export const DEFAULT_UI_COPY: UiCopy = {
     flow_explain_pre_handoff_title: '流程说明',
     flow_explain_pre_handoff_done: '第 1 步已完成：系统已把您的报送锚定到本条加车服务记录并开始整理。',
     flow_explain_pre_handoff_now_step: '现已进入第 2 步：补齐关键信息。',
-    flow_explain_pre_handoff_missing_prefix: '仍待补：',
+    flow_explain_pre_handoff_missing_prefix: '正式提交前仍标缺：',
     flow_explain_pre_handoff_owner: '下一步主要由您（客户）按缺项补充；提交后系统会继续写入同一条记录。',
     flow_explain_pre_handoff_ctas:
         '您可：在下方输入框继续说明，或使用结构化字段一次补齐；无需新开对话。',
     flow_explain_handoff_title: '流程说明',
     flow_explain_handoff_done: '第 2 步已完成：本次加车要点已整理为可交给办公室处理的业务记录。',
     flow_explain_handoff_now_step: '现已进入第 3 步：办公室接手核对、出价与对外跟进。',
-    flow_explain_handoff_missing_prefix: '仍建议在办公室核对前关注：',
+    flow_explain_handoff_missing_prefix: '办公室接手后仍标缺（建议跟进补齐）：',
     flow_explain_handoff_owner: '下一步主要由办公室处理；您若补充新材料，仍会通过「追加到本条记录」进入同一服务记录。',
     flow_explain_handoff_ctas:
         '您可：用下方「追加到本条记录」继续补充；若完全是另一件事，请用「提交新问题」另开一条。',
@@ -425,11 +471,14 @@ export const DEFAULT_UI_COPY: UiCopy = {
     office_workbench_case_id_hint: '与客户报送受理结果卡上的编号一致，便于办公室对单。',
     office_workbench_broker_next_preview_label: '办公室侧下一步：',
     office_workbench_open_record_cta: '打开本条服务记录',
+    office_workbench_active_case_label: '当前处理',
+    office_workbench_queue_open_anchor_prefix: '当前打开',
     office_add_car_readiness_panel_title: '加车 · 接手就绪度（与客户入口同源）',
     office_readiness_handoff_pending_headline: '待客户正式提交',
     office_readiness_handoff_pending_body:
         '与客户入口一致：系统已标「资料已齐」，但客户尚未在入口点「正式提交办公室」。在此之前以了解情况为主，避免对外承诺最终保费。',
     office_readiness_submitted_headline: '已报送 · 可接手处理',
+    office_readiness_submitted_gaps_headline: '已报送 · 仍有待补缺口',
     office_readiness_submitted_body: '记录已送达办公室。请按下方「您的下一步」推进核对与出价。',
     office_readiness_collecting_headline: '信息收集中',
     office_readiness_collecting_body:
@@ -468,6 +517,11 @@ export const DEFAULT_UI_COPY: UiCopy = {
         missing_document: { label: '上传材料', shortLabel: '材料', starterMessage: '有材料要补' },
         talk_to_agent: { label: '联系人工', shortLabel: '联系人工', starterMessage: '我想联系陈奎办公室' },
     },
+    light_identity: {
+        show_optional_binding: false,
+        binding_copy_profile: 'neutral',
+        wechat_binding_mode: 'stub',
+    },
 };
 
 export async function getClientConfig(clientId?: string | null): Promise<ClientConfigResponse> {
@@ -488,6 +542,30 @@ export function mergeUiCopy(config: UiCopy | undefined): UiCopy {
         const val = config[key];
         if (key === 'quick_start_buttons' && val && typeof val === 'object') {
             merged.quick_start_buttons = { ...merged.quick_start_buttons, ...val };
+        } else if (key === 'light_identity' && val && typeof val === 'object') {
+            const li = val as NonNullable<UiCopy['light_identity']>;
+            const mode = li.wechat_binding_mode === 'live' ? 'live' : 'stub';
+            merged.light_identity = {
+                show_optional_binding: Boolean(li.show_optional_binding),
+                binding_copy_profile:
+                    li.binding_copy_profile === 'wechat_preferred' ? 'wechat_preferred' : 'neutral',
+                wechat_binding_mode: mode,
+            };
+            const strKeys: (keyof NonNullable<UiCopy['light_identity']>)[] = [
+                'strip_primary_line',
+                'wechat_cta_label',
+                'defer_cta_label',
+                'dismiss_cta_label',
+                'modal_title',
+                'modal_body',
+                'phone_email_fallback_hint',
+            ];
+            for (const sk of strKeys) {
+                const s = li[sk];
+                if (typeof s === 'string' && s.trim()) {
+                    (merged.light_identity as Record<string, string>)[sk] = s.trim();
+                }
+            }
         } else if (typeof val === 'string' && val.trim()) {
             (merged as Record<string, unknown>)[key] = val.trim();
         }

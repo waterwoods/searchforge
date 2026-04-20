@@ -2,7 +2,7 @@
  * Add-Car right-rail / record summary: step, why-here, grouped received vs missing, correction signal, next owner.
  * Used by customer portal progress card and simulation state column (§4.6 / §4.7 alignment).
  */
-import { Divider, Space, Tag, Typography } from 'antd';
+import { Alert, Collapse, Divider, Space, Tag, Typography } from 'antd';
 import type { UiCopy } from '../../api/clientConfig';
 import type { TriageResult } from '../../api/inboxTriage';
 import { AddCarFlowExplanation } from './AddCarFlowExplanation';
@@ -13,6 +13,7 @@ import {
     newStillNeededSincePrior,
     railFieldLabel,
 } from './addCarRecordRailLabels';
+import { isAddCarReadyForFormalSubmit } from './caseLifecycleDisplay';
 
 const { Text } = Typography;
 
@@ -47,7 +48,7 @@ export function computeAddCarFlowStep(triage: TriageResult | undefined, hasConve
 export function addCarNextOwnerLine(t: TriageResult | undefined): string {
     if (!t) return '—';
     if (isFormalSubmissionToOfficeComplete(t)) return '办公室 — 核对记录、出价准备与对外跟进';
-    if (t.lifecycle_status === 'handoff_pending') return '客户 — 确认并提交，将本条记录正式送办公室';
+    if (isAddCarReadyForFormalSubmit(t)) return '客户 — 确认并提交，将本条记录正式送办公室';
     if ((t.still_needed_fields?.length ?? 0) > 0 || (t.next_best_question ?? '').trim()) {
         return '客户 — 按缺项与系统提示继续补充（写入同一条服务记录）';
     }
@@ -67,7 +68,7 @@ function stepTitle(flowStep: 1 | 2 | 3, ui: UiCopy): string {
 function completionConditionLines(triage: TriageResult, flowStep: 1 | 2 | 3, ui: UiCopy): string[] {
     if (flowStep !== 2) return [];
     if (isFormalSubmissionToOfficeComplete(triage)) return [];
-    if (triage.lifecycle_status === 'handoff_pending') {
+    if (isAddCarReadyForFormalSubmit(triage)) {
         return [
             ui.record_rail_completion_hint_handoff_pending ??
                 '完成条件：系统已标「资料已齐」— 请在入口点击提交，将本条记录正式送办公室。',
@@ -96,7 +97,7 @@ function whyHereLines(triage: TriageResult, flowStep: 1 | 2 | 3, submitLabel: st
         lines.push('办公室已收到本条服务记录：可接手核对、出价准备与对外跟进。');
         return lines;
     }
-    if (triage.lifecycle_status === 'handoff_pending') {
+    if (isAddCarReadyForFormalSubmit(triage)) {
         lines.push('系统判断关键要点已齐：等待您在入口正式提交，将记录送办公室。');
         lines.push(`请在准备好后点「${submitLabel}」，将本条正式送办公室。`);
         return lines;
@@ -292,7 +293,7 @@ export function AddCarRecordSummaryRail({
                     uiCopy={uiCopy}
                     variant="pre_handoff"
                     stillNeededLabels={stillLabelsForFlow}
-                    handoffPending={triage.lifecycle_status === 'handoff_pending'}
+                    handoffPending={isAddCarReadyForFormalSubmit(triage)}
                 />
             )}
 
@@ -308,6 +309,15 @@ export function AddCarRecordSummaryRail({
                     <Tag color="gold" style={{ marginBottom: 8, fontSize: compact ? 11 : 12 }}>
                         {u.record_rail_human_confirm_tag ?? '含需办公室核对要点（VIN/驾驶人/材料等）'}
                     </Tag>
+                )}
+                {triage.quote_ready_status === 'quote_ready' && triage.handoff_ready && (
+                    <Alert
+                        type="success"
+                        showIcon
+                        style={{ marginBottom: compact ? 8 : 10, fontSize: bodySize }}
+                        message={u.conversion_ui_ready_title ?? '已准备报价'}
+                        description={u.conversion_ui_next_line ?? '等待报价 · 办公室将尽快处理'}
+                    />
                 )}
                 <Text type="secondary" style={{ fontSize: titleSize, display: 'block', marginBottom: 4 }}>
                     {sectionCurrent}
@@ -347,7 +357,26 @@ export function AddCarRecordSummaryRail({
                 )}
                 <GroupedFieldBlock title={sectionReceived} groups={groupedCollected} color="green" />
                 {groupedCollected.length > 0 && groupedStill.length > 0 ? <Divider style={{ margin: '10px 0' }} /> : null}
-                <GroupedFieldBlock title={sectionMissing} groups={groupedStill} color="orange" />
+                {triage.quote_ready_status === 'quote_ready' && triage.handoff_ready === true && groupedStill.length > 0 ? (
+                    <Collapse
+                        bordered={false}
+                        style={{ background: 'transparent' }}
+                        defaultActiveKey={[]}
+                        items={[
+                            {
+                                key: 'still_opt',
+                                label: (
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                        {u.conversion_still_needed_collapse_label ?? '仍标缺项（多为可选，可点开查看）'}
+                                    </Text>
+                                ),
+                                children: <GroupedFieldBlock title={sectionMissing} groups={groupedStill} color="orange" />,
+                            },
+                        ]}
+                    />
+                ) : (
+                    <GroupedFieldBlock title={sectionMissing} groups={groupedStill} color="orange" />
+                )}
                 {groupedStill.length === 0 && collected.length === 0 ? (
                     <Text type="secondary" style={{ fontSize: bodySize }}>
                         {u.record_rail_no_structured_yet ?? '暂无结构化字段；以对话与办公室整理为准。'}

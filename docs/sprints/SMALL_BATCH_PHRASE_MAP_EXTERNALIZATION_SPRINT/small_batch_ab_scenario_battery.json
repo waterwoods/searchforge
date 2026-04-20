@@ -6,10 +6,12 @@
       "id": "sb_ck_doc_clar_suffix_add_car_zh",
       "client_id": "chen_kui",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，garaging proof 是什么意思",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人，garaging proof 是什么意思",
       "draft_must_contain_any": [
         "正式提交办公室",
-        "队列中跟进"
+        "队列中跟进",
+        "已经可以报价",
+        "报价与联系"
       ],
       "draft_must_not_contain_any": [
         "本所会尽快处理"
@@ -19,11 +21,13 @@
       "id": "sb_sp_doc_clar_suffix_add_car_zh",
       "client_id": "socal_precision",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，garaging proof 是什么意思",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人，garaging proof 是什么意思",
       "draft_must_contain_any": [
         "正式提交本所",
         "队列中跟进",
-        "营业日内联系您"
+        "营业日内联系您",
+        "已经可以报价",
+        "报价与联系"
       ],
       "draft_must_not_contain_any": [
         "提交办公室跟进"
@@ -33,11 +37,13 @@
       "id": "sb_ck_add_car_coverage_handoff_zh",
       "client_id": "chen_kui",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人，coverage 能调吗",
       "draft_must_contain_any": [
         "保额可以调整，报价时办公室会跟您确认",
         "正式提交办公室",
-        "队列"
+        "队列",
+        "已经可以报价",
+        "报价与联系"
       ],
       "draft_must_not_contain_any": [
         "本所队列"
@@ -47,11 +53,13 @@
       "id": "sb_sp_add_car_coverage_handoff_zh",
       "client_id": "socal_precision",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人，coverage 能调吗",
       "draft_must_contain_any": [
         "保额可调整",
         "正式提交本所",
-        "队列"
+        "队列",
+        "已经可以报价",
+        "报价与联系"
       ],
       "draft_must_not_contain_any": [
         "办公室会尽快出价",
@@ -101,11 +109,14 @@
       "id": "sb_demo_fallback_coverage_suffix_default",
       "client_id": "demo_broker",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人，coverage 能调吗",
       "draft_must_contain_any": [
         "报价时办公室会跟您确认",
         "正式提交办公室",
-        "队列"
+        "队列",
+        "已经可以报价",
+        "报价与联系",
+        "客服团队"
       ],
       "draft_must_not_contain_any": [
         "本所队列"
@@ -115,7 +126,7 @@
       "id": "sb_sp_negative_no_chen_kui_office_leak",
       "client_id": "socal_precision",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开，coverage 能调吗",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人，coverage 能调吗",
       "draft_must_not_contain_any": [
         "办公室",
         "我这边"
@@ -125,12 +136,14 @@
       "id": "sb_ck_flagship_add_car_handoff_regression",
       "client_id": "chen_kui",
       "expected_draft_language": "zh",
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人",
       "expected_handoff_ready": true,
       "draft_must_contain_any": [
         "正式提交办公室",
         "服务记录",
-        "队列"
+        "队列",
+        "已经可以报价",
+        "报价与联系"
       ],
       "draft_must_not_contain_any": [
         "加车资料已到办公室",

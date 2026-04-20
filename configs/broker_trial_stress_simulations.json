@@ -79,10 +79,10 @@
       "turns": [
         {"role": "customer", "text": "加车 2021 Honda"},
         {"role": "customer", "text": "不是这个，是另一辆 2024 Tesla Model Y"},
-        {"role": "customer", "text": "90210，下周提车"}
+        {"role": "customer", "text": "90210，VIN 1HGCM82633A123456，2026年4月20日提车，我是主驾驶人，孙八4155550100"}
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "T2 correction; T3 zip+delivery; should use 2024 Tesla not 2021 Honda in collected"
+      "notes": "T2 correction; T3 pilot-complete truth (VIN + calendar delivery + driver + contact); collected should reflect 2024 Tesla not 2021 Honda"
     },
     {
       "id": "BS9",
@@ -102,12 +102,12 @@
       "name": "Quote-ready + no contact — contact hint in broker_next_step",
       "turns": [
         {"role": "customer", "text": "加车 2024 Tesla Model Y 90210"},
-        {"role": "customer", "text": "下周提车 我老婆开"}
+        {"role": "customer", "text": "VIN 1HGCM82633A123456，2026年4月20日提车，我是主驾驶人"}
       ],
       "expected_handoff_after_turn": 2,
       "expected_quote_ready_status": "quote_ready",
       "expected_broker_next_step_contains": ["name"],
-      "notes": "Quote-ready but name/phone missing; broker_next_step should mention contact"
+      "notes": "Pilot quote_ready with explicit VIN + calendar delivery + primary driver; name/phone still urged in broker_next_step"
     },
     {
       "id": "BS11",
@@ -115,11 +115,11 @@
       "name": "Add-car + materials sent (我已经发你微信了)",
       "turns": [
         {"role": "customer", "text": "加车 2024 Tesla Model Y 90210"},
-        {"role": "customer", "text": "下周提车 registration 发你微信了"}
+        {"role": "customer", "text": "VIN 1HGCM82633A123456，2026年4月20日提车，我是主驾驶人，registration 发你微信了"}
       ],
       "expected_handoff_after_turn": 2,
       "expected_broker_next_step_contains": ["Verify", "materials"],
-      "notes": "ADD_CAR_COMMERCIAL_FLOW_HARDENING: T2 delivery + materials sent; broker_next_step must say verify materials"
+      "notes": "T2 pilot truth + materials sent; broker_next_step verifies materials"
     },
     {
       "id": "BS12",
@@ -128,11 +128,11 @@
       "turns": [
         {"role": "customer", "text": "加车 2021 Honda"},
         {"role": "customer", "text": "不是这个 是 2024 Tesla Model Y"},
-        {"role": "customer", "text": "90210 下周提车 材料发你微信了"}
+        {"role": "customer", "text": "90210 VIN 1HGCM82633A123456 2026年4月20日提车 我是主驾驶人 材料发你微信了"}
       ],
       "expected_handoff_after_turn": 3,
       "expected_broker_next_step_contains": ["Verify", "materials"],
-      "notes": "COMMERCIAL_FLOW_HARDENING: T2 correction; T3 zip+delivery+materials_sent; collected shows Tesla"
+      "notes": "T2 correction; T3 pilot-complete + materials_sent; collected shows Tesla"
     },
     {
       "id": "BS13",

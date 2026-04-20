@@ -76,6 +76,9 @@ def _extract_workflow_state(triage_result: dict[str, Any]) -> dict[str, Any]:
         "human_confirmation_fields",
         "next_best_question",
         "lifecycle_status",
+        "triage_mode",
+        "conversion_stage",
+        "last_conversion_turn_index",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -102,6 +105,43 @@ def _normalize_turn(turn: Any) -> dict[str, Any] | None:
     return out
 
 
+def _normalize_user_identity_hint(raw: Any) -> dict[str, str] | None:
+    """Optional session hints from extracted name/phone (not auth)."""
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, str] = {}
+    for k in ("phone", "name"):
+        v = raw.get(k)
+        if isinstance(v, str) and v.strip():
+            out[k] = v.strip()[:256]
+    return out if out else None
+
+
+def _normalize_light_identity_binding(raw: Any) -> dict[str, Any] | None:
+    """Keep only valid Stage-1 identity keys for session pending merge."""
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, Any] = {}
+    ibs = str(raw.get("identity_binding_state") or "").strip().lower()
+    if ibs in ("unbound", "prompted", "deferred", "linked"):
+        out["identity_binding_state"] = ibs
+    pk = raw.get("person_link_key")
+    if isinstance(pk, str) and pk.strip():
+        out["person_link_key"] = pk.strip()[:256]
+    src = str(raw.get("person_link_source") or "").strip().lower()
+    if src in ("wechat", "phone", "email"):
+        out["person_link_source"] = src
+    pc = raw.get("person_link_confidence")
+    try:
+        if pc is not None:
+            c = float(pc)
+            if 0.0 <= c <= 1.0:
+                out["person_link_confidence"] = c
+    except (TypeError, ValueError):
+        pass
+    return out if out else None
+
+
 def save_in_progress_session(
     session_id: str,
     turns: list[dict[str, Any]],
@@ -110,6 +150,7 @@ def save_in_progress_session(
     """
     Save or update an in-progress session with turns and workflow_state.
     Call when triage returns and no case was persisted.
+    Preserves optional WeChat/light_identity_binding across saves.
     """
     sid = (session_id or "").strip()
     if not sid:
@@ -124,25 +165,51 @@ def save_in_progress_session(
 
     payload = _read_payload()
     sessions = payload["sessions"]
+    existing_li: dict[str, Any] | None = None
+    existing_active: str | None = None
+    existing_lv: str | None = None
+    existing_uh: dict[str, str] | None = None
+    for s in sessions:
+        if (s.get("session_id") or "").strip() == sid:
+            raw_li = s.get("light_identity_binding")
+            existing_li = _normalize_light_identity_binding(raw_li)
+            ac = str(s.get("active_case_id") or "").strip()
+            existing_active = ac if ac else None
+            lv = str(s.get("last_vehicle_key") or "").strip()
+            existing_lv = lv if lv else None
+            existing_uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
+            break
     # Update existing or append
     found = False
     for i, s in enumerate(sessions):
         if (s.get("session_id") or "").strip() == sid:
-            sessions[i] = {
+            row: dict[str, Any] = {
                 "session_id": sid,
                 "turns": normalized_turns,
                 "workflow_state": workflow_state,
                 "updated_at": updated_at,
             }
+            if existing_li:
+                row["light_identity_binding"] = existing_li
+            if existing_active:
+                row["active_case_id"] = existing_active
+            if existing_lv:
+                row["last_vehicle_key"] = existing_lv
+            if existing_uh:
+                row["user_identity_hint"] = existing_uh
+            sessions[i] = row
             found = True
             break
     if not found:
-        sessions.append({
+        row = {
             "session_id": sid,
             "turns": normalized_turns,
             "workflow_state": workflow_state,
             "updated_at": updated_at,
-        })
+        }
+        if existing_li:
+            row["light_identity_binding"] = existing_li
+        sessions.append(row)
     # Evict oldest if over limit
     sessions.sort(key=lambda s: s.get("updated_at") or "", reverse=True)
     payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
@@ -152,7 +219,7 @@ def save_in_progress_session(
 def get_in_progress_session(session_id: str) -> dict[str, Any] | None:
     """
     Return in-progress session by session_id, or None if not found.
-    Returns { turns, workflow_state } for frontend restore.
+    Returns { turns, workflow_state, light_identity_binding?, active_case_id?, ... } for frontend restore.
     """
     sid = (session_id or "").strip()
     if not sid:
@@ -162,16 +229,69 @@ def get_in_progress_session(session_id: str) -> dict[str, Any] | None:
         if (s.get("session_id") or "").strip() == sid:
             turns = s.get("turns") or []
             workflow_state = s.get("workflow_state") or {}
-            return {
+            out: dict[str, Any] = {
                 "turns": turns,
                 "workflow_state": workflow_state,
                 "updated_at": s.get("updated_at", ""),
             }
+            li = _normalize_light_identity_binding(s.get("light_identity_binding"))
+            if li:
+                out["light_identity_binding"] = li
+            ac = str(s.get("active_case_id") or "").strip()
+            if ac:
+                out["active_case_id"] = ac
+            lv = str(s.get("last_vehicle_key") or "").strip()
+            if lv:
+                out["last_vehicle_key"] = lv
+            uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
+            if uh:
+                out["user_identity_hint"] = uh
+            return out
     return None
 
 
+def get_session_light_identity_binding(session_id: str) -> dict[str, Any] | None:
+    """Pending identity fields for triage merge before formal submit (JSON truth)."""
+    sid = (session_id or "").strip()
+    if not sid:
+        return None
+    data = get_in_progress_session(sid)
+    if not data:
+        return None
+    return _normalize_light_identity_binding(data.get("light_identity_binding"))
+
+
+def patch_session_light_identity_binding(session_id: str, identity: dict[str, Any]) -> None:
+    """
+    Merge validated identity into existing session (e.g. after WeChat OAuth callback).
+    Raises ValueError if session_id is unknown — caller must persist at least one triage turn first.
+    """
+    sid = (session_id or "").strip()
+    if not sid:
+        raise ValueError("session_id required")
+    merged = _normalize_light_identity_binding(identity)
+    if not merged:
+        return
+    payload = _read_payload()
+    sessions = payload["sessions"]
+    found = False
+    for i, s in enumerate(sessions):
+        if (s.get("session_id") or "").strip() != sid:
+            continue
+        prev = _normalize_light_identity_binding(s.get("light_identity_binding")) or {}
+        prev.update(merged)
+        sessions[i] = {**s, "light_identity_binding": prev}
+        found = True
+        break
+    if not found:
+        raise ValueError("session_not_found")
+    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
+    _write_payload(payload)
+
+
 def delete_in_progress_session(session_id: str) -> bool:
-    """Remove session (e.g. after case created). Optional; orphaned sessions are harmless."""
+    """Remove session. Prefer binding-preserving paths; full delete drops continuity hints."""
     sid = (session_id or "").strip()
     if not sid:
         return False
@@ -182,3 +302,113 @@ def delete_in_progress_session(session_id: str) -> bool:
         _write_payload(payload)
         return True
     return False
+
+
+def patch_session_case_binding(
+    session_id: str,
+    *,
+    active_case_id: str | None = None,
+    last_vehicle_key: str | None = None,
+    user_identity_hint: dict[str, Any] | None = None,
+    clear_active_case: bool = False,
+) -> None:
+    """
+    Update case binding / identity hints on an existing session row (creates row if missing).
+    """
+    sid = (session_id or "").strip()
+    if not sid:
+        return
+    payload = _read_payload()
+    sessions = payload["sessions"]
+    updated_at = _utc_now_iso()
+    hint = _normalize_user_identity_hint(user_identity_hint) if user_identity_hint else None
+
+    def _apply_to_row(row: dict[str, Any]) -> dict[str, Any]:
+        out = dict(row)
+        out["updated_at"] = updated_at
+        if clear_active_case:
+            out.pop("active_case_id", None)
+        elif active_case_id is not None:
+            ac = str(active_case_id).strip()
+            if ac:
+                out["active_case_id"] = ac
+        if last_vehicle_key is not None:
+            lv = str(last_vehicle_key).strip()
+            if lv:
+                out["last_vehicle_key"] = lv
+            else:
+                out.pop("last_vehicle_key", None)
+        if hint:
+            prev = _normalize_user_identity_hint(out.get("user_identity_hint")) or {}
+            merged = {**prev, **hint}
+            out["user_identity_hint"] = merged
+        return out
+
+    found = False
+    for i, s in enumerate(sessions):
+        if (s.get("session_id") or "").strip() != sid:
+            continue
+        sessions[i] = _apply_to_row(s)
+        found = True
+        break
+    if not found:
+        base: dict[str, Any] = {
+            "session_id": sid,
+            "turns": [],
+            "workflow_state": {},
+            "updated_at": updated_at,
+        }
+        sessions.append(_apply_to_row(base))
+    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
+    _write_payload(payload)
+
+
+def save_session_binding_after_case_created(
+    session_id: str,
+    case_id: str,
+    vehicle_key: str | None = None,
+) -> None:
+    """After persist_case: retain active_case_id + optional vehicle key; trim bulky turns."""
+    sid = (session_id or "").strip()
+    cid = (case_id or "").strip()
+    if not sid or not cid:
+        return
+    payload = _read_payload()
+    sessions = payload["sessions"]
+    updated_at = _utc_now_iso()
+    vk = str(vehicle_key or "").strip() or None
+    for i, s in enumerate(sessions):
+        if (s.get("session_id") or "").strip() != sid:
+            continue
+        prev_li = _normalize_light_identity_binding(s.get("light_identity_binding"))
+        uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
+        row: dict[str, Any] = {
+            "session_id": sid,
+            "turns": [],
+            "workflow_state": {},
+            "updated_at": updated_at,
+            "active_case_id": cid,
+        }
+        if vk:
+            row["last_vehicle_key"] = vk
+        if prev_li:
+            row["light_identity_binding"] = prev_li
+        if uh:
+            row["user_identity_hint"] = uh
+        sessions[i] = row
+        break
+    else:
+        row = {
+            "session_id": sid,
+            "turns": [],
+            "workflow_state": {},
+            "updated_at": updated_at,
+            "active_case_id": cid,
+        }
+        if vk:
+            row["last_vehicle_key"] = vk
+        sessions.append(row)
+    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
+    _write_payload(payload)

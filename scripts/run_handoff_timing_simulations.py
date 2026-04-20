@@ -41,11 +41,12 @@ def run_single(sim: dict, verbose: bool = False) -> dict:
         "final_summary": None,
     }
 
+    prior_ws: dict | None = None
     for i, t in enumerate(turns):
         text = (t.get("text") or "").strip()
         if not text:
             continue
-        r = triage_conversation(text, conv)
+        r = triage_conversation(text, conv, prior_workflow_state=prior_ws)
         cat = r.get("issue_category", "")
         handoff = r.get("handoff_ready", False)
         if handoff and results["handoff_at"] is None:
@@ -80,6 +81,14 @@ def run_single(sim: dict, verbose: bool = False) -> dict:
 
         conv.append({"role": "customer", "text": text})
         conv.append({"role": "system", "text": r.get("client_reply_draft", "")})
+
+        if str(r.get("quote_ready_status") or "") == "quote_ready" and r.get("conversion_layer_active"):
+            prior_ws = {
+                "conversion_stage": r.get("conversion_stage"),
+                "last_conversion_turn_index": r.get("last_conversion_turn_index"),
+            }
+        elif str(r.get("quote_ready_status") or "") != "quote_ready":
+            prior_ws = None
 
     return results
 

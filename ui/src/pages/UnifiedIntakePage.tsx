@@ -2,7 +2,9 @@
  * Unified Intake MVP — Customer Entry + Broker Workbench
  *
  * Tab A: Customer Entry — customer-facing intake
- * Tab B: Broker Workbench — office tool for triage, case sheet, follow-up, and drafts
+ * Tab B: My requests — user-facing case list + progress (persisted cases)
+ * Tab C: Broker Workbench — office tool for triage, case sheet, follow-up, and drafts
+ * Tab D: Scenario replay (simulation)
  *
  * Customer Entry is the default visible tab.
  */
@@ -40,9 +42,11 @@ import {
     ReloadOutlined,
     SendOutlined,
     SwapOutlined,
+    UnorderedListOutlined,
     UploadOutlined,
 } from '@ant-design/icons';
 import { ScenarioReplayTab } from '../components/simulation/ScenarioReplayTab';
+import { UserCaseListProgressPanel, userFacingCaseTitle } from '../components/intake/UserCaseListProgressPanel';
 import { AddCarFlowExplanation } from '../components/intake/AddCarFlowExplanation';
 import {
     AddCarHandoffGroupedSnapshot,
@@ -85,6 +89,12 @@ import {
     getOfficeCaseBoundaryPresentation,
     getOfficeCaseBoundaryPreviewSuffix,
 } from '../components/workbench/officeCaseBoundary';
+import {
+    caseLifecycleTagColor,
+    caseLifecycleUserLabel,
+    isAddCarReadyForFormalSubmit,
+    resolveCaseLifecycle,
+} from '../components/intake/caseLifecycleDisplay';
 
 const { TextArea } = Input;
 const { Title, Text, Paragraph } = Typography;
@@ -433,7 +443,7 @@ function getOfficeLifecycleTag(lifecycleStatus: string | undefined): { label: st
     return { label: key, color: 'default' };
 }
 
-/** Ordered chips for Add-Car status strip (ADD_CAR_RESULT_CARD_STATUS_FLOW_HARDENING_SPRINT) */
+/** Ordered chips for Add-Car status strip — primary axis: `case_lifecycle` (not lifecycle_status / collection_stage). */
 function buildAddCarStatusStripChips(
     triage: TriageResult | null | undefined,
     phase: 'intake' | 'submitted',
@@ -441,38 +451,19 @@ function buildAddCarStatusStripChips(
     const out: Array<{ label: string; color: string }> = [{ label: '加车报价', color: 'blue' }];
     if (!triage) return out;
 
-    if (phase === 'submitted') {
-        out.push({ label: '已报送办公室', color: 'processing' });
-        const qrs = triage.quote_ready_status;
-        if (qrs && QUOTE_READY_STATUS_LABELS[qrs]) {
-            const q = QUOTE_READY_STATUS_LABELS[qrs];
-            out.push({ label: `整理度：${q.label}`, color: q.color });
-        }
-        const ls = triage.lifecycle_status;
-        if (ls === 'office_followup' && LIFECYCLE_STATUS_LABELS.office_followup) {
-            out.push({ ...LIFECYCLE_STATUS_LABELS.office_followup });
-        } else if (ls === 'collecting' && LIFECYCLE_STATUS_LABELS.collecting) {
-            out.push({ ...LIFECYCLE_STATUS_LABELS.collecting });
-        } else if (ls === 'handed_off') {
-            out.push({ label: '办公室处理中', color: 'cyan' });
-        }
+    const cl = resolveCaseLifecycle(triage);
+    if (phase === 'submitted' || cl === 'submitted') {
+        out.push({
+            label: caseLifecycleUserLabel('submitted'),
+            color: caseLifecycleTagColor('submitted'),
+        });
         return out;
     }
 
-    const qrs = triage.quote_ready_status;
-    if (qrs && QUOTE_READY_STATUS_LABELS[qrs]) {
-        out.push({ ...QUOTE_READY_STATUS_LABELS[qrs] });
-    }
-    const ls = triage.lifecycle_status;
-    if (ls && LIFECYCLE_STATUS_LABELS[ls]) {
-        out.push({ ...LIFECYCLE_STATUS_LABELS[ls] });
-    } else if (triage.collection_stage) {
-        out.push(
-            triage.collection_stage === 'enough_for_handoff'
-                ? { label: '可交办公室', color: 'green' }
-                : { label: '信息收集中', color: 'default' },
-        );
-    }
+    out.push({
+        label: caseLifecycleUserLabel(cl),
+        color: caseLifecycleTagColor(cl),
+    });
     return out;
 }
 
@@ -524,21 +515,11 @@ function buildGenericIntakeStatusChips(triage: TriageResult): Array<{ label: str
         const lab = CASE_STATUS_OPTIONS.find((o) => o.value === triage.case_status)?.label ?? triage.case_status;
         out.push({ label: `记录：${lab}`, color: 'geekblue' });
     }
-    const ls = triage.lifecycle_status;
-    if (ls && LIFECYCLE_STATUS_LABELS[ls]) {
-        out.push({ ...LIFECYCLE_STATUS_LABELS[ls] });
-    } else if (triage.collection_stage) {
-        out.push(
-            triage.collection_stage === 'enough_for_handoff'
-                ? { label: '可交办公室', color: 'green' }
-                : { label: '信息收集中', color: 'default' },
-        );
-    }
-    const qrs = triage.quote_ready_status;
-    if (qrs && QUOTE_READY_STATUS_LABELS[qrs]) {
-        const q = QUOTE_READY_STATUS_LABELS[qrs];
-        out.push({ label: `整理度：${q.label}`, color: q.color });
-    }
+    const cl = resolveCaseLifecycle(triage);
+    out.push({
+        label: caseLifecycleUserLabel(cl),
+        color: caseLifecycleTagColor(cl),
+    });
     return out;
 }
 
@@ -1217,54 +1198,6 @@ function getQueueReadinessLabel(caseItem: SavedCase): { label: string; color: st
     return { label: '可行动', color: 'green' };
 }
 
-/** Workbench Add-Car: mirror customer lifecycle so office sees the same “ready vs waiting” line. */
-function getOfficeAddCarReadinessMirror(
-    caseItem: TriageResult,
-    ui: UiCopy,
-): { headline: string; body: string; borderColor: string; background: string } | null {
-    if (!triageResultLooksLikeAddCar(caseItem)) return null;
-    const ls = caseItem.lifecycle_status;
-    const still = caseItem.still_needed_fields?.filter(Boolean) ?? [];
-    const missingShort = still
-        .slice(0, 6)
-        .map((f) => humanizeStructuredField(f))
-        .join('、');
-    const missingSuffix = still.length > 6 ? '…' : '';
-
-    if (ls === 'handoff_pending') {
-        return {
-            headline: ui.office_readiness_handoff_pending_headline ?? '待客户正式提交',
-            body: ui.office_readiness_handoff_pending_body ?? '',
-            borderColor: '#faad14',
-            background: 'rgba(250, 173, 20, 0.08)',
-        };
-    }
-    if (ls === 'handed_off' || ls === 'office_followup') {
-        const base = ui.office_readiness_submitted_body ?? '';
-        const extra =
-            still.length > 0
-                ? ` 仍标结构化缺口（建议先向客户补问）：${missingShort}${missingSuffix}`
-                : '';
-        return {
-            headline:
-                still.length > 0
-                    ? (ui.office_readiness_submitted_gaps_headline ?? '已报送 · 仍有待补缺口')
-                    : (ui.office_readiness_submitted_headline ?? '已报送 · 可接手处理'),
-            body: `${base}${extra}`,
-            borderColor: still.length > 0 ? '#fa8c16' : '#52c41a',
-            background: still.length > 0 ? 'rgba(250, 140, 22, 0.06)' : '#f6ffed',
-        };
-    }
-    const base = ui.office_readiness_collecting_body ?? '';
-    const extra = still.length > 0 ? ` 当前还缺：${missingShort}${missingSuffix}` : ' 当前未标结构化缺项。';
-    return {
-        headline: ui.office_readiness_collecting_headline ?? '信息收集中',
-        body: `${base}${extra}`,
-        borderColor: '#1890ff',
-        background: 'rgba(24, 144, 255, 0.06)',
-    };
-}
-
 /** Office workbench detail: submission/received + bounded timestamps + process owner (parity with customer closure model). */
 function OfficeWorkbenchAddCarSubmissionSnapshot({ triage, uiCopy }: { triage: TriageResult; uiCopy: UiCopy }) {
     if (!triageResultLooksLikeAddCar(triage)) return null;
@@ -1378,12 +1311,12 @@ function getCompactQueuePreview(caseItem: SavedCase): string {
 
     if (focus === 'Add car quote' || /add.?car|加车|加一台|新车|报价/i.test((caseItem.source_text ?? '').toLowerCase())) {
         const formal = addCarQueueStatusPhase(caseItem) === 'submitted';
-        const ls = caseItem.lifecycle_status;
+        const cl = resolveCaseLifecycle(caseItem);
         const phaseLead = formal
             ? '已正式送达 · '
-            : ls === 'handoff_pending'
+            : cl === 'ready_for_handoff'
               ? '待客户正式提交 · '
-              : '信息收集中 · ';
+              : `${caseLifecycleUserLabel(cl)} · `;
         const submittedAt = formatPortalLocalDateTime(
             caseItem.formal_submitted_at ?? caseItem.created_at,
         );
@@ -1517,9 +1450,11 @@ type ConversationTurn = {
 type CustomerEntryTabProps = {
     onSwitchToBroker: (caseId?: string) => void;
     onOpenScenarioSimulation?: () => void;
+    /** Optional: switch to「我的办理」when multiple in-progress cases need disambiguation */
+    onOpenMyRequests?: () => void;
 };
 
-function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: CustomerEntryTabProps) {
+function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, onOpenMyRequests }: CustomerEntryTabProps) {
     const { uiCopy, clientId } = useClientConfig();
     const quickStartButtons = useMemo(
         () => (uiCopy.quick_start_buttons ? getQuickStartButtons(uiCopy) : DEFAULT_QUICK_START_BUTTONS),
@@ -1603,6 +1538,11 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
     const [error, setError] = useState<string | null>(null);
     const [showExamples, setShowExamples] = useState(false);
     const [lastCaseId, setLastCaseId] = useState<string | undefined>();
+    const [resumePortalHint, setResumePortalHint] = useState<{
+        mode: 'none' | 'single' | 'multi';
+        caseId?: string;
+        title?: string;
+    }>({ mode: 'none' });
     const [selectedButtonIntent, setSelectedButtonIntent] = useState<SoftRouteIntent | null>(null);
     /** Optional structured first turn for add-car (hybrid intake). */
     const [addCarQuickFields, setAddCarQuickFields] = useState({
@@ -1637,10 +1577,60 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
         }
     }, [clientId]);
 
+    /** Empty-state: suggest continuing an in-progress Add-Car case (no forced modal). */
+    useEffect(() => {
+        if (turns.length > 0) {
+            setResumePortalHint({ mode: 'none' });
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { cases } = await listRecentCasesPage({ limit: 15, offset: 0 });
+                const visible = cases.filter((c) => {
+                    if (c.workbench_test || c.workbench_archived) return false;
+                    const cid = (c.client_id || '').trim();
+                    if (cid && clientId && cid !== clientId) return false;
+                    return true;
+                });
+                const ongoing = visible.filter(
+                    (c) => triageResultLooksLikeAddCar(c) && resolveCaseLifecycle(c) !== 'submitted',
+                );
+                if (cancelled) return;
+                if (ongoing.length >= 2) {
+                    setResumePortalHint({ mode: 'multi', title: userFacingCaseTitle(ongoing[0]) });
+                } else if (ongoing.length === 1) {
+                    setResumePortalHint({
+                        mode: 'single',
+                        caseId: ongoing[0].case_id,
+                        title: userFacingCaseTitle(ongoing[0]),
+                    });
+                } else {
+                    setResumePortalHint({ mode: 'none' });
+                }
+            } catch {
+                if (!cancelled) setResumePortalHint({ mode: 'none' });
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [turns.length, clientId]);
+
     const lastSystemTurnForFlowStep = useMemo(
         () => [...turns].reverse().find((t) => t.role === 'system'),
         [turns],
     );
+    /** Quote-ready conversion: structural slots filled; only contact remains — chat-first, not formal-queue CTA. */
+    const contactOnlyHandoffGap = useMemo(() => {
+        const lt = lastSystemTurnForFlowStep?.triageResult;
+        if (!customerEntryIsAddCarActive(turns, selectedButtonIntent)) return false;
+        if (!lt || lt.quote_ready_status !== 'quote_ready') return false;
+        if (!lt.conversion_layer_active) return false;
+        const sn = lt.still_needed_fields?.filter(Boolean) ?? [];
+        if (!sn.length) return false;
+        return sn.every((f) => f === 'name' || f === 'phone');
+    }, [turns, selectedButtonIntent, lastSystemTurnForFlowStep?.triageResult]);
     const intakeFlowStep: 1 | 2 | 3 = useMemo(
         () => computeAddCarFlowStep(lastSystemTurnForFlowStep?.triageResult, turns.length > 0),
         [lastSystemTurnForFlowStep?.triageResult, turns.length],
@@ -1655,17 +1645,35 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
         const addCarLaneActive = customerEntryIsAddCarActive(turns, selectedButtonIntent);
         const lt = lastSystemTurnForFlowStep?.triageResult;
         if (turns.length === 0 && selectedButtonIntent === 'add_car') return customerSubmitAddCarLabel;
-        if (addCarLaneActive && lt?.lifecycle_status === 'handoff_pending') {
+        if (contactOnlyHandoffGap) {
+            return uiCopy.portal_contact_only_primary_label ?? '发送消息（先回称呼/手机）';
+        }
+        if (addCarLaneActive && lt && isAddCarReadyForFormalSubmit(lt)) {
             return uiCopy.portal_submit_handoff_pending ?? '正式提交办公室';
         }
         return portalSubmitFollowup;
-    }, [turns, selectedButtonIntent, lastSystemTurnForFlowStep?.triageResult, customerSubmitAddCarLabel, uiCopy.portal_submit_handoff_pending, portalSubmitFollowup]);
+    }, [
+        turns,
+        selectedButtonIntent,
+        lastSystemTurnForFlowStep?.triageResult,
+        customerSubmitAddCarLabel,
+        uiCopy.portal_submit_handoff_pending,
+        uiCopy.portal_contact_only_primary_label,
+        portalSubmitFollowup,
+        contactOnlyHandoffGap,
+    ]);
 
     const inputPlaceholderResolved = useMemo(() => {
         if (turns.length === 0) return portalInputEmpty;
         const addCarLaneActive = customerEntryIsAddCarActive(turns, selectedButtonIntent);
         const lt = lastSystemTurnForFlowStep?.triageResult;
-        if (addCarLaneActive && lt?.lifecycle_status === 'handoff_pending') {
+        if (contactOnlyHandoffGap) {
+            return (
+                uiCopy.portal_contact_only_input_hint ??
+                '请在本对话直接回复称呼与手机号；回完后再点「正式提交办公室」。'
+            );
+        }
+        if (addCarLaneActive && lt && isAddCarReadyForFormalSubmit(lt)) {
             return (
                 uiCopy.portal_input_placeholder_handoff_pending ??
                 '可选：给办公室留一句备注（如提车日变更）；无需重复已整理要点。也可留空，直接点下方提交。'
@@ -1679,13 +1687,16 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
         portalInputEmpty,
         portalInputContinue,
         uiCopy.portal_input_placeholder_handoff_pending,
+        uiCopy.portal_contact_only_input_hint,
+        contactOnlyHandoffGap,
     ]);
 
     const showHandoffPendingHint = useMemo(
         () =>
             customerEntryIsAddCarActive(turns, selectedButtonIntent) &&
-            lastSystemTurnForFlowStep?.triageResult?.lifecycle_status === 'handoff_pending',
-        [turns, selectedButtonIntent, lastSystemTurnForFlowStep?.triageResult],
+            isAddCarReadyForFormalSubmit(lastSystemTurnForFlowStep?.triageResult) &&
+            !contactOnlyHandoffGap,
+        [turns, selectedButtonIntent, lastSystemTurnForFlowStep?.triageResult, contactOnlyHandoffGap],
     );
 
     const preSubmitStillNeededFields = useMemo(
@@ -1697,13 +1708,13 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
             customerEntryIsAddCarActive(turns, selectedButtonIntent) &&
             !formalSubmissionComplete &&
             preSubmitStillNeededFields.length > 0 &&
-            lastSystemTurnForFlowStep?.triageResult?.lifecycle_status !== 'handoff_pending',
+            !isAddCarReadyForFormalSubmit(lastSystemTurnForFlowStep?.triageResult),
         [
             turns,
             selectedButtonIntent,
             formalSubmissionComplete,
             preSubmitStillNeededFields.length,
-            lastSystemTurnForFlowStep?.triageResult?.lifecycle_status,
+            lastSystemTurnForFlowStep?.triageResult,
         ],
     );
     const showAddCarHandoffPendingGapAlert = useMemo(
@@ -1846,8 +1857,18 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
         try {
             const addCarLaneActive = customerEntryIsAddCarActive(turns, selectedButtonIntent);
             const ltFormal = lastSystemTurnForFlowStep?.triageResult;
+            const snFormal = ltFormal?.still_needed_fields?.filter(Boolean) ?? [];
+            const contactOnlyFormal =
+                !!ltFormal &&
+                ltFormal.quote_ready_status === 'quote_ready' &&
+                !!ltFormal.conversion_layer_active &&
+                snFormal.length > 0 &&
+                snFormal.every((f) => f === 'name' || f === 'phone');
             const formalSubmit =
-                addCarLaneActive && ltFormal?.lifecycle_status === 'handoff_pending';
+                addCarLaneActive &&
+                ltFormal &&
+                isAddCarReadyForFormalSubmit(ltFormal) &&
+                !contactOnlyFormal;
             const lightIdentityEnabled = Boolean(uiCopy.light_identity?.show_optional_binding);
             const identityPayload =
                 formalSubmit && lightIdentityEnabled
@@ -1885,7 +1906,7 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
                 message.success(addCarFlow ? addCarHandoffToast : `已整理成 case。${handoffDefault}`);
             } else if (data.handoff_ready) {
                 const suppressReadyToast =
-                    addCarFlow && data.lifecycle_status === 'handoff_pending';
+                    addCarFlow && isAddCarReadyForFormalSubmit(data);
                 if (!suppressReadyToast) {
                     message.success(addCarFlow ? addCarHandoffToast : handoffDefault);
                 }
@@ -1906,7 +1927,7 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
         const addCarLaneActive = customerEntryIsAddCarActive(turns, selectedButtonIntent);
         const lt = lastSystemTurnForFlowStep?.triageResult;
         const handoffPendingHere =
-            addCarLaneActive && lt?.lifecycle_status === 'handoff_pending';
+            addCarLaneActive && lt && isAddCarReadyForFormalSubmit(lt) && !contactOnlyHandoffGap;
         const trimmed = input.trim();
         const emptyFormalLine =
             uiCopy.portal_handoff_pending_empty_submit_line?.trim() ||
@@ -2046,6 +2067,53 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
                             <Paragraph style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: '#595959' }}>
                                 {portalServiceTagline}
                             </Paragraph>
+                            {resumePortalHint.mode === 'single' && resumePortalHint.caseId && (
+                                <div
+                                    style={{
+                                        marginTop: 10,
+                                        paddingTop: 10,
+                                        borderTop: '1px solid #f0f0f0',
+                                    }}
+                                >
+                                    <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.55 }}>
+                                        继续上次的申请：{resumePortalHint.title}
+                                    </Text>
+                                    <Button
+                                        type="link"
+                                        size="small"
+                                        style={{ padding: 0, height: 'auto', marginTop: 4 }}
+                                        onClick={() => {
+                                            setLastCaseId(resumePortalHint.caseId);
+                                            setSelectedButtonIntent('add_car');
+                                        }}
+                                    >
+                                        用这条记录继续
+                                    </Button>
+                                </div>
+                            )}
+                            {resumePortalHint.mode === 'multi' && (
+                                <div
+                                    style={{
+                                        marginTop: 10,
+                                        paddingTop: 10,
+                                        borderTop: '1px solid #f0f0f0',
+                                    }}
+                                >
+                                    <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.55 }}>
+                                        您有多条进行中的请求。到「我的办理」选择要继续的一条即可。
+                                    </Text>
+                                    {onOpenMyRequests ? (
+                                        <Button
+                                            type="link"
+                                            size="small"
+                                            style={{ padding: 0, height: 'auto', marginTop: 4 }}
+                                            onClick={() => onOpenMyRequests()}
+                                        >
+                                            打开我的办理
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            )}
                             {onOpenScenarioSimulation && (
                                 <Button
                                     icon={<PlayCircleOutlined />}
@@ -2303,7 +2371,7 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
                     const submitLabelForNextLane =
                         turns.length === 0 && selectedButtonIntent === 'add_car'
                             ? customerSubmitAddCarLabel
-                            : addCarActiveHere && latestTriage?.lifecycle_status === 'handoff_pending'
+                            : addCarActiveHere && latestTriage && isAddCarReadyForFormalSubmit(latestTriage)
                               ? (uiCopy.portal_submit_handoff_pending ?? '正式提交办公室')
                               : portalSubmitFollowup;
                     const systemTurnsWithTriage = turns.filter((t) => t.role === 'system' && t.triageResult);
@@ -2344,14 +2412,12 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
                                                         {getCustomerUrgencyNote(turn.triageResult.urgency)}
                                                     </Tag>
                                                 )}
-                                                {turn.triageResult.collection_stage && (
+                                                {turn.triageResult && (
                                                     <Tag
-                                                        color={turn.triageResult.collection_stage === 'enough_for_handoff' ? 'green' : 'default'}
+                                                        color={caseLifecycleTagColor(resolveCaseLifecycle(turn.triageResult))}
                                                         style={{ fontSize: 11 }}
                                                     >
-                                                        {turn.triageResult.collection_stage === 'enough_for_handoff'
-                                                            ? '可交办公室'
-                                                            : '信息收集中'}
+                                                        {caseLifecycleUserLabel(resolveCaseLifecycle(turn.triageResult))}
                                                     </Tag>
                                                 )}
                                                 {turn.triageResult.follow_up_type && turn.triageResult.follow_up_type !== 'new_info' && (
@@ -2504,21 +2570,14 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
                                         </Text>
                                     </div>
                                 )}
-                                {latestTriage?.lifecycle_status && !addCarActiveHere && (() => {
-                                    const lc = LIFECYCLE_STATUS_LABELS[latestTriage.lifecycle_status!];
-                                    return (
-                                        <Tag
-                                            color={
-                                                latestTriage.lifecycle_status === 'handoff_pending'
-                                                    ? 'green'
-                                                    : (lc?.color ?? 'default')
-                                            }
-                                            style={{ fontSize: 10 }}
-                                        >
-                                            {lc?.label ?? latestTriage.lifecycle_status}
-                                        </Tag>
-                                    );
-                                })()}
+                                {latestTriage && !addCarActiveHere && (
+                                    <Tag
+                                        color={caseLifecycleTagColor(resolveCaseLifecycle(latestTriage))}
+                                        style={{ fontSize: 10 }}
+                                    >
+                                        {caseLifecycleUserLabel(resolveCaseLifecycle(latestTriage))}
+                                    </Tag>
+                                )}
                             </Space>
                         </Card>
                     ) : null;
@@ -2768,6 +2827,31 @@ function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation }: Custom
                                     }
                                 />
                             )}
+                            {customerEntryIsAddCarActive(turns, selectedButtonIntent) &&
+                                !formalSubmissionComplete &&
+                                contactOnlyHandoffGap && (
+                                    <Alert
+                                        type="info"
+                                        showIcon
+                                        message={uiCopy.conversion_ui_ready_title ?? '报价信息已就绪'}
+                                        description={
+                                            <Text style={{ fontSize: 13, lineHeight: 1.55, margin: 0 }}>
+                                                {uiCopy.portal_contact_only_input_hint ??
+                                                    '请在本对话直接回复称呼与手机号；回完后再点「正式提交办公室」。'}
+                                            </Text>
+                                        }
+                                    />
+                                )}
+                            {customerEntryIsAddCarActive(turns, selectedButtonIntent) &&
+                                !formalSubmissionComplete &&
+                                !contactOnlyHandoffGap &&
+                                (() => {
+                                    const msg =
+                                        lastSystemTurnForFlowStep?.triageResult?.case_draft?.completion_message?.trim() ??
+                                        '';
+                                    if (!msg) return null;
+                                    return <Alert type="success" showIcon message={msg} />;
+                                })()}
                             <TextArea
                                 placeholder={inputPlaceholderResolved}
                                 value={input}
@@ -3401,11 +3485,22 @@ function buildOfficeWorkbenchGlance(triage: TriageResult, inputFallback: string)
 function OfficeWorkbenchOneGlanceSummary({
     triage,
     inputFallback,
+    uiCopy,
 }: {
     triage: TriageResult;
     inputFallback: string;
+    uiCopy: UiCopy;
 }) {
     const g = buildOfficeWorkbenchGlance(triage, inputFallback);
+    const addCar = triageResultLooksLikeAddCar(triage);
+    const formal = addCar && addCarQueueStatusPhase(triage) === 'submitted';
+    const u = uiCopy;
+    const qFormal = u.office_workbench_formal_to_office_question ?? '正式送达办公室';
+    const yes = u.office_workbench_formal_to_office_yes ?? '是';
+    const no = u.office_workbench_formal_to_office_no ?? '否';
+    const stateLabel = u.office_workbench_current_handoff_state_label ?? '当前接手状态';
+    const lt = addCar ? getOfficeLifecycleTag(triage.lifecycle_status) : null;
+
     return (
         <div
             style={{
@@ -3417,40 +3512,162 @@ function OfficeWorkbenchOneGlanceSummary({
                 background: 'linear-gradient(180deg, #f0f5ff 0%, #ffffff 100%)',
             }}
         >
-            <Text strong style={{ fontSize: 13, color: '#1d39c4', display: 'block', marginBottom: 10 }}>
-                一眼摘要 · 办公室快速接手
+            <Text strong style={{ fontSize: 13, color: '#1d39c4', display: 'block', marginBottom: 4 }}>
+                整理结果（办公室一眼）· 三步扫读
             </Text>
-            <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Text style={{ fontSize: 13, color: '#262626', display: 'block', lineHeight: 1.55 }}>{g.contactLine}</Text>
-                <Text style={{ fontSize: 13, color: '#262626', display: 'block', lineHeight: 1.55 }}>{g.matterLine}</Text>
-                <Text style={{ fontSize: 13, color: '#434343', display: 'block', lineHeight: 1.55 }}>{g.stageLine}</Text>
-                {g.vehicleLine ? (
-                    <Text style={{ fontSize: 13, color: '#434343', display: 'block', lineHeight: 1.55 }}>
-                        车辆要点：{g.vehicleLine}
-                    </Text>
-                ) : null}
-                {g.quotePrepLine ? (
-                    <Text style={{ fontSize: 13, color: '#434343', display: 'block', lineHeight: 1.55 }}>
-                        {g.quotePrepLine}
-                    </Text>
-                ) : null}
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 12, lineHeight: 1.45 }}>
+                系统已把客户原文整理为可接手结论；需要核对原文时在下方「完整对话」展开。
+            </Text>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 {g.missingLine ? (
-                    <Text style={{ fontSize: 13, color: '#d46b08', display: 'block', lineHeight: 1.55 }}>{g.missingLine}</Text>
-                ) : (
-                    <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                        结构化缺项：当前未标「还缺」（仍以办公室核实为准）
-                    </Text>
-                )}
-                {g.latestCustomerLine ? (
-                    <Text style={{ fontSize: 12, color: '#595959', display: 'block', lineHeight: 1.5 }}>{g.latestCustomerLine}</Text>
+                    <div
+                        style={{
+                            padding: '10px 12px',
+                            borderRadius: 8,
+                            background: '#fff7e6',
+                            border: '1px solid #ffd591',
+                            borderLeft: '4px solid #fa8c16',
+                        }}
+                    >
+                        <Text strong style={{ fontSize: 12, color: '#ad4e00', display: 'block', marginBottom: 4 }}>
+                            还缺什么（首要）
+                        </Text>
+                        <Text style={{ fontSize: 14, color: '#434343', lineHeight: 1.55, display: 'block' }}>{g.missingLine}</Text>
+                    </div>
                 ) : null}
-                <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid #e6ebf5' }}>
+                <div>
+                    <Text
+                        type="secondary"
+                        style={{ fontSize: 11, display: 'block', marginBottom: 6, letterSpacing: 0.2 }}
+                    >
+                        ① 案子（谁 · 办什么）
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#262626', display: 'block', lineHeight: 1.55 }}>{g.contactLine}</Text>
+                    <Text style={{ fontSize: 13, color: '#262626', display: 'block', lineHeight: 1.55 }}>{g.matterLine}</Text>
+                    {g.vehicleLine ? (
+                        <Text style={{ fontSize: 13, color: '#434343', display: 'block', lineHeight: 1.55 }}>{g.vehicleLine}</Text>
+                    ) : null}
+                </div>
+
+                <div
+                    style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        background: 'rgba(0, 0, 0, 0.02)',
+                        border: '1px solid #f0f0f0',
+                    }}
+                >
+                    <Text
+                        type="secondary"
+                        style={{ fontSize: 11, display: 'block', marginBottom: 6, letterSpacing: 0.2 }}
+                    >
+                        ② 状态与缺口（信任）
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#434343', display: 'block', lineHeight: 1.55 }}>{g.stageLine}</Text>
+                    {addCar ? (
+                        <div
+                            style={{
+                                marginTop: 8,
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                gap: 8,
+                            }}
+                        >
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                {qFormal}：
+                            </Text>
+                            <Tag color={formal ? 'success' : 'warning'}>{formal ? yes : no}</Tag>
+                            {lt ? (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {stateLabel}：{lt.label}
+                                </Text>
+                            ) : null}
+                        </div>
+                    ) : null}
+                    {g.quotePrepLine ? (
+                        <Text style={{ fontSize: 13, color: '#434343', display: 'block', lineHeight: 1.55, marginTop: 8 }}>
+                            {g.quotePrepLine}
+                        </Text>
+                    ) : null}
+                    {!g.missingLine ? (
+                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+                            结构化缺项：当前未标「还缺」（仍以办公室核实为准）
+                        </Text>
+                    ) : (
+                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+                            字段级明细可在下方「结构化字段」展开核对。
+                        </Text>
+                    )}
+                </div>
+
+                <div style={{ paddingTop: 4, borderTop: '1px solid #e6ebf5' }}>
+                    <Text
+                        type="secondary"
+                        style={{ fontSize: 11, display: 'block', marginBottom: 6, letterSpacing: 0.2 }}
+                    >
+                        ③ 行动与对外
+                    </Text>
+                    {g.latestCustomerLine ? (
+                        <Text
+                            type="secondary"
+                            style={{ fontSize: 11, display: 'block', lineHeight: 1.45, marginBottom: 8 }}
+                        >
+                            {g.latestCustomerLine}
+                        </Text>
+                    ) : null}
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        建议办公室下一步
+                        主行动（办公室）
                     </Text>
                     <Text strong style={{ fontSize: 15, color: '#10239e', lineHeight: 1.5, display: 'block' }}>
                         {g.nextStep}
                     </Text>
+                    {(() => {
+                        const hasFu = hasSavedFollowUpTarget(triage);
+                        const due = getFollowUpDueTag(triage.next_contact_by);
+                        const wo = triage.waiting_on ?? 'none';
+                        const ncb = normalizeFollowUpText(triage.next_contact_by);
+                        if (!hasFu) return null;
+                        return (
+                            <div
+                                style={{
+                                    marginTop: 10,
+                                    padding: '8px 10px',
+                                    borderRadius: 6,
+                                    background: due?.kind === 'overdue'
+                                        ? 'rgba(255, 77, 79, 0.06)'
+                                        : due?.kind === 'due_today'
+                                          ? 'rgba(250, 140, 22, 0.08)'
+                                          : 'rgba(24, 144, 255, 0.06)',
+                                    border: '1px solid #f0f0f0',
+                                }}
+                            >
+                                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                                    跟进计划（与主行动对齐）
+                                </Text>
+                                <Space wrap size={[4, 4]}>
+                                    {due ? <Tag color={due.color}>{due.label}</Tag> : null}
+                                    {wo !== 'none' ? (
+                                        <Tag color="purple">在等：{humanizeWaitingOn(wo)}</Tag>
+                                    ) : null}
+                                    {ncb ? (
+                                        <Text type="secondary" style={{ fontSize: 12 }}>
+                                            下次跟进：{ncb}
+                                        </Text>
+                                    ) : null}
+                                </Space>
+                            </div>
+                        );
+                    })()}
+                    {(() => {
+                        const d = (triage.client_reply_draft ?? '').trim();
+                        if (!d) return null;
+                        return (
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 10, lineHeight: 1.5 }}>
+                                客户草稿预览：{getPreviewText(d, 96)}
+                            </Text>
+                        );
+                    })()}
                 </div>
             </Space>
         </div>
@@ -3511,7 +3728,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
     const officeWorkbench = uiCopy.office_workbench ?? '办公室工作台';
     const officeWorkbenchSubtitle =
         uiCopy.office_workbench_subtitle ??
-        '与客户报送入口一致：此处处理的是同源「服务记录」——客户在微信/入口提交的内容与办公室粘贴整理进入同一队列。加车报价为当前试点最成熟路径；其它场景也会整理，但深度因案而异。';
+        '先从队列选案，再看结论，最后执行下一步动作。';
     const officeRecentCardTitle = uiCopy.office_workbench_recent_card_title ?? '服务记录队列';
     const officeRecentCardExtra = uiCopy.office_workbench_recent_card_extra ?? '与客户报送同源';
     const officePasteCardTitle = uiCopy.office_workbench_paste_card_title ?? '从客户消息整理服务记录';
@@ -3637,7 +3854,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
         if (!initialCaseId || recentCases.length === 0 || currentCase?.case_id === initialCaseId) return;
         const match = recentCases.find((c) => c.case_id === initialCaseId);
         if (match) {
-            setInput(match.source_text);
+            setInput('');
             setCaseView('reopened');
             setCurrentCase(match);
             setNoteDraft('');
@@ -3671,6 +3888,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
             } else {
                 message.warning('已整理，但未写入队列（请检查网络或稍后重试）');
             }
+            setInput('');
         } catch (e: unknown) {
             const msg = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
                 ?? (e as { message?: string })?.message
@@ -3690,7 +3908,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
     };
 
     const handleOpenRecent = (savedCase: SavedCase) => {
-        setInput(savedCase.source_text);
+        setInput('');
         setCaseView('reopened');
         setCurrentCase(savedCase);
         setNoteDraft('');
@@ -3756,13 +3974,14 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
 
     const handleCopyCaseSnapshot = async () => {
         if (!currentCase) return;
-        const glance = buildOfficeWorkbenchGlance(currentCase, input.trim());
+        const textFallback = (input.trim() || currentCase.source_text || '').trim();
+        const glance = buildOfficeWorkbenchGlance(currentCase, textFallback);
         const focus =
             inferCaseFocusFromStructuredFields(
                 currentCase.collected_fields,
                 currentCase.still_needed_fields,
                 currentCase.issue_category,
-            ) ?? inferCaseFocusFromText(currentCase.source_text ?? input.trim());
+            ) ?? inferCaseFocusFromText(currentCase.source_text ?? textFallback);
         const lines: string[] = [];
         const focusDisplay = focus ? (getCaseFocusDisplayLabel(focus) ?? focus) : null;
         lines.push(`【服务记录摘要】`);
@@ -3852,11 +4071,11 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
             if (openedCase) {
                 setCurrentCase(openedCase);
                 setCaseView('reopened');
-                setInput(openedCase.source_text ?? '');
+                setInput('');
             } else if (strongestExistingCase) {
                 setCurrentCase(strongestExistingCase);
                 setCaseView('reopened');
-                setInput(strongestExistingCase.source_text);
+                setInput('');
             }
 
             if (createdCount === 0) {
@@ -3915,7 +4134,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                 return;
             }
             setCurrentCase(updated);
-            setInput(updated.source_text ?? '');
+            setInput('');
             setAppendMessageDraft('');
             setRecentCases((cases) => orderCasesForWorkbench([updated, ...cases.filter((item) => item.case_id !== updated.case_id)]));
             if (updated.case_boundary === 'borderline') {
@@ -4258,13 +4477,14 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                 {error && (
                     <Alert type="error" message={error} showIcon closable onClose={() => setError(null)} />
                 )}
-                <Card
+                <Collapse
                     size="small"
-                    title="演示队列"
-                    extra={<Text type="secondary">加载预设 case 用于演示</Text>}
-                    style={{ borderRadius: 8 }}
-                >
-                    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                    items={[
+                        {
+                            key: 'secondary-ops',
+                            label: '演示与运营信号（次要）',
+                            children: (
+                                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                         <Row gutter={[12, 12]}>
                             <Col xs={12} md={6}>
                                 <Card size="small" styles={{ body: { padding: 12 } }}>
@@ -4321,8 +4541,11 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                 演示路径：加载队列 → 取消风险记录优先打开 → 从服务记录队列重开材料补交、加车报价。
                             </Text>
                         </Space>
-                    </Space>
-                </Card>
+                                </Space>
+                            ),
+                        },
+                    ]}
+                />
 
                 <div ref={recentCasesSectionRef}>
                 <Card
@@ -4433,12 +4656,25 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                     </Text>
                                 </div>
                             ) : null}
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                                轻量测试管理：用「管理」标记测试/归档；测试记录可删除清理。正式记录请归档隐藏。
-                            </Text>
-                            <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.55, display: 'block' }}>
-                                图例：工作台标签含测试、归档、识别与 PG 状态；状态含立即处理、待您、可行动、需更多信息、等客户等。
-                            </Text>
+                            <Collapse
+                                size="small"
+                                items={[
+                                    {
+                                        key: 'queue-secondary-help',
+                                        label: '测试管理与图例（次要）',
+                                        children: (
+                                            <Space direction="vertical" size={2}>
+                                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                                    轻量测试管理：用「管理」标记测试/归档；测试记录可删除清理。正式记录请归档隐藏。
+                                                </Text>
+                                                <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.55, display: 'block' }}>
+                                                    图例：工作台标签含测试、归档、识别与 PG 状态；状态含立即处理、待您、可行动、需更多信息、等客户等。
+                                                </Text>
+                                            </Space>
+                                        ),
+                                    },
+                                ]}
+                            />
                             {actionNowCases.length > 0 && (
                                 <>
                                     <Text strong style={{ fontSize: 12 }}>
@@ -4484,11 +4720,9 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                     <Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0, fontSize: 13, lineHeight: 1.45 }}>
                         {officeWorkbenchSubtitle}
                     </Paragraph>
-                    <Space wrap size={[6, 6]} style={{ marginTop: 8 }}>
-                        <Tag color="blue">与客户报送同源</Tag>
-                        <Tag color="cyan">加车报价 · 试点旗舰路径</Tag>
-                        <Tag color="purple">不自动对外发送</Tag>
-                    </Space>
+                    <Text type="secondary" style={{ marginTop: 8, display: 'block', fontSize: 12, lineHeight: 1.45 }}>
+                        与客户报送同源 · 加车为试点主线 · 不自动对外发送
+                    </Text>
                 </div>
 
                 <Card
@@ -4498,6 +4732,13 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                     style={{ borderRadius: 8 }}
                 >
                     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                        {currentCase && !loading ? (
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}>
+                                {caseView === 'reopened'
+                                    ? '已打开队列中的记录：完整原文在下方「完整对话」展开查看。若要再整理另一条客户消息，请先点「清空」释放本条，再粘贴新原文。'
+                                    : '本条已整理：完整原文在下方「完整对话」备查；此处可继续粘贴下一条并「开始整理」。'}
+                            </Text>
+                        ) : null}
                         <Text strong>粘贴您当前收到的客户消息（与客户入口报送同等进入服务记录）。</Text>
                         <Text type="secondary">
                             客户文字、转发的通知、邮件摘录、截图 OCR 文字均可。粘贴后系统整理为服务记录，并给出下一步与草稿。
@@ -4581,7 +4822,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                     <Card size="small">
                         <Space>
                             <Spin size="small" />
-                            <Text type="secondary">正在分析消息并整理服务记录…</Text>
+                            <Text type="secondary">正在生成办公室可读整理结果…</Text>
                         </Space>
                     </Card>
                 )}
@@ -4593,11 +4834,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                             <Space wrap>
                                 <span>{caseView === 'reopened' ? '已打开的服务记录' : '当前服务记录'}</span>
                                 <UrgencyTag urgency={currentCase.urgency} />
-                                <Tag>{humanizeCategory(currentCase.issue_category, currentCase.source_text ?? input.trim())}</Tag>
                                 {currentCase.case_id && <CaseStatusTag status={currentCase.case_status} />}
-                                {(currentCase.waiting_on && currentCase.waiting_on !== 'none') && (
-                                    <Tag color="purple">在等：{humanizeWaitingOn(currentCase.waiting_on)}</Tag>
-                                )}
                                 {currentDueTag && (
                                     <Tag color={currentDueTag.color}>
                                         {currentDueTag.label}
@@ -4621,7 +4858,7 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                 <Button
                                     icon={<CopyOutlined />}
                                     onClick={handleCopyCaseSnapshot}
-                                    title="复制服务记录摘要：联系、事项、阶段、还缺、最近客户、下一步"
+                                    title="复制服务记录摘要：整理结果 + 正式送达/时间（加车）+ 字段与草稿"
                                 >
                                     复制摘要
                                 </Button>
@@ -4652,113 +4889,132 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                     </Text>
                                 </div>
                             )}
-                            <OfficeWorkbenchOneGlanceSummary triage={currentCase} inputFallback={input.trim()} />
+                            <OfficeWorkbenchOneGlanceSummary
+                                triage={currentCase}
+                                inputFallback={(input.trim() || currentCase.source_text || '').trim()}
+                                uiCopy={uiCopy}
+                            />
                             {currentCase.case_id && (
-                                <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
-                                    <Space wrap size={[4, 4]} align="center">
-                                        <Text type="secondary" style={{ fontSize: 11 }}>
-                                            工作台
-                                        </Text>
-                                        {currentCase.workbench_lane_kind ? (
-                                            <Tag style={{ fontSize: 10 }}>{workbenchLaneLabel(currentCase.workbench_lane_kind)}</Tag>
-                                        ) : null}
-                                        {currentCase.pg_mirror_state ? (
-                                            <Tag color={workbenchPgMirrorTagColor(currentCase.pg_mirror_state)} style={{ fontSize: 10 }}>
-                                                {workbenchPgMirrorLabel(currentCase.pg_mirror_state)}
-                                            </Tag>
-                                        ) : null}
-                                        {humanizeServiceLaneOffice(currentCase.service_lane) ? (
-                                            <Tag style={{ fontSize: 10 }} color="blue">
-                                                车道：{humanizeServiceLaneOffice(currentCase.service_lane)}
-                                            </Tag>
-                                        ) : null}
-                                        {currentCase.workbench_test ? <Tag color="orange">测试</Tag> : null}
-                                        {currentCase.workbench_archived ? <Tag>归档</Tag> : null}
-                                        <Dropdown
-                                            menu={{
-                                                items: [
-                                                    {
-                                                        key: 'test',
-                                                        label: currentCase.workbench_test ? '取消测试标记' : '标为测试',
-                                                        onClick: () => {
-                                                            void handlePatchWorkbench(currentCase.case_id!, {
-                                                                is_test: !currentCase.workbench_test,
-                                                            });
-                                                        },
-                                                    },
-                                                    {
-                                                        key: 'arch',
-                                                        label: currentCase.workbench_archived ? '取消归档' : '归档隐藏',
-                                                        onClick: () => {
-                                                            void handlePatchWorkbench(currentCase.case_id!, {
-                                                                archived: !currentCase.workbench_archived,
-                                                            });
-                                                        },
-                                                    },
-                                                    ...(currentCase.workbench_test
-                                                        ? [
-                                                              {
-                                                                  key: 'del',
-                                                                  danger: true,
-                                                                  label: '删除测试记录…',
-                                                                  onClick: () =>
-                                                                      handleDeleteTestCase(currentCase.case_id!),
-                                                              },
-                                                          ]
-                                                        : []),
-                                                ],
-                                            }}
-                                            trigger={['click']}
-                                        >
-                                            <Button size="small" type="link" icon={<MoreOutlined />} style={{ padding: 0, height: 'auto' }}>
-                                                管理
-                                            </Button>
-                                        </Dropdown>
-                                    </Space>
-                                </div>
-                            )}
-                            {triageResultLooksLikeAddCar(currentCase) && (
-                                <AddCarCaseStatusStrip
-                                    triage={currentCase}
-                                    phase={addCarQueueStatusPhase(currentCase)}
-                                    caption={officeCaseStatusStripCaption}
+                                <Collapse
+                                    bordered={false}
+                                    style={{ background: 'transparent' }}
+                                    defaultActiveKey={[]}
+                                    items={[
+                                        {
+                                            key: 'wb_meta',
+                                            label: (
+                                                <Text style={{ fontSize: 12 }}>
+                                                    记录管理 / 镜像 / 车道
+                                                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                                                        （展开）
+                                                    </Text>
+                                                </Text>
+                                            ),
+                                            children: (
+                                                <div style={{ paddingTop: 4 }}>
+                                                    <Space wrap size={[4, 4]} align="center">
+                                                        {currentCase.workbench_lane_kind ? (
+                                                            <Tag style={{ fontSize: 10 }}>
+                                                                {workbenchLaneLabel(currentCase.workbench_lane_kind)}
+                                                            </Tag>
+                                                        ) : null}
+                                                        {currentCase.pg_mirror_state ? (
+                                                            <Tag
+                                                                color={workbenchPgMirrorTagColor(currentCase.pg_mirror_state)}
+                                                                style={{ fontSize: 10 }}
+                                                            >
+                                                                {workbenchPgMirrorLabel(currentCase.pg_mirror_state)}
+                                                            </Tag>
+                                                        ) : null}
+                                                        {humanizeServiceLaneOffice(currentCase.service_lane) ? (
+                                                            <Tag style={{ fontSize: 10 }} color="blue">
+                                                                车道：{humanizeServiceLaneOffice(currentCase.service_lane)}
+                                                            </Tag>
+                                                        ) : null}
+                                                        {currentCase.workbench_test ? <Tag color="orange">测试</Tag> : null}
+                                                        {currentCase.workbench_archived ? <Tag>归档</Tag> : null}
+                                                        <Dropdown
+                                                            menu={{
+                                                                items: [
+                                                                    {
+                                                                        key: 'test',
+                                                                        label: currentCase.workbench_test ? '取消测试标记' : '标为测试',
+                                                                        onClick: () => {
+                                                                            void handlePatchWorkbench(currentCase.case_id!, {
+                                                                                is_test: !currentCase.workbench_test,
+                                                                            });
+                                                                        },
+                                                                    },
+                                                                    {
+                                                                        key: 'arch',
+                                                                        label: currentCase.workbench_archived ? '取消归档' : '归档隐藏',
+                                                                        onClick: () => {
+                                                                            void handlePatchWorkbench(currentCase.case_id!, {
+                                                                                archived: !currentCase.workbench_archived,
+                                                                            });
+                                                                        },
+                                                                    },
+                                                                    ...(currentCase.workbench_test
+                                                                        ? [
+                                                                              {
+                                                                                  key: 'del',
+                                                                                  danger: true,
+                                                                                  label: '删除测试记录…',
+                                                                                  onClick: () =>
+                                                                                      handleDeleteTestCase(currentCase.case_id!),
+                                                                              },
+                                                                          ]
+                                                                        : []),
+                                                                ],
+                                                            }}
+                                                            trigger={['click']}
+                                                        >
+                                                            <Button
+                                                                size="small"
+                                                                type="link"
+                                                                icon={<MoreOutlined />}
+                                                                style={{ padding: 0, height: 'auto' }}
+                                                            >
+                                                                管理
+                                                            </Button>
+                                                        </Dropdown>
+                                                    </Space>
+                                                </div>
+                                            ),
+                                        },
+                                    ]}
                                 />
                             )}
                             {triageResultLooksLikeAddCar(currentCase) && (
-                                <OfficeWorkbenchAddCarSubmissionSnapshot triage={currentCase} uiCopy={uiCopy} />
+                                <Collapse
+                                    bordered={false}
+                                    style={{ background: 'transparent' }}
+                                    defaultActiveKey={[]}
+                                    items={[
+                                        {
+                                            key: 'add_car_submission_detail',
+                                            label: (
+                                                <Text style={{ fontSize: 12 }}>
+                                                    报送与时间戳说明
+                                                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                                                        （展开核对）
+                                                    </Text>
+                                                </Text>
+                                            ),
+                                            children: (
+                                                <OfficeWorkbenchAddCarSubmissionSnapshot triage={currentCase} uiCopy={uiCopy} />
+                                            ),
+                                        },
+                                    ]}
+                                />
                             )}
-                            {currentCase &&
-                                (() => {
-                                    const mirror = getOfficeAddCarReadinessMirror(currentCase, uiCopy);
-                                    if (!mirror) return null;
-                                    return (
-                                        <div
-                                            style={{
-                                                marginBottom: 12,
-                                                padding: 12,
-                                                borderRadius: 8,
-                                                border: '1px solid #f0f0f0',
-                                                borderLeft: `4px solid ${mirror.borderColor}`,
-                                                background: mirror.background,
-                                            }}
-                                        >
-                                            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
-                                                {uiCopy.office_add_car_readiness_panel_title ?? '加车 · 接手就绪度（与客户入口同源）'}
-                                            </Text>
-                                            <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 8, color: '#262626' }}>
-                                                {mirror.headline}
-                                            </Text>
-                                            <Text style={{ fontSize: 13, lineHeight: 1.55, color: '#434343' }}>{mirror.body}</Text>
-                                        </div>
-                                    );
-                                })()}
                             <Card
                                 size="small"
                                 title={
                                     <Space wrap size={[4, 4]}>
-                                        <Text strong>Case 整理</Text>
+                                        <Text strong>Case 整理明细</Text>
                                         <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
-                                            — 这是什么 case、该做什么、需核实什么
+                                            — 核对标签与材料；主结论在上方「整理结果」
                                         </Text>
                                     </Space>
                                 }
@@ -4819,37 +5075,72 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                             </Text>
                                         </div>
                                     )}
-                                    {/* Row 1: Case focus + status + one-line summary */}
-                                    <Space wrap align="center">
-                                        {(() => {
-                                            const focus = inferCaseFocusFromStructuredFields(currentCase.collected_fields, currentCase.still_needed_fields, currentCase.issue_category)
-                                                ?? inferCaseFocusFromText(currentCase.source_text ?? input.trim());
-                                            const display = focus ? (getCaseFocusDisplayLabel(focus) ?? focus) : null;
-                                            return display ? <Tag color="blue">{display}</Tag> : null;
-                                        })()}
-                                        {currentCase.collection_stage && (
-                                            <Tag color={currentCase.collection_stage === 'enough_for_handoff' ? 'green' : 'default'} style={{ fontSize: 11 }}>
-                                                {currentCase.collection_stage === 'enough_for_handoff' ? '可交办公室' : '信息收集中'}
-                                            </Tag>
-                                        )}
-                                        {(() => {
-                                            const lt = getOfficeLifecycleTag(currentCase.lifecycle_status);
-                                            return lt ? (
-                                                <Tag color={lt.color} style={{ fontSize: 10 }}>
-                                                    {lt.label}
-                                                </Tag>
-                                            ) : null;
-                                        })()}
-                                        {currentAttention && <Tag color={currentAttention.color}>{currentAttention.label}</Tag>}
-                                        <Tag color={currentCase.manual_followup_needed ? 'volcano' : 'green'}>
-                                            {currentCase.manual_followup_needed ? '需要您处理' : '可审核草稿'}
-                                        </Tag>
-                                        {(currentCase.urgency === 'critical' || currentCase.urgency === 'high') && (
-                                            <Tag color="red" icon={<ClockCircleOutlined />}>
-                                                建议当日处理
-                                            </Tag>
-                                        )}
-                                    </Space>
+                                    <Collapse
+                                        bordered={false}
+                                        style={{ background: 'transparent' }}
+                                        defaultActiveKey={[]}
+                                        items={[
+                                            {
+                                                key: 'case_sheet_tags',
+                                                label: (
+                                                    <Text style={{ fontSize: 12 }}>
+                                                        更多状态标签（事项/收集/生命周期/跟进）
+                                                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                                                            （展开）
+                                                        </Text>
+                                                    </Text>
+                                                ),
+                                                children: (
+                                                    <Space wrap align="center">
+                                                        {(() => {
+                                                            const focus =
+                                                                inferCaseFocusFromStructuredFields(
+                                                                    currentCase.collected_fields,
+                                                                    currentCase.still_needed_fields,
+                                                                    currentCase.issue_category,
+                                                                ) ?? inferCaseFocusFromText(currentCase.source_text ?? input.trim());
+                                                            const display = focus ? (getCaseFocusDisplayLabel(focus) ?? focus) : null;
+                                                            return display ? <Tag color="blue">{display}</Tag> : null;
+                                                        })()}
+                                                        {currentCase.collection_stage && (
+                                                            <Tag
+                                                                color={
+                                                                    currentCase.collection_stage === 'enough_for_handoff' ? 'green' : 'default'
+                                                                }
+                                                                style={{ fontSize: 11 }}
+                                                            >
+                                                                {currentCase.collection_stage === 'enough_for_handoff'
+                                                                    ? '可交办公室'
+                                                                    : '信息收集中'}
+                                                            </Tag>
+                                                        )}
+                                                        {(() => {
+                                                            const lt = getOfficeLifecycleTag(currentCase.lifecycle_status);
+                                                            return lt ? (
+                                                                <Tag color={lt.color} style={{ fontSize: 10 }}>
+                                                                    {lt.label}
+                                                                </Tag>
+                                                            ) : null;
+                                                        })()}
+                                                        {currentAttention && (
+                                                            <Tag color={currentAttention.color}>{currentAttention.label}</Tag>
+                                                        )}
+                                                        <Tag color={currentCase.manual_followup_needed ? 'volcano' : 'green'}>
+                                                            {currentCase.manual_followup_needed ? '需要您处理' : '可审核草稿'}
+                                                        </Tag>
+                                                        {(currentCase.urgency === 'critical' || currentCase.urgency === 'high') && (
+                                                            <Tag color="red" icon={<ClockCircleOutlined />}>
+                                                                建议当日处理
+                                                            </Tag>
+                                                        )}
+                                                    </Space>
+                                                ),
+                                            },
+                                        ]}
+                                    />
+                                    <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                                        办公室主行动与跟进预览见上方「整理结果」第三步；此处为标签、字段与草稿全文核对。
+                                    </Text>
                                     {(() => {
                                         const focusRow =
                                             inferCaseFocusFromStructuredFields(
@@ -4868,15 +5159,6 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                             {getCaseReportOneLiner(currentCase, input.trim())}
                                         </Text>
                                     )}
-                                    {/* Your next move — handoff visibility: top of action block per HANDOFF_OFFICE_NEXT_ACTION_SPEC */}
-                                    <div>
-                                        <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                            您的下一步
-                                        </Text>
-                                        <Text strong style={{ fontSize: 17, lineHeight: 1.5, display: 'block', marginTop: 6, color: '#262626' }}>
-                                            {currentCase.broker_next_step}
-                                        </Text>
-                                    </div>
                                     {/* Correction / context hint badge — handoff visibility */}
                                     {(() => {
                                         const ft = (currentCase.follow_up_type ?? '').trim().toLowerCase();
@@ -4931,34 +5213,6 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                         }
                                         return null;
                                     })()}
-                                    {/* Follow-up block — above fold, working case sheet (OFFICE_TOOL_PROFESSIONALIZATION) */}
-                                    {(currentCase.waiting_on && currentCase.waiting_on !== 'none') || currentCase.next_contact_by?.trim() ? (
-                                        <div
-                                            style={{
-                                                padding: 10,
-                                                background: currentDueTag?.kind === 'overdue' ? 'rgba(255, 77, 79, 0.08)' : currentDueTag?.kind === 'due_today' ? 'rgba(255, 165, 0, 0.08)' : '#e6f7ff',
-                                                borderRadius: 6,
-                                                borderLeft: `4px solid ${currentDueTag?.kind === 'overdue' ? '#ff4d4f' : currentDueTag?.kind === 'due_today' ? '#fa8c16' : '#1890ff'}`,
-                                            }}
-                                        >
-                                            <Text strong style={{ fontSize: 12, color: '#0050b3' }}>
-                                                跟进
-                                            </Text>
-                                            <div style={{ marginTop: 4 }}>
-                                                <Space wrap size={[4, 4]}>
-                                                    {currentDueTag && <Tag color={currentDueTag.color}>{currentDueTag.label}</Tag>}
-                                                    {currentCase.waiting_on && currentCase.waiting_on !== 'none' && (
-                                                        <Tag color="purple">在等：{humanizeWaitingOn(currentCase.waiting_on)}</Tag>
-                                                    )}
-                                                    {currentCase.next_contact_by?.trim() && (
-                                                        <Text type="secondary" style={{ fontSize: 12 }}>
-                                                            下次跟进：{normalizeFollowUpText(currentCase.next_contact_by)}
-                                                        </Text>
-                                                    )}
-                                                </Space>
-                                            </div>
-                                        </div>
-                                    ) : null}
                                     {needsHumanConfirmation(currentCase) && (
                                         <div
                                             style={{
@@ -5041,8 +5295,8 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                             </div>
                                         );
                                     })()}
-                                    {/* Add-car quote-ready status (ADD_CAR_REAL_INTAKE_LITE) */}
-                                    {currentCase.quote_ready_status && (
+                                    {/* Add-car quote-ready status (ADD_CAR_REAL_INTAKE_LITE) — skipped for加车 when already in一眼摘要 */}
+                                    {currentCase.quote_ready_status && !triageResultLooksLikeAddCar(currentCase) && (
                                         <div style={{ marginBottom: 8 }}>
                                             <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
                                                 报价进度
@@ -5052,8 +5306,9 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                             </Tag>
                                         </div>
                                     )}
-                                    {/* Contact block (ADD_CAR_IDENTITY_CONTACT_LITE) */}
-                                    {(currentCase.quote_ready_status || (currentCase.collected_fields ?? []).some((f) => f === 'name' || f === 'phone') || (currentCase.still_needed_fields ?? []).some((f) => f === 'name' || f === 'phone')) && (
+                                    {/* Contact block (ADD_CAR_IDENTITY_CONTACT_LITE) — skipped for加车 when已在摘要「①」 */}
+                                    {!triageResultLooksLikeAddCar(currentCase) &&
+                                    (currentCase.quote_ready_status || (currentCase.collected_fields ?? []).some((f) => f === 'name' || f === 'phone') || (currentCase.still_needed_fields ?? []).some((f) => f === 'name' || f === 'phone')) && (
                                         <div style={{ marginBottom: 8 }}>
                                             <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
                                                 客户联系
@@ -5168,38 +5423,58 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                             )}
                                         </div>
                                     )}
-                                    {/* Collected + Still needed */}
+                                    {/* Collected + Still needed — folded by default to avoid duplicating the glance “还缺什么” wall */}
                                     {((currentCase.collected_fields?.length ?? 0) > 0 || (currentCase.still_needed_fields?.length ?? 0) > 0) ? (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                                            {(currentCase.collected_fields?.length ?? 0) > 0 && (
-                                                <div style={{ flex: '1 1 200px' }}>
-                                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                                        已收集
-                                                    </Text>
-                                                    <Space wrap size={[4, 4]}>
-                                                        {currentCase.collected_fields!.map((f) => (
-                                                            <Tag key={f} color="green">
-                                                                {humanizeStructuredField(f)}
-                                                            </Tag>
-                                                        ))}
-                                                    </Space>
-                                                </div>
-                                            )}
-                                            {(currentCase.still_needed_fields?.length ?? 0) > 0 && (
-                                                <div style={{ flex: '1 1 200px' }}>
-                                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                                        结构化待补（跟客户入口同源）
-                                                    </Text>
-                                                    <Space wrap size={[4, 4]}>
-                                                        {currentCase.still_needed_fields!.map((f) => (
-                                                            <Tag key={f} color="orange">
-                                                                {humanizeStructuredField(f)}
-                                                            </Tag>
-                                                        ))}
-                                                    </Space>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <Collapse
+                                            bordered={false}
+                                            style={{ background: 'transparent' }}
+                                            defaultActiveKey={[]}
+                                            items={[
+                                                {
+                                                    key: 'wb_structured_fields',
+                                                    label: (
+                                                        <Text style={{ fontSize: 12 }}>
+                                                            结构化字段明细（已收集 / 待补标签）
+                                                            <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                                                                （展开核对 · 缺口摘要已在上方）
+                                                            </Text>
+                                                        </Text>
+                                                    ),
+                                                    children: (
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                                            {(currentCase.collected_fields?.length ?? 0) > 0 && (
+                                                                <div style={{ flex: '1 1 200px' }}>
+                                                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                                                                        已收集
+                                                                    </Text>
+                                                                    <Space wrap size={[4, 4]}>
+                                                                        {currentCase.collected_fields!.map((f) => (
+                                                                            <Tag key={f} color="green">
+                                                                                {humanizeStructuredField(f)}
+                                                                            </Tag>
+                                                                        ))}
+                                                                    </Space>
+                                                                </div>
+                                                            )}
+                                                            {(currentCase.still_needed_fields?.length ?? 0) > 0 && (
+                                                                <div style={{ flex: '1 1 200px' }}>
+                                                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                                                                        结构化待补（跟客户入口同源）
+                                                                    </Text>
+                                                                    <Space wrap size={[4, 4]}>
+                                                                        {currentCase.still_needed_fields!.map((f) => (
+                                                                            <Tag key={f} color="orange">
+                                                                                {humanizeStructuredField(f)}
+                                                                            </Tag>
+                                                                        ))}
+                                                                    </Space>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ),
+                                                },
+                                            ]}
+                                        />
                                     ) : (currentCase.conversation_summary || currentCase.secondary_issue_note) && (
                                         <div style={{ fontSize: 13 }}>
                                             {currentCase.secondary_issue_note && (
@@ -5219,40 +5494,6 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                             )}
                                         </div>
                                     )}
-                                    {/* Recent customer messages — context below action block */}
-                                    {(() => {
-                                        const recent = getRecentCustomerMessages(currentCase, 3);
-                                        if (recent.length === 0) return null;
-                                        return (
-                                            <div
-                                                style={{
-                                                    padding: 10,
-                                                    background: '#fafafa',
-                                                    borderRadius: 6,
-                                                    borderLeft: '3px solid #1890ff',
-                                                }}
-                                            >
-                                                <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                    最近客户消息
-                                                </Text>
-                                                <div style={{ marginTop: 6 }}>
-                                                    {recent.map((msg, i) => (
-                                                        <div
-                                                            key={i}
-                                                            style={{
-                                                                fontSize: 13,
-                                                                lineHeight: 1.5,
-                                                                marginBottom: i < recent.length - 1 ? 8 : 0,
-                                                                whiteSpace: 'pre-wrap',
-                                                            }}
-                                                        >
-                                                            {msg}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
                                     <Text type="secondary" style={{ fontSize: 11 }}>{getResponseWindow(currentCase.urgency)}</Text>
                                     {currentTrackingSummary && <Text type="secondary" style={{ fontSize: 11 }}>{currentTrackingSummary}</Text>}
                                 </Space>
@@ -5268,66 +5509,80 @@ function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: BrokerWor
                                     </Card>
                                 </Col>
                                 <Col xs={24} md={16}>
-                                    <Card size="small" title="草稿回复（确认后再发）" styles={{ body: { padding: 12 } }}>
-                                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                                            <Tag color={currentCase.manual_followup_needed ? 'gold' : 'green'}>
-                                                {getDraftReadinessLabel(currentCase)}
-                                            </Tag>
-                                            <Text type="secondary">
-                                                发给客户的草稿。经纪人审核后手动发送，不自动发送。
-                                            </Text>
-                                            <div
-                                                style={{
-                                                    padding: 12,
-                                                    background: '#fafafa',
-                                                    borderRadius: 6,
-                                                    whiteSpace: 'pre-wrap',
-                                                    fontFamily: 'inherit',
-                                                }}
-                                            >
-                                                {currentCase.client_reply_draft}
-                                            </div>
-                                        </Space>
-                                    </Card>
+                                    <Collapse
+                                        bordered={false}
+                                        style={{ background: 'transparent' }}
+                                        defaultActiveKey={[]}
+                                        items={[
+                                            {
+                                                key: 'wb_draft_full',
+                                                label: (
+                                                    <Space wrap size={[6, 4]} align="center">
+                                                        <Text style={{ fontSize: 12 }}>草稿全文（确认后再发）</Text>
+                                                        <Tag
+                                                            color={currentCase.manual_followup_needed ? 'gold' : 'green'}
+                                                            style={{ marginInlineEnd: 0 }}
+                                                        >
+                                                            {getDraftReadinessLabel(currentCase)}
+                                                        </Tag>
+                                                    </Space>
+                                                ),
+                                                children: (
+                                                    <div style={{ paddingTop: 4 }}>
+                                                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                                                            审核后手动发送；顶部可一键复制。
+                                                        </Text>
+                                                        <div
+                                                            style={{
+                                                                padding: 12,
+                                                                background: '#fafafa',
+                                                                borderRadius: 6,
+                                                                whiteSpace: 'pre-wrap',
+                                                                fontFamily: 'inherit',
+                                                                fontSize: 13,
+                                                            }}
+                                                        >
+                                                            {currentCase.client_reply_draft}
+                                                        </div>
+                                                    </div>
+                                                ),
+                                            },
+                                        ]}
+                                    />
                                 </Col>
                             </Row>
 
-                            <Row gutter={[12, 12]}>
-                                <Col xs={24} md={12}>
-                                    <Card size="small" title="当前状态" styles={{ body: { padding: 12 } }}>
-                                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                                            <Space wrap>
-                                                {currentAttention && <Tag color={currentAttention.color}>{currentAttention.label}</Tag>}
-                                                {(currentCase.urgency === 'critical' || currentCase.urgency === 'high') && (
-                                                    <Tag color="red" icon={<ClockCircleOutlined />}>
-                                                        建议当日处理
-                                                    </Tag>
-                                                )}
-                                                {(currentCase.waiting_on && currentCase.waiting_on !== 'none') && (
-                                                    <Tag color="purple">在等：{humanizeWaitingOn(currentCase.waiting_on)}</Tag>
-                                                )}
-                                                <Tag color="default">{getDueStateLabel(currentCase.next_contact_by)}</Tag>
+                            <Collapse
+                                bordered={false}
+                                style={{ background: 'transparent' }}
+                                defaultActiveKey={[]}
+                                items={[
+                                    {
+                                        key: 'wb_full_thread',
+                                        label: (
+                                            <Space wrap align="center">
+                                                <Text strong style={{ fontSize: 13 }}>
+                                                    {currentCase.source_text?.includes('[客户]') ? '完整对话（备查）' : '本条消息原文（备查）'}
+                                                </Text>
+                                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                                    默认收起 · 主结论在上方整理结果
+                                                </Text>
                                             </Space>
-                                            <Text strong>{currentFollowUpSummary}</Text>
-                                            <Text type="secondary" style={{ display: 'block' }}>
-                                                最近更新：{currentLatestContext}
-                                            </Text>
-                                            <Text type="secondary">最后更新 {formatDateLabel(currentCase.updated_at)}</Text>
-                                        </Space>
-                                    </Card>
-                                </Col>
-                                <Col xs={24} md={12}>
-                                    <Card
-                                        size="small"
-                                        title={currentCase.source_text?.includes('[客户]') ? '完整对话' : '本条消息原文'}
-                                        styles={{ body: { padding: 12 } }}
-                                    >
-                                        <div style={{ whiteSpace: 'pre-wrap' }}>
-                                            {currentCase.source_text || input.trim()}
-                                        </div>
-                                    </Card>
-                                </Col>
-                            </Row>
+                                        ),
+                                        children: (
+                                            <Card size="small" styles={{ body: { padding: 12 } }} style={{ marginTop: 4 }}>
+                                                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+                                                    最后更新 {formatDateLabel(currentCase.updated_at)}
+                                                    {currentLatestContext ? ` · ${currentLatestContext}` : ''}
+                                                </Text>
+                                                <div style={{ whiteSpace: 'pre-wrap' }}>
+                                                    {currentCase.source_text || input.trim()}
+                                                </div>
+                                            </Card>
+                                        ),
+                                    },
+                                ]}
+                            />
 
                             {caseView === 'reopened' && currentCase.case_id && (
                                 <Card
@@ -5546,6 +5801,9 @@ export default function UnifiedIntakePage() {
     const portalTabOfficeSuffix = uiCopy.portal_tab_office_suffix ?? '加车旗舰路径 · 与客户报送同一服务记录';
     const portalTabSimulation = uiCopy.portal_tab_simulation_label ?? '场景仿真';
     const portalTabSimulationSuffix = uiCopy.portal_tab_simulation_suffix ?? '加车脚本回放 · 状态同步';
+    const portalTabMyRequests = uiCopy.portal_tab_my_requests_label ?? '我的办理';
+    const portalTabMyRequestsSuffix =
+        uiCopy.portal_tab_my_requests_suffix ?? '进行中的请求与待补充项';
 
     const [activeTab, setActiveTab] = useState<string>('customer');
     const [brokerInitialCaseId, setBrokerInitialCaseId] = useState<string | undefined>();
@@ -5556,16 +5814,20 @@ export default function UnifiedIntakePage() {
     const officeWorkbenchDocumentTitle = uiCopy.office_workbench_document_title ?? '加车报价试点 · 办公室工作台';
     const simulationTabTitle =
         (uiCopy.portal_tab_simulation_label ?? '场景仿真') + ' · ' + (uiCopy.portal_brand_tagline ?? '车险报送入口');
+    const myRequestsDocumentTitle =
+        (uiCopy.portal_tab_my_requests_label ?? '我的办理') + ' · ' + (uiCopy.portal_brand_tagline ?? '车险报送入口');
 
     useEffect(() => {
         if (activeTab === 'customer') {
             document.title = portalHeroTitle;
+        } else if (activeTab === 'my_requests') {
+            document.title = myRequestsDocumentTitle;
         } else if (activeTab === 'broker') {
             document.title = officeWorkbenchDocumentTitle;
         } else {
             document.title = simulationTabTitle;
         }
-    }, [activeTab, portalHeroTitle, officeWorkbenchDocumentTitle, simulationTabTitle]);
+    }, [activeTab, portalHeroTitle, myRequestsDocumentTitle, officeWorkbenchDocumentTitle, simulationTabTitle]);
 
     const handleSwitchToBroker = (caseId?: string) => {
         setBrokerInitialCaseId(caseId);
@@ -5688,7 +5950,23 @@ export default function UnifiedIntakePage() {
                             <CustomerEntryTab
                                 onSwitchToBroker={handleSwitchToBroker}
                                 onOpenScenarioSimulation={() => setActiveTab('simulation')}
+                                onOpenMyRequests={() => setActiveTab('my_requests')}
                             />
+                        ),
+                    },
+                    {
+                        key: 'my_requests',
+                        forceRender: true,
+                        label: (
+                            <span>
+                                <UnorderedListOutlined /> {portalTabMyRequests}
+                                <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
+                                    — {portalTabMyRequestsSuffix}
+                                </Text>
+                            </span>
+                        ),
+                        children: (
+                            <UserCaseListProgressPanel onContinueInCustomerPortal={() => setActiveTab('customer')} />
                         ),
                     },
                     {

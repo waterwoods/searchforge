@@ -3,7 +3,7 @@
  * Record-first: right column is primary; thread is audit trail.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Input, Row, Select, Space, Spin, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, Input, Progress, Row, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import {
     PlayCircleOutlined,
     ReloadOutlined,
@@ -14,10 +14,13 @@ import {
 } from '@ant-design/icons';
 import {
     fetchSimulationRoleCCustomer,
+    patchCaseWorkbench,
     triageMessage,
     type ConversationTurn,
+    type SavedCase,
     type TriageResult,
 } from '../../api/inboxTriage';
+import { fetchAnalyticsDashboard, type AnalyticsDashboard } from '../../api/analyticsDashboard';
 import { useClientConfig } from '../../context/ClientConfigContext';
 import { AddCarRecordSummaryRail, computeAddCarFlowStep } from '../intake/AddCarRecordSummaryRail';
 import replayConfig from '../../config/add_car_scenario_replay.json';
@@ -60,11 +63,32 @@ type ReplayTurn = {
 
 export function ScenarioReplayTab() {
     const { clientId, uiCopy } = useClientConfig();
+    const [analytics, setAnalytics] = useState<AnalyticsDashboard | null>(null);
+    const [analyticsErr, setAnalyticsErr] = useState<string | null>(null);
     const [roleCConfig, setRoleCConfig] = useState<RoleCConfig>(DEFAULT_ROLE_C_CONFIG);
     const roleCScenarioCard = useMemo(() => buildRoleCScenarioCard(roleCConfig), [roleCConfig]);
     const roleCPlusScenarioCard = useMemo(() => buildRoleCPlusScenarioCard(roleCConfig), [roleCConfig]);
     const [roleDConfig, setRoleDConfig] = useState<RoleDConfig>(DEFAULT_ROLE_D_CONFIG);
     const roleDScenario = useMemo(() => buildRoleDScenario(roleDConfig), [roleDConfig]);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetchAnalyticsDashboard()
+            .then((d) => {
+                if (!cancelled) {
+                    setAnalytics(d);
+                    setAnalyticsErr(null);
+                }
+            })
+            .catch((e: unknown) => {
+                if (!cancelled) {
+                    setAnalyticsErr(e instanceof Error ? e.message : 'analytics dashboard failed');
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
     const scenarios = useMemo(() => {
         const base = (replayConfig as { scenarios: AddCarReplayScenario[] }).scenarios.filter(
             (s) =>
@@ -77,6 +101,8 @@ export function ScenarioReplayTab() {
     const [selected, setSelected] = useState<AddCarReplayScenario | null>(null);
     const [replayTurns, setReplayTurns] = useState<ReplayTurn[]>([]);
     const [loading, setLoading] = useState(false);
+    const [saveLoading, setSaveLoading] = useState(false);
+    const [savedTestCase, setSavedTestCase] = useState<SavedCase | null>(null);
 
     useEffect(() => {
         const base = (replayConfig as { scenarios: AddCarReplayScenario[] }).scenarios.filter(
@@ -133,6 +159,21 @@ export function ScenarioReplayTab() {
         if (!isRoleCLane) return null;
         return buildRoleCPlusEndSummary(roleCPlusSnapshots, lastTriage);
     }, [isRoleCLane, roleCPlusSnapshots, lastTriage]);
+
+    const finalCustomerTurnBeforeLastSystem: ReplayTurn | undefined = useMemo(() => {
+        if (!lastSystem) return undefined;
+        const idx = replayTurns.findIndex((t) => t === lastSystem);
+        if (idx <= 0) return undefined;
+        for (let i = idx - 1; i >= 0; i -= 1) {
+            if (replayTurns[i].role === 'customer') {
+                return replayTurns[i];
+            }
+        }
+        return undefined;
+    }, [lastSystem, replayTurns]);
+
+    const canPersistAsTest =
+        !!lastTriage && !lastTriage.case_id && !!finalCustomerTurnBeforeLastSystem && !saveLoading;
 
     /** Bounded auto-run: same live Role C + triage stack as manual 「下一步」, turn-by-turn. */
     const runRoleCFullSimulation = useCallback(async () => {
@@ -287,10 +328,71 @@ export function ScenarioReplayTab() {
     const handleReset = () => {
         setReplayTurns([]);
         setLoading(false);
+        setSaveLoading(false);
+        setSavedTestCase(null);
     };
 
     const panelTitle = uiCopy.simulation_state_panel_title ?? '服务记录与进度（主视图）';
     const threadHint = uiCopy.simulation_thread_hint ?? '对话为过程留痕；理解与验收以右栏状态为准。';
+
+    const handleSaveSimulationAsTest = useCallback(async () => {
+        if (!canPersistAsTest || !selected || !finalCustomerTurnBeforeLastSystem) return;
+        const text = (finalCustomerTurnBeforeLastSystem.content || '').trim();
+        if (!text) {
+            message.error('没有可用于保存的最后一条客户话术。');
+            return;
+        }
+        const idxLastSystem = replayTurns.findIndex((t) => t === lastSystem);
+        const idxLastCustomer = replayTurns.findIndex((t) => t === finalCustomerTurnBeforeLastSystem);
+        if (idxLastSystem <= 0 || idxLastCustomer < 0 || idxLastCustomer >= idxLastSystem) {
+            message.error('仿真对话结构异常，暂无法保存为测试记录。');
+            return;
+        }
+        const priorTurnsForApi: ConversationTurn[] = replayTurns
+            .slice(0, idxLastCustomer)
+            .map((t) => ({ role: t.role, text: t.content }));
+        setSaveLoading(true);
+        try {
+            const triage = await triageMessage(
+                text,
+                true,
+                priorTurnsForApi,
+                'add_car',
+                undefined,
+                clientId,
+                true,
+            );
+            if (!triage.case_id) {
+                message.warning('后端未创建服务记录（可能尚未满足正式提交条件）。');
+                return;
+            }
+            let saved: SavedCase | null = null;
+            try {
+                saved = await patchCaseWorkbench(triage.case_id, { is_test: true });
+            } catch {
+                // If marking as test fails, we still keep the created case but flag it.
+                message.warning('记录已创建，但测试标记未成功写入工作台标记。');
+            }
+            const effective = saved ?? (triage as SavedCase);
+            setSavedTestCase(effective);
+            message.success('已将本次仿真结果保存为测试记录（办公室工作台可见）。');
+        } catch (e: unknown) {
+            const errMsg =
+                (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ??
+                (e as { message?: string })?.message ??
+                '保存测试记录失败，请稍后重试。';
+            message.error(errMsg);
+        } finally {
+            setSaveLoading(false);
+        }
+    }, [
+        canPersistAsTest,
+        clientId,
+        finalCustomerTurnBeforeLastSystem,
+        lastSystem,
+        replayTurns,
+        selected,
+    ]);
 
     const roleCSharedKnobs = (
         <Space direction="vertical" size={10} style={{ width: '100%' }}>
@@ -386,6 +488,65 @@ export function ScenarioReplayTab() {
                         </Paragraph>
                     </div>
                 </Space>
+            </Card>
+
+            <Card
+                size="small"
+                title={
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#262626' }}>
+                        产品分析快照（后端进程内缓冲区）
+                    </span>
+                }
+                style={{ marginBottom: 16, borderRadius: 10 }}
+            >
+                {analyticsErr && (
+                    <Alert type="warning" showIcon message="无法加载 /api/analytics/dashboard" description={analyticsErr} />
+                )}
+                {analytics && !analyticsErr && (
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                        <Text>
+                            North Star 平均分：<Text strong>{analytics.north_star_avg ?? '—'}</Text>（0–10）
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                            会话桶数：{analytics.sessions_in_buffer}
+                        </Text>
+                        <div>
+                            <Text style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>漏斗（相对 session_started）</Text>
+                            {(() => {
+                                const c = analytics.funnel.counts;
+                                const base = Math.max(1, c.session_started || 0);
+                                const steps: Array<{ label: string; n: number }> = [
+                                    { label: 'session_started', n: c.session_started ?? 0 },
+                                    { label: 'case_created', n: c.case_created ?? 0 },
+                                    { label: 'quote_ready', n: c.quote_ready_reached ?? 0 },
+                                    { label: 'handoff_started', n: c.handoff_started ?? 0 },
+                                    { label: 'handoff_confirmed', n: c.handoff_confirmed ?? 0 },
+                                ];
+                                return steps.map((s) => (
+                                    <div key={s.label} style={{ marginBottom: 6 }}>
+                                        <Text style={{ fontSize: 12, width: 160, display: 'inline-block' }}>{s.label}</Text>
+                                        <Progress
+                                            percent={Math.round((100 * s.n) / base)}
+                                            size="small"
+                                            format={() => `${s.n}`}
+                                            style={{ width: 'calc(100% - 170px)', display: 'inline-block', verticalAlign: 'middle' }}
+                                        />
+                                    </div>
+                                ));
+                            })()}
+                        </div>
+                        <Text>
+                            最大落差：<Text strong>{analytics.dropoff_summary.biggest_drop ?? '—'}</Text>
+                        </Text>
+                        {analytics.top_issues.length > 0 && (
+                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#595959' }}>
+                                {analytics.top_issues.slice(0, 3).map((t) => (
+                                    <li key={t}>{t}</li>
+                                ))}
+                            </ul>
+                        )}
+                    </Space>
+                )}
             </Card>
 
             <Row gutter={[16, 16]}>
@@ -730,6 +891,54 @@ export function ScenarioReplayTab() {
                                         </Tag>
                                     </div>
                                 )}
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    style={{ marginTop: 4 }}
+                                    message={
+                                        uiCopy.simulation_persistence_rule ??
+                                        '仿真默认不落成正式记录；只有在下方明确点击保存时才写入为测试记录。'
+                                    }
+                                />
+                                <div style={{ marginTop: 10 }}>
+                                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                        <Button
+                                            type="primary"
+                                            icon={<RightOutlined />}
+                                            disabled={!canPersistAsTest}
+                                            loading={saveLoading}
+                                            onClick={() => void handleSaveSimulationAsTest()}
+                                            style={{ fontWeight: 600 }}
+                                        >
+                                            {uiCopy.simulation_save_as_test_label ?? '保存本次仿真为测试记录'}
+                                        </Button>
+                                        <Text type="secondary" style={{ fontSize: 12 }}>
+                                            {uiCopy.simulation_save_as_test_hint ??
+                                                '点击后会按「正式提交」规则创建一条加车测试服务记录，并在办公室工作台中标记为测试。'}
+                                        </Text>
+                                        {savedTestCase && (
+                                            <Alert
+                                                type="success"
+                                                showIcon
+                                                message={
+                                                    uiCopy.simulation_save_success_title ??
+                                                    '已创建测试服务记录（办公室工作台中可见）'
+                                                }
+                                                description={
+                                                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                                                        <div>
+                                                            记录编号：<code>{savedTestCase.case_id}</code>
+                                                        </div>
+                                                        <div>
+                                                            类型：{savedTestCase.service_lane || '—'} ·{' '}
+                                                            {savedTestCase.workbench_test ? '测试记录' : '未标记测试'}
+                                                        </div>
+                                                    </div>
+                                                }
+                                            />
+                                        )}
+                                    </Space>
+                                </div>
                                 <div>
                                     <Text style={{ fontSize: 12, color: '#595959', display: 'block', marginBottom: 6, fontWeight: 600 }}>
                                         {uiCopy.simulation_next_action_title ?? '下一步（办公室侧整理）'}

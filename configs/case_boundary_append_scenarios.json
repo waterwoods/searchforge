@@ -125,8 +125,8 @@
       "id": "CB-18",
       "prior_thread": "[客户] 加车资料发了\n\n[系统] 报价资料已收集，办公室会尽快出价，有结果会联系您。",
       "new_message": "我想再加一台车，2021 Honda Accord zip 94501",
-      "expected_boundary": "same_case",
-      "notes": "Second vehicle on quote — same operational case"
+      "expected_boundary": "new_issue",
+      "notes": "Second vehicle intent — new service record (CASE_CONTRACT_V1 vehicle scope)"
     },
     {
       "id": "CB-19",

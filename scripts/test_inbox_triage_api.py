@@ -391,8 +391,9 @@ def test_via_http(base_url: str, verbose: bool) -> int:
     # (year/model/delivery without zip/contact) stays collecting — use one message that
     # clears handoff under rules so persist_case returns case_id (matches real broker flow).
     try:
+        # Pilot contract: calendar delivery + VIN required for quote_ready / pre-formal-submit handoff.
         full_add_car = (
-            "客户要加一台2021 Tesla Model Y，ZIP 90210，下周一提车，主驾是我自己，"
+            "客户要加一台2021 Tesla Model Y，VIN 1HGCM82633A123456，ZIP 90210，2026年4月20日提车，主驾是我自己，"
             "姓名张三电话4155550100，问今天能不能先出报价"
         )
         # Add-Car formal-submit alignment: handoff_pending alone must not create a case.
@@ -432,6 +433,9 @@ def test_via_http(base_url: str, verbose: bool) -> int:
         assert (created.get("formal_submitted_at") or "").strip() == (
             created.get("created_at") or ""
         ).strip(), "formal_submitted_at should match created_at on first persist"
+        assert (created.get("service_lane") or "") == "add_car", (
+            f"formal Add-Car persist should set service_lane=add_car, got {created.get('service_lane')!r}"
+        )
 
         append_resp = httpx.post(
             f"{base_url.rstrip('/')}/api/inbox/cases/{case_id}/append-message",
@@ -459,6 +463,9 @@ def test_via_http(base_url: str, verbose: bool) -> int:
             "append reply must not nag formal submit after office-visible record exists"
         )
         assert (appended.get("updated_at") or "").strip(), "append must set updated_at on the case"
+        assert (appended.get("service_lane") or "") == "add_car", (
+            f"append must preserve service_lane=add_car, got {appended.get('service_lane')!r}"
+        )
         if verbose:
             print("appended case:", json.dumps(appended, indent=2, ensure_ascii=False))
         print("PASS: append follow-up message to existing case")

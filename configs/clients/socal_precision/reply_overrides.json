@@ -1,0 +1,44 @@
+{
+  "version": "1",
+  "description": "Second-broker drill — shorter first-turn add_car tone vs default industry template.",
+  "overrides": {
+    "add_car": {
+      "zh": "可加车核价。请发：年份、车型、提车日、地址邮编、主要驾驶人；有 VIN 请一并提供。本所收齐后于营业日内处理。",
+      "en": "We can price the add. Send year, make/model, delivery date, zip, main driver; VIN if available. Our desk will process on business days."
+    },
+    "missing_document": {
+      "zh_with_item": "尚缺 {item_text}。请补发；若已发送请说明渠道与时间，本所核对后于营业日内推进。",
+      "zh_without_item": "尚有资料缺口。请补发；若已发送请说明，本所核对后于营业日内推进。",
+      "zh_already_sent_with_item": "已知悉您已发送。请附完整通知与 {item_text}，本所核对后于营业日内回复。",
+      "zh_already_sent_without_item": "已知悉您已发送。请附完整通知与已发材料截图或说明，本所核对后于营业日内回复。",
+      "en_with_item": "Still need {item_text}. Please resend; if already sent, note when/how so we can verify on the next business day.",
+      "en_without_item": "Still need a document. Please resend; if already sent, tell us how so we can verify on the next business day.",
+      "en_already_sent_with_item": "Understood. Send the full notice and {item_text} for verification; we will reply on a business-day basis.",
+      "en_already_sent_without_item": "Understood. Send the full notice and what you sent; we will verify on a business-day basis."
+    },
+    "missing_signature": {
+      "zh": "文件仍有签名缺口。请把需签页发来，本所先核对具体签署栏位并于营业日内回复。",
+      "en": "A signature item is still missing. Send the flagged page and our desk will verify the exact signature line on a business-day basis."
+    },
+    "underwriting_followup": {
+      "zh": "核保端仍需补件。请发通知要求的内容，本所整理后于营业日内补交并回覆进度。",
+      "en": "Underwriting still needs additional items. Send what the notice requests and our desk will package and resubmit on a business-day basis."
+    },
+    "renewal_reminder": {
+      "zh": "这属于续保提醒，当前通常无需额外操作。到方案确认窗口时，本所会在营业日内联系您。",
+      "en": "This is a renewal reminder and usually needs no action now. Our desk will contact you on a business-day basis when plan review is due."
+    },
+    "informational": {
+      "zh": "目前看属信息通知，暂不需额外处理；如有新变动，本所会在营业日内同步。",
+      "en": "This appears informational for now, so no extra action is needed. If anything changes, our desk will update you on a business-day basis."
+    },
+    "add_driver": {
+      "zh": "可加司机。请说明车辆、驾驶人身份与驾照信息，本所将于营业日内确认下一步。",
+      "en": "We can add a driver. Send vehicle, driver details, and license; our desk will confirm next steps on a business-day basis."
+    },
+    "bundling": {
+      "zh": "房屋险与车险合并投保通常有优惠。请把您现有车险与房屋险（如有）情况发来，本所帮您查看可行方案。",
+      "en": "Bundling home and auto often saves premium. Send your current auto and home policy basics and our desk will check options."
+    }
+  }
+}

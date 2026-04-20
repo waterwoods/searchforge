@@ -2,7 +2,7 @@
 
 ## 0. How to Use This Document
 
-This document is the macro blueprint for the Unified Intake platform. It defines:
+This document is the macro blueprint for Unified Intake direction-lock in the current phase. It defines:
 
 - what product we are actually building
 - what our current strongest wedge is
@@ -49,11 +49,74 @@ We are not building:
 
 We are building:
 
-**A unified customer entry platform for small and medium offices that uses state-driven flow to turn messy, fragmented, conversational customer input into a formal service record that the office can receive, continue, and track.**
+**An Add-Car-first intake and handoff assistant for broker teams that uses state-driven flow to turn messy, fragmented customer input into a formal service record the office can receive, continue, and process.**
 
-The strongest and highest-priority flagship path today is:
+The first commercial / monetizable wedge and highest-priority flagship path today is:
 
 **Add-Car / add vehicle quote intake**
+
+---
+
+## 2A. Identity, Session, and Service Record (Stage 1 Model)
+
+This section names the **lightweight industrial backbone** for Add-Car: who is speaking, what conversation this is, and what durable object the office receives. It is **conceptual and product-operational**, not a full account platform or CRM.
+
+### What we are not building in Stage 1
+
+Stage 1 does **not** require—and should not pretend to be—a full **identity/account platform**, **CRM**, **customer 360**, **agency workflow engine**, or **multi-tenant enterprise profile system**. Those may appear in later phases; they are out of scope for the current wedge.
+
+Stage 1 only needs enough **identity**, **session**, and **service-record** discipline to make Add-Car intake **trustworthy**, **trackable**, and **chargeable**, with a **handoff-ready** artifact for the office.
+
+### Identity (who is speaking)
+
+**Identity** answers: *who is this person in business terms, and how sure are we?*
+
+| Stage | Meaning (macro) |
+|-------|-----------------|
+| **Anonymous / unknown** | Browser or channel presence only; no stable person key yet. |
+| **Known lead (light)** | Enough to treat the person as the same lead across turns—e.g. **conversation/session linkage**, optional **phone or name** when collected or broker-pasted, **broker-side reference** when supplied. |
+| **Identified for handoff** | Minimum contact/identity signals the broker needs to **trust follow-up** (product rules define fields; often name + phone for Add-Car-style trials)—still **not** a full verified account. |
+
+**Certainty:** the system should distinguish **claimed** vs **confirmed** vs **office-visible** where product rules require it; overclaiming is a truth-layer failure (see §4.8–4.9).
+
+**Stage 1 philosophy:** prefer **light keys** (session continuity, case id, phone/name, broker ref) over login-heavy identity. Defer heavy authentication unless the master roadmap explicitly promotes it.
+
+**Optional lightweight identity/binding (future-facing):** In later Stage 1/Stage 2 optimization, an **optional lightweight identity/binding layer** (e.g. WeChat scan/binding for North American Chinese users, email-link binding, or similar) may be added to improve repeat-user continuity and reduce friction. This layer should remain **optional and per-client/per-market**, must not replace anonymous start or the formal-submit boundary, and must not promote the product into a full account/CRM platform.
+
+### Session / conversation (this intake attempt)
+
+**Session** is the **temporary conversational container** for one intake attempt: messages, turns, and in-progress structured state **before** or **until** the case is promoted per product rules.
+
+- **Purpose:** carry the dialogue, capture fragments, and bind **latest intent** to **current structured truth** (see §4.9).
+- **Same intake:** later messages belong to the same session when the product ties them to the same **session/thread id** (and thus the same in-flight case lane)—not when the user merely opens the app again without linkage (that may start a **new** session; policy is product-defined).
+- **One identity, many sessions:** a customer may have multiple sessions over time; each is a separate intake attempt unless explicitly merged by broker or product rules.
+- **Session vs service record:** the **thread** is for process and audit; the **service record** is the broker-facing durable case object. Chat is input; the record is the spine (see §8).
+
+### Service record (what the office actually uses)
+
+**Service record** is the **durable business object** for an Add-Car (or configured) case: structured fields, lifecycle state, identifiers visible in portal/workbench, and **what the broker can rely on** for next steps.
+
+- **Not** “the chat log” as the product of record—though the thread may attach as **evidence** or **audit trail**.
+- **Office trust** means: fields and states are consistent with **structured truth** (§4.8); customer-visible copy does not outrun that truth.
+
+### Formal submit / handoff boundary
+
+**Formal submit** (or equivalent product gate) is the boundary where **pre-submit conversational state** becomes **office-visible, persisted service-record truth** under the rules you ship—e.g. dual-write paths, `formal_submitted_at`, workbench visibility.
+
+- **Before formal submit:** intake may be rich and conversational; some fields may be draft or customer-claimed; the office may **not** yet treat the case as received on the durable record.
+- **After formal submit:** the service record is the **authoritative broker-facing artifact** for “what was submitted”; further edits are **updates** to that record, not “unsent chat.”
+- **Chargeability and pilot narrative** should align with this boundary: what you bill for should map to **clarity and durability of the service record + handoff**, not to raw message count alone.
+
+### Relationship summary
+
+1. **Identity** → *who* (with explicit uncertainty levels).
+2. **Session** → *this intake conversation* (ephemeral process container).
+3. **Service record** → *the durable case* the office uses (spine of the product).
+4. **Formal submit** → *promotion* from session-shaped intake to **office-visible service-record truth** when rules say so.
+
+### Simulation and Role C
+
+**Simulation / scenario replay** (§4.6) exercises the **same** state and service-record world as live intake; it is **supportive instrumentation** for demos and regression—not a separate product identity model.
 
 ---
 
@@ -61,9 +124,9 @@ The strongest and highest-priority flagship path today is:
 
 The most correct product positioning today is:
 
-**Unified customer entry + state-driven flow + service-record organization + office handoff tool**
+**Add-Car front-door intake + state-driven information cleanup + handoff-ready service-record tool for brokers**
 
-Its core value is not “automatically finishing insurance work.” Its real value is:
+Its core value is not "generic unified platform" and not "automatically finishing insurance work." Its real value is:
 
 - quickly receiving messy customer input
 - turning it into a structured service record
@@ -71,10 +134,21 @@ Its core value is not “automatically finishing insurance work.” Its real val
 - making next steps explicit
 - making office handoff explicit
 - helping offices ask fewer follow-up questions, miss fewer details, and receive cases faster
+- helping brokers and customers move faster into quote/processing with clearer case readiness
 
 ### One-line sales framing
 
 **Turn scattered customer messages into office-ready service records so the office can receive and process cases faster.**
+
+### 3.0 Commercial value anchors (paid wedge — top 3)
+
+For **commercial clarity**, treat these three outcomes as the **first-class** Stage 1 story. Other capabilities are supporting discipline, proof surfaces, or later convenience—not alternate centers of gravity.
+
+1. **正式提交后可追踪** — After **formal submit**, the case is **real work**: shared durable record identity, dependable office-visible status/history, and continuation on the service record—not “unsent chat” or ambiguous drafts.
+2. **办公室一眼摘要** — Conversation becomes **office-readable work input**: record + state answer *what this is / what’s missing / what’s next* without the broker reconstructing the whole thread manually.
+3. **防漏项检查** — Missing key items stay **explicit** (`still_needed` / gap surfacing) through collection and handoff, cutting back-and-forth and rework.
+
+**Secondary (not the paid-wedge center):** Image/attachment upload and extraction can reduce typing for some customers and already fits the “same record” story when present—but **do not** sell Stage 1 primarily on OCR/vision. Treat photo workflows as **near-term convenience** unless a named pilot blocks without them; prioritize the three anchors and structured-truth discipline first.
 
 ### 3.1 Immediate product focus (next cycles)
 
@@ -96,6 +170,85 @@ In the near term (including short planning horizons such as the next day or two)
 **Replication and architecture**
 
 Long-term delivery should remain **hot-swappable**: a stable common base (flow, state, handoff, record summary, workbench, simulation) plus **client / industry / scenario / copy / field-schema packs** — not a one-off insurance-only hardcode of everything.
+
+This long-term direction does **not** change the immediate commercial boundary: **sell and harden Add-Car intake + handoff first** before broader platform ambitions.
+
+### 3.2 Frontend Simplification + Light Identity Entry + Case Opening Discipline
+
+This subsection defines one compact policy for three tightly linked topics in Stage 1:
+
+- frontend simplification
+- lightweight identity entry
+- service-record opening and merge discipline
+
+These are one product logic, not three separate systems.
+
+**Unified product question set (default UI)**
+
+The default front-stage should answer only:
+
+- **你是谁** (identity confidence at current stage)
+- **你在办什么** (current service matter / lane)
+- **现在到哪一步** (lifecycle + missing items)
+- **下一步做什么** (clear next owner/action)
+
+Anything that does not directly support these questions should be hidden, folded, deferred, or moved to a secondary path.
+
+**Lightweight identity entry (3-layer model)**
+
+Stage 1 keeps identity lightweight and progressive:
+
+1. **Anonymous start** — no login required; intake can begin immediately.
+2. **Optional light binding** — optional continuity handle when useful (market/client dependent), without turning this into mandatory auth.
+3. **Formal-submit business identity completion** — minimum operator-useful identity/contact fields are completed at submit boundary per Add-Car rules.
+
+For North American Chinese users, **WeChat binding is a strong optional candidate**, but it is not the only valid path and must not replace anonymous start. Phone/email-style fallback remains valid in the same model.
+
+**Case opening and merge policy (record by matter, not person)**
+
+Stage 1 should not assume one person equals one record.
+
+- One person may have multiple service records.
+- One service record corresponds to one relatively coherent service matter/service unit.
+- Repeated submissions should append only when **same matter evidence is strong at the same time**:
+  - identity linkage is sufficient for operational continuity
+  - same service type/lane
+  - same vehicle (or explicitly same add-car unit)
+  - close timing
+  - high content continuity
+- A new record should be opened when **matter separation evidence is strong**, including:
+  - different vehicle / different service type
+  - clear topic pivot ("another issue") even in same thread
+  - lifecycle/handling stage implying a separate office work item
+- When append triage detects `case_boundary=new_issue`, Stage 1 product truth is:
+  - current record continuity may be acknowledged in copy
+  - but execution should not silently treat this as "safe same-matter append"
+  - the next implementation sprint must enforce one explicit action path (block append, force fork, or hard-confirm then append with audit tag)
+  - default recommendation: **hard-confirm split to a new case** for Add-Car-first safety.
+
+**Dual state semantics (`case_status` vs `lifecycle_status`)**
+
+- `lifecycle_status` is the **process-state spine** for intake/handoff semantics (customer progress, office handoff stage, state-strip parity across portal/workbench).
+- `case_status` is the **operator work-management label** (queue/workbench handling status such as reviewing/waiting/done/closed).
+- Primary UI/ops decision axis for product behavior is `lifecycle_status`; `case_status` is secondary and should not redefine process truth.
+- Acceptable overlap: both may appear in workbench detail for operator scanning.
+- Not acceptable: using `case_status` to infer submit/handoff lifecycle truth, or using `lifecycle_status` as a replacement for operator queue labels.
+
+**Lightweight person-link extension point (future-safe, non-auth)**
+
+- Stage 1 should add only a minimal optional extension point, not a full identity platform:
+  - optional `person_link_key` (stable, client-scoped, nullable)
+  - optional `person_link_source` (e.g. `wechat_bind`, `phone_hash`, `broker_ref`)
+  - optional `person_link_confidence` (`low` | `medium` | `high`)
+- This extension point is for repeat-user continuity and cross-case linkage hints only.
+- It must not become login/auth gating, customer-360, or mandatory pre-submit identity.
+
+**Boundary and alignment rules**
+
+- Keep **Identity -> Session -> Service record** as backbone (§2A).
+- Keep **formal submit** as the promotion boundary to office-visible durable record truth.
+- Keep Add-Car-first wedge and JSON-first runtime truth unchanged in Stage 1.
+- Keep office workbench lightweight (record/state/action), not a CRM-style customer graph.
 
 ---
 
@@ -197,6 +350,7 @@ Goal:
 - **Not** a toy demo disconnected from real intake semantics.
 - **Not** free-form chat as the primary mode.
 - A **scenario asset layer:** intentional, named, replayable paths that use the same service-record and state world as live intake.
+- A **validation and demo surface for the Add-Car-first wedge**, not the main product being sold by itself.
 
 **Recommended 1.0 structure (product skeleton)**
 
@@ -284,6 +438,18 @@ The two-layer rule (“structured truth outranks reply”) stops **factually wro
 
 Forbidden failure modes, acceptance criteria, and an industrial review checklist: `docs/sprints/TRUTH_INTENT_REPLY_THREE_LAYER_STANDARD_SPRINT/02_THREE_LAYER_STANDARD_SPEC.md`.
 
+### 4.10 Contact-gap reminders (name / phone still missing)
+
+When quote-related slots are far enough along but **name or phone** are not yet on the structured record, the product must stay **truth-honest** without letting that gap **hijack** every customer turn. This is a **reply-shaping** policy; structured truth (`still_needed_fields`, workbench/office summary) remains authoritative for what the office is missing.
+
+| Strength | When |
+|----------|------|
+| **Strong** | **Before formal submit**, when the customer is **finishing intake**, **asking to submit / hand off**, or when **contactability is the real blocker** for the office to proceed. One clear ask in the main body is appropriate. |
+| **Light** | When the **current turn is clearly about something else**: timeline, quote/coverage detail, “did the office receive it?”, materials status, or a **small supplement**—answer that first; any contact reminder is a **short secondary line**, not a second main paragraph. |
+| **De-emphasize / skip in the reply** | When the **same contact-gap line would repeat across multiple consecutive assistant turns** (noise), or when the **latest intent is not contact collection**—after repetition, prefer **no extra tail** in the customer reply; **office-facing** summary and `still_needed` **continue to show the gap** so operators are not misled. |
+
+**Principle:** Office truth stays complete; customer-facing wording **separates** the main answer from the contact nudge and **does not** paste the same nudge every turn.
+
 ---
 
 ## 5. Three-Stage Roadmap
@@ -362,9 +528,13 @@ Why we focus here first:
 - best wedge for a pilot
 - best candidate for a replicable standard template
 
-### Core principle
+### Commercial principle
 
 **Fully sharpen one narrow template first, then replicate. Do not broaden too early.**
+
+### Immediate commercial promise
+
+**Help brokers receive Add-Car customers faster, collect messy information better, reduce repeated back-and-forth, and hand off a structured service record faster into quote/processing.**
 
 ---
 
@@ -682,7 +852,9 @@ We are not selling:
 
 We are selling:
 
-**Unified customer entry + Add-Car service record intake + state-driven flow + office handoff efficiency**
+**Add-Car intake and handoff assistant: front-door intake + information cleanup + structured service-record handoff for broker teams**
+
+The **paid-wedge promise** should stay tied to the **three anchors in §3.0** (trackable after formal submit, office one-glance readability, missing-item surfacing)—not generic chat, CRM breadth, or “AI platform” ambition.
 
 ### Short-term success criteria
 
@@ -722,6 +894,7 @@ Every future major sprint should answer at least one of these:
 4. Does this make Client Pack more replicable?
 5. Does this move the technical base from pilot-grade toward productionized structure?
 6. Does this improve real pilot trust instead of just visual polish?
+7. Does this strengthen **identity clarity**, **session clarity**, or **service-record trust** for Add-Car (see §2A)?
 
 If not, the sprint should be questioned before implementation.
 

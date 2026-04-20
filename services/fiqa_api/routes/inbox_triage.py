@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from services.fiqa_api.inbox_triage.case_store import (
@@ -26,18 +26,29 @@ from services.fiqa_api.inbox_triage.case_store import (
     add_attachment_to_case,
     add_case_note,
     append_follow_up_message,
+    delete_case,
     get_attachment_file_path,
-    get_case_by_id,
-    list_recent_cases,
+    merge_light_identity_from_client_payload,
     save_case,
     update_case_customer,
     update_case_follow_up,
     update_case_status,
+    update_case_workbench_flags,
 )
+from services.fiqa_api.inbox_triage.case_binding import is_case_open_for_binding, resolve_active_case
+from services.fiqa_api.inbox_triage.case_truth_repository import (
+    count_cases_for_read,
+    get_case_for_read,
+    list_recent_cases_for_read,
+)
+from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
 from services.fiqa_api.inbox_triage.session_store import (
-    delete_in_progress_session,
     get_in_progress_session,
+    get_session_light_identity_binding,
+    patch_session_case_binding,
+    patch_session_light_identity_binding,
     save_in_progress_session,
+    save_session_binding_after_case_created,
 )
 from services.fiqa_api.inbox_triage.config_loader import (
     can_publish_add_car_rules,
@@ -47,17 +58,42 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_reply_templates,
     get_soft_route_inbox_copy,
     get_ui_copy,
+    get_wechat_binding_mode_for_client,
     save_add_car_rules,
+)
+from services.fiqa_api.inbox_triage.wechat_binding import (
+    build_authorize_url,
+    build_frontend_return_url,
+    exchange_code_for_openid,
+    opaque_person_link_key,
+    sign_state,
+    simulate_allowed,
+    verify_state,
+    wechat_credentials_configured,
 )
 from services.fiqa_api.inbox_triage.role_c_simulation_service import (
     RoleCMaxTurnsReached,
     next_role_c_customer_line,
 )
+from services.fiqa_api.inbox_triage.assist_layer import build_assist_layer
+from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
+from services.fiqa_api.analytics.minimal_events import track_event
+from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
+from services.fiqa_api.analytics.triage_funnel import (
+    emit_case_created_milestone,
+    emit_funnel_from_triage_result,
+    emit_session_milestones,
+)
+from services.fiqa_api.inbox_triage.v6_attachment_sidecar import (
+    extract_ocr_from_inline_base64,
+    merge_v6_ocr_signals,
+)
 from services.fiqa_api.inbox_triage.triage import (
     triage_conversation,
     triage_for_append,
     _add_car_enough_for_handoff,
-    _extract_add_car_fields,
+    _derive_vehicle_key_from_add_car_text,
+    _extract_add_car_fields_truth_safe,
     _is_add_vehicle_request,
     _is_premium_review_request,
     _is_claim_intake_request,
@@ -67,6 +103,49 @@ from services.fiqa_api.inbox_triage.triage import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox-triage"])
+
+
+def _emit_route_analytics_for_triage_result(
+    result: dict[str, Any],
+    turns: list[ConversationTurn],
+    *,
+    session_id: str | None = None,
+    text: str = "",
+) -> None:
+    """Structured analytics: funnel milestones (deduped) + lightweight signals in the event buffer."""
+    sid = (session_id or "").strip() or None
+    cid = str(result.get("case_id") or "").strip() or None
+    if result.get("append_allowed") is False:
+        append_session_analytics_event(
+            "append_blocked",
+            session_id=sid,
+            case_id=cid,
+            metadata={"reason": result.get("case_boundary_action")},
+        )
+        track_event("append_blocked", {"reason": result.get("case_boundary_action")})
+    coll = result.get("collected_fields")
+    miss = result.get("still_needed_fields")
+    if not isinstance(coll, list):
+        coll = []
+    if not isinstance(miss, list):
+        miss = []
+    fp_meta = {
+        "collected_count": len(coll),
+        "missing_count": len(miss),
+        "quote_ready_status": result.get("quote_ready_status"),
+    }
+    append_session_analytics_event("field_progress", session_id=sid, case_id=cid, metadata=fp_meta)
+    track_event("field_progress", fp_meta)
+    emit_funnel_from_triage_result(
+        result,
+        turns=turns,
+        text=text,
+        session_id=sid,
+        case_id=cid,
+    )
+    if len(turns) + 1 <= 2:
+        append_session_analytics_event("early_dropoff_signal", session_id=sid, case_id=cid, metadata={})
+        track_event("early_dropoff", {})
 
 
 def _normalize_input(text: str) -> str:
@@ -112,7 +191,7 @@ def _full_thread_lower(text: str, turns: list[ConversationTurn] | None) -> str:
 
 
 def _conversation_labeled_for_add_car_extract(text: str, turns: list[ConversationTurn] | None) -> str:
-    """[客户]/[系统] merge so _extract_add_car_fields (customer-only) sees full thread."""
+    """[客户]/[系统] merge so add-car extraction (customer-only) sees full thread."""
     parts: list[str] = []
     if turns:
         for t in turns:
@@ -134,7 +213,7 @@ def _add_car_customer_lane(soft_route: str | None, thread_lower: str) -> bool:
 
 def _add_car_structurally_complete_for_persist(text: str, turns: list[ConversationTurn] | None) -> bool:
     labeled = _conversation_labeled_for_add_car_extract(text, turns)
-    fields = _extract_add_car_fields(labeled)
+    fields = _extract_add_car_fields_truth_safe(labeled)
     return _add_car_enough_for_handoff(fields)
 
 
@@ -147,6 +226,8 @@ def _reply_truth_context_for_triage(
     """
     Structured inputs for Add-Car reply routing (pre- vs post-submit phrasing).
     See triage.triage_conversation(reply_truth_context=...).
+    When `case` is loaded (case_id / reopen), includes persisted collected/still_needed so
+    triage can reconcile chat extraction with office-visible record truth (append coherence).
     """
     ctx: dict[str, Any] = {}
     if case:
@@ -163,9 +244,75 @@ def _reply_truth_context_for_triage(
         cp = str(case.get("customer_phone") or "").strip()
         if cp:
             ctx["record_contact_phone"] = cp
+        cf = case.get("collected_fields")
+        if isinstance(cf, list) and cf:
+            ctx["persisted_collected_fields"] = [str(x) for x in cf if str(x).strip()]
+        sn = case.get("still_needed_fields")
+        if isinstance(sn, list) and sn:
+            ctx["still_needed_fields"] = [str(x) for x in sn if str(x).strip()]
+        pq = str(case.get("quote_ready_status") or "").strip()
+        if pq in ("quote_ready", "almost_ready", "need_more"):
+            ctx["persisted_quote_ready_status"] = pq
+        vk = str(case.get("vehicle_key") or "").strip()
+        if vk:
+            ctx["vehicle_key"] = vk
+        if fsa:
+            ctx["service_record_continuation"] = True
     if formal_submit and add_car_lane:
         ctx["formal_submit_this_turn"] = True
     return ctx or None
+
+
+def _attach_assist_layer(
+    result: dict[str, Any],
+    latest_message: str,
+    reply_truth_context: dict[str, Any] | None,
+) -> None:
+    """Add non-mutating assist suggestions to the triage API result (additive only)."""
+    result["assist"] = build_assist_layer(
+        latest_message,
+        result,
+        reply_truth_context=reply_truth_context,
+    )
+
+
+def _attach_case_lifecycle(
+    result: dict[str, Any],
+    *,
+    persisted_case: dict[str, Any] | None = None,
+) -> None:
+    """Set derived case_lifecycle last (after gates and assist)."""
+    view: dict[str, Any] = dict(result)
+    if persisted_case:
+        pfsa = str(persisted_case.get("formal_submitted_at") or "").strip()
+        if pfsa and not str(view.get("formal_submitted_at") or "").strip():
+            view["formal_submitted_at"] = persisted_case.get("formal_submitted_at")
+    result["case_lifecycle"] = _derive_case_lifecycle(view)
+
+
+def _finalize_triage_api_result(result: dict[str, Any]) -> None:
+    """Stable client contract: append_allowed, lists, case_lifecycle present."""
+    if "append_allowed" not in result:
+        result["append_allowed"] = True
+    sn = result.get("still_needed_fields")
+    if not isinstance(sn, list):
+        result["still_needed_fields"] = []
+    result.setdefault("next_best_question", "")
+    result.setdefault("conversion_layer_active", False)
+    result.setdefault("conversion_flow_version", "")
+    if "case_lifecycle" not in result:
+        _attach_case_lifecycle(result)
+
+
+def _user_identity_hint_from_triage(result: dict[str, Any]) -> dict[str, str] | None:
+    hint: dict[str, str] = {}
+    phone = str(result.get("extracted_contact_phone") or "").strip()
+    if phone:
+        hint["phone"] = phone[:256]
+    name = str(result.get("extracted_contact_name") or "").strip()
+    if name:
+        hint["name"] = name[:256]
+    return hint if hint else None
 
 
 def _reply_truth_context_from_case(case: dict[str, Any]) -> dict[str, Any] | None:
@@ -176,11 +323,7 @@ def _reply_truth_context_from_case(case: dict[str, Any]) -> dict[str, Any] | Non
     """
     base = _reply_truth_context_for_triage(case=case, formal_submit=False, add_car_lane=False) or {}
     out: dict[str, Any] = dict(base)
-    sn = case.get("still_needed_fields")
-    if isinstance(sn, list) and sn:
-        out["still_needed_fields"] = [str(x) for x in sn]
     out["service_record_append"] = True
-    # record_contact_* already merged in base from case when present
     return out if out else None
 
 
@@ -194,7 +337,10 @@ class ConversationTurn(BaseModel):
 class TriageRequest(BaseModel):
     """Request body for inbox triage."""
 
-    text: str = Field(..., description="Inbound message text to triage (screenshot OCR, email, notice, etc.)")
+    text: str = Field(
+        default="",
+        description="Inbound message text. May be empty when inline_image_base64 supplies OCR text.",
+    )
     persist_case: bool = Field(
         default=False,
         description="When true, save triage output as a lightweight Unified Intake case.",
@@ -229,6 +375,54 @@ class TriageRequest(BaseModel):
             "lifecycle for Add-Car post-submit phrasing (same thread / continued intake)."
         ),
     )
+    identity_binding_state: str | None = Field(
+        default=None,
+        description="Optional Stage-1: unbound | prompted | deferred | linked (light identity stub; not auth).",
+    )
+    person_link_key: str | None = Field(default=None, description="Optional opaque person link key (nullable).")
+    person_link_source: str | None = Field(
+        default=None,
+        description="Optional: wechat | phone | email when link metadata exists.",
+    )
+    person_link_confidence: float | None = Field(
+        default=None,
+        description="Optional 0..1 confidence for person_link (nullable).",
+    )
+    inline_image_base64: str | None = Field(
+        default=None,
+        description="Optional raw base64 image body (no data: URL prefix). OCR merges into v6_ocr_signals on triage.",
+    )
+    inline_image_content_type: str | None = Field(
+        default=None,
+        description="Optional MIME type for inline_image_base64 (e.g. image/jpeg).",
+    )
+
+
+def _merge_identity_with_session(request: TriageRequest) -> dict[str, Any]:
+    """Merge optional identity from in-progress session (e.g. WeChat callback) with request fields."""
+    pending: dict[str, Any] = {}
+    if request.session_id:
+        raw = get_session_light_identity_binding(request.session_id.strip())
+        if raw:
+            pending = dict(raw)
+    out = merge_light_identity_from_client_payload(
+        identity_binding_state=(
+            request.identity_binding_state
+            if request.identity_binding_state is not None
+            else pending.get("identity_binding_state")
+        ),
+        person_link_key=request.person_link_key if request.person_link_key is not None else pending.get("person_link_key"),
+        person_link_source=request.person_link_source if request.person_link_source is not None else pending.get("person_link_source"),
+        person_link_confidence=(
+            request.person_link_confidence
+            if request.person_link_confidence is not None
+            else pending.get("person_link_confidence")
+        ),
+    )
+    # If WeChat (or other) link exists on session but UI still sends deferred, keep linked.
+    if out.get("person_link_key") and out.get("identity_binding_state") == "deferred":
+        out["identity_binding_state"] = "linked"
+    return out
 
 
 class CaseStatusRequest(BaseModel):
@@ -253,6 +447,13 @@ class CaseFollowUpRequest(BaseModel):
     )
 
 
+class CaseWorkbenchRequest(BaseModel):
+    """Lightweight workbench flags (test label, soft archive). JSON-first; no hard delete."""
+
+    is_test: bool | None = Field(default=None, description="Mark case as test data for filtering")
+    archived: bool | None = Field(default=None, description="Soft-hide / archive for cleanup views")
+
+
 class CaseCustomerRequest(BaseModel):
     """Request body for lightweight customer linkage fields."""
 
@@ -271,6 +472,69 @@ class AppendMessageRequest(BaseModel):
         default=None,
         description="Optional client ID when case has no client_id (legacy fallback).",
     )
+    session_id: str | None = Field(
+        default=None,
+        description="Optional intake session id — when append is blocked (new vehicle), clears active_case_id.",
+    )
+
+
+def _build_new_issue_append_blocked_response(
+    *,
+    case: dict[str, Any],
+    triage_result: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Build explicit non-mutating append response when boundary is a clear new issue.
+    """
+    response: dict[str, Any] = dict(triage_result)
+    response.update(
+        {
+            "case_id": case.get("case_id"),
+            "append_blocked_new_issue": True,
+            "case_boundary_action": triage_result.get("case_boundary_action") or "requires_new_case",
+            "case_boundary": "new_issue",
+            "boundary_reason": triage_result.get("boundary_reason")
+            or "Detected clear matter separation from current case.",
+            "broker_next_step": triage_result.get("broker_next_step") or "",
+            "client_reply_draft": triage_result.get("client_reply_draft") or "",
+            "conversation_summary": triage_result.get("conversation_summary") or "",
+            "service_type": triage_result.get("service_type"),
+            "vehicle_key": triage_result.get("vehicle_key"),
+            # Existing case stays untouched; lifecycle continues as-is.
+            "lifecycle_status": case.get("lifecycle_status") or "office_followup",
+            "old_case_mutated": False,
+            # Append channel semantics: blocked = no broker-visible update on this record.
+            "handoff_ready": False,
+            "triage_mode": "append",
+            "append_allowed": False,
+        }
+    )
+    response["collected_fields"] = [str(x) for x in (response.get("collected_fields") or []) if str(x).strip()]
+    response["still_needed_fields"] = [str(x) for x in (response.get("still_needed_fields") or []) if str(x).strip()]
+    return response
+
+
+def _build_append_blocked_no_mutation_response(
+    *,
+    case: dict[str, Any],
+    triage_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Non-mutating append response when triage disallows append (e.g. unclear vehicle scope)."""
+    response: dict[str, Any] = dict(triage_result)
+    response.update(
+        {
+            "case_id": case.get("case_id"),
+            "append_blocked": True,
+            "old_case_mutated": False,
+            "handoff_ready": False,
+            "triage_mode": "append",
+            "lifecycle_status": case.get("lifecycle_status") or "office_followup",
+            "append_allowed": False,
+        }
+    )
+    response["collected_fields"] = [str(x) for x in (response.get("collected_fields") or []) if str(x).strip()]
+    response["still_needed_fields"] = [str(x) for x in (response.get("still_needed_fields") or []) if str(x).strip()]
+    return response
 
 
 class AddCarRulesOverride(BaseModel):
@@ -527,12 +791,28 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     - client_prep: what client should prepare
     - client_reply_draft: draft reply broker can send (editable)
     """
+    inline_ocr: tuple[str, dict[str, Any], str] | None = None
+    if (request.inline_image_base64 or "").strip():
+        inline_ocr = extract_ocr_from_inline_base64(
+            request.inline_image_base64 or "",
+            request.inline_image_content_type,
+        )
+
     text = _normalize_input(request.text or "")
+    if not text and inline_ocr is not None:
+        raw0 = str(inline_ocr[0] or "").strip()
+        text = _normalize_input(raw0[:4000]) if raw0 else "[image intake]"
     if not text:
         raise HTTPException(
             status_code=400,
-            detail="text is required and cannot be empty",
+            detail="text is required unless inline_image_base64 provides OCR text",
         )
+
+    emit_session_milestones(
+        session_id=request.session_id,
+        text=text,
+        turns=request.conversation_turns or [],
+    )
 
     soft_route = (request.soft_route or "").strip().lower() or None
     client_id = (request.client_id or "").strip() or get_active_client_id()
@@ -556,14 +836,44 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             "next_best_question": "",
             "lifecycle_status": "handoff_pending",
             "collection_stage": "enough_for_handoff",
+            "triage_mode": "greenfield",
         }
+        _attach_assist_layer(result, text, None)
+        _attach_case_lifecycle(result)
+        _finalize_triage_api_result(result)
+        ta_turns = request.conversation_turns or []
         if request.persist_case:
             try:
                 source = f"[客户] {text}"
-                return save_case(source, result, client_id=client_id)
+                saved = save_case(source, result, client_id=client_id)
+                saved["assist"] = result.get("assist")
+                _attach_case_lifecycle(saved)
+                _finalize_triage_api_result(saved)
+                cid = str(saved.get("case_id") or "")
+                emit_case_created_milestone(
+                    saved,
+                    turns=ta_turns,
+                    text=text,
+                    session_id=request.session_id,
+                    case_id=cid,
+                )
+                track_event("case_created", {"case_id": cid, "session_id": request.session_id})
+                _emit_route_analytics_for_triage_result(
+                    saved,
+                    ta_turns,
+                    session_id=request.session_id,
+                    text=text,
+                )
+                return saved
             except Exception as exc:
                 logger.exception("Failed to persist Talk-to-Agent case: %s", exc)
                 result["case_persisted"] = False
+        _emit_route_analytics_for_triage_result(
+            result,
+            ta_turns,
+            session_id=request.session_id,
+            text=text,
+        )
         return result
 
     # MULTI_TURN_CONTINUITY_GUARDRAIL: First message must go through triage_conversation,
@@ -572,19 +882,76 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     soft_route_pre = (request.soft_route or "").strip().lower() or None
     thread_lower_pre = _full_thread_lower(text, turns)
     add_car_lane_pre = _add_car_customer_lane(soft_route_pre, thread_lower_pre)
+
+    sid = (request.session_id or "").strip()
+    sess_raw = get_in_progress_session(sid) if sid else None
+    if sess_raw:
+        prev_turns = sess_raw.get("turns") or []
+        if isinstance(prev_turns, list):
+            for t in reversed(prev_turns):
+                if str(t.get("role") or "").strip().lower() != "system":
+                    continue
+                tr = t.get("triageResult") or t.get("triage_result")
+                if isinstance(tr, dict) and str(tr.get("quote_ready_status") or "").strip() == "quote_ready":
+                    append_session_analytics_event(
+                        "user_response_after_quote_ready",
+                        session_id=sid,
+                        case_id=None,
+                        metadata={},
+                    )
+                    track_event("user_response_after_quote_ready", {})
+                break
+    labeled_for_vk = _conversation_labeled_for_add_car_extract(text, request.conversation_turns)
+    incoming_vehicle_key = _derive_vehicle_key_from_add_car_text(labeled_for_vk)
+    explicit_case_id = (request.case_id or "").strip() or None
+    resolved_case_id: str | None = None
+    sess_for_resolve: dict[str, Any] | None = None
+    if sid and sess_raw:
+        sess_for_resolve = dict(sess_raw)
+        sac0 = str(sess_for_resolve.get("active_case_id") or "").strip()
+        if sac0:
+            sc0 = get_case_for_read(sac0)
+            if not sc0 or not is_case_open_for_binding(sc0):
+                sess_for_resolve.pop("active_case_id", None)
+                patch_session_case_binding(sid, clear_active_case=True)
+    if not explicit_case_id and sid:
+        recent_for_bind = list_recent_cases_for_read(limit=30, offset=0)
+        resolved_case_id = resolve_active_case(sess_for_resolve, recent_for_bind, incoming_vehicle_key)
+        track_event("case_binding_decision", {"resolved": resolved_case_id is not None})
+    effective_case_id = explicit_case_id or resolved_case_id
     existing_case: dict[str, Any] | None = None
-    if (request.case_id or "").strip():
-        existing_case = get_case_by_id(request.case_id.strip())
+    if effective_case_id:
+        existing_case = get_case_for_read(effective_case_id)
+    if effective_case_id and existing_case is None:
+        effective_case_id = None
+
     reply_truth_ctx = _reply_truth_context_for_triage(
         case=existing_case,
         formal_submit=bool(request.formal_submit),
         add_car_lane=add_car_lane_pre,
     )
+    prior_ws: dict[str, Any] | None = None
+    if sess_raw and isinstance(sess_raw.get("workflow_state"), dict):
+        prior_ws = dict(sess_raw["workflow_state"])
+    _v6_ocr = None
+    if existing_case and isinstance(existing_case.get("v6_ocr_signals"), dict):
+        _v6_ocr = existing_case.get("v6_ocr_signals")
+    if inline_ocr is not None:
+        raw_txt, sf, eng = inline_ocr
+        _v6_ocr = merge_v6_ocr_signals(
+            _v6_ocr,
+            raw_text=raw_txt,
+            structured_fields=sf if isinstance(sf, dict) else {},
+            engine=eng,
+            attachment_id="inline_image",
+        )
     result = triage_conversation(
         text,
         [{"role": t.role, "text": t.text} for t in turns],
         client_id=client_id,
         reply_truth_context=reply_truth_ctx,
+        prior_workflow_state=prior_ws,
+        v6_ocr_signals=_v6_ocr,
     )
 
     reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
@@ -622,7 +989,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             )
             if soft_route == "add_car":
                 result["collected_fields"] = []
-                result["still_needed_fields"] = ["year", "model", "zip"]
+                result["still_needed_fields"] = ["year", "make_model", "zip"]
             elif soft_route == "claim_intake":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["accident_time", "accident_location", "photos"]
@@ -635,6 +1002,36 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             elif soft_route == "remove_car":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["sale_date", "vehicle_info", "transfer_status"]
+
+    if existing_case and existing_case.get("case_id") and not result.get("case_id"):
+        result["case_id"] = existing_case.get("case_id")
+
+    _attach_assist_layer(result, text, reply_truth_ctx)
+
+    if sid:
+        boundary_clear = result.get("append_allowed") is False and str(
+            result.get("case_boundary_action") or ""
+        ).strip() == "requires_new_case"
+        if boundary_clear:
+            logger.info(
+                "append_blocked_reason case_boundary_action=%s boundary_reason=%s session_id=%s",
+                result.get("case_boundary_action"),
+                (result.get("boundary_reason") or "")[:500],
+                sid,
+            )
+            patch_session_case_binding(sid, clear_active_case=True)
+        else:
+            patch_kw: dict[str, Any] = {}
+            if effective_case_id:
+                patch_kw["active_case_id"] = effective_case_id
+            vk_r = result.get("vehicle_key")
+            if isinstance(vk_r, str) and vk_r.strip():
+                patch_kw["last_vehicle_key"] = vk_r.strip()
+            uh = _user_identity_hint_from_triage(result)
+            if uh:
+                patch_kw["user_identity_hint"] = uh
+            if patch_kw:
+                patch_session_case_binding(sid, **patch_kw)
 
     if request.persist_case:
         # MULTI_TURN_CONTINUITY_GUARDRAIL: Only persist when handoff_ready to avoid
@@ -662,21 +1059,61 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     source_for_case = "\n\n".join(p for p in conv_parts if p)
                 else:
                     source_for_case = text
+                identity_patch = _merge_identity_with_session(request)
+                if identity_patch:
+                    result.update(identity_patch)
                 saved = save_case(
                     source_for_case or text,
                     result,
                     origin_session_id=request.session_id.strip() if request.session_id else None,
                     client_id=client_id,
+                    service_lane=SERVICE_LANE_ADD_CAR if add_car_lane else None,
                 )
-                # In-progress persistence: clear session when case created
                 if request.session_id:
-                    delete_in_progress_session(request.session_id.strip())
+                    vk_save = saved.get("vehicle_key") if isinstance(saved.get("vehicle_key"), str) else None
+                    save_session_binding_after_case_created(
+                        request.session_id.strip(),
+                        str(saved.get("case_id") or ""),
+                        vk_save,
+                    )
+                logger.info(
+                    "new_case_created case_id=%s client_id=%s",
+                    saved.get("case_id"),
+                    client_id,
+                )
+                cid = str(saved.get("case_id") or "")
+                emit_case_created_milestone(
+                    saved,
+                    turns=turns,
+                    text=text,
+                    session_id=request.session_id,
+                    case_id=cid,
+                )
+                track_event("case_created", {"case_id": cid, "session_id": request.session_id})
+                saved["assist"] = result.get("assist")
+                _attach_case_lifecycle(saved)
+                _finalize_triage_api_result(saved)
+                _emit_route_analytics_for_triage_result(
+                    saved,
+                    turns,
+                    session_id=request.session_id,
+                    text=text,
+                )
                 return saved
             except Exception as exc:
                 logger.exception("Failed to persist Unified Intake case: %s", exc)
                 result["case_persisted"] = False
         else:
             result["case_persisted"] = False
+
+    _attach_case_lifecycle(result, persisted_case=existing_case)
+    _finalize_triage_api_result(result)
+    _emit_route_analytics_for_triage_result(
+        result,
+        turns,
+        session_id=request.session_id,
+        text=text,
+    )
 
     # In-progress persistence: save turns + workflow_state when session_id and no case
     if request.session_id and not result.get("case_id"):
@@ -701,9 +1138,54 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
 
 
 @router.get("/cases")
-async def get_recent_cases(limit: int = Query(default=8, ge=1, le=50)) -> dict[str, list[dict[str, Any]]]:
-    """Return recent persisted Unified Intake cases."""
-    return {"cases": list_recent_cases(limit=limit)}
+async def get_recent_cases(
+    limit: int = Query(default=50, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=5000),
+) -> dict[str, Any]:
+    """
+    Return recent persisted Unified Intake cases (newest first), with pagination metadata.
+
+    total_count is the full persisted queue size; limit/offset describe this response slice only.
+    """
+    total = count_cases_for_read()
+    raw = list_recent_cases_for_read(limit=limit, offset=offset)
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench(raw)
+    except Exception as exc:
+        logger.warning("Workbench enrich failed, returning raw cases: %s", exc)
+        enriched = raw
+    return {
+        "cases": enriched,
+        "total_count": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + len(enriched) < total,
+    }
+
+
+@router.delete("/cases/{case_id}")
+async def delete_saved_case_test_only(case_id: str) -> dict[str, Any]:
+    """
+    Remove a persisted case from storage (JSON and/or Postgres when enabled).
+
+    Allowed only for cases marked workbench_test — formal records cannot be deleted via this path.
+    """
+    cid = (case_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="case_id required")
+    existing = get_case_for_read(cid)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    if not bool(existing.get("workbench_test")):
+        raise HTTPException(
+            status_code=403,
+            detail="only test-marked service records can be deleted; mark as test first or archive instead",
+        )
+    if not delete_case(cid):
+        raise HTTPException(status_code=500, detail="delete failed")
+    return {"ok": True, "deleted_case_id": cid}
 
 
 @router.get("/session/{session_id}")
@@ -774,13 +1256,32 @@ async def patch_case_customer(case_id: str, request: CaseCustomerRequest) -> dic
     return updated
 
 
+@router.patch("/cases/{case_id}/workbench")
+async def patch_case_workbench(case_id: str, request: CaseWorkbenchRequest) -> dict[str, Any]:
+    """Update workbench test/archive flags (soft-hide). With DB-primary writes, Postgres extra wins."""
+    updated = update_case_workbench_flags(
+        case_id=case_id,
+        is_test=request.is_test,
+        archived=request.archived,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench([updated])
+        return enriched[0] if enriched else updated
+    except Exception:
+        return updated
+
+
 @router.post("/cases/{case_id}/attachments")
 async def upload_case_attachment(case_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
     """
     Upload an attachment to a case. ADD_CAR_ATTACHMENT_READY_LITE.
     Accepts: image/*, application/pdf. Max 10 MB.
     """
-    case = get_case_by_id(case_id)
+    case = get_case_for_read(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     content = await file.read()
@@ -822,17 +1323,64 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
             status_code=400,
             detail="new_message is required and cannot be empty",
         )
-    case = get_case_by_id(case_id)
+    case = get_case_for_read(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     try:
         case_client_id = (case.get("client_id") or "").strip() or (request.client_id or "").strip() or None
+        _v6_append = case.get("v6_ocr_signals")
         triage_result = triage_for_append(
             existing_source_text=case.get("source_text", ""),
             new_message=new_msg,
             client_id=case_client_id,
             reply_truth_context=_reply_truth_context_from_case(case),
+            v6_ocr_signals=_v6_append if isinstance(_v6_append, dict) else None,
         )
+        if str(triage_result.get("case_boundary") or "").strip() == "new_issue":
+            blocked = _build_new_issue_append_blocked_response(case=case, triage_result=triage_result)
+            _attach_assist_layer(blocked, new_msg, _reply_truth_context_from_case(case))
+            _attach_case_lifecycle(blocked, persisted_case=case)
+            _finalize_triage_api_result(blocked)
+            ap_sid = (request.session_id or "").strip() or None
+            append_session_analytics_event(
+                "append_blocked",
+                session_id=ap_sid,
+                case_id=case_id,
+                metadata={"reason": blocked.get("case_boundary_action")},
+            )
+            track_event("append_blocked", {"reason": blocked.get("case_boundary_action")})
+            if ap_sid and str(blocked.get("case_boundary_action") or "").strip() == "requires_new_case":
+                logger.info(
+                    "append_blocked_reason case_boundary_action=requires_new_case boundary_reason=%s session_id=%s",
+                    (blocked.get("boundary_reason") or "")[:500],
+                    ap_sid,
+                )
+                patch_session_case_binding(ap_sid, clear_active_case=True)
+            return blocked
+        if triage_result.get("append_allowed") is False:
+            blocked = _build_append_blocked_no_mutation_response(case=case, triage_result=triage_result)
+            _attach_assist_layer(blocked, new_msg, _reply_truth_context_from_case(case))
+            _attach_case_lifecycle(blocked, persisted_case=case)
+            _finalize_triage_api_result(blocked)
+            ap_sid = (request.session_id or "").strip() or None
+            append_session_analytics_event(
+                "append_blocked",
+                session_id=ap_sid,
+                case_id=case_id,
+                metadata={"reason": blocked.get("case_boundary_action")},
+            )
+            track_event("append_blocked", {"reason": blocked.get("case_boundary_action")})
+            if (
+                ap_sid
+                and str(blocked.get("case_boundary_action") or "").strip() == "requires_new_case"
+            ):
+                logger.info(
+                    "append_blocked_reason case_boundary_action=requires_new_case boundary_reason=%s session_id=%s",
+                    (blocked.get("boundary_reason") or "")[:500],
+                    ap_sid,
+                )
+                patch_session_case_binding(ap_sid, clear_active_case=True)
+            return blocked
         updated = append_follow_up_message(
             case_id=case_id,
             new_message_text=new_msg,
@@ -843,4 +1391,111 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    _attach_assist_layer(updated, new_msg, _reply_truth_context_from_case(updated))
+    _attach_case_lifecycle(updated)
+    _finalize_triage_api_result(updated)
+    ap_sid = (request.session_id or "").strip() or None
+    emit_funnel_from_triage_result(
+        updated,
+        turns=[],
+        text=new_msg,
+        session_id=ap_sid,
+        case_id=case_id,
+    )
     return updated
+
+
+@router.get("/wechat/binding/start")
+async def wechat_binding_start(
+    session_id: str = Query(..., min_length=8),
+    client_id: str = Query(..., min_length=1),
+) -> dict[str, Any]:
+    """
+    Start optional WeChat OAuth (live mode + client-pack). Returns authorize_url or dev_simulate flag.
+    """
+    if get_wechat_binding_mode_for_client(client_id) != "live":
+        raise HTTPException(status_code=403, detail="wechat_binding_not_live_for_client")
+    if wechat_credentials_configured():
+        state = sign_state(session_id, client_id)
+        return {"authorize_url": build_authorize_url(state), "state": state, "dev_simulate": False}
+    if simulate_allowed():
+        return {"authorize_url": None, "state": None, "dev_simulate": True}
+    raise HTTPException(status_code=503, detail="wechat_oauth_not_configured")
+
+
+@router.post("/wechat/binding/simulate-complete")
+async def wechat_binding_simulate_complete(
+    session_id: str = Query(..., min_length=8),
+    client_id: str = Query(..., min_length=1),
+) -> dict[str, Any]:
+    """Dev/staging only: complete binding without WeChat (requires WECHAT_BINDING_ALLOW_SIMULATE)."""
+    import secrets
+
+    if get_wechat_binding_mode_for_client(client_id) != "live":
+        raise HTTPException(status_code=403, detail="wechat_binding_not_live_for_client")
+    if not simulate_allowed():
+        raise HTTPException(status_code=403, detail="wechat_binding_simulate_disabled")
+    try:
+        patch_session_light_identity_binding(
+            session_id,
+            {
+                "identity_binding_state": "linked",
+                "person_link_key": f"sim_{secrets.token_hex(16)}",
+                "person_link_source": "wechat",
+                "person_link_confidence": 0.75,
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.get("/wechat/binding/callback")
+async def wechat_binding_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> RedirectResponse:
+    """WeChat OAuth redirect target; writes session identity and redirects to frontend."""
+    if error:
+        return RedirectResponse(
+            url=build_frontend_return_url({"wechat_binding": "error", "reason": str(error)}),
+            status_code=302,
+        )
+    parsed = verify_state(state or "")
+    if not parsed:
+        return RedirectResponse(
+            url=build_frontend_return_url({"wechat_binding": "error", "reason": "invalid_state"}),
+            status_code=302,
+        )
+    if not code:
+        return RedirectResponse(
+            url=build_frontend_return_url({"wechat_binding": "error", "reason": "missing_code"}),
+            status_code=302,
+        )
+    openid, err = await exchange_code_for_openid(code)
+    if not openid:
+        return RedirectResponse(
+            url=build_frontend_return_url({"wechat_binding": "error", "reason": err or "token_exchange"}),
+            status_code=302,
+        )
+    link_key = opaque_person_link_key(openid)
+    try:
+        patch_session_light_identity_binding(
+            parsed["session_id"],
+            {
+                "identity_binding_state": "linked",
+                "person_link_key": link_key,
+                "person_link_source": "wechat",
+                "person_link_confidence": 0.9,
+            },
+        )
+    except ValueError:
+        return RedirectResponse(
+            url=build_frontend_return_url({"wechat_binding": "error", "reason": "session_not_found"}),
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=build_frontend_return_url({"wechat_binding": "linked"}),
+        status_code=302,
+    )

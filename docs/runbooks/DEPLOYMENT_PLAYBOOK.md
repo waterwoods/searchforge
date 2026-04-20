@@ -1,7 +1,9 @@
 # Deployment Playbook — Chen Kui Insurance Unified Entry
 
 **Purpose:** Repeatable release operations for backend (Cloud Run) and frontend (Vercel).  
-**Use:** Reference doc. Use `RELEASE_CHECKLIST.md` every release.
+**Use:** Reference doc. **Operational gate (5–15 min, demo/pilot-safe):** [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) — pre-deploy alignment, post-deploy runtime, browser path, one workflow smoke. **Quick automated slice:** `bash scripts/unified_intake_release_gate.sh '<Cloud Run URL>' '<frontend origin>'`.
+
+**Default habit (every meaningful change, same path):** local develop → `guardrail_inbox_triage.sh` (+ local API/UI checks) → deploy → `guardrail_cloudrun_runtime.sh` (optional but recommended) → `unified_intake_release_gate.sh` → manual browser verification on the **official** URL → only then customer/broker demo. The numbered sequence is spelled out at the top of [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md).
 
 ---
 
@@ -28,6 +30,30 @@
 | **Env assumptions** | `.env.cloudrun` has QDRANT_*, OPENAI_API_KEY, ALLOWED_ORIGINS |
 | **Vercel target** | Production alias (e.g. `ui-smoky-beta.vercel.app`) |
 | **Cloud Run target** | `fiqa-api` in `us-west1` |
+
+### Cloud Run runtime parity (anti-regression)
+
+Live `fiqa-api` is tuned for Unified Intake stability: **memory 1Gi**, **concurrency 30**, **max 2** instances. **Min instances** defaults to **0** in `scripts/deploy_rag_demo.sh` (cost-safe); during pilot/demo you may set **min 1** so one instance stays warm (reduces first-request cold start). Overrides go in `.env.cloudrun` (`CLOUD_RUN_MEMORY`, `CLOUD_RUN_CONCURRENCY`, `CLOUD_RUN_MIN_INSTANCES`, etc.).
+
+**Pilot warm instance (reversible):** apply without redeploying the image:
+
+```bash
+# Warm (pilot / demo): keep one instance
+gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472305-e2 --min-instances 1
+
+# Rollback to cost-safe scale-to-zero
+gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472305-e2 --min-instances 0
+```
+
+Or set `CLOUD_RUN_MIN_INSTANCES=1` in `.env.cloudrun` before `bash scripts/deploy_rag_demo.sh` so the next full deploy keeps the same policy.
+
+After any deploy or if something feels “reverted,” run (read-only; does not print DB URLs or API keys):
+
+```bash
+bash scripts/guardrail_cloudrun_runtime.sh
+```
+
+Strict DB-primary pilot flags (when Postgres is wired) should match: DB-primary reads/writes on, JSON case writes off, JSON read fallback off — the script prints whitelisted `UNIFIED_INTAKE_*` values only.
 
 ---
 
@@ -135,6 +161,11 @@ vercel --prod
 
 **"Build passed" ≠ "production truly live"** — always verify in browser and with one API call.
 
+### Canonical workbench URL (founder)
+
+- **Bookmark:** `https://ui-smoky-beta.vercel.app/workbench/unified-intake` (production alias).
+- **Avoid** opening ad-hoc `https://ui-<hash>-….vercel.app` links unless that exact origin is listed in Cloud Run `ALLOWED_ORIGINS` — the browser sends the **page** origin on API calls; a hash URL not in the allowlist produces CORS failure, an empty queue (failed `GET /api/inbox/cases`), while an older tab that already loaded data can still show the previous in-memory list until refresh.
+
 ---
 
 ## 7. Known Deployment Gotchas
@@ -145,6 +176,8 @@ See [KNOWN_DEPLOYMENT_GOTCHAS.md](./KNOWN_DEPLOYMENT_GOTCHAS.md) for full list. 
 - `configs/` must be in Docker image (verify Dockerfile)
 - Vercel production alias may be stale
 - ALLOWED_ORIGINS must match real Vercel URL
+- **Multi-origin CORS:** Browsers send the **page origin** (e.g. a per-deploy `https://ui-<hash>-….vercel.app` link from the Vercel dashboard), not only the production alias. Put the alias **and** any deployment/preview origins you actually open in one comma-separated `ALLOWED_ORIGINS` value. After a frontend deploy, confirm the latest production deployment URL with `cd ui && vercel ls` and add it if the team uses that link.
+- **Deploy drift:** `bash scripts/deploy_rag_demo.sh` sends `--set-env-vars` as a fixed bundle from `.env.cloudrun`. If `ALLOWED_ORIGINS` is set there, it **replaces** the live value on the next full deploy—keep the list complete, or re-apply a patch with `gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472305-e2 --update-env-vars '^@^ALLOWED_ORIGINS=…'`. If `ALLOWED_ORIGINS` is omitted from that bundle, Cloud Run drops the variable and the app falls back to permissive demo CORS (`app_main.py`).
 - Local success ≠ production success
 - Browser/manual verification required for user-visible changes
 

@@ -12,6 +12,7 @@ Lightweight local JSON persistence for demo-safe case history:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -34,6 +35,13 @@ MAX_CONTACT_NOTE_LENGTH = 200
 MAX_ATTACHMENTS_PER_CASE = 10
 MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 ALLOWED_ATTACHMENT_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf")
+
+logger = logging.getLogger(__name__)
+
+# Stage-1 optional light identity (nullable; not auth) — LIGHT_IDENTITY_ENTRY_STUB
+_IDENTITY_BINDING_STATES = frozenset({"unbound", "prompted", "deferred", "linked"})
+_PERSON_LINK_SOURCES = frozenset({"wechat", "phone", "email"})
+_MAX_PERSON_LINK_KEY_LEN = 256
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_STORE_PATH = REPO_ROOT / "data" / "unified_intake_cases.json"
@@ -298,6 +306,9 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
     # ADD_CAR_ATTACHMENT_READY_LITE: preserve case_attachments
     if "case_attachments" not in normalized or not isinstance(normalized.get("case_attachments"), list):
         normalized["case_attachments"] = []
+    # V6 OCR signals (optional dict from attachment pipeline)
+    if "v6_ocr_signals" in normalized and not isinstance(normalized.get("v6_ocr_signals"), dict):
+        normalized["v6_ocr_signals"] = {}
 
     # Formal submit observability: backfill for legacy JSON before formal_submitted_at existed
     fsa = str(normalized.get("formal_submitted_at") or "").strip()
@@ -305,6 +316,26 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
         ca = str(normalized.get("created_at") or "").strip()
         if ca:
             normalized["formal_submitted_at"] = ca
+
+    # Office workbench: lightweight test/archive flags (JSON-first; soft-hide only by default)
+    normalized["workbench_test"] = bool(normalized.get("workbench_test"))
+    normalized["workbench_archived"] = bool(normalized.get("workbench_archived"))
+    # Stage-1 boundary + lane detail (nullable vehicle_key for Add-Car).
+    if "service_type" not in normalized:
+        normalized["service_type"] = ""
+    if "vehicle_key" not in normalized:
+        normalized["vehicle_key"] = None
+    if "additional_vehicle_mentioned" not in normalized:
+        normalized["additional_vehicle_mentioned"] = None
+    if "primary_vehicle_summary" not in normalized:
+        normalized["primary_vehicle_summary"] = None
+    if "additional_vehicle_count_hint" not in normalized:
+        normalized["additional_vehicle_count_hint"] = None
+
+    # Optional light identity (nullable; additive JSON fields)
+    for ik in ("identity_binding_state", "person_link_key", "person_link_source", "person_link_confidence"):
+        if ik not in normalized:
+            normalized[ik] = None
 
     return normalized
 
@@ -330,6 +361,80 @@ def _normalize_add_car_turn_intent_payload(raw: Any) -> dict[str, Any] | None:
     if psk:
         out["phrase_storage_key"] = psk
     return out
+
+
+def merge_light_identity_from_client_payload(
+    *,
+    identity_binding_state: str | None,
+    person_link_key: str | None,
+    person_link_source: str | None,
+    person_link_confidence: float | None,
+) -> dict[str, Any]:
+    """
+    Validate optional identity fields from API request. Returns only keys to merge into triage result.
+    All values remain optional; invalid inputs are dropped (no exception).
+    """
+    out: dict[str, Any] = {}
+    if identity_binding_state is not None:
+        s = str(identity_binding_state).strip().lower()
+        if s in _IDENTITY_BINDING_STATES:
+            out["identity_binding_state"] = s
+    if person_link_key is not None:
+        pk = str(person_link_key).strip()
+        if len(pk) > _MAX_PERSON_LINK_KEY_LEN:
+            pk = pk[: _MAX_PERSON_LINK_KEY_LEN - 1]
+        out["person_link_key"] = pk if pk else None
+    if person_link_source is not None:
+        src = str(person_link_source).strip().lower()
+        if src in _PERSON_LINK_SOURCES:
+            out["person_link_source"] = src
+        elif src == "":
+            out["person_link_source"] = None
+    if person_link_confidence is not None:
+        try:
+            c = float(person_link_confidence)
+            if 0.0 <= c <= 1.0:
+                out["person_link_confidence"] = c
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def _apply_identity_fields_from_triage_result(case: dict[str, Any], triage_result: dict[str, Any]) -> None:
+    """Copy optional identity keys from triage result onto persisted case (additive, nullable)."""
+    if "identity_binding_state" in triage_result:
+        raw = triage_result.get("identity_binding_state")
+        if raw is None:
+            case["identity_binding_state"] = None
+        else:
+            s = str(raw).strip().lower()
+            case["identity_binding_state"] = s if s in _IDENTITY_BINDING_STATES else None
+    if "person_link_key" in triage_result:
+        raw = triage_result.get("person_link_key")
+        if raw is None:
+            case["person_link_key"] = None
+        else:
+            pk = str(raw).strip()
+            if len(pk) > _MAX_PERSON_LINK_KEY_LEN:
+                pk = pk[: _MAX_PERSON_LINK_KEY_LEN - 1]
+            case["person_link_key"] = pk if pk else None
+    if "person_link_source" in triage_result:
+        raw = triage_result.get("person_link_source")
+        if raw is None:
+            case["person_link_source"] = None
+        else:
+            src = str(raw).strip().lower()
+            case["person_link_source"] = src if src in _PERSON_LINK_SOURCES else None
+    if "person_link_confidence" in triage_result:
+        raw = triage_result.get("person_link_confidence")
+        if raw is None:
+            case["person_link_confidence"] = None
+        else:
+            try:
+                c = float(raw)
+                case["person_link_confidence"] = c if 0.0 <= c <= 1.0 else None
+            except (TypeError, ValueError):
+                case["person_link_confidence"] = None
 
 
 def _validate_triage_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -380,14 +485,147 @@ def _write_payload(payload: dict[str, list[dict[str, Any]]]) -> None:
     tmp_path.replace(path)
 
 
+def _load_case_for_mutation(case_id: str) -> dict[str, Any] | None:
+    """
+    Load a case dict for in-place mutation (append, customer update, etc.).
+    When JSON case writes are on, reads from JSON. When JSON writes are off (pilot),
+    reads from Postgres only.
+    """
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
+    if json_case_writes_enabled():
+        return get_case_by_id(cid)
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import load_full_case_from_postgres
+
+        raw = load_full_case_from_postgres(cid)
+        if raw is None:
+            logger.warning(
+                "UNIFIED_INTAKE_DB_OBS signal=PG_MUTATION_LOAD_MISS case_id=%s",
+                cid,
+            )
+            return None
+        return _normalize_case(raw)
+    return get_case_by_id(cid)
+
+
+def _replace_case_in_json_store(case_id: str, updated_case: dict[str, Any]) -> bool:
+    """Replace one case in the JSON file. Returns False if case_id is missing."""
+    payload = _read_payload()
+    replaced = False
+    for index, case in enumerate(payload["cases"]):
+        if case.get("case_id") == case_id:
+            payload["cases"][index] = updated_case
+            replaced = True
+            break
+    if not replaced:
+        return False
+    payload["cases"] = _sort_recent(payload["cases"])
+    _write_payload(payload)
+    return True
+
+
+def _require_case_storage_path() -> None:
+    """Pilot must not disable both JSON and DB primary writes."""
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    if not json_case_writes_enabled() and not db_primary_writes_enabled():
+        raise RuntimeError(
+            "Case persistence misconfigured: JSON case writes are off but "
+            "UNIFIED_INTAKE_DB_PRIMARY_WRITES is not enabled. Set DATABASE_URL / "
+            "SERVICE_RECORD_DATABASE_URL and UNIFIED_INTAKE_DB_PRIMARY_WRITES=1, "
+            "or re-enable JSON (unset UNIFIED_INTAKE_JSON_CASE_WRITES)."
+        )
+
+
+def _persist_case_after_update(case_id: str, updated_case: dict[str, Any]) -> bool:
+    """
+    Write updated case to Postgres (when DB-primary writes) and/or JSON file.
+    Returns False if JSON was expected but the case_id was not found in the JSON store.
+    """
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    _require_case_storage_path()
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import persist_case_append
+
+        persist_case_append(updated_case)
+    if json_case_writes_enabled():
+        if not _replace_case_in_json_store(case_id, updated_case):
+            return False
+    try:
+        from services.fiqa_api.db.dual_write import maybe_dual_write_case_append
+
+        maybe_dual_write_case_append(updated_case)
+    except Exception:
+        pass
+    return True
+
+
 def _sort_recent(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(cases, key=lambda case: (case.get("updated_at") or "", case.get("created_at") or ""), reverse=True)
 
 
-def list_recent_cases(limit: int = 8) -> list[dict[str, Any]]:
-    safe_limit = max(1, min(int(limit or 8), 50))
+def count_stored_cases() -> int:
+    """Number of cases in the JSON store (bounded by MAX_STORED_CASES on save)."""
     payload = _read_payload()
-    return _sort_recent(payload["cases"])[:safe_limit]
+    return len(payload.get("cases") or [])
+
+
+def list_recent_cases(limit: int = 8, offset: int = 0) -> list[dict[str, Any]]:
+    safe_limit = max(1, min(int(limit or 8), 50))
+    safe_offset = max(0, int(offset or 0))
+    payload = _read_payload()
+    sorted_cases = _sort_recent(payload["cases"])
+    return sorted_cases[safe_offset : safe_offset + safe_limit]
+
+
+def delete_case(case_id: str) -> bool:
+    """
+    Remove a case from JSON and/or Postgres according to persistence flags.
+    Returns True if at least one backing store removed the row.
+    """
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    cid = (case_id or "").strip()
+    if not cid:
+        return False
+    removed = False
+    if json_case_writes_enabled():
+        payload = _read_payload()
+        cases = payload.get("cases") or []
+        before = len(cases)
+        payload["cases"] = [c for c in cases if c.get("case_id") != cid]
+        if len(payload["cases"]) < before:
+            _write_payload(payload)
+            removed = True
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import delete_service_record
+
+        if delete_service_record(cid):
+            removed = True
+    return removed
+
+
+def list_all_cases() -> list[dict[str, Any]]:
+    """Return all persisted cases sorted newest-first."""
+    payload = _read_payload()
+    return _sort_recent(payload["cases"])
 
 
 def get_case_by_id(case_id: str) -> dict[str, Any] | None:
@@ -406,6 +644,7 @@ def save_case(
     *,
     origin_session_id: str | None = None,
     client_id: str | None = None,
+    service_lane: str | None = None,
 ) -> dict[str, Any]:
     normalized_status = _validate_status(status)
     normalized_result = _validate_triage_result(triage_result)
@@ -457,6 +696,13 @@ def save_case(
         case["still_needed_fields"] = [str(x) for x in still_needed]
     if (qrs := (triage_result.get("quote_ready_status") or "").strip()) in ("quote_ready", "almost_ready", "need_more"):
         case["quote_ready_status"] = qrs
+    if (svc := str(triage_result.get("service_type") or "").strip()):
+        case["service_type"] = svc
+    case["vehicle_key"] = triage_result.get("vehicle_key")
+    case["additional_vehicle_mentioned"] = triage_result.get("additional_vehicle_mentioned")
+    _pvs = triage_result.get("primary_vehicle_summary")
+    case["primary_vehicle_summary"] = None if _pvs is None else (str(_pvs).strip() or None)
+    case["additional_vehicle_count_hint"] = triage_result.get("additional_vehicle_count_hint")
     # Explicit workflow state (Lightweight Production Case Record)
     case["handoff_ready"] = bool(triage_result.get("handoff_ready", True))
     case["case_creation_suggested"] = bool(triage_result.get("case_creation_suggested", False))
@@ -476,14 +722,32 @@ def save_case(
         case["origin_session_id"] = sid
     if (nbq := (triage_result.get("next_best_question") or "").strip()):
         case["next_best_question"] = nbq
+    tm_save = str(triage_result.get("triage_mode") or "").strip().lower()
+    case["triage_mode"] = tm_save if tm_save in ("greenfield", "append") else "greenfield"
     # Client Identity Persistence: store client_id for append/reopen lifecycle
     if client_id and (cid := str(client_id or "").strip()):
         case["client_id"] = cid
+    # Explicit Stage-1 lane (Add-Car-first); set only when caller supplies (e.g. formal Add-Car persist path)
+    if service_lane and (sl := str(service_lane).strip()):
+        case["service_lane"] = sl
 
-    payload = _read_payload()
-    cases = [case, *payload["cases"]]
-    payload["cases"] = _sort_recent(cases)[:MAX_STORED_CASES]
-    _write_payload(payload)
+    _apply_identity_fields_from_triage_result(case, triage_result)
+
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    _require_case_storage_path()
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import persist_new_case
+
+        persist_new_case(case)
+    if json_case_writes_enabled():
+        payload = _read_payload()
+        cases = [case, *payload["cases"]]
+        payload["cases"] = _sort_recent(cases)[:MAX_STORED_CASES]
+        _write_payload(payload)
     try:
         from services.fiqa_api.db.dual_write import maybe_dual_write_new_case
 
@@ -496,44 +760,36 @@ def save_case(
 def update_case_follow_up(case_id: str, waiting_on: str, next_contact_by: str) -> dict[str, Any] | None:
     normalized_waiting_on = _validate_waiting_on(waiting_on)
     normalized_next_contact_by = _normalize_next_contact_by(next_contact_by)
-    payload = _read_payload()
-    updated_case: dict[str, Any] | None = None
-    for index, case in enumerate(payload["cases"]):
-        if case.get("case_id") != case_id:
-            continue
-        normalized_case = _normalize_case(case)
-        previous_waiting_on = normalized_case.get("waiting_on") or "none"
-        previous_next_contact_by = normalized_case.get("next_contact_by") or ""
-        if (
-            previous_waiting_on == normalized_waiting_on
-            and previous_next_contact_by == normalized_next_contact_by
-        ):
-            updated_case = normalized_case
-            payload["cases"][index] = normalized_case
-            break
-        normalized_case["waiting_on"] = normalized_waiting_on
-        normalized_case["next_contact_by"] = normalized_next_contact_by
-        normalized_case["updated_at"] = _utc_now_iso()
-        if normalized_waiting_on == "none" and not normalized_next_contact_by:
-            message = "Follow-up target cleared."
-        else:
-            parts: list[str] = []
-            if normalized_waiting_on != "none":
-                parts.append(f"waiting on {_humanize_waiting_on(normalized_waiting_on)}")
-            if normalized_next_contact_by:
-                parts.append(f"next contact by {normalized_next_contact_by}")
-            message = f"Follow-up updated: {'; '.join(parts)}."
-        normalized_case["case_activity"] = [
-            _build_activity_entry("follow_up_updated", message),
-            *normalized_case.get("case_activity", []),
-        ][:MAX_CASE_ACTIVITY]
-        payload["cases"][index] = normalized_case
-        updated_case = normalized_case
-        break
-    if updated_case is None:
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
         return None
-    payload["cases"] = _sort_recent(payload["cases"])
-    _write_payload(payload)
+    previous_waiting_on = normalized_case.get("waiting_on") or "none"
+    previous_next_contact_by = normalized_case.get("next_contact_by") or ""
+    if (
+        previous_waiting_on == normalized_waiting_on
+        and previous_next_contact_by == normalized_next_contact_by
+    ):
+        return normalized_case
+    normalized_case["waiting_on"] = normalized_waiting_on
+    normalized_case["next_contact_by"] = normalized_next_contact_by
+    normalized_case["updated_at"] = _utc_now_iso()
+    if normalized_waiting_on == "none" and not normalized_next_contact_by:
+        message = "Follow-up target cleared."
+    else:
+        parts: list[str] = []
+        if normalized_waiting_on != "none":
+            parts.append(f"waiting on {_humanize_waiting_on(normalized_waiting_on)}")
+        if normalized_next_contact_by:
+            parts.append(f"next contact by {normalized_next_contact_by}")
+        message = f"Follow-up updated: {'; '.join(parts)}."
+    normalized_case["case_activity"] = [
+        _build_activity_entry("follow_up_updated", message),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
     return updated_case
 
 
@@ -557,57 +813,45 @@ def update_case_customer(
     Update lightweight customer linkage fields on a case.
     Pass only the fields to update; others are left unchanged.
     """
-    payload = _read_payload()
-    updated_case: dict[str, Any] | None = None
-    for index, case in enumerate(payload["cases"]):
-        if case.get("case_id") != case_id:
-            continue
-        normalized_case = _normalize_case(case)
-        changed = False
-        if customer_name is not None:
-            v = _truncate(customer_name, MAX_CUSTOMER_NAME_LENGTH)
-            if normalized_case.get("customer_name") != v:
-                normalized_case["customer_name"] = v
-                changed = True
-        if customer_phone is not None:
-            v = _truncate(customer_phone, MAX_CUSTOMER_PHONE_LENGTH)
-            if normalized_case.get("customer_phone") != v:
-                normalized_case["customer_phone"] = v
-                changed = True
-        if customer_email is not None:
-            v = _truncate(customer_email, MAX_CUSTOMER_EMAIL_LENGTH)
-            if normalized_case.get("customer_email") != v:
-                normalized_case["customer_email"] = v
-                changed = True
-        if policy_number is not None:
-            v = _truncate(policy_number, MAX_POLICY_NUMBER_LENGTH)
-            if normalized_case.get("policy_number") != v:
-                normalized_case["policy_number"] = v
-                changed = True
-        if contact_note is not None:
-            v = _truncate(contact_note, MAX_CONTACT_NOTE_LENGTH)
-            if normalized_case.get("contact_note") != v:
-                normalized_case["contact_note"] = v
-                changed = True
-        if changed:
-            normalized_case["updated_at"] = _utc_now_iso()
-            normalized_case["case_activity"] = [
-                _build_activity_entry("customer_updated", "Customer linkage updated."),
-                *normalized_case.get("case_activity", []),
-            ][:MAX_CASE_ACTIVITY]
-        payload["cases"][index] = normalized_case
-        updated_case = normalized_case
-        break
-    if updated_case is None:
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
         return None
-    payload["cases"] = _sort_recent(payload["cases"])
-    _write_payload(payload)
-    try:
-        from services.fiqa_api.db.dual_write import maybe_dual_write_case_append
-
-        maybe_dual_write_case_append(updated_case)
-    except Exception:
-        pass
+    changed = False
+    if customer_name is not None:
+        v = _truncate(customer_name, MAX_CUSTOMER_NAME_LENGTH)
+        if normalized_case.get("customer_name") != v:
+            normalized_case["customer_name"] = v
+            changed = True
+    if customer_phone is not None:
+        v = _truncate(customer_phone, MAX_CUSTOMER_PHONE_LENGTH)
+        if normalized_case.get("customer_phone") != v:
+            normalized_case["customer_phone"] = v
+            changed = True
+    if customer_email is not None:
+        v = _truncate(customer_email, MAX_CUSTOMER_EMAIL_LENGTH)
+        if normalized_case.get("customer_email") != v:
+            normalized_case["customer_email"] = v
+            changed = True
+    if policy_number is not None:
+        v = _truncate(policy_number, MAX_POLICY_NUMBER_LENGTH)
+        if normalized_case.get("policy_number") != v:
+            normalized_case["policy_number"] = v
+            changed = True
+    if contact_note is not None:
+        v = _truncate(contact_note, MAX_CONTACT_NOTE_LENGTH)
+        if normalized_case.get("contact_note") != v:
+            normalized_case["contact_note"] = v
+            changed = True
+    if changed:
+        normalized_case["updated_at"] = _utc_now_iso()
+        normalized_case["case_activity"] = [
+            _build_activity_entry("customer_updated", "Customer linkage updated."),
+            *normalized_case.get("case_activity", []),
+        ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
     return updated_case
 
 
@@ -617,36 +861,72 @@ TERMINAL_STATUS = ("closed",)
 
 def update_case_status(case_id: str, status: str) -> dict[str, Any] | None:
     normalized_status = _validate_status(status)
-    payload = _read_payload()
-    updated_case: dict[str, Any] | None = None
-    for index, case in enumerate(payload["cases"]):
-        if case.get("case_id") != case_id:
-            continue
-        normalized_case = _normalize_case(case)
-        previous_status = normalized_case.get("case_status") or "new"
-        # Guardrail: closed is terminal; reject transition from closed
-        if previous_status in TERMINAL_STATUS and previous_status != normalized_status:
-            raise ValueError(f"Cannot change status from '{previous_status}' (terminal)")
-        if previous_status == normalized_status:
-            updated_case = normalized_case
-            payload["cases"][index] = normalized_case
-            break
-        normalized_case["case_status"] = normalized_status
-        normalized_case["updated_at"] = _utc_now_iso()
-        normalized_case["case_activity"] = [
-            _build_activity_entry(
-                "status_changed",
-                f"Status changed from {_humanize_status(previous_status)} to {_humanize_status(normalized_status)}.",
-            ),
-            *normalized_case.get("case_activity", []),
-        ][:MAX_CASE_ACTIVITY]
-        payload["cases"][index] = normalized_case
-        updated_case = normalized_case
-        break
-    if updated_case is None:
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
         return None
-    payload["cases"] = _sort_recent(payload["cases"])
-    _write_payload(payload)
+    previous_status = normalized_case.get("case_status") or "new"
+    # Guardrail: closed is terminal; reject transition from closed
+    if previous_status in TERMINAL_STATUS and previous_status != normalized_status:
+        raise ValueError(f"Cannot change status from '{previous_status}' (terminal)")
+    if previous_status == normalized_status:
+        return normalized_case
+    normalized_case["case_status"] = normalized_status
+    normalized_case["updated_at"] = _utc_now_iso()
+    normalized_case["case_activity"] = [
+        _build_activity_entry(
+            "status_changed",
+            f"Status changed from {_humanize_status(previous_status)} to {_humanize_status(normalized_status)}.",
+        ),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
+    return updated_case
+
+
+def update_case_workbench_flags(
+    case_id: str,
+    *,
+    is_test: bool | None = None,
+    archived: bool | None = None,
+) -> dict[str, Any] | None:
+    """
+    Lightweight workbench labels: mark test data, soft-archive (hide from default views).
+    With DB-primary writes, flags are mirrored in Postgres `extra` JSONB; JSON file may be off.
+    """
+    if is_test is None and archived is None:
+        from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
+
+        return get_case_for_read(case_id)
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+    changed = False
+    if is_test is not None and bool(normalized_case.get("workbench_test")) != bool(is_test):
+        normalized_case["workbench_test"] = bool(is_test)
+        changed = True
+    if archived is not None and bool(normalized_case.get("workbench_archived")) != bool(archived):
+        normalized_case["workbench_archived"] = bool(archived)
+        changed = True
+    if not changed:
+        return normalized_case
+    normalized_case["updated_at"] = _utc_now_iso()
+    parts: list[str] = []
+    if is_test is not None:
+        parts.append("标记为测试" if is_test else "取消测试标记")
+    if archived is not None:
+        parts.append("已归档隐藏" if archived else "取消归档")
+    msg = "工作台：" + ("；".join(parts) if parts else "更新")
+    normalized_case["case_activity"] = [
+        _build_activity_entry("workbench_flags", msg),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
     return updated_case
 
 
@@ -702,50 +982,62 @@ def add_attachment_to_case(
     safe_base = re.sub(r"[^\w\-_.]", "_", base)[:80] or "file"
     safe_filename = f"{safe_base}{ext}"
 
-    payload = _read_payload()
-    updated_case: dict[str, Any] | None = None
-    for index, case in enumerate(payload["cases"]):
-        if case.get("case_id") != case_id:
-            continue
-        normalized_case = _normalize_case(case)
-        attachments = list(normalized_case.get("case_attachments") or [])
-        if len(attachments) >= MAX_ATTACHMENTS_PER_CASE:
-            raise ValueError(f"Case already has maximum {MAX_ATTACHMENTS_PER_CASE} attachments")
-        attachment_id = f"att_{uuid4().hex[:12]}"
-        att_type = _infer_attachment_type(safe_filename)
-        timestamp = _utc_now_iso()
-        att_meta = {
-            "attachment_id": attachment_id,
-            "filename": safe_filename,
-            "type": att_type,
-            "size_bytes": len(content),
-            "created_at": timestamp,
-        }
-        # Store file
-        case_dir = _attachments_dir() / case_id
-        case_dir.mkdir(parents=True, exist_ok=True)
-        file_path = case_dir / f"{attachment_id}_{safe_filename}"
-        file_path.write_bytes(content)
-        attachments.append(att_meta)
-        normalized_case["case_attachments"] = attachments[:MAX_ATTACHMENTS_PER_CASE]
-        normalized_case["updated_at"] = timestamp
-        normalized_case["case_activity"] = [
-            _build_activity_entry("attachment_added", f"Attachment added: {safe_filename}"),
-            *normalized_case.get("case_activity", []),
-        ][:MAX_CASE_ACTIVITY]
-        payload["cases"][index] = normalized_case
-        updated_case = normalized_case
-        break
-    if updated_case is None:
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
         return None
-    payload["cases"] = _sort_recent(payload["cases"])
-    _write_payload(payload)
+    attachments = list(normalized_case.get("case_attachments") or [])
+    if len(attachments) >= MAX_ATTACHMENTS_PER_CASE:
+        raise ValueError(f"Case already has maximum {MAX_ATTACHMENTS_PER_CASE} attachments")
+    attachment_id = f"att_{uuid4().hex[:12]}"
+    att_type = _infer_attachment_type(safe_filename)
+    timestamp = _utc_now_iso()
+    att_meta = {
+        "attachment_id": attachment_id,
+        "filename": safe_filename,
+        "type": att_type,
+        "size_bytes": len(content),
+        "created_at": timestamp,
+    }
+    # Store file
+    case_dir = _attachments_dir() / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    file_path = case_dir / f"{attachment_id}_{safe_filename}"
+    file_path.write_bytes(content)
+    attachments.append(att_meta)
+    normalized_case["case_attachments"] = attachments[:MAX_ATTACHMENTS_PER_CASE]
+    # V6: OCR sidecar (never blocks save)
+    try:
+        from services.fiqa_api.inbox_triage.v6_attachment_sidecar import run_v6_ocr_for_saved_attachment
+
+        _prior = normalized_case.get("v6_ocr_signals")
+        _prior_d = _prior if isinstance(_prior, dict) else None
+        _v6 = run_v6_ocr_for_saved_attachment(
+            prior_signals=_prior_d,
+            attachment_id=attachment_id,
+            file_path=file_path,
+            content_type=content_type,
+        )
+        if _v6:
+            normalized_case["v6_ocr_signals"] = _v6
+    except Exception:
+        pass
+    normalized_case["updated_at"] = timestamp
+    normalized_case["case_activity"] = [
+        _build_activity_entry("attachment_added", f"Attachment added: {safe_filename}"),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
     return updated_case
 
 
 def get_attachment_file_path(case_id: str, attachment_id: str) -> Path | None:
     """Return filesystem path for an attachment, or None if not found."""
-    case = get_case_by_id(case_id)
+    from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
+
+    case = get_case_for_read(case_id)
     if not case:
         return None
     attachments = case.get("case_attachments") or []
@@ -763,31 +1055,25 @@ def add_case_note(case_id: str, note_text: str) -> dict[str, Any] | None:
     body = (note_text or "").strip()
     if not body:
         raise ValueError("note cannot be empty")
-    payload = _read_payload()
-    updated_case: dict[str, Any] | None = None
-    for index, case in enumerate(payload["cases"]):
-        if case.get("case_id") != case_id:
-            continue
-        normalized_case = _normalize_case(case)
-        timestamp = _utc_now_iso()
-        note = {
-            "note_id": f"note_{uuid4().hex[:12]}",
-            "body": body,
-            "created_at": timestamp,
-        }
-        normalized_case["case_notes"] = [note, *normalized_case.get("case_notes", [])][:MAX_CASE_NOTES]
-        normalized_case["case_activity"] = [
-            _build_activity_entry("note_added", f"Broker note added: {_preview_text(body)}"),
-            *normalized_case.get("case_activity", []),
-        ][:MAX_CASE_ACTIVITY]
-        normalized_case["updated_at"] = timestamp
-        payload["cases"][index] = normalized_case
-        updated_case = normalized_case
-        break
-    if updated_case is None:
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
         return None
-    payload["cases"] = _sort_recent(payload["cases"])
-    _write_payload(payload)
+    timestamp = _utc_now_iso()
+    note = {
+        "note_id": f"note_{uuid4().hex[:12]}",
+        "body": body,
+        "created_at": timestamp,
+    }
+    normalized_case["case_notes"] = [note, *normalized_case.get("case_notes", [])][:MAX_CASE_NOTES]
+    normalized_case["case_activity"] = [
+        _build_activity_entry("note_added", f"Broker note added: {_preview_text(body)}"),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    normalized_case["updated_at"] = timestamp
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
     return updated_case
 
 
@@ -811,104 +1097,112 @@ def append_follow_up_message(
     system_reply = (triage_result.get("client_reply_draft") or "").strip()
     timestamp = _utc_now_iso()
 
-    payload = _read_payload()
-    updated_case: dict[str, Any] | None = None
-    for index, case in enumerate(payload["cases"]):
-        if case.get("case_id") != case_id:
-            continue
-        normalized_case = _normalize_case(case)
-        messages = list(normalized_case.get("case_messages") or [])
-        next_seq = max((m.get("sequence") or 0 for m in messages), default=0) + 1
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
 
-        # Add customer message
+    messages = list(normalized_case.get("case_messages") or [])
+    next_seq = max((m.get("sequence") or 0 for m in messages), default=0) + 1
+
+    # Add customer message
+    messages.append({
+        "message_id": f"msg_{uuid4().hex[:12]}",
+        "role": "customer",
+        "text": new_msg,
+        "created_at": timestamp,
+        "sequence": next_seq,
+    })
+    next_seq += 1
+
+    # Add system reply when present
+    if system_reply:
         messages.append({
             "message_id": f"msg_{uuid4().hex[:12]}",
-            "role": "customer",
-            "text": new_msg,
+            "role": "system",
+            "text": system_reply,
             "created_at": timestamp,
             "sequence": next_seq,
         })
-        next_seq += 1
 
-        # Add system reply when present
-        if system_reply:
-            messages.append({
-                "message_id": f"msg_{uuid4().hex[:12]}",
-                "role": "system",
-                "text": system_reply,
-                "created_at": timestamp,
-                "sequence": next_seq,
-            })
+    normalized_case["case_messages"] = messages
+    normalized_case["source_text"] = _build_source_from_messages(messages)
+    normalized_case["updated_at"] = timestamp
+    normalized_case["issue_category"] = validated["issue_category"]
+    normalized_case["urgency"] = validated["urgency"]
+    normalized_case["broker_next_step"] = validated["broker_next_step"]
+    normalized_case["client_prep"] = validated["client_prep"]
+    normalized_case["client_reply_draft"] = validated["client_reply_draft"]
+    normalized_case["manual_followup_needed"] = validated["manual_followup_needed"]
 
-        normalized_case["case_messages"] = messages
-        normalized_case["source_text"] = _build_source_from_messages(messages)
-        normalized_case["updated_at"] = timestamp
-        normalized_case["issue_category"] = validated["issue_category"]
-        normalized_case["urgency"] = validated["urgency"]
-        normalized_case["broker_next_step"] = validated["broker_next_step"]
-        normalized_case["client_prep"] = validated["client_prep"]
-        normalized_case["client_reply_draft"] = validated["client_reply_draft"]
-        normalized_case["manual_followup_needed"] = validated["manual_followup_needed"]
+    if (summary := (triage_result.get("conversation_summary") or "").strip()):
+        normalized_case["conversation_summary"] = summary
+    if (sec := (triage_result.get("secondary_issue_note") or "").strip()):
+        normalized_case["secondary_issue_note"] = sec
+    if (collected := triage_result.get("collected_fields")) is not None and isinstance(collected, list):
+        normalized_case["collected_fields"] = [str(x) for x in collected]
+    if (still_needed := triage_result.get("still_needed_fields")) is not None and isinstance(still_needed, list):
+        normalized_case["still_needed_fields"] = [str(x) for x in still_needed]
+    if (qrs := (triage_result.get("quote_ready_status") or "").strip()) in ("quote_ready", "almost_ready", "need_more"):
+        normalized_case["quote_ready_status"] = qrs
 
-        if (summary := (triage_result.get("conversation_summary") or "").strip()):
-            normalized_case["conversation_summary"] = summary
-        if (sec := (triage_result.get("secondary_issue_note") or "").strip()):
-            normalized_case["secondary_issue_note"] = sec
-        if (collected := triage_result.get("collected_fields")) is not None and isinstance(collected, list):
-            normalized_case["collected_fields"] = [str(x) for x in collected]
-        if (still_needed := triage_result.get("still_needed_fields")) is not None and isinstance(still_needed, list):
-            normalized_case["still_needed_fields"] = [str(x) for x in still_needed]
-        if (qrs := (triage_result.get("quote_ready_status") or "").strip()) in ("quote_ready", "almost_ready", "need_more"):
-            normalized_case["quote_ready_status"] = qrs
+    # Explicit workflow state
+    normalized_case["handoff_ready"] = bool(triage_result.get("handoff_ready", True))
+    normalized_case["case_creation_suggested"] = bool(triage_result.get("case_creation_suggested", False))
+    normalized_case["human_confirmation_required"] = bool(triage_result.get("human_confirmation_required", False))
+    if (hf := triage_result.get("human_confirmation_fields")) is not None and isinstance(hf, list):
+        normalized_case["human_confirmation_fields"] = [str(x) for x in hf]
+    else:
+        normalized_case["human_confirmation_fields"] = normalized_case.get("human_confirmation_fields") or []
+    if (cs := (triage_result.get("collection_stage") or "").strip()):
+        normalized_case["collection_stage"] = cs
+    if (ft := (triage_result.get("follow_up_type") or "").strip()):
+        normalized_case["follow_up_type"] = ft
+    tm_ap = str(triage_result.get("triage_mode") or "").strip().lower()
+    if tm_ap in ("greenfield", "append"):
+        normalized_case["triage_mode"] = tm_ap
+    if (ac := _normalize_add_car_turn_intent_payload(triage_result.get("add_car_turn_intent"))):
+        normalized_case["add_car_turn_intent"] = ac
+    elif "add_car_turn_intent" in normalized_case:
+        normalized_case.pop("add_car_turn_intent", None)
+    if (cb := (triage_result.get("case_boundary") or "").strip()) in (
+        "new_issue",
+        "borderline",
+        "same_case",
+    ):
+        normalized_case["case_boundary"] = cb
+    if (cba := str(triage_result.get("case_boundary_action") or "").strip()) in (
+        "append_allowed",
+        "requires_confirmation",
+        "requires_new_case",
+    ):
+        normalized_case["case_boundary_action"] = cba
+    if (br := str(triage_result.get("boundary_reason") or "").strip()):
+        normalized_case["boundary_reason"] = br
+    if (svc := str(triage_result.get("service_type") or "").strip()):
+        normalized_case["service_type"] = svc
+    normalized_case["vehicle_key"] = triage_result.get("vehicle_key")
+    normalized_case["additional_vehicle_mentioned"] = triage_result.get("additional_vehicle_mentioned")
+    _pvs_a = triage_result.get("primary_vehicle_summary")
+    normalized_case["primary_vehicle_summary"] = None if _pvs_a is None else (str(_pvs_a).strip() or None)
+    normalized_case["additional_vehicle_count_hint"] = triage_result.get("additional_vehicle_count_hint")
+    # ADD_CAR_IDENTITY_CONTACT_LITE: update contact from triage extraction on append
+    if (en := (triage_result.get("extracted_contact_name") or "").strip()):
+        normalized_case["customer_name"] = _truncate(en, MAX_CUSTOMER_NAME_LENGTH)
+    if (ep := (triage_result.get("extracted_contact_phone") or "").strip()):
+        normalized_case["customer_phone"] = _truncate(ep, MAX_CUSTOMER_PHONE_LENGTH)
+    # Minimal Production Backbone: append = office follow-up flow
+    normalized_case["lifecycle_status"] = "office_followup"
+    # Client Identity Persistence: backfill client_id for legacy cases when provided
+    if not normalized_case.get("client_id") and client_id and (cid := str(client_id or "").strip()):
+        normalized_case["client_id"] = cid
 
-        # Explicit workflow state
-        normalized_case["handoff_ready"] = bool(triage_result.get("handoff_ready", True))
-        normalized_case["case_creation_suggested"] = bool(triage_result.get("case_creation_suggested", False))
-        normalized_case["human_confirmation_required"] = bool(triage_result.get("human_confirmation_required", False))
-        if (hf := triage_result.get("human_confirmation_fields")) is not None and isinstance(hf, list):
-            normalized_case["human_confirmation_fields"] = [str(x) for x in hf]
-        else:
-            normalized_case["human_confirmation_fields"] = normalized_case.get("human_confirmation_fields") or []
-        if (cs := (triage_result.get("collection_stage") or "").strip()):
-            normalized_case["collection_stage"] = cs
-        if (ft := (triage_result.get("follow_up_type") or "").strip()):
-            normalized_case["follow_up_type"] = ft
-        if (ac := _normalize_add_car_turn_intent_payload(triage_result.get("add_car_turn_intent"))):
-            normalized_case["add_car_turn_intent"] = ac
-        elif "add_car_turn_intent" in normalized_case:
-            normalized_case.pop("add_car_turn_intent", None)
-        if (cb := (triage_result.get("case_boundary") or "").strip()) in (
-            "new_issue",
-            "borderline",
-            "same_case",
-        ):
-            normalized_case["case_boundary"] = cb
-        # ADD_CAR_IDENTITY_CONTACT_LITE: update contact from triage extraction on append
-        if (en := (triage_result.get("extracted_contact_name") or "").strip()):
-            normalized_case["customer_name"] = _truncate(en, MAX_CUSTOMER_NAME_LENGTH)
-        if (ep := (triage_result.get("extracted_contact_phone") or "").strip()):
-            normalized_case["customer_phone"] = _truncate(ep, MAX_CUSTOMER_PHONE_LENGTH)
-        # Minimal Production Backbone: append = office follow-up flow
-        normalized_case["lifecycle_status"] = "office_followup"
-        # Client Identity Persistence: backfill client_id for legacy cases when provided
-        if not normalized_case.get("client_id") and client_id and (cid := str(client_id or "").strip()):
-            normalized_case["client_id"] = cid
+    normalized_case["case_activity"] = [
+        _build_activity_entry("follow_up_added", f"Customer follow-up added: {_preview_text(new_msg, 64)}"),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
 
-        normalized_case["case_activity"] = [
-            _build_activity_entry("follow_up_added", f"Customer follow-up added: {_preview_text(new_msg, 64)}"),
-            *normalized_case.get("case_activity", []),
-        ][:MAX_CASE_ACTIVITY]
-        payload["cases"][index] = normalized_case
-        updated_case = normalized_case
-        break
-    if updated_case is None:
+    if not _persist_case_after_update(case_id, updated_case):
         return None
-    payload["cases"] = _sort_recent(payload["cases"])
-    _write_payload(payload)
-    try:
-        from services.fiqa_api.db.dual_write import maybe_dual_write_case_append
-
-        maybe_dual_write_case_append(updated_case)
-    except Exception:
-        pass
     return updated_case

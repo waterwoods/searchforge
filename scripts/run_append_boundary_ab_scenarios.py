@@ -58,8 +58,9 @@ def run_one(s: dict, verbose: bool) -> tuple[bool, str | None]:
 
     exp_cb = (s.get("expected_case_boundary") or "").strip().lower()
     if exp_cb == "same_case":
-        if cb:
-            return False, f"expected same_case (no case_boundary), got {cb!r}"
+        # Omitted or explicit `same_case` both mean append-allowed / no split.
+        if cb and cb != "same_case":
+            return False, f"expected same_case (omit or 'same_case'), got {cb!r}"
     elif exp_cb:
         if cb != exp_cb:
             return False, f"case_boundary: got {cb!r} expected {exp_cb!r}"

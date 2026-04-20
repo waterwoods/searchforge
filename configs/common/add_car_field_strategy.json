@@ -1,0 +1,172 @@
+{
+  "version": 2,
+  "lane": "add_car",
+  "description": "Behavior-controlling field strategy: tiers, blocking, deferral, defaults, inference, confidence/confirm policies (PTD §9).",
+  "default_engine": {
+    "global_fallback_order": ["explicit_text", "ocr_structured", "keyword_heuristic", "industry_default", "omit"],
+    "garaging_area_hint": {
+      "fallback_order": ["zip_prefix_map", "phone_area_code_map"],
+      "confidence_label": "low",
+      "surface_to_user": "when_inferred",
+      "silent_apply": false
+    },
+    "usage_guess": {
+      "fallback_order": ["keyword_heuristic", "industry_default"],
+      "confidence_label": "low_to_medium",
+      "surface_to_user": "when_inferred",
+      "silent_apply": false
+    },
+    "vehicle_from_summary": {
+      "fallback_order": ["primary_vehicle_summary"],
+      "confidence_label": "medium",
+      "surface_to_user": "always_confirm",
+      "silent_apply": false
+    }
+  },
+  "fields": {
+    "year": {
+      "purpose": "Model year for rating and vehicle identity.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR"],
+      "priority_tier": 1,
+      "blocking": true,
+      "confidence_policy": "truth_required",
+      "confirmation_required_when": "when_missing_or_low_confidence",
+      "defer_to_broker": false,
+      "override_rules": ["user_explicit_wins", "ocr_structured_wins_over_empty"]
+    },
+    "make_model": {
+      "purpose": "Make and model for vehicle identity.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR", "history"],
+      "priority_tier": 1,
+      "blocking": true,
+      "confidence_policy": "truth_required",
+      "confirmation_required_when": "when_missing_or_low_confidence",
+      "defer_to_broker": false,
+      "override_rules": ["user_explicit_wins", "ocr_structured_wins_over_empty", "primary_vehicle_summary_hint_non_blocking"]
+    },
+    "zip": {
+      "purpose": "Garaging ZIP for territory rating.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR"],
+      "priority_tier": 1,
+      "blocking": true,
+      "confidence_policy": "truth_required",
+      "confirmation_required_when": "when_missing_or_low_confidence",
+      "defer_to_broker": false,
+      "override_rules": ["user_explicit_wins", "garaging_area_hint_does_not_replace_zip"]
+    },
+    "delivery_date": {
+      "purpose": "Delivery or effective date for policy timing.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR"],
+      "priority_tier": 1,
+      "blocking": true,
+      "confidence_policy": "truth_required",
+      "confirmation_required_when": "when_missing",
+      "defer_to_broker": false,
+      "override_rules": ["user_explicit_wins"]
+    },
+    "primary_driver": {
+      "purpose": "Primary operator for driver assignment.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR", "history"],
+      "priority_tier": 1,
+      "blocking": true,
+      "confidence_policy": "truth_required",
+      "confirmation_required_when": "when_missing",
+      "defer_to_broker": false,
+      "override_rules": ["user_explicit_wins"]
+    },
+    "vin": {
+      "purpose": "VIN for definitive vehicle identity and formal quote.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR"],
+      "priority_tier": 2,
+      "blocking": false,
+      "confidence_policy": "truth_required_when_present",
+      "confirmation_required_when": "when_extracted",
+      "defer_to_broker": true,
+      "override_rules": ["never_fabricate", "broker_completes_if_missing"]
+    },
+    "name": {
+      "purpose": "Named insured contact for follow-up.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR", "history"],
+      "priority_tier": 2,
+      "blocking": false,
+      "confidence_policy": "truth_required_when_present",
+      "confirmation_required_when": "when_extracted",
+      "defer_to_broker": true,
+      "override_rules": ["never_fabricate_identity", "broker_completes_if_missing"]
+    },
+    "phone": {
+      "purpose": "Contact phone for follow-up.",
+      "default_value": null,
+      "confidence_score": 0.0,
+      "inference_sources": ["text", "OCR", "history"],
+      "priority_tier": 2,
+      "blocking": false,
+      "confidence_policy": "truth_required_when_present",
+      "confirmation_required_when": "when_extracted",
+      "defer_to_broker": true,
+      "override_rules": ["never_fabricate_identity", "broker_completes_if_missing"]
+    },
+    "usage_guess": {
+      "purpose": "Vehicle usage class for rating classification.",
+      "default_value": "daily_commute",
+      "confidence_score": 0.35,
+      "inference_sources": ["text", "history"],
+      "priority_tier": 2,
+      "blocking": false,
+      "confidence_policy": "default_low",
+      "confirmation_required_when": "medium_confidence_inferred",
+      "defer_to_broker": false,
+      "override_rules": ["keyword_inference_over_default", "user_explicit_overrides"]
+    },
+    "garaging_area_hint": {
+      "purpose": "Rough area label when ZIP is missing or ambiguous.",
+      "default_value": null,
+      "confidence_score": 0.48,
+      "inference_sources": ["text", "OCR"],
+      "priority_tier": 2,
+      "blocking": false,
+      "confidence_policy": "weak_hint",
+      "confirmation_required_when": "when_inferred",
+      "defer_to_broker": false,
+      "override_rules": ["zip_prefix_derived", "area_code_weak_hint", "broker_verifies"]
+    },
+    "make_keyword_hint": {
+      "purpose": "Weak make token from chatter; never replaces make_model.",
+      "default_value": null,
+      "confidence_score": 0.33,
+      "inference_sources": ["text"],
+      "priority_tier": 3,
+      "blocking": false,
+      "confidence_policy": "weak_hint",
+      "confirmation_required_when": "never_for_tier3",
+      "defer_to_broker": true,
+      "override_rules": ["weak_token_only", "does_not_replace_make_model"]
+    },
+    "vehicle_from_summary": {
+      "purpose": "Vehicle line from summary when structured slots incomplete.",
+      "default_value": null,
+      "confidence_score": 0.55,
+      "inference_sources": ["history", "text"],
+      "priority_tier": 2,
+      "blocking": false,
+      "confidence_policy": "prefer_inference",
+      "confirmation_required_when": "always_when_inferred",
+      "defer_to_broker": false,
+      "override_rules": ["needs_confirmation", "partial_credit_for_handoff_completeness"]
+    }
+  }
+}

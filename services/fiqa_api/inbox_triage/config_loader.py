@@ -128,7 +128,8 @@ def get_stitched_handoff_phrases(client_id: str | None = None) -> dict[str, Any]
       - handoff_payment_correction_urgency: {\"zh\", \"en\"} — correction+urgency answer
         when payment/cancellation is handoff-ready
       - handoff_add_car_contact_gap_tail: {\"zh\", \"en\"} — appended when add-car is quote-ready
-        but name/phone are still missing on the record (truthful completeness)
+        but name/phone are still missing on the record (truthful completeness). Engine may shorten
+        or skip repeating this tail by intent and prior-thread count (see master outline §4.10).
 
     Client `handoff` entries may also include per-family add-car keys: `add_car_supplement`,
     `add_car_timeline`, `add_car_quote_detail`, `add_car_correction`, plus optional `zh_alt` /
@@ -447,6 +448,16 @@ def get_ui_copy(client_id: str | None = None) -> dict[str, Any]:
         "office_workbench_empty_queue_hint",
         "portal_input_placeholder_empty",
         "portal_input_placeholder_continue",
+        # Quote-ready conversion layer (customer reply + portal chrome)
+        "conversion_quote_ready_reply_zh",
+        "conversion_quote_ready_reply_en",
+        "conversion_ui_ready_title",
+        "conversion_ui_next_line",
+        "conversion_still_needed_collapse_label",
+        # Intake evolution: A | B | C (questioning + confirmation style); overridable via INTAKE_EVOLUTION_VARIANT
+        "intake_evolution_variant",
+        # V6 auto-input: A=text-first, B=OCR+aggressive auto-fill, C=OCR+conservative confirmation
+        "v6_auto_input_variant",
     ):
         val = data.get(key)
         if isinstance(val, str) and val.strip():
@@ -454,4 +465,69 @@ def get_ui_copy(client_id: str | None = None) -> dict[str, Any]:
     qsb = data.get("quick_start_buttons")
     if isinstance(qsb, dict) and qsb:
         out["quick_start_buttons"] = qsb
+    li = data.get("light_identity")
+    if isinstance(li, dict):
+        profile = str(li.get("binding_copy_profile") or "neutral").strip().lower() or "neutral"
+        if profile not in ("wechat_preferred", "neutral"):
+            profile = "neutral"
+        mode = str(li.get("wechat_binding_mode") or "stub").strip().lower() or "stub"
+        if mode not in ("stub", "live"):
+            mode = "stub"
+        li_out: dict[str, Any] = {
+            "show_optional_binding": bool(li.get("show_optional_binding")),
+            "binding_copy_profile": profile,
+            "wechat_binding_mode": mode,
+        }
+        for optional_key in (
+            "strip_primary_line",
+            "wechat_cta_label",
+            "defer_cta_label",
+            "dismiss_cta_label",
+            "modal_title",
+            "modal_body",
+            "phone_email_fallback_hint",
+        ):
+            v = li.get(optional_key)
+            if isinstance(v, str) and v.strip():
+                li_out[optional_key] = v.strip()
+        out["light_identity"] = li_out
     return out
+
+
+def get_intake_evolution_variant(client_id: str | None = None) -> str:
+    """A = balanced (default), B = shorter / fewer clauses, C = confirmation-first vehicle check."""
+    import os
+
+    env = (os.environ.get("INTAKE_EVOLUTION_VARIANT") or "").strip().upper()
+    if env in ("A", "B", "C"):
+        return env
+    ui = get_ui_copy(client_id)
+    v = str(ui.get("intake_evolution_variant") or "A").strip().upper()
+    if v in ("A", "B", "C"):
+        return v
+    return "A"
+
+
+def get_v6_auto_input_variant(client_id: str | None = None) -> str:
+    """V6 automatic input: A text-first, B OCR+aggressive fill, C OCR+conservative confirm."""
+    import os
+
+    env = (os.environ.get("V6_AUTO_INPUT_VARIANT") or "").strip().upper()
+    if env in ("A", "B", "C"):
+        return env
+    ui = get_ui_copy(client_id)
+    v = str(ui.get("v6_auto_input_variant") or "A").strip().upper()
+    if v in ("A", "B", "C"):
+        return v
+    return "A"
+
+
+def get_wechat_binding_mode_for_client(client_id: str | None) -> str:
+    """Return stub | live from client-pack ui_copy.light_identity (default stub)."""
+    ui = get_ui_copy(client_id)
+    li = ui.get("light_identity") or {}
+    if isinstance(li, dict):
+        m = str(li.get("wechat_binding_mode") or "stub").strip().lower()
+        if m == "live":
+            return "live"
+    return "stub"

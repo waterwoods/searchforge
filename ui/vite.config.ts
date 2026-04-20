@@ -9,8 +9,10 @@ function assertVercelProductionApiBase(mode: string) {
     if (process.env.VERCEL !== '1' || mode !== 'production') {
         return;
     }
-    const env = loadEnv(mode, process.cwd(), '');
-    const raw = (env.VITE_API_BASE_URL || '').trim();
+    // On Vercel, `loadEnv()` will also read `.env` files in the repo, which are typically
+    // development-only (often pointing at localhost). For production correctness, require
+    // the Vercel Project Environment Variable to be set explicitly.
+    const raw = (process.env.VITE_API_BASE_URL || '').trim();
     if (!raw) {
         throw new Error(
             'VITE_API_BASE_URL is required for Vercel production builds. Set it to your Cloud Run URL (no trailing slash) in Vercel env for Production and Preview. See docs/runbooks/DEPLOYMENT_PLAYBOOK.md',

@@ -19,6 +19,7 @@ def test_triage_for_append_sets_office_followup_when_formal_submit_truth():
     r = triage_for_append(prior, "好的，谢谢。", client_id="chen_kui", reply_truth_context=ctx)
     assert r.get("lifecycle_status") == "office_followup"
     assert r.get("handoff_ready") is True
+    assert r.get("triage_mode") == "append"
 
 
 def test_resolve_add_car_merges_persisted_still_needed_into_intent_truth():

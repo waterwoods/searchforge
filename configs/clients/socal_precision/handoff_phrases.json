@@ -1,0 +1,175 @@
+{
+  "version": "1",
+  "description": "Fictional second broker — concise handoff lines, explicit business-day wording.",
+  "handoff": {
+    "customer_requested_human": {
+      "zh": "已记录。本事务所同事将在营业日内回电或留言与您联系。",
+      "en": "Noted. A colleague will reach you on the next business day."
+    },
+    "add_car": {
+      "zh": "加车要点已整理进本条服务记录，系统判断已满足本阶段可交本所的条件。请在入口完成正式提交后，本所才会在队列中接收并于约一至两个营业日内核对、核价并联系您（周末及公共假期顺延）。",
+      "zh_alt": "要点已记入本条服务记录；正式提交本所队列后，将按记录核对、核价并与承保方沟通，有进展会联系您。",
+      "en": "Your add-car details are on this service record and meet the handoff bar for this stage. After formal submit in the portal, our desk will receive it in the queue and aim to verify and quote within about one to two business days (weekends/holidays excluded).",
+      "en_alt": "Your add-car details are on this service record. Once formally submitted to our desk queue, we will verify, price, coordinate with carriers, then follow up."
+    },
+    "add_car_supplement": {
+      "zh": "已把这条补充写入同一条加车服务记录；待入口正式提交本所后，本所将按最新信息在队列中继续核对与核价准备。",
+      "en": "I've added this to the same add-car service record—after formal submit, our desk will continue verification and quote prep in the queue using the latest details."
+    },
+    "add_car_timeline": {
+      "zh": "要点已齐时：下一步是在入口正式提交本所。提交后由本所按队列核对与核价；时间以核对与排队情况为准。",
+      "en": "When details are complete, the next step is formal submit. After that, quoting and follow-up are handled in our desk queue—timing depends on verification and queue."
+    },
+    "add_car_quote_detail": {
+      "zh": "免赔额、保额组合等具体选项需本所结合车辆与驾驶人信息核对后确认；已把你的关注点记入本条记录供核价参考。",
+      "en": "Deductibles and coverage combinations must be confirmed by our desk based on vehicle and driver details—we've noted your concern on this record."
+    },
+    "add_car_correction": {
+      "zh": "已按你本次最新说法更新同一条记录；本所将按更新后的信息继续处理。",
+      "en": "We've updated this record to reflect your latest message—our desk will proceed with the updated information."
+    },
+    "add_car_submitted": {
+      "zh": "这条加车记录已正式送达本所；本所会按当前记录继续核对与处理。",
+      "en": "This add-car record has been formally delivered to our desk; we will verify and continue from the current details."
+    },
+    "add_car_supplement_submitted": {
+      "zh": "已把这次补充记到当前服务记录里；本所会按更新后的记录继续处理。",
+      "en": "I've added this update to your current service record; our desk will continue from the updated details."
+    },
+    "add_car_timeline_submitted": {
+      "zh": "这条记录已在本所处理中；后续时间以本所核对与排队进度为准。",
+      "en": "This record is already with our desk; timing depends on verification and queue."
+    },
+    "add_car_quote_detail_submitted": {
+      "zh": "这类具体选项会结合当前记录继续核对；你的关注点已附到这条记录里，便于后续核价。",
+      "en": "Specific options will be confirmed against your current record; we've attached your note to this record for quoting."
+    },
+    "add_car_correction_submitted": {
+      "zh": "已按你这次的最新说法更新当前记录；本所会按更新后的信息继续核对。",
+      "en": "We've updated the current record to match your latest message; our desk will verify using the updated information."
+    },
+    "remove_car": {
+      "zh": "卖车/减车信息已整理。本所将于营业日内处理并回复。",
+      "en": "Vehicle change details logged. Our desk will process on the next business day."
+    },
+    "other": {
+      "zh": "情况已记录。本所将按队列处理并于营业日内回复。",
+      "en": "Information logged. Our desk will respond on a business-day basis."
+    },
+    "other_received": {
+      "zh": "收到。本所将核对材料并于营业日内反馈。",
+      "en": "Received. We will verify and reply on a business-day basis."
+    },
+    "other_corrected": {
+      "zh": "更正已记录。本所将按更新信息处理。",
+      "en": "Correction noted. We will proceed with the updated information."
+    },
+    "other_clarification": {
+      "zh": "问题已收到。本所将优先核实并于营业日内答复。",
+      "en": "We have your question and will verify and reply on a business-day basis."
+    }
+  },
+  "stitched": {
+    "description": "Second-broker tone — avoids generic 办公室 lines on stitched high-frequency paths.",
+    "add_car_materials_sent": {
+      "zh": "已知悉材料已发送。本所将按加车核价流程核对；待您在入口正式提交本所后，请求才会进入处理队列，并于营业日内反馈。",
+      "en": "Thanks—we will verify what you sent under the add-car pricing flow. After formal submit in the portal, the request enters our desk queue and we will follow up on a business-day basis."
+    },
+    "why_still_chasing_reassurance": {
+      "zh": "可能材料尚未送达或未匹配。已记录。本所将尽快核对并于营业日内回复。",
+      "en": "It may not have arrived or may not have matched what we need. Noted—we will verify and reply on a business-day basis."
+    },
+    "prospective_send": {
+      "zh_wechat": "可以，请通过微信发送即可。",
+      "zh_screenshot": "可以，请先发截图，本所一并查看。",
+      "zh_bundle": "可以，请先发来，本所会一并整理归档。",
+      "en_wechat": "Yes—WeChat works. ",
+      "en_screenshot": "Yes—send the screenshot and we will review it with your file. ",
+      "en_bundle": "Yes—send it over and we will bundle it for our desk. "
+    },
+    "add_car_price_caveat": {
+      "zh": "；具体保费须待本所按车型与承保地址核算后方能确定。",
+      "en": "; exact premium depends on the vehicle and garaging—our desk will run the numbers."
+    },
+    "document_already_sent_tail": {
+      "zh": "；若您表示材料已发送，本所将一并核对。",
+      "en": "; if you already sent documents, we will verify on our side."
+    },
+    "handoff_doc_clarification_suffix_add_car": {
+      "zh": "。加车要点已记入本条记录；请在入口完成正式提交本所后，由本所在队列中跟进，核对后将于营业日内联系您。",
+      "en": " Your add-car details are on this record—after formal submit, our desk will pick it up in the queue and follow up on a business-day basis."
+    },
+    "handoff_doc_clarification_suffix_other": {
+      "zh": "。本所会尽快处理并于营业日内反馈。",
+      "en": ". Our desk will process this and reply on a business-day basis."
+    },
+    "handoff_add_car_coverage_answer": {
+      "zh": "保额可调整；核价时本所会与您确认可选方案。",
+      "en": "Coverage can be adjusted; our desk will confirm options during quoting."
+    },
+    "handoff_add_car_coverage_suffix": {
+      "zh": "要点已记入本条记录；正式提交本所后，资料才会进入队列，完成核算后会尽快联系您。",
+      "en": "Details are on this record—after formal submit they enter our desk queue; we will price and follow up on a business-day basis."
+    },
+    "handoff_payment_correction_urgency": {
+      "zh": "您现在最要紧的是等本所确认付款是否到账；若到账，您这边通常无需再操作。本所会尽快处理并于营业日内反馈。",
+      "en": "The most important thing now is to wait for our desk to confirm whether payment posted; once confirmed, you usually do not need further action. We will process and reply on a business-day basis."
+    },
+    "handoff_add_car_contact_gap_tail": {
+      "zh": " 若姓名或电话尚未在本对话中写清，本所后续联系时可能会先确认联系方式。",
+      "en": " If your name or phone isn't clear on this record yet, our desk may confirm contact details when they reach out.",
+      "zh_short": "（若方便：请在本对话补一行姓名与电话，便于本所联系。）",
+      "en_short": " (If you can, add your name and phone in one line here so our desk can reach you.)"
+    },
+    "add_car_clarification_followup_submitted": {
+      "zh": "收到。本所会按当前服务记录与您已发资料继续核对；仅在有缺项时再联系您。",
+      "en": "Got it. Our desk will continue checking against your current service record and what you sent, and will follow up only if something is still missing."
+    },
+    "handoff_doc_clarification_suffix_add_car_submitted": {
+      "zh": "。加车要点已记入本条本所可见记录；本所会按当前记录继续核对，有结果会联系您。",
+      "en": " Your add-car details are on the desk-visible record; we will continue verification from the current record and follow up."
+    },
+    "handoff_add_car_coverage_suffix_submitted": {
+      "zh": "要点已在本所可见记录里；本所会结合当前记录继续核对与核价准备，有结果会联系您。",
+      "en": "The details are on the desk-visible record; we will continue verification and quote prep from the current record and follow up."
+    },
+    "add_car_materials_sent_submitted": {
+      "zh": "收到。本所正按当前服务记录核对您已发的加车材料；无需整套重发，缺项会主动联系您。",
+      "en": "Thanks—we are verifying what you sent against your current add-car record. No need to resend the full set; we will reach out only if something is still missing."
+    },
+    "append_boundary": {
+      "description": "Append / new-issue / borderline customer-visible copy — second-broker tone (no 办公室).",
+      "continuity_zh": {
+        "add_car": "加车核价事项本所会继续跟进。",
+        "claim": "理赔事项本所会继续跟进。",
+        "remove_car": "车辆变更事项本所会继续跟进。",
+        "payment": "付款/通知相关事项本所会继续跟进。",
+        "missing_doc": "材料补件事项本所会继续跟进。",
+        "premium": "续保/保费事项本所会继续跟进。",
+        "generic": "前一项事宜本所会继续跟进。"
+      },
+      "new_issue_tail_zh": {
+        "claim": "您这条理赔我先转交本所同事，请他们尽快联系您。",
+        "billing": "账单问题我也会转交本所核实。",
+        "remove_car": "删车/卖车事宜我也会一并转交本所处理。",
+        "premium": "续保/保费相关我也会一并转交本所跟进。",
+        "add_car": "新的加车报价需求我也会一并转交本所处理。",
+        "default": "您这条新事项我也会一并转交本所处理。"
+      },
+      "continuity_en_add_car": "We'll keep your add-car quote with our desk. ",
+      "continuity_en_other": "We'll keep your prior request with our desk. ",
+      "new_issue_tail_en": {
+        "claim": "I've flagged this claim item for our desk to follow up.",
+        "billing": "I've asked our desk to review the billing question too.",
+        "remove_car": "I've included the vehicle-removal request for our desk as well.",
+        "premium": "I've also flagged the renewal/premium question for our desk.",
+        "add_car": "I've passed along the new vehicle quote request to our desk as well.",
+        "default": "I've shared this new item with our desk to handle."
+      },
+      "add_car_split_hint_zh": " 如属完全不同的事项，建议您使用「提交新问题」另开记录，勿与本条加车混在同一对话内。",
+      "add_car_split_hint_en": " If this is a separate topic, please start a new request next time so our desk can track it cleanly.",
+      "borderline_zh": "收到。我先按您这条整理并转交本所；若与先前不是同一件事，也请简单说明，便于分开跟进。",
+      "borderline_en": "Got it—I'm forwarding this to our desk. If this is separate from what we discussed before, a quick note helps us track it cleanly."
+    }
+  }
+}

@@ -49,6 +49,7 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "still_needed_fields",
         "quote_ready_status",
         "handoff_ready",
+        "triage_mode",
         "case_creation_suggested",
         "human_confirmation_required",
         "human_confirmation_fields",
@@ -57,6 +58,19 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "next_best_question",
         "lifecycle_status",
         "case_boundary",
+        "case_boundary_action",
+        "boundary_reason",
+        "service_type",
+        "vehicle_key",
+        "additional_vehicle_mentioned",
+        "primary_vehicle_summary",
+        "additional_vehicle_count_hint",
+        "service_lane",
+        # Stage-1 optional light identity (nullable)
+        "identity_binding_state",
+        "person_link_key",
+        "person_link_source",
+        "person_link_confidence",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -72,6 +86,8 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "case_attachments",
         "case_notes",
         "formal_submitted_at",
+        "workbench_test",
+        "workbench_archived",
     )
     return {k: case[k] for k in keys if k in case}
 
@@ -280,7 +296,10 @@ def persist_case_append(case: dict[str, Any]) -> None:
                     },
                 )
                 if cur.rowcount == 0:
-                    logger.warning("persist_case_append: no service_records row for %s", record_id)
+                    logger.warning(
+                        "UNIFIED_INTAKE_DB_OBS signal=PG_APPEND_NO_ROW case_id=%s",
+                        record_id,
+                    )
                     return
 
                 for msg in messages:
@@ -359,3 +378,294 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         "created_at": now_updated,
                     },
                 )
+
+
+def fetch_service_records(record_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """
+    Fetch minimal Postgres mirror view for consistency checks.
+
+    Returns map keyed by record_id.
+    """
+    ids = [str(x).strip() for x in (record_ids or []) if str(x).strip()]
+    if not ids:
+        return {}
+
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    sr.record_id,
+                    sr.customer_name,
+                    sr.customer_phone,
+                    sr.lifecycle_status,
+                    sr.updated_at,
+                    sr.extra,
+                    srd.quote_readiness,
+                    srd.missing_fields_summary,
+                    srd.structured_payload
+                FROM service_records sr
+                LEFT JOIN structured_record_data srd
+                    ON srd.record_id = sr.record_id
+                WHERE sr.record_id = ANY(%s)
+                """,
+                (ids,),
+            )
+            rows = cur.fetchall()
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        out[str(row[0])] = {
+            "record_id": str(row[0]),
+            "customer_name": _str(row[1]),
+            "customer_phone": _str(row[2]),
+            "lifecycle_status": _str(row[3]),
+            "updated_at": str(row[4]) if row[4] is not None else "",
+            "extra": row[5] if isinstance(row[5], dict) else {},
+            "quote_readiness": _str(row[6]),
+            "missing_fields_summary": _str(row[7]),
+            "structured_payload": row[8] if isinstance(row[8], dict) else {},
+        }
+    return out
+
+
+def _ts_to_iso(val: Any) -> str:
+    if val is None:
+        return ""
+    if hasattr(val, "isoformat"):
+        s = val.isoformat()
+        if s.endswith("+00:00"):
+            return s.replace("+00:00", "Z")
+        return s
+    return str(val).strip()
+
+
+# Match case_store.MAX_CASE_ACTIVITY for list/detail parity.
+_MAX_CASE_ACTIVITY = 40
+
+
+def _state_history_row_message(
+    reason: str | None,
+    to_status: str | None,
+    snapshot_note: str | None,
+) -> str:
+    r = _str(reason)
+    if r == "case_created":
+        return "Case record created."
+    if r == "conversation_appended":
+        sn = _str(snapshot_note)
+        if sn:
+            return f"Conversation updated (lifecycle: {sn})."
+        return "Conversation updated."
+    ts = _str(to_status)
+    if ts:
+        return f"Record state: {ts}."
+    return "Record updated."
+
+
+def _case_activity_from_state_history_rows(rows: list[Any]) -> list[dict[str, str]]:
+    """Map state_history rows to case_activity-shaped entries (newest first)."""
+    out: list[dict[str, str]] = []
+    for row in rows:
+        if not row:
+            continue
+        state_event_id = row[0]
+        reason = row[1]
+        to_status = row[2]
+        snapshot_note = row[3]
+        created_at = row[4]
+        eid = str(state_event_id).replace("-", "")[:16]
+        msg = _state_history_row_message(reason, to_status, snapshot_note)
+        out.append(
+            {
+                "activity_id": f"act_pg_{eid}",
+                "activity_type": _str(reason) or "state_event",
+                "message": msg,
+                "created_at": _ts_to_iso(created_at),
+            }
+        )
+    return out[:_MAX_CASE_ACTIVITY]
+
+
+def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
+    """
+    Reconstruct a pilot case dict from Postgres mirror rows (dual-write shape).
+    Returns None if no service_records row exists for record_id.
+    """
+    rid = _str(record_id)
+    if not rid:
+        return None
+
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    sr.record_id,
+                    sr.client_id,
+                    sr.issue_category,
+                    sr.title_summary,
+                    sr.case_status,
+                    sr.lifecycle_status,
+                    sr.waiting_on,
+                    sr.next_contact_by,
+                    sr.current_next_action,
+                    sr.customer_name,
+                    sr.customer_phone,
+                    sr.customer_email,
+                    sr.policy_number,
+                    sr.contact_note,
+                    sr.origin_session_id,
+                    sr.created_at,
+                    sr.updated_at,
+                    sr.extra,
+                    srd.structured_payload,
+                    srd.quote_readiness
+                FROM service_records sr
+                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+                WHERE sr.record_id = %s
+                """,
+                (rid,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            cur.execute(
+                """
+                SELECT external_message_id, sender_type, message_text, sequence_num, created_at, raw_payload
+                FROM record_messages
+                WHERE record_id = %s
+                ORDER BY sequence_num ASC, created_at ASC
+                """,
+                (rid,),
+            )
+            msg_rows = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT state_event_id, reason, to_status, snapshot_note, created_at
+                FROM state_history
+                WHERE record_id = %s
+                ORDER BY created_at DESC, state_event_id DESC
+                LIMIT %s
+                """,
+                (rid, _MAX_CASE_ACTIVITY),
+            )
+            state_rows = cur.fetchall()
+
+    extra = row[17] if isinstance(row[17], dict) else {}
+    structured = row[18] if isinstance(row[18], dict) else {}
+    q_readiness_col = _str(row[19])
+
+    case: dict[str, Any] = {}
+    for k, v in structured.items():
+        case[k] = v
+
+    case["case_id"] = str(row[0])
+    if row[1]:
+        case["client_id"] = str(row[1]).strip()
+    case["issue_category"] = _str(row[2])
+    case["conversation_summary"] = _str(row[3])
+    case["case_status"] = _str(row[4]) or "new"
+    case["lifecycle_status"] = _str(row[5])
+    case["waiting_on"] = _str(row[6]) or "none"
+    case["next_contact_by"] = _str(row[7])
+    case["broker_next_step"] = _str(row[8])
+    case["customer_name"] = _str(row[9])
+    case["customer_phone"] = _str(row[10])
+    case["customer_email"] = _str(row[11])
+    case["policy_number"] = _str(row[12])
+    case["contact_note"] = _str(row[13])
+    if row[14]:
+        case["origin_session_id"] = str(row[14]).strip()
+
+    case["created_at"] = _ts_to_iso(row[15])
+    case["updated_at"] = _ts_to_iso(row[16])
+
+    if extra.get("formal_submitted_at"):
+        case["formal_submitted_at"] = str(extra["formal_submitted_at"]).strip()
+    else:
+        case["formal_submitted_at"] = case["created_at"]
+
+    if isinstance(extra.get("case_notes"), list):
+        case["case_notes"] = extra["case_notes"]
+    if isinstance(extra.get("case_attachments"), list):
+        case["case_attachments"] = extra["case_attachments"]
+    if "workbench_test" in extra:
+        case["workbench_test"] = bool(extra.get("workbench_test"))
+    if "workbench_archived" in extra:
+        case["workbench_archived"] = bool(extra.get("workbench_archived"))
+
+    if q_readiness_col:
+        case["quote_ready_status"] = q_readiness_col
+    elif "quote_ready_status" not in case:
+        case["quote_ready_status"] = ""
+
+    case_messages: list[dict[str, Any]] = []
+    for mr in msg_rows:
+        rawp = mr[5]
+        if isinstance(rawp, dict) and (rawp.get("text") or "").strip():
+            case_messages.append(dict(rawp))
+            continue
+        ext_id = _str(mr[0])
+        sender = _str(mr[1]).lower()
+        role = "customer" if sender == "customer" else "system"
+        text = _str(mr[2])
+        seq = int(mr[3] or 1)
+        ca = _ts_to_iso(mr[4])
+        case_messages.append({
+            "message_id": ext_id or f"msg_{ext_id}",
+            "role": role,
+            "text": text,
+            "created_at": ca,
+            "sequence": seq,
+        })
+
+    case["case_messages"] = case_messages
+    case["case_activity"] = _case_activity_from_state_history_rows(list(state_rows or []))
+
+    from services.fiqa_api.inbox_triage.case_store import _build_source_from_messages
+
+    case["source_text"] = _build_source_from_messages(case_messages)
+
+    return case
+
+
+def count_service_records() -> int:
+    """Total rows in service_records (for workbench queue totals)."""
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM service_records")
+            row = cur.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+def list_record_ids_recent(limit: int, offset: int = 0) -> list[str]:
+    """Return record_ids ordered by updated_at descending (newest first)."""
+    safe = max(1, min(int(limit or 8), 500))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT record_id FROM service_records
+                ORDER BY updated_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (safe, safe_offset),
+            )
+            return [str(r[0]) for r in cur.fetchall()]
+
+
+def delete_service_record(record_id: str) -> bool:
+    """Delete one service record (child rows CASCADE). Returns True if a row was removed."""
+    rid = (record_id or "").strip()
+    if not rid:
+        return False
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM service_records WHERE record_id = %s", (rid,))
+            deleted = cur.rowcount or 0
+        conn.commit()
+        return deleted > 0

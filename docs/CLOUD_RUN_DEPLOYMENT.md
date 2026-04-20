@@ -170,10 +170,10 @@ The model is downloaded during Docker build, so runtime doesn't need HuggingFace
 
 ## Cost Controls
 
-The deployment uses cost-safe defaults:
+The deployment uses cost-safe defaults (see `scripts/deploy_rag_demo.sh`; live `fiqa-api` parity):
 - Min instances: 0 (scales to zero)
 - Max instances: 2
 - CPU: 1
-- Memory: 512Mi
+- Memory: 1Gi
 - Timeout: 60s
-- Concurrency: 80
+- Concurrency: 30

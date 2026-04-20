@@ -6,7 +6,7 @@
     {
       "id": "ab_01_a_add_car_clean",
       "client_id": "chen_kui",
-      "latest_text": "2024 Tesla Model Y，94102，下周提车，我开",
+      "latest_text": "2024 Tesla Model Y，94102，VIN 1HGCM82633A123456，2026年4月20日提车，主驾是我本人",
       "conversation_turns": [],
       "expected_handoff_ready": true,
       "expected_draft_language": "zh",
@@ -15,7 +15,7 @@
     {
       "id": "ab_02_b_add_car_clean",
       "client_id": "socal_precision",
-      "latest_text": "2024 Tesla Model Y，94102，下周提车，我开",
+      "latest_text": "2024 Tesla Model Y，94102，VIN 1HGCM82633A123456，2026年4月20日提车，主驾是我本人",
       "conversation_turns": [],
       "expected_handoff_ready": true,
       "expected_draft_language": "zh",
@@ -26,7 +26,7 @@
       "id": "ab_03_a_add_car_materials_sent",
       "client_id": "chen_kui",
       "conversation_turns": [
-        { "role": "customer", "text": "2024 Toyota Camry，92705，下周三提车，我开" }
+        { "role": "customer", "text": "2024 Toyota Camry，92705，VIN 1HGCM82633A123456，2026年4月18日提车，我开" }
       ],
       "latest_text": "发你微信了",
       "expected_handoff_ready": true,
@@ -37,7 +37,7 @@
       "id": "ab_04_b_add_car_materials_sent",
       "client_id": "socal_precision",
       "conversation_turns": [
-        { "role": "customer", "text": "2024 Toyota Camry，92705，下周三提车，我开" }
+        { "role": "customer", "text": "2024 Toyota Camry，92705，VIN 1HGCM82633A123456，2026年4月18日提车，我开" }
       ],
       "latest_text": "发你微信了",
       "expected_handoff_ready": true,
@@ -48,7 +48,7 @@
     {
       "id": "ab_05_a_add_car_ask_send",
       "client_id": "chen_kui",
-      "latest_text": "2024 Honda Accord 92705 下周三提车 我老婆开，declaration page 要不要先发你看看",
+      "latest_text": "2024 Honda Accord 92705 VIN 1HGCM82633A123456 2026年4月18日提车 我是主驾驶人，declaration page 要不要先发你看看",
       "conversation_turns": [],
       "expected_handoff_ready": true,
       "expected_draft_language": "zh",
@@ -57,7 +57,7 @@
     {
       "id": "ab_06_b_add_car_ask_send",
       "client_id": "socal_precision",
-      "latest_text": "2024 Honda Accord 92705 下周三提车 我老婆开，declaration page 要不要先发你看看",
+      "latest_text": "2024 Honda Accord 92705 VIN 1HGCM82633A123456 2026年4月18日提车 我是主驾驶人，declaration page 要不要先发你看看",
       "conversation_turns": [],
       "expected_handoff_ready": true,
       "expected_draft_language": "zh",
@@ -68,7 +68,7 @@
       "id": "ab_07_a_add_car_correction",
       "client_id": "chen_kui",
       "conversation_turns": [
-        { "role": "customer", "text": "2024 camry 92705 周三提车 我开" }
+        { "role": "customer", "text": "2024 camry 92705 2026年4月20日提车 VIN 1HGCM82633A123456 我开" }
       ],
       "latest_text": "不是camry，是accord",
       "expected_handoff_ready": true,
@@ -79,7 +79,7 @@
       "id": "ab_08_b_add_car_correction",
       "client_id": "socal_precision",
       "conversation_turns": [
-        { "role": "customer", "text": "2024 camry 92705 周三提车 我开" }
+        { "role": "customer", "text": "2024 camry 92705 2026年4月20日提车 VIN 1HGCM82633A123456 我开" }
       ],
       "latest_text": "不是camry，是accord",
       "expected_handoff_ready": true,

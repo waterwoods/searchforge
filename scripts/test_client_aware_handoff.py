@@ -45,8 +45,8 @@ def test_direct(base_url: str) -> int:
     if "客服团队" not in draft_db:
         errors.append(f"demo_broker expected 客服团队 in draft, got: {draft_db[:80]}")
 
-    # Add-car handoff: demo_broker vs chen_kui
-    add_car_text = "2024 Tesla Model Y, 94102, 下周提车，我开"
+    # Add-car handoff: demo_broker vs chen_kui (pilot truth-complete; relative-only pickup is not quote-ready)
+    add_car_text = "2024 Tesla Model Y，94102，VIN 1HGCM82633A123456，2026年4月20日提车，主驾是我本人"
     result_ck_ac = triage_conversation(add_car_text, [], client_id="chen_kui")
     result_db_ac = triage_conversation(add_car_text, [], client_id="demo_broker")
     draft_ck_ac = result_ck_ac.get("client_reply_draft", "")

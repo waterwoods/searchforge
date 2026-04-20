@@ -27,14 +27,26 @@ POST_SUBMIT_FORMAL_SUBMIT_NAG = (
     "请在入口完成正式提交",
 )
 
-# Reply layer: sounds like materials/contact tail when question may be different (weak signal)
+# Reply layer: contact-gap tail markers (long or short one-line form)
 CONTACT_GAP_TAIL_MARKERS = (
     "若姓名或电话尚未",
     "办公室后续联系时可能会先确认联系方式",
+    "（若方便：请在本对话补一行姓名与电话",
     "name or phone isn't clear",
 )
 
 GENERIC_INTENT = "generic_followup"
+
+# Post-submit: these intents may still carry a light contact-gap line without being "wrong question" (master outline §4.10).
+CONTACT_GAP_TAIL_INTENT_OK = (
+    GENERIC_INTENT,
+    "office_receipt_question",
+    "materials_claim",
+    "timeline_question",
+    "quote_detail_question",
+    "supplement_info",
+    "correction",
+)
 
 
 def _norm_stem(text: str, n: int = 96) -> str:
@@ -141,18 +153,14 @@ def warnings_for_turn(
             )
 
     if post_submit_truth:
-        # Suspicious: contact-gap tail when intent is not generic / office question
-        if intent_family and intent_family not in (
-            GENERIC_INTENT,
-            "office_receipt_question",
-            "materials_claim",
-        ):
+        # Flag only when tail reads off-topic vs resolved intent (§4.10 allows light tail for timeline/quote/etc.)
+        if intent_family and intent_family not in CONTACT_GAP_TAIL_INTENT_OK:
             if _any_substr(draft, CONTACT_GAP_TAIL_MARKERS):
                 out.append(
                     {
                         "code": "REPLY_CONTACT_GAP_TAIL_MISMATCH",
                         "layer": "reply",
-                        "message": "Contact-gap reassurance tail present while intent family is not generic/receipt/materials",
+                        "message": "Contact-gap tail present while intent family is not in the policy-allowed set for light tails",
                         "detail": intent_family,
                     }
                 )

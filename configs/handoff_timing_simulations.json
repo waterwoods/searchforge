@@ -8,12 +8,12 @@
       "name": "Add-car + driver detail in T3",
       "turns": [
         {"role": "customer", "text": "加车 2024 Tesla Model Y"},
-        {"role": "customer", "text": "90210 下周提车"},
-        {"role": "customer", "text": "对了 是我老婆开"}
+        {"role": "customer", "text": "90210 VIN 1HGCM82633A123456 2026年4月20日提车"},
+        {"role": "customer", "text": "对了 主驾驶人是我本人"}
       ],
       "expected_handoff_after_turn": 3,
       "expected_no_handoff_turn2": true,
-      "notes": "T2 has zip+delivery; system should ask driver; T3 adds driver; handoff at T3"
+      "notes": "T2 VIN + calendar delivery + ZIP (driver still missing); T3 explicit primary driver → quote_ready handoff"
     },
     {
       "id": "HT2",
@@ -58,10 +58,10 @@
       "turns": [
         {"role": "customer", "text": "加车 2021 Honda"},
         {"role": "customer", "text": "不是这个 是另一辆 2024 Tesla Model Y"},
-        {"role": "customer", "text": "90210 下周提车"}
+        {"role": "customer", "text": "90210 VIN 1HGCM82633A123456 2026年4月20日提车 我是主驾驶人 周九4155550100"}
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "T2 correction; T3 zip+delivery; collected should show 2024 Tesla"
+      "notes": "T2 correction; T3 pilot-complete; collected should show 2024 Tesla"
     },
     {
       "id": "HT6",
@@ -91,10 +91,10 @@
       "name": "Add-car + side question in same turn",
       "turns": [
         {"role": "customer", "text": "加车 2024 X5"},
-        {"role": "customer", "text": "90210 下周提车 对了 garaging proof 是什么"}
+        {"role": "customer", "text": "90210 VIN 1HGCM82633A123456 2026年4月20日提车 我是主驾驶人 对了 garaging proof 是什么"}
       ],
       "expected_handoff_after_turn": 2,
-      "notes": "T2 has full add-car + clarification; answer question; hand off"
+      "notes": "T2 pilot-complete add-car + garaging doc question; hand off at quote_ready"
     },
     {
       "id": "HT9",
@@ -126,10 +126,10 @@
       "name": "Add-car + coverage question in same turn",
       "turns": [
         {"role": "customer", "text": "加车 2024 Tesla Model Y"},
-        {"role": "customer", "text": "90210 下周提车 顺便问一下 coverage 可以调吗"}
+        {"role": "customer", "text": "90210 VIN 1HGCM82633A123456 2026年4月20日提车 我是主驾驶人 顺便问一下 coverage 可以调吗"}
       ],
       "expected_handoff_after_turn": 2,
-      "notes": "T2 has full add-car + coverage question; answer coverage briefly; hand off"
+      "notes": "T2 pilot-complete add-car truth + coverage side-question; hand off when quote_ready"
     },
     {
       "id": "HT12",
@@ -138,10 +138,10 @@
       "turns": [
         {"role": "customer", "text": "加车 2024 BMW X5"},
         {"role": "customer", "text": "不是X5 是X3"},
-        {"role": "customer", "text": "90210 下周提车 我开"}
+        {"role": "customer", "text": "90210 VIN 1HGCM82633A123456 2026年4月20日提车 我是主驾驶人"}
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "T2 correction; T3 zip+delivery+driver; collected should show X3"
+      "notes": "T2 correction; T3 pilot-complete (VIN + calendar delivery); collected should show X3"
     },
     {
       "id": "HT13",
@@ -149,11 +149,11 @@
       "name": "Add-car + materials sent T3 (我已经发你微信了)",
       "turns": [
         {"role": "customer", "text": "加车 2024 Honda Accord 90210"},
-        {"role": "customer", "text": "下周提车"},
-        {"role": "customer", "text": "材料我已经发你微信了"}
+        {"role": "customer", "text": "2026年4月20日提车 我是主驾驶人"},
+        {"role": "customer", "text": "VIN 1HGCM82633A123456 材料我已经发你微信了"}
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "COMMERCIAL_FLOW_HARDENING: T2 delivery triggers driver ask; T3 materials_sent overrides, handoff with verify"
+      "notes": "T2 calendar delivery + driver (still need VIN); T3 VIN + materials sent → quote_ready handoff"
     }
   ]
 }

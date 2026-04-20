@@ -102,9 +102,9 @@
       "client_id": "chen_kui",
       "expected_draft_language": "zh",
       "conversation_turns": [],
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人",
       "expected_handoff_ready": true,
-      "draft_must_contain_any": ["正式提交办公室", "服务记录", "队列"],
+      "draft_must_contain_any": ["正式提交办公室", "服务记录", "队列", "已经可以报价", "报价与联系"],
       "draft_must_not_contain_any": ["本所", "加车资料已到办公室", "资料已到办公室"]
     },
     {
@@ -112,9 +112,9 @@
       "client_id": "socal_precision",
       "expected_draft_language": "zh",
       "conversation_turns": [],
-      "latest_text": "加车 2020 Toyota Camry 95131 下周五提车 主要我老婆开",
+      "latest_text": "加车 2020 Toyota Camry 95131 VIN 1HGCM82633A123456 2026年4月24日提车 我是主驾驶人",
       "expected_handoff_ready": true,
-      "draft_must_contain_any": ["正式提交", "本条服务记录", "队列"],
+      "draft_must_contain_any": ["正式提交", "本条服务记录", "队列", "已经可以报价", "报价与联系", "本所"],
       "draft_must_not_contain_any": ["办公室会核对", "提交办公室", "加车资料已到办公室"]
     },
     {

@@ -46,36 +46,43 @@ def test_workflow_state_keys_present() -> bool:
 
 
 def test_handoff_semantics() -> bool:
-    """handoff_ready and case_creation_suggested consistency."""
+    """handoff_ready and case_creation_suggested consistency (Add-Car requires quote_ready per pilot contract)."""
     # Turn 1 add-car partial -> not handoff
     r1 = triage_conversation("我买了台宝马X5，想问下保费多少钱", [])
     assert not r1.get("handoff_ready"), "Turn 1 add-car partial should not hand off"
     assert r1.get("collection_stage") == "collecting"
+    assert r1.get("triage_mode") == "greenfield"
 
-    # Turn 2 add-car zip+delivery -> ask driver (TOP_COMMERCIAL_DEEPENING: capture driver corrections)
+    # Turn 2 add-car zip + relative pickup -> not quote_ready (no VIN / no calendar delivery)
     turns = [
         {"role": "customer", "text": "我买了台宝马X5，想问下保费多少钱"},
         {"role": "system", "text": "先把年份和地址邮编发我"},
         {"role": "customer", "text": "2024年的，zip 90210，下周提车"},
     ]
     r2 = triage_conversation("2024年的，zip 90210，下周提车", turns[:2])
-    # At T2 with delivery but not driver: ask for driver (LC-AC3 fix)
-    assert not r2.get("handoff_ready"), "Turn 2 add-car zip+delivery should ask driver first"
-    assert "驾驶人" in (r2.get("client_reply_draft") or ""), "Should ask for driver"
+    assert not r2.get("handoff_ready"), "Turn 2 add-car without quote_ready should not hand off"
+    assert r2.get("quote_ready_status") in ("need_more", "almost_ready")
+    assert r2.get("collection_stage") == "collecting"
 
-    # Turn 3 add-car with driver -> handoff
-    r2b = triage_conversation("我开", turns)
-    assert r2b.get("handoff_ready"), "Turn 3 add-car with driver should hand off"
+    # Turn 3: VIN + calendar delivery + driver -> quote_ready and handoff (greenfield)
+    r2b = triage_conversation(
+        "VIN 1HGBH41JXMN109186 pickup 04/15/2026 primary driver is me",
+        turns,
+    )
+    assert r2b.get("quote_ready_status") == "quote_ready"
+    assert r2b.get("handoff_ready"), "Turn 3 add-car quote_ready should allow handoff"
     assert r2b.get("collection_stage") == "enough_for_handoff"
+    assert r2b.get("triage_mode") == "greenfield"
 
-    # Append always handoff_ready
+    # Append: handoff_ready means broker-visible update, not greenfield quote completion
     r3 = triage_for_append("[客户] a\n\n[系统] b", "发你了")
     assert r3.get("handoff_ready"), "Append should always be handoff_ready"
+    assert r3.get("triage_mode") == "append"
 
     # Phase 2: lifecycle_status
     assert r1.get("lifecycle_status") == "collecting", "Turn 1 partial should be collecting"
-    assert r2.get("lifecycle_status") == "collecting", "Turn 2 zip+delivery asks driver"
-    assert r2b.get("lifecycle_status") == "handoff_pending", "Turn 3 with driver should be handoff_pending"
+    assert r2.get("lifecycle_status") == "collecting", "Turn 2 without quote_ready stays collecting"
+    assert r2b.get("lifecycle_status") == "handoff_pending", "Turn 3 quote_ready should be handoff_pending"
     assert r3.get("lifecycle_status") == "handoff_pending", "Append should be handoff_pending"
     print("  OK handoff semantics consistent")
     return True

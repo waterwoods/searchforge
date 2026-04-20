@@ -41,10 +41,10 @@
       "turns": [
         { "role": "customer", "text": "我买了台宝马X5，想问下保费多少钱" },
         { "role": "customer", "text": "2024年的" },
-        { "role": "customer", "text": "90210，下周提车。这些够了吗？" }
+        { "role": "customer", "text": "90210，VIN 1HGCM82633A123456，2026年4月20日提车，主驾是我，张三电话4155550100。这些够了吗？" }
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "3-turn: Turn 1 vague quote ask; Turn 2 year; Turn 3 zip+delivery + asks if enough. Proves multi-turn quote collection + Collected chips."
+      "notes": "3-turn Add-Car pilot: T1 vague; T2 year; T3 truth-complete (VIN + calendar delivery + driver + CA ZIP + contact) per PILOT_CONTRACT_ADD_CAR_V1."
     },
     {
       "id": "SIM4",
@@ -53,11 +53,11 @@
       "section": "edge_cases",
       "turns": [
         { "role": "customer", "text": "I bought a new BMW X5, how much is insurance?" },
-        { "role": "customer", "text": "2024, 90210, picking up next week" },
-        { "role": "customer", "text": "I drive it myself" }
+        { "role": "customer", "text": "2024, 90210, VIN 1HGCM82633A123456, pickup 04/20/2026" },
+        { "role": "customer", "text": "I am the primary driver. Jane Doe 415-555-0100" }
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "English add-car; T2 year+zip+delivery; T3 driver (deepening: ask driver at T2)"
+      "notes": "English add-car pilot: T2 structural progress; T3 primary driver + contact so handoff matches quote_ready + contact gate."
     },
     {
       "id": "SIM5",
@@ -142,11 +142,11 @@
       "section": "edge_cases",
       "turns": [
         { "role": "customer", "text": "我买了台2024宝马X5，想问下保费" },
-        { "role": "customer", "text": "90210，下周提车" },
-        { "role": "customer", "text": "我开" }
+        { "role": "customer", "text": "90210，VIN 1HGCM82633A123456，2026年4月20日提车" },
+        { "role": "customer", "text": "我开。张三4155550100" }
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "Add-car; T1 year+model; T2 zip+delivery; T3 driver (deepening: ask driver at T2)"
+      "notes": "Add-car pilot: T2 VIN + calendar pickup; T3 primary driver + phone for handoff timing."
     },
     {
       "id": "SIM12",
@@ -192,10 +192,10 @@
       "turns": [
         { "role": "customer", "text": "想加一台车，宝马X5" },
         { "role": "customer", "text": "2024年的" },
-        { "role": "customer", "text": "90210，下周提车" }
+        { "role": "customer", "text": "90210，VIN 1HGCM82633A123456，2026年4月20日提车，主驾是我，李四电话4155550100" }
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "Strongest multi-turn proof: Turn 1 model only; Turn 2 year; Turn 3 zip+delivery — hand off at turn 3. Shows turn-to-turn context preservation."
+      "notes": "Multi-turn pilot-complete handoff at T3: VIN + absolute delivery + driver + contact (no relative-only pickup as quote truth)."
     },
     {
       "id": "R1",
@@ -228,11 +228,11 @@
       "section": "real_customer",
       "turns": [
         { "role": "customer", "text": "宝马x5，多少钱" },
-        { "role": "customer", "text": "2024年的，90210，下周拿" },
-        { "role": "customer", "text": "我开" }
+        { "role": "customer", "text": "2024年的，90210，VIN 1HGCM82633A123456，2026年4月20日拿车" },
+        { "role": "customer", "text": "我开。王五电话4155550100" }
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "Real: ultra-short fragment; T2 zip+delivery; T3 driver (deepening)"
+      "notes": "Real ultra-short style with pilot truth on T2–T3 (VIN + calendar date + driver + phone)."
     },
     {
       "id": "R4",
@@ -242,10 +242,10 @@
       "turns": [
         { "role": "customer", "text": "我想加一辆车，然后这个 garaging proof 又是什么？" },
         { "role": "customer", "text": "X5 2024年的，zip 90210" },
-        { "role": "customer", "text": "下周拿车" }
+        { "role": "customer", "text": "VIN 1HGCM82633A123456，2026年4月25日拿车，主驾是我，赵六4155550100" }
       ],
       "expected_handoff_after_turn": 3,
-      "notes": "Real: mixed intent — add-car + document confusion. T2 vehicle+zip; T3 delivery → handoff (80% completion)."
+      "notes": "Mixed intent preserved; T3 completes Add-Car pilot truth (VIN + calendar pickup + driver + contact)."
     },
     {
       "id": "R5",

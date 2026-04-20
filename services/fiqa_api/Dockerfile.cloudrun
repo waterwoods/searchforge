@@ -6,6 +6,10 @@
 
 FROM python:3.11-slim
 
+# Injected at build time (Cloud Build / deploy_rag_demo.sh) so /version can report deploy identity.
+ARG GIT_SHA=
+ENV GIT_SHA=${GIT_SHA}
+
 # Set working directory
 WORKDIR /app
 
@@ -27,7 +31,8 @@ COPY requirements.txt /app/requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    python -c "import psycopg; print('✅ psycopg import OK (dual-write)')"
 
 # Pre-download and cache fastembed model at build time (avoids runtime HuggingFace download failures)
 # Model name must match runtime default: BAAI/bge-small-en-v1.5
