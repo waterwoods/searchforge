@@ -427,10 +427,22 @@ def maybe_apply_quote_ready_conversion_reply(
         _ct_v5 = int(customer_turn_index)
     except (TypeError, ValueError):
         _ct_v5 = 1
-    # V5 Immediate Handoff: turn 1 shows triage confirmation block — do not replace with conversion ladder yet
-    if _ct_v5 == 1 and not result.get("handoff_ready"):
-        result["conversion_stage"] = CS_NOT_READY
-        return
+    # Turn 1 quote_ready: full handoff copy stays on triage draft; contact-only gap still uses conversion ladder.
+    if _ct_v5 == 1:
+        _s1 = {str(x).lower() for x in (result.get("still_needed_fields") or []) if x}
+        _contact_only_t1 = _s1.issubset({"name", "phone"}) and bool(_s1)
+        if not result.get("handoff_ready"):
+            result["conversion_stage"] = CS_NOT_READY
+            return
+        # Quote-ready + contact-only gap on turn 1: triage already stitched broker/office handoff copy
+        # (IDENTITY_CONTACT_LITE tail). Replacing it with conversion_flow_v3 hides client-pack office lines.
+        if _contact_only_t1:
+            result["conversion_stage"] = CS_NOT_READY
+            return
+        if not _contact_only_t1:
+            if (result.get("client_reply_draft") or "").strip():
+                result["conversion_stage"] = CS_NOT_READY
+                return
 
     still = [str(x).lower() for x in (result.get("still_needed_fields") or []) if x]
     still_set = set(still)
@@ -443,6 +455,10 @@ def maybe_apply_quote_ready_conversion_reply(
     follow = str(result.get("follow_up_type") or "").strip().lower()
     mt = merged_text or ""
     if follow == "clarification_question" and "[系统]" in mt:
+        result["conversion_stage"] = CS_NOT_READY
+        return
+    # Materials-sent / vehicle-correction handoffs use triage stitched copy (office vs conversion CTA).
+    if result.get("handoff_ready") and follow in ("already_sent", "correction"):
         result["conversion_stage"] = CS_NOT_READY
         return
 

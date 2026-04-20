@@ -124,6 +124,10 @@ def normalize_delivery_date_or_flag(
 
     today = now_context or _reference_today()
 
+    # Policy effective-date phrasing ("start tomorrow") — not a pickup calendar commitment for guardrails.
+    if re.search(r"(?i)\bstart\s+(?:tomorrow|today)\b", tl) and not _pickup_context(tl):
+        return None, "none"
+
     # 明天 / tomorrow
     if "明天" in raw or re.search(r"\btomorrow\b", tl):
         resolved = today + timedelta(days=1)

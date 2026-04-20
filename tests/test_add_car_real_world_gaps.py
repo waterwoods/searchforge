@@ -91,7 +91,7 @@ def test_conversion_contact_gap_copy() -> None:
         client_id="chen_kui",
         merged_text="[客户] hi",
         post_submit_phrasing=False,
-        customer_turn_index=1,
+        customer_turn_index=2,
         last_customer_message="hi",
         prior_workflow_state=None,
         conversation_turns=[],

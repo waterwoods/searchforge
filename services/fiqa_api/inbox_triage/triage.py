@@ -3138,6 +3138,8 @@ def _extract_vehicle_identity_for_key_scoped(
         return {"vin": None, "year": None, "model": None, "zip": None}
     vin_all = list(_VIN_17_RE.finditer(tl))
     if vin_all:
+        if len(vin_all) >= 2 and re.search(r"(?i)\bvin\s+is\s+[a-z0-9]{17}.+\bnot\b", tl):
+            return {"vin": vin_all[0].group(1).upper(), "year": None, "model": None, "zip": None}
         return {"vin": vin_all[-1].group(1).upper(), "year": None, "model": None, "zip": None}
     year = ""
     year_m = None
@@ -5225,6 +5227,23 @@ def triage_conversation(
             skip_reason=_skip_slot,
         )
 
+    _follow_v4_pre = _derive_follow_up_type(last_customer_raw)
+    _col_v4_pre, _still_v4_pre, _, _, _ = _compute_add_car_collected_still_lists(
+        merged_for_add_car_extraction,
+        last_customer_raw,
+        reply_truth_context,
+        _follow_v4_pre,
+    )
+    _tf_v4_pre = _add_car_augmented_truth_fields(
+        merged_for_add_car_extraction,
+        reply_truth_context,
+        last_customer_raw,
+        _follow_v4_pre,
+    )
+    _qrs_v4_pre = _add_car_quote_ready_status(_tf_v4_pre)
+    # Latest customer segment for language — merged_text includes [客户] labels (Chinese chars).
+    _lang_v4_pre = "zh" if _contains_chinese(last_customer_raw) else "en"
+
     # Selective LLM routing: simple turns use fast path (SIMULATION_ASSISTANT_SPEED_LAYER_BLUEPRINT)
     use_fast_path = (
         _is_llm_enabled()
@@ -5246,29 +5265,38 @@ def triage_conversation(
         base_result.get("issue_category", "unclear"),
     )
 
-    # V5: infer → draft → confirm (turn 1) → immediate broker handoff when case_usable (not quote_ready)
+    # V5: turn-1 confirm-first when customer opens conversationally (e.g. 我想加车 / mixed EN facts).
+    # Lift to broker handoff when quote_ready and: empty still, EN "add car" opener, or fact-dense ZH with
+    # only name/phone gaps (cross-client / pilot paste — not VIN-first EN blobs).
+    _turn1_qr_handoff_lift = False
     if is_add_car and customer_count + 1 == 1:
-        would_handoff = False
-
-    _follow_v4_pre = _derive_follow_up_type(last_customer_raw)
-    _col_v4_pre, _still_v4_pre, _, _, _ = _compute_add_car_collected_still_lists(
-        merged_for_add_car_extraction,
-        last_customer_raw,
-        reply_truth_context,
-        _follow_v4_pre,
-    )
-    _tf_v4_pre = _add_car_augmented_truth_fields(
-        merged_for_add_car_extraction,
-        reply_truth_context,
-        last_customer_raw,
-        _follow_v4_pre,
-    )
-    _qrs_v4_pre = _add_car_quote_ready_status(_tf_v4_pre)
+        _raw_t1 = (last_customer_raw or "").strip()
+        _en_add_car_opener = bool(re.match(r"(?i)add\s*car\b", _raw_t1))
+        _no_struct_still = not bool(_still_v4_pre)
+        _still_lo = {str(x).lower() for x in (_still_v4_pre or [])}
+        _contact_only_still = _still_lo <= {"name", "phone"} and bool(_still_lo)
+        # Require punctuation after opener so "我想加车 2024 …" (dense same-line facts) can still hand off.
+        _zh_conv_add_opener = bool(
+            re.match(
+                r"^\s*(我?想加车|我要加车|帮忙加车|想加一台车|想加一辆车|加一台车|加一辆车|我想加一台|我想加一辆)([。．，,])",
+                _raw_t1,
+            )
+        )
+        if _qrs_v4_pre == "quote_ready":
+            if _no_struct_still:
+                _turn1_qr_handoff_lift = True
+            elif _lang_v4_pre == "en" and _en_add_car_opener:
+                _turn1_qr_handoff_lift = True
+            elif _contact_only_still and _lang_v4_pre == "zh" and not _zh_conv_add_opener:
+                _turn1_qr_handoff_lift = True
+        if _turn1_qr_handoff_lift:
+            would_handoff = True
+        elif _qrs_v4_pre != "quote_ready":
+            would_handoff = False
     _pvc_raw = _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction)
     _pvc_v4_pre_arg = None
     if isinstance(_pvc_raw, str) and _pvc_raw.strip():
         _pvc_v4_pre_arg = _pvc_raw.strip()
-    _lang_v4_pre = "zh" if _contains_chinese(merged_text) else "en"
     if is_add_car:
         v4_bundle_early = build_v4_case_draft_bundle(
             merged_text=merged_for_add_car_extraction,
@@ -5292,6 +5320,12 @@ def triage_conversation(
                 primary_vehicle_summary=_pvc_v4_pre_arg,
                 language=_lang_v4_pre,
                 variant=intake_evolution_variant,
+            )
+            next_ask = _maybe_append_add_car_price_caveat(
+                merged_for_add_car_extraction,
+                next_ask or "",
+                _lang_v4_pre,
+                resolved_client_id,
             )
         else:
             _usable, _, _ = evaluate_v5_case_usable(
@@ -5336,7 +5370,9 @@ def triage_conversation(
             fields=_f_aug,
         )
 
-    if would_handoff and next_ask:
+    if would_handoff and next_ask and not (
+        is_add_car and customer_count + 1 == 1 and _turn1_qr_handoff_lift
+    ):
         handoff = False
         result_draft = next_ask
     else:
@@ -5356,6 +5392,17 @@ def triage_conversation(
             variant=intake_evolution_variant,
         )
         if not _vu:
+            handoff = False
+        elif (
+            not for_append
+            and customer_count + 1 >= 2
+            and _qrs_v4_pre != "quote_ready"
+            and any(
+                x in {str(f).lower() for f in (_still_v4_pre or [])}
+                for x in ("primary_driver", "vin")
+            )
+        ):
+            # V5 case_usable can be true before pilot quote bar; wait for missing VIN or primary driver.
             handoff = False
 
     handoff_phrases = _get_handoff_phrases(resolved_client_id)
