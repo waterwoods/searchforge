@@ -2,7 +2,7 @@
 
 **Single source of truth** for the California auto insurance **Unified Intake** product: minimal user input → auto-generated usable case → one confirmation → immediate broker handoff → broker completes remaining fields.
 
-**Status:** Living document. Last aligned with repo implementation: 2026-04-20 (Field Strategy behavior + Default Engine + Broker Completion + Learning V1).
+**Status:** Living document. Last aligned with repo implementation: 2026-04-20 (Field Strategy behavior + Default Engine JSON for usage keywords + ZIP3 garaging hints + V6 sim `mean_deferred_to_broker_fields` + Broker Completion + Learning V1).
 
 ---
 
@@ -179,7 +179,7 @@ Each applied default or inferred value **must** carry explainable metadata:
 | **When to surface to user** | Single-block confirmation when `confirmation_required_when` matches (e.g. medium+ inferred). |
 | **When to silently apply** | Low-risk Tier-2/Tier-3 hints applied into `inferred_fields` without extra turns. |
 
-**Code:** `auto_fill_defaults()` in `case_draft_engine.py`; usage industry fallback via `usage_default_from_strategy()`; ZIP / area-code hints tagged with `default_engine` trace fields where configured.
+**Code:** `auto_fill_defaults()` in `case_draft_engine.py`; usage industry fallback via `usage_default_from_strategy()`; **usage keyword→value rules** in `default_engine.usage_guess.keyword_rules`; **CA ZIP3→area labels** in `default_engine.garaging_area_hint.zip3_prefix_hints` (falls back to built-in map if absent); ZIP / area-code hints tagged with `default_engine` trace fields where configured.
 
 **Non-goal:** Multi-turn interrogation to satisfy defaults.
 
@@ -252,7 +252,7 @@ Each applied default or inferred value **must** carry explainable metadata:
 
 ### Missing modules
 
-- **Full Default Engine (§10)** — rules not yet fully externalized from `auto_fill_defaults`.
+- **Full Default Engine (§10)** — phone area-code label map and make-token heuristics still code-defined; other paths increasingly JSON-driven (`usage_guess.keyword_rules`, `garaging_area_hint.zip3_prefix_hints`).
 - **Automated learning promotion** — correction → config pipeline is manual.
 - **End-user mobile image UX** — picker/preview not complete everywhere.
 
@@ -278,7 +278,7 @@ Each applied default or inferred value **must** carry explainable metadata:
 | 1 | input_effort_score | 0.331 | 0.381 | 0.275 | 2 |
 | 2 | handoff_rate | 0.244 | 0.300 | 0.250 | 2 |
 
-**Notes:** 160 sessions per variant per cycle (Monte Carlo). Compare **completeness** via `case_usable_rate`, **handoff** via `handoff_rate`, **effort** via `input_effort_score` + typing chars. Harness is largely unchanged; strategy affects live triage + draft, not this script’s RNG personas.
+**Notes:** 160 sessions per variant per cycle (Monte Carlo). Compare **completeness** via `case_usable_rate`, **handoff** via `handoff_rate`, **effort** via `input_effort_score` + typing chars, **broker deferral load** via `mean_deferred_to_broker_fields` on each variant aggregate. Harness personas are fixed RNG; strategy affects live triage + draft.
 
 **Earlier run (400 × 3 cycles):** retained for historical comparison in git history / prior appendix snapshots.
 
@@ -314,7 +314,8 @@ Each applied default or inferred value **must** carry explainable metadata:
 | Field strategy config | `configs/common/add_car_field_strategy.json` (purpose, `defer_to_broker`, `confidence_policy`, `default_engine`) |
 | Runtime partition + prompts | `field_strategy.py` — `partition_still_needed_by_strategy`, confirm ordering; `triage._get_next_ask_for_add_car` respects VIN deferral |
 | Draft bundle | `build_v4_case_draft_bundle` — `field_strategy`, `still_needed_user_flow`, `deferred_to_broker_fields`, `broker_completion` |
-| Default engine | `auto_fill_defaults` — strategy-tagged metadata for usage, garaging, vehicle hints |
+| Default engine | `auto_fill_defaults` — `keyword_rules` + ZIP3 hints from JSON; strategy-tagged metadata for usage, garaging, vehicle hints |
+| V6 simulation | `run_v6_auto_input_simulation.py` — `mean_deferred_to_broker_fields` per variant |
 | Learning V1 | `learning_signals.py` — JSONL feedback memory |
 | Funnel | `emit_funnel_from_triage_result` + `case_snapshot` extended metadata (§13) |
 | Tests | `tests/test_field_strategy.py`, `tests/test_minimal_analytics.py`, `tests/test_field_strategy_behavior.py` |
