@@ -22,6 +22,10 @@ from services.fiqa_api.inbox_triage.parse_ocr_text_to_fields import parse_ocr_te
 from services.fiqa_api.inbox_triage.triage import triage_conversation
 
 
+def _deferred_broker_count(res: dict[str, Any]) -> int:
+    return len(res.get("deferred_to_broker_fields") or [])
+
+
 @dataclass
 class SessionMetrics:
     turns: int = 0
@@ -30,6 +34,7 @@ class SessionMetrics:
     handoff: bool = False
     case_usable: bool = False
     correction_turn: bool = False
+    deferred_to_broker_count: int = 0
 
 
 def _noise(text: str, level: float) -> str:
@@ -92,6 +97,7 @@ def run_session(
         m.turns = 2
         m.handoff = bool(r2.get("handoff_ready"))
         m.case_usable = bool(r2.get("case_usable"))
+        m.deferred_to_broker_count = _deferred_broker_count(r2)
         return m
 
     if persona == "image_user":
@@ -108,6 +114,7 @@ def run_session(
         m.turns = 1
         m.handoff = bool(r1.get("handoff_ready"))
         m.case_usable = bool(r1.get("case_usable"))
+        m.deferred_to_broker_count = _deferred_broker_count(r1)
         return m
 
     if persona == "mixed_user":
@@ -126,6 +133,7 @@ def run_session(
         m.turns = 2
         m.handoff = bool(r2.get("handoff_ready"))
         m.case_usable = bool(r2.get("case_usable"))
+        m.deferred_to_broker_count = _deferred_broker_count(r2)
         return m
 
     # messy_user: empty OCR + correction typed
@@ -154,6 +162,7 @@ def run_session(
     m.turns = 2
     m.handoff = bool(r2.get("handoff_ready"))
     m.case_usable = bool(r2.get("case_usable"))
+    m.deferred_to_broker_count = _deferred_broker_count(r2)
     return m
 
 
@@ -168,6 +177,9 @@ def aggregate(rows: list[SessionMetrics]) -> dict[str, Any]:
         "case_usable_rate": round(sum(1 for r in rows if r.case_usable) / n, 3),
         "input_effort_score": round(
             sum(r.typing_chars + (0 if r.image_used else 40) for r in rows) / n, 1
+        ),
+        "mean_deferred_to_broker_fields": round(
+            sum(r.deferred_to_broker_count for r in rows) / n, 2
         ),
     }
 
