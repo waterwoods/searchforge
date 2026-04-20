@@ -8,7 +8,18 @@
       "fallback_order": ["zip_prefix_map", "phone_area_code_map"],
       "confidence_label": "low",
       "surface_to_user": "when_inferred",
-      "silent_apply": false
+      "silent_apply": false,
+      "zip3_prefix_hints": {
+        "926": "Orange County, CA",
+        "927": "Orange County, CA",
+        "928": "Orange County, CA",
+        "900": "Los Angeles, CA",
+        "902": "Los Angeles, CA",
+        "941": "San Francisco Bay Area, CA",
+        "951": "Inland Empire, CA",
+        "945": "East Bay, CA",
+        "950": "South Bay / Peninsula, CA"
+      }
     },
     "usage_guess": {
       "fallback_order": ["keyword_heuristic", "industry_default"],

@@ -53,7 +53,8 @@ _V5_HANDOFF_SLOT_WEIGHTS: dict[str, float] = {
     "primary_driver": 0.17,
 }
 
-# Heuristic CA ZIP3 → rough area label (safe display only; broker verifies)
+# Heuristic CA ZIP3 → rough area label (safe display only; broker verifies).
+# Superseded by default_engine.garaging_area_hint.zip3_prefix_hints when present (PTD §10).
 _CA_ZIP3_AREA_HINT: dict[str, str] = {
     "926": "Orange County, CA",
     "927": "Orange County, CA",
@@ -65,6 +66,21 @@ _CA_ZIP3_AREA_HINT: dict[str, str] = {
     "945": "East Bay, CA",
     "950": "South Bay / Peninsula, CA",
 }
+
+
+def _resolved_zip3_area_hints() -> dict[str, str]:
+    _de = get_default_engine_section()
+    _gh = dict(_de.get("garaging_area_hint") or {}) if isinstance(_de, dict) else {}
+    raw = _gh.get("zip3_prefix_hints")
+    if isinstance(raw, dict) and raw:
+        out: dict[str, str] = {}
+        for k, v in raw.items():
+            ks = str(k).strip()
+            vs = str(v).strip()
+            if ks and vs:
+                out[ks] = vs
+        return out if out else _CA_ZIP3_AREA_HINT
+    return _CA_ZIP3_AREA_HINT
 
 
 def _norm_list(xs: list[str] | None) -> list[str]:
@@ -101,7 +117,7 @@ def auto_fill_defaults(
     z = _zip5_from_text(mt) if "zip" in miss or "zip" in coll else None
     if z and len(z) == 5:
         pre3 = z[:3]
-        area = _CA_ZIP3_AREA_HINT.get(pre3)
+        area = _resolved_zip3_area_hints().get(pre3)
         if area and "garaging_area_hint" not in coll:
             _gfs = get_field_spec("garaging_area_hint") or {}
             inferred["garaging_area_hint"] = {
