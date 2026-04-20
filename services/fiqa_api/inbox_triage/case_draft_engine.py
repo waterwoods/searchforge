@@ -121,17 +121,41 @@ def auto_fill_defaults(
     tl = mt.lower()
     usage_val = None
     usage_conf = 0.38
-    if any(x in tl for x in ("commute", "上下班", "通勤", "daily driver", "daily drive")):
-        usage_val = "daily_commute"
-        usage_conf = 0.52
-    elif any(x in tl for x in ("uber", "lyft", "rideshare", "网约车")):
-        usage_val = "rideshare"
-        usage_conf = 0.48
-    elif any(x in tl for x in ("pleasure", "weekend", "偶尔", "休闲")):
-        usage_val = "pleasure"
-        usage_conf = 0.42
+    _de_u = dict(_de_cfg.get("usage_guess") or {}) if isinstance(_de_cfg, dict) else {}
+    _kw_rules = _de_u.get("keyword_rules")
+    if isinstance(_kw_rules, list) and _kw_rules:
+        for rule in _kw_rules:
+            if not isinstance(rule, dict):
+                continue
+            val = rule.get("value")
+            kws = rule.get("keywords") or []
+            conf = rule.get("confidence")
+            if not val or not isinstance(kws, list):
+                continue
+            try:
+                uc = float(conf) if conf is not None else 0.38
+            except (TypeError, ValueError):
+                uc = 0.38
+            if any(str(k).lower() in tl for k in kws if k):
+                usage_val = str(val)
+                usage_conf = uc
+                break
+    else:
+        if any(x in tl for x in ("commute", "上下班", "通勤", "daily driver", "daily drive")):
+            usage_val = "daily_commute"
+            usage_conf = 0.52
+        elif any(x in tl for x in ("uber", "lyft", "rideshare", "网约车")):
+            usage_val = "rideshare"
+            usage_conf = 0.48
+        elif any(x in tl for x in ("pleasure", "weekend", "偶尔", "休闲")):
+            usage_val = "pleasure"
+            usage_conf = 0.42
     if usage_val:
         _ugs_kw = get_field_spec("usage_guess") or {}
+        _ug_kw_de = {
+            "fallback_order": list(_de_u.get("fallback_order") or ["keyword_heuristic", "industry_default"]),
+            "rule_id": "usage_keyword_rules" if isinstance(_kw_rules, list) and _kw_rules else "usage_keyword_heuristic",
+        }
         inferred["usage_guess"] = {
             "value": usage_val,
             "confidence": usage_conf,
@@ -139,11 +163,11 @@ def auto_fill_defaults(
             "source": "keyword_heuristic",
             "field_strategy_id": "usage_guess",
             "confidence_policy": str(_ugs_kw.get("confidence_policy") or "default_low"),
+            "default_engine": _ug_kw_de,
         }
     elif "usage" in miss or "primary_use" in miss:
         dv, dc, pt = usage_default_from_strategy()
         _ugs = get_field_spec("usage_guess") or {}
-        _de_u = dict(_de_cfg.get("usage_guess") or {}) if isinstance(_de_cfg, dict) else {}
         inferred["usage_guess"] = {
             "value": dv,
             "confidence": dc,

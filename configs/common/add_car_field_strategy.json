@@ -14,7 +14,24 @@
       "fallback_order": ["keyword_heuristic", "industry_default"],
       "confidence_label": "low_to_medium",
       "surface_to_user": "when_inferred",
-      "silent_apply": false
+      "silent_apply": false,
+      "keyword_rules": [
+        {
+          "value": "daily_commute",
+          "confidence": 0.52,
+          "keywords": ["commute", "上下班", "通勤", "daily driver", "daily drive"]
+        },
+        {
+          "value": "rideshare",
+          "confidence": 0.48,
+          "keywords": ["uber", "lyft", "rideshare", "网约车"]
+        },
+        {
+          "value": "pleasure",
+          "confidence": 0.42,
+          "keywords": ["pleasure", "weekend", "偶尔", "休闲"]
+        }
+      ]
     },
     "vehicle_from_summary": {
       "fallback_order": ["primary_vehicle_summary"],
