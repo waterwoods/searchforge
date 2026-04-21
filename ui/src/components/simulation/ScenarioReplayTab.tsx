@@ -3,7 +3,7 @@
  * Record-first: right column is primary; thread is audit trail.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Input, Progress, Row, Select, Space, Spin, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, Collapse, Input, Progress, Row, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import {
     PlayCircleOutlined,
     ReloadOutlined,
@@ -23,6 +23,7 @@ import {
 import { fetchAnalyticsDashboard, type AnalyticsDashboard } from '../../api/analyticsDashboard';
 import { useClientConfig } from '../../context/ClientConfigContext';
 import { AddCarRecordSummaryRail, computeAddCarFlowStep } from '../intake/AddCarRecordSummaryRail';
+import { CaseProgressionVisibilityBlock, ReplayStepIntelPanel } from './CaseProgressionVisibility';
 import replayConfig from '../../config/add_car_scenario_replay.json';
 import type { AddCarReplayScenario } from './addCarReplayTypes';
 import {
@@ -54,6 +55,15 @@ const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
 export type { AddCarReplayScenario } from './addCarReplayTypes';
+
+function priorCustomerLineForIndex(turns: ReplayTurn[], systemIndex: number): string | undefined {
+    for (let i = systemIndex - 1; i >= 0; i -= 1) {
+        if (turns[i]?.role === 'customer') {
+            return turns[i].content;
+        }
+    }
+    return undefined;
+}
 
 type ReplayTurn = {
     role: 'customer' | 'system';
@@ -816,26 +826,57 @@ export function ScenarioReplayTab() {
                                             justifyContent: t.role === 'customer' ? 'flex-end' : 'flex-start',
                                         }}
                                     >
-                                        <div
-                                            style={{
-                                                maxWidth: '92%',
-                                                padding: 12,
-                                                borderRadius: 8,
-                                                fontSize: 14,
-                                                lineHeight: 1.55,
-                                                color: '#262626',
-                                                background:
-                                                    t.role === 'customer' ? 'rgba(24, 144, 255, 0.14)' : 'rgba(82, 196, 26, 0.12)',
-                                                borderLeft: t.role === 'system' ? '3px solid #389e0d' : undefined,
-                                                borderRight: t.role === 'customer' ? '3px solid #1677ff' : undefined,
-                                            }}
-                                        >
-                                            <Text style={{ fontSize: 11, display: 'block', marginBottom: 6, color: '#595959' }}>
-                                                {t.role === 'customer'
-                                                    ? (uiCopy.portal_customer_bubble_label ?? '客户')
-                                                    : (uiCopy.portal_office_bubble_label ?? '系统整理')}
-                                            </Text>
-                                            <Text style={{ whiteSpace: 'pre-wrap' }}>{t.content}</Text>
+                                        <div style={{ maxWidth: '92%', width: t.role === 'system' && t.triageResult ? '92%' : undefined }}>
+                                            <div
+                                                style={{
+                                                    padding: 12,
+                                                    borderRadius: 8,
+                                                    fontSize: 14,
+                                                    lineHeight: 1.55,
+                                                    color: '#262626',
+                                                    background:
+                                                        t.role === 'customer'
+                                                            ? 'rgba(24, 144, 255, 0.14)'
+                                                            : 'rgba(82, 196, 26, 0.12)',
+                                                    borderLeft: t.role === 'system' ? '3px solid #389e0d' : undefined,
+                                                    borderRight: t.role === 'customer' ? '3px solid #1677ff' : undefined,
+                                                }}
+                                            >
+                                                <Text
+                                                    style={{ fontSize: 11, display: 'block', marginBottom: 6, color: '#595959' }}
+                                                >
+                                                    {t.role === 'customer'
+                                                        ? (uiCopy.portal_customer_bubble_label ?? '客户')
+                                                        : (uiCopy.portal_office_bubble_label ?? '系统整理')}
+                                                </Text>
+                                                <Text style={{ whiteSpace: 'pre-wrap' }}>{t.content}</Text>
+                                            </div>
+                                            {t.role === 'system' && t.triageResult ? (
+                                                <Collapse
+                                                    bordered={false}
+                                                    style={{
+                                                        marginTop: 8,
+                                                        background: 'transparent',
+                                                    }}
+                                                    size="small"
+                                                    items={[
+                                                        {
+                                                            key: `step-${idx}`,
+                                                            label: (
+                                                                <Text style={{ fontSize: 12, color: '#434343' }}>
+                                                                    本步系统状态（里程碑 / 字段 / 提取）
+                                                                </Text>
+                                                            ),
+                                                            children: (
+                                                                <ReplayStepIntelPanel
+                                                                    triage={t.triageResult}
+                                                                    userInput={priorCustomerLineForIndex(replayTurns, idx)}
+                                                                />
+                                                            ),
+                                                        },
+                                                    ]}
+                                                />
+                                            ) : null}
                                         </div>
                                     </div>
                                 ))}
@@ -881,6 +922,9 @@ export function ScenarioReplayTab() {
                                         {uiCopy.simulation_no_case_id_yet ?? '（演示未持久化时可能无编号）'}
                                     </Text>
                                 )}
+                                <div style={{ marginTop: 8 }}>
+                                    <CaseProgressionVisibilityBlock triage={lastTriage} compact />
+                                </div>
                                 {lastTriage.collection_stage && (
                                     <div>
                                         <Text style={{ fontSize: 12, color: '#595959', display: 'block', marginBottom: 4, fontWeight: 600 }}>
@@ -999,6 +1043,13 @@ export function ScenarioReplayTab() {
                                                     handoff {String(s.handoffReady ?? '—')}
                                                 </Tag>
                                                 <Tag>{s.collectionStage ?? '—'}</Tag>
+                                                <Tag color="cyan">{s.intakeFlowMilestone ?? 'milestone —'}</Tag>
+                                                <Tag color={s.caseUsable ? 'green' : 'default'}>
+                                                    usable {String(s.caseUsable ?? '—')}
+                                                </Tag>
+                                                <Tag color={s.actionReady ? 'success' : 'default'}>
+                                                    action {String(s.actionReady ?? '—')}
+                                                </Tag>
                                                 <Tag color="purple">intent {s.intentLabel}</Tag>
                                             </Space>
                                             <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.55, color: '#262626' }}>
@@ -1010,7 +1061,13 @@ export function ScenarioReplayTab() {
                                                 {s.replySnippet}
                                             </div>
                                             <div style={{ marginTop: 6, fontSize: 12, color: '#595959' }}>
-                                                仍缺：{s.stillNeededSummary}
+                                                仍缺（still_needed_fields）：{s.stillNeededSummary}
+                                            </div>
+                                            <div style={{ marginTop: 4, fontSize: 12, color: '#595959' }}>
+                                                用户路径仍缺：{s.stillNeededUserFlowSummary}
+                                            </div>
+                                            <div style={{ marginTop: 4, fontSize: 12, color: '#595959' }}>
+                                                deferred 办公室：{s.deferredBrokerSummary}
                                             </div>
                                         </div>
                                     ))}

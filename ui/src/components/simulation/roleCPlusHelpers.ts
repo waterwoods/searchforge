@@ -20,6 +20,11 @@ export type RoleCPlusTurnSnapshot = {
     stillNeededSummary: string;
     intentLabel: string;
     collectionStage?: string;
+    caseUsable?: boolean;
+    actionReady?: boolean;
+    intakeFlowMilestone?: string;
+    stillNeededUserFlowSummary: string;
+    deferredBrokerSummary: string;
 };
 
 function clip(s: string, n: number): string {
@@ -51,6 +56,16 @@ export function buildRoleCPlusSnapshots(
             needed && needed.length > 0
                 ? needed.slice(0, 8).join(', ') + (needed.length > 8 ? '…' : '')
                 : '—';
+        const suf = tr?.still_needed_user_flow;
+        const stillNeededUserFlowSummary =
+            suf && suf.length > 0
+                ? suf.slice(0, 8).join(', ') + (suf.length > 8 ? '…' : '')
+                : '—';
+        const defb = tr?.deferred_to_broker_fields;
+        const deferredBrokerSummary =
+            defb && defb.length > 0
+                ? defb.slice(0, 8).join(', ') + (defb.length > 8 ? '…' : '')
+                : '—';
         out.push({
             turnIndex: customerIdx,
             customerLine: clip(t.content, 140),
@@ -60,6 +75,11 @@ export function buildRoleCPlusSnapshots(
             stillNeededSummary,
             intentLabel: intentCompact(tr),
             collectionStage: tr?.collection_stage,
+            caseUsable: tr?.case_usable,
+            actionReady: tr?.action_ready,
+            intakeFlowMilestone: tr?.intake_flow_milestone,
+            stillNeededUserFlowSummary,
+            deferredBrokerSummary,
         });
     }
     return out;
@@ -130,7 +150,7 @@ export function buildRoleCPlusEndSummary(
         overallRead = '尚未产生客户轮次。';
     } else {
         const last = snapshots[snapshots.length - 1];
-        overallRead = `共 ${snapshots.length} 轮客户发言；末轮生命周期 ${last.lifecycleStatus ?? '—'}，handoff_ready=${String(last.handoffReady ?? '—')}。`;
+        overallRead = `共 ${snapshots.length} 轮客户发言；末轮生命周期 ${last.lifecycleStatus ?? '—'}，handoff_ready=${String(last.handoffReady ?? '—')}，milestone=${last.intakeFlowMilestone ?? '—'}，action_ready=${String(last.actionReady ?? '—')}。`;
         if (formalSubmittedAt) {
             overallRead += ' 已出现正式提交时间戳（办公室可见写入）。';
         } else {

@@ -61,6 +61,16 @@ export interface TriageResult {
     collection_stage?: 'collecting' | 'enough_for_handoff';
     /** Add-car / new quote: structured fields already collected (year, make_model, zip, delivery_date, primary_driver, vin) */
     collected_fields?: string[];
+    /** V5: structural broker-usable case (tier-1 + completeness policy); optional on older backends */
+    case_usable?: boolean;
+    /** V2.6: min-core bar met — safe to auto-progress toward quote */
+    action_ready?: boolean;
+    /** collecting | near_usable | usable | action_ready — intake progression milestone */
+    intake_flow_milestone?: 'collecting' | 'near_usable' | 'usable' | 'action_ready';
+    /** User-chat path: fields still needed from the customer before structural usability */
+    still_needed_user_flow?: string[];
+    /** Deferred to office/broker; should not block user chat path */
+    deferred_to_broker_fields?: string[];
     /** Add-car / new quote: fields still needed before quote */
     still_needed_fields?: string[];
     /** Add-car only: quote_ready | almost_ready | need_more — for broker visibility (ADD_CAR_REAL_INTAKE_LITE) */
