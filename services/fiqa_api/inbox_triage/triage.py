@@ -5452,8 +5452,11 @@ def triage_conversation(
                 _lang_v4_pre,
                 resolved_client_id,
             )
-            # OCR extracted VIN but pilot bar not met → single highest-value ask (minimal back-and-forth).
-            if _v6_structured_has_vin(v6_ocr_signals) and _qrs_v4_pre != "quote_ready":
+            # VIN present from merged extraction (incl. raw [OCR] lines) or v6 structured VIN;
+            # pilot bar not met → single highest-value ask (minimal back-and-forth).
+            # Raw OCR often has a 17-char VIN in last_raw_text without structured_fields.vin.
+            _vin_for_slim_ask = bool(_tf_v4_pre.get("vin")) or _v6_structured_has_vin(v6_ocr_signals)
+            if _vin_for_slim_ask and _qrs_v4_pre != "quote_ready":
                 slim = _get_next_ask_for_add_car(
                     merged_for_add_car_extraction,
                     _extract_add_car_fields_truth_safe(merged_for_add_car_extraction),

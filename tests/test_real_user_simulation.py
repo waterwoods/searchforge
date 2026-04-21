@@ -554,3 +554,41 @@ def test_scenario_image_plus_short_text_combines():
     r = triage_conversation("add car quote please", [], client_id="chen_kui", v6_ocr_signals=v6)
     assert r.get("service_type") == "add_car"
     assert "vin" in {str(x).lower() for x in (r.get("collected_fields") or [])}
+
+
+def test_scenario_image_vin_in_raw_ocr_only_no_structured_vin_slim_next_ask():
+    """VIN appears in OCR raw text (parser did not emit structured_fields.vin) → truth layer collects VIN, slim next ask, no VIN re-ask."""
+    vin = "1HGCM82633A004352"
+    v6 = {
+        "structured_fields": {
+            "zip": {"value": "92602", "confidence": 0.6, "source": "ocr_regex"},
+        },
+        "last_raw_text": f"VIN {vin}",
+        "last_engine": "unit_test",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "unit_test", "raw_len": 30}],
+    }
+    r = triage_conversation("[image intake]", [], client_id="chen_kui", v6_ocr_signals=v6)
+    assert r.get("service_type") == "add_car"
+    assert "vin" in {str(x).lower() for x in (r.get("collected_fields") or [])}
+    draft = r.get("client_reply_draft") or ""
+    dl = draft.lower()
+    assert "17位" not in draft and "17-digit" not in dl
+    assert "我先根据" not in draft
+    assert "image intake" not in dl
+
+
+def test_scenario_typed_intent_plus_dense_ocr_merges_stronger_collected():
+    """Typed year/make in customer text + OCR VIN + structured ZIP merge into one collected set (OCR supplements typed facts)."""
+    vin = "1HGCM82633A004352"
+    v6 = {
+        "structured_fields": {
+            "zip": {"value": "92602", "confidence": 0.6, "source": "ocr_regex"},
+        },
+        "last_raw_text": f"VIN {vin}",
+        "last_engine": "unit_test",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "unit_test", "raw_len": 30}],
+    }
+    r = triage_conversation("add car 2020 Toyota Camry", [], client_id="chen_kui", v6_ocr_signals=v6)
+    assert r.get("service_type") == "add_car"
+    coll = {str(x).lower() for x in (r.get("collected_fields") or [])}
+    assert "vin" in coll and "zip" in coll and "year" in coll and "make_model" in coll
