@@ -5131,7 +5131,17 @@ def _get_next_ask_for_add_car(
                 else "Send me the year and make/model first so I can run the quote."
             )
         return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
-    if fields.get("vin") and (not fields.get("year") or not fields.get("model")):
+    # Multi-slot jump: ≥2 pilot-critical literals (VIN + ZIP) → skip year/make chat nag; office may still list ym.
+    _skip_year_make_after_vin_zip = (
+        fields.get("vin")
+        and fields.get("zip")
+        and (not fields.get("year") or not fields.get("model"))
+    )
+    if (
+        not _skip_year_make_after_vin_zip
+        and fields.get("vin")
+        and (not fields.get("year") or not fields.get("model"))
+    ):
         if not fields.get("year") and not fields.get("model"):
             ask = (
                 "VIN 已收到。还请补一下年份和车型，方便办公室核对。"

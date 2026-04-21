@@ -562,6 +562,17 @@ def should_accept_field(
     return True, None, "allowed"
 
 
+def _ocr_body_segments_for_guardrails(merged_labeled_text: str | None) -> list[str]:
+    """Literal OCR appendix lines (image intake); same evidence as customer text, segmented for ym/VIN checks."""
+    if not (merged_labeled_text or "").strip():
+        return []
+    ocr_m = re.search(r"\[OCR\]\s*([\s\S]*)$", merged_labeled_text or "", flags=re.IGNORECASE)
+    if not ocr_m:
+        return []
+    part = (ocr_m.group(1) or "").strip()
+    return [part] if part else []
+
+
 def apply_strict_truth_guardrails_to_add_car_fields(
     fields: dict[str, bool],
     raw_customer_text: str,
@@ -578,7 +589,13 @@ def apply_strict_truth_guardrails_to_add_car_fields(
         from services.fiqa_api.inbox_triage.triage import _customer_bodies_from_labeled_thread
 
         found = _customer_bodies_from_labeled_thread(merged_labeled_text)
-        bubbles = found if found else None
+        ocr_segs = _ocr_body_segments_for_guardrails(merged_labeled_text)
+        if ocr_segs:
+            base = list(found) if found else []
+            merged_bubs = base + ocr_segs
+            bubbles = merged_bubs
+        else:
+            bubbles = found if found else None
 
     checks: tuple[tuple[str, str], ...] = (
         ("vin", "vin"),

@@ -4,6 +4,7 @@ from services.fiqa_api.inbox_triage.triage import (
     _add_car_quote_ready_status,
     _add_car_structured_fields,
     _extract_add_car_fields_truth_safe,
+    _get_next_ask_for_add_car,
     triage_conversation,
 )
 
@@ -166,3 +167,24 @@ def test_triage_truth_guardrail_debug_absent_when_flag_off(monkeypatch):
     )
     assert "truth_guardrail_debug" not in out
     assert "truth_guardrail_accepted" not in out
+
+
+def test_multi_slot_ocr_year_make_truth_ok_image_turn_then_asks_zip_only():
+    """OCR block counts as explicit vehicle literals so ym are not stripped on image-heavy turns."""
+    merged = _blob("想加车") + "\n\n[OCR]\nVIN 1HGCM82633A004352\n2020 Toyota Camry"
+    fields = _extract_add_car_fields_truth_safe(merged)
+    assert fields.get("vin") and fields.get("year") and fields.get("model")
+    ask = _get_next_ask_for_add_car(merged, fields, "zh", customer_turn_count=1)
+    assert ask and "邮编" in ask
+
+
+def test_multi_slot_jump_vin_zip_skips_year_make_nag():
+    """When VIN and ZIP are already literal, do not spend a turn on year/make before delivery/driver."""
+    merged = _blob("add car") + "\n\n[OCR]\nVIN 1HGCM82633A004352\n92602"
+    fields = _extract_add_car_fields_truth_safe(merged)
+    assert fields.get("vin") and fields.get("zip")
+    ask = _get_next_ask_for_add_car(merged, fields, "en", customer_turn_count=1)
+    assert ask
+    assert "year" not in ask.lower()
+    assert "make" not in ask.lower()
+    assert "delivery" in ask.lower() and "driver" in ask.lower()
