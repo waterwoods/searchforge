@@ -575,7 +575,9 @@ def apply_strict_truth_guardrails_to_add_car_fields(
         return out
     bubbles: list[str] | None = None
     if merged_labeled_text:
-        found = [m.strip() for m in re.findall(r"\[客户\]\s*([^[]+)", merged_labeled_text) if m.strip()]
+        from services.fiqa_api.inbox_triage.triage import _customer_bodies_from_labeled_thread
+
+        found = _customer_bodies_from_labeled_thread(merged_labeled_text)
         bubbles = found if found else None
 
     checks: tuple[tuple[str, str], ...] = (

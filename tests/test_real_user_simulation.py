@@ -497,3 +497,60 @@ def test_edge_rapid_vin_spam_stable():
     last = triage_conversation(f"VIN {vin} again", turns, client_id="chen_kui")
     c = [str(x).lower() for x in (last.get("collected_fields") or [])]
     assert c.count("vin") <= 1
+
+
+# --- IMAGE-FIRST (Auto Evolution V2) ---
+
+
+def test_scenario_image_vin_only_minimal_followup():
+    """OCR yields VIN only → add-car lane + one targeted ask (ZIP), not long V4 confirmation."""
+    vin = "1HGCM82633A004352"
+    v6 = {
+        "structured_fields": {
+            "vin": {"value": vin, "confidence": 0.78, "source": "ocr_regex"},
+        },
+        "last_raw_text": vin,
+        "last_engine": "unit_test",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "unit_test", "raw_len": 17}],
+    }
+    r = triage_conversation("[image intake]", [], client_id="chen_kui", v6_ocr_signals=v6)
+    assert r.get("service_type") == "add_car"
+    draft = r.get("client_reply_draft") or ""
+    dl = draft.lower()
+    # VIN-only: next ask is year/make (office record) before ZIP — still a single targeted prompt.
+    assert "year" in dl or "make" in dl or "车型" in draft or "zip" in dl or "邮编" in draft
+    assert "我先根据" not in draft
+    assert "image intake" not in dl
+    assert "thanks for the photo" in dl or "收到您发的图片" in draft
+
+
+def test_scenario_blurry_image_fallback_question():
+    """Unreadable inline image → one clarification (no add_car lane until intent or strong OCR/VIN)."""
+    v6 = {
+        "structured_fields": {},
+        "last_raw_text": "",
+        "last_engine": "none",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "none", "raw_len": 0}],
+    }
+    r = triage_conversation("[image intake]", [], client_id="chen_kui", v6_ocr_signals=v6)
+    assert r.get("service_type") != "add_car"
+    draft = r.get("client_reply_draft") or ""
+    dl = draft.lower()
+    assert "重拍" in draft or "清晰" in draft or "retake" in dl or "photo" in dl or "readable" in dl
+    assert r.get("handoff_ready") is False
+
+
+def test_scenario_image_plus_short_text_combines():
+    """Short typed intent + OCR VIN merges into one add-car turn; VIN collected."""
+    vin = "1HGCM82633A004352"
+    v6 = {
+        "structured_fields": {
+            "vin": {"value": vin, "confidence": 0.8, "source": "ocr_regex"},
+        },
+        "last_raw_text": f"VIN {vin}",
+        "last_engine": "unit_test",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "unit_test", "raw_len": 30}],
+    }
+    r = triage_conversation("add car quote please", [], client_id="chen_kui", v6_ocr_signals=v6)
+    assert r.get("service_type") == "add_car"
+    assert "vin" in {str(x).lower() for x in (r.get("collected_fields") or [])}

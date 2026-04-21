@@ -5,6 +5,7 @@ from __future__ import annotations
 from services.fiqa_api.inbox_triage.case_draft_engine import build_v4_case_draft_bundle
 from services.fiqa_api.inbox_triage.ocr_case_fusion import build_supplemental_extraction_blob, fuse_ocr_into_inferred
 from services.fiqa_api.inbox_triage.parse_ocr_text_to_fields import parse_ocr_text_to_fields
+from services.fiqa_api.inbox_triage.triage import _customer_bodies_from_labeled_thread
 
 
 def test_parse_ocr_extracts_vin_and_zip():
@@ -54,3 +55,10 @@ def test_supplemental_blob_ocr():
     blob = build_supplemental_extraction_blob(sig)
     assert "92602" in blob
     assert "OCR" not in blob  # blob is raw; [OCR] added in triage
+
+
+def test_customer_bubble_split_does_not_swallow_ocr_append():
+    """Triage appends [OCR] after the last [客户] line; that block must not count as customer text."""
+    merged = "[客户] [image intake]\n\n[OCR]\n1HGCM82633A004352\nvin: 1HGCM82633A004352"
+    bodies = _customer_bodies_from_labeled_thread(merged)
+    assert bodies == ["[image intake]"]

@@ -2125,6 +2125,30 @@ def _build_conversation_text_for_triage(turns: list[dict[str, str]], latest_text
     return "\n\n".join(parts) if parts else latest_text.strip()
 
 
+def _customer_bodies_from_labeled_thread(merged_text: str) -> list[str]:
+    """Split [客户] bubbles; keeps text that starts with '[' (e.g. '[image intake]')."""
+    raw = merged_text or ""
+    if "[客户]" not in raw:
+        return [raw.strip()] if raw.strip() else []
+    out: list[str] = []
+    for chunk in re.split(r"\[客户\]\s*", raw, flags=re.IGNORECASE)[1:]:
+        body = chunk
+        for stop in ("[系统]", "[客户]", "[OCR]", "[ocr]"):
+            j = body.find(stop)
+            if j >= 0:
+                body = body[:j]
+        b = body.strip()
+        if b:
+            out.append(b)
+    return out
+
+
+def _last_labeled_customer_content(merged_text: str) -> str:
+    """Last customer bubble text (bracket-safe)."""
+    bodies = _customer_bodies_from_labeled_thread(merged_text)
+    return bodies[-1] if bodies else (merged_text or "").strip()
+
+
 # --- Add-car field signals (ADD_CAR_HIGH_ROI_EXTRACTION_GUARD_FIX) ---
 # CA garage ZIP focus: 9xxxx; (?<![0-9])/(?![0-9]) avoids \b failing beside Chinese (e.g. 邮编95131).
 _CA_ZIP_STRICT_RE = re.compile(r"(?<![0-9])(9[0-9]{4})(?![0-9])", re.IGNORECASE)
@@ -2896,12 +2920,74 @@ def _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw: str)
     return False
 
 
+def _is_image_intake_placeholder(msg: str) -> bool:
+    """True when the customer line is the synthetic image-upload placeholder (not user prose)."""
+    t = (msg or "").strip().lower()
+    return t in ("[image intake]", "image intake")
+
+
+def _v6_weak_inline_image_intake(
+    last_customer_raw: str,
+    v6: dict[str, Any] | None,
+) -> bool:
+    """
+    IMAGE_FIRST: inline image with no structured field values and empty/weak OCR.
+    Used to avoid confidently routing add_car without VIN, explicit intent, or strong OCR.
+    """
+    raw = (last_customer_raw or "").strip().lower()
+    if raw not in ("[image intake]", "image intake"):
+        return False
+    if not v6 or not isinstance(v6, dict):
+        return False
+    hist = v6.get("attachment_history") or []
+    if not isinstance(hist, list):
+        return False
+    if not any(
+        isinstance(h, dict) and str(h.get("attachment_id") or "").strip() == "inline_image" for h in hist
+    ):
+        return False
+    sf = v6.get("structured_fields")
+    if isinstance(sf, dict) and any(
+        isinstance(v, dict) and str(v.get("value") or "").strip() for v in sf.values()
+    ):
+        return False
+    eng = str(v6.get("last_engine") or "").lower()
+    raw_txt = str(v6.get("last_raw_text") or "").strip()
+    if eng in ("none", "stub_forced", "empty"):
+        return True
+    if len(raw_txt) < 12:
+        return True
+    return False
+
+
+def _weak_image_service_clarify_reply(language: str) -> str:
+    """Single-turn clarification when an image is present but OCR is too weak to infer service lane."""
+    is_zh = (language or "").strip().lower() == "zh"
+    if is_zh:
+        return "图片信息读不清楚。请重拍清晰照片，或简单说一下需要哪类帮助（例如加车报价、理赔、账单）。"
+    return (
+        "The image isn't readable. Retake a clearer photo, or briefly say what you need "
+        "(e.g. adding a vehicle, a claim, or billing)."
+    )
+
+
+def _v6_structured_has_vin(v6: dict[str, Any] | None) -> bool:
+    if not v6 or not isinstance(v6, dict):
+        return False
+    sf = v6.get("structured_fields")
+    if not isinstance(sf, dict):
+        return False
+    vin_e = sf.get("vin")
+    return isinstance(vin_e, dict) and bool(str(vin_e.get("value") or "").strip())
+
+
 def _effective_add_car_lane_active(
     *,
     lowered_merged: str,
     merged_text: str,
     reply_truth_context: dict[str, Any] | None,
     last_customer_raw: str,
+    v6_ocr_signals: dict[str, Any] | None = None,
 ) -> bool:
     if _is_add_vehicle_request(lowered_merged):
         return True
@@ -3109,8 +3195,8 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
 
 def _customer_text_for_add_car_extraction(merged_text: str) -> str:
     """Customer-only body text (same convention as _extract_add_car_fields)."""
-    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    base = " ".join(matches).strip() if matches else (merged_text or "").strip()
+    bodies = _customer_bodies_from_labeled_thread(merged_text)
+    base = " ".join(bodies).strip() if bodies else (merged_text or "").strip()
     ocr_m = re.search(r"\[OCR\]\s*([\s\S]*)$", merged_text or "", flags=re.IGNORECASE)
     if ocr_m:
         ocr_part = ocr_m.group(1).strip()
@@ -3530,13 +3616,22 @@ def triage_for_append(
     result["next_best_question"] = ""
     merged_for_lane = _build_conversation_text_for_triage(turns, new_message.strip())
     lowered_merged = (merged_for_lane or "").lower()
+    ocr_blob_app = ""
+    if v6_ocr_signals and isinstance(v6_ocr_signals, dict):
+        from services.fiqa_api.inbox_triage.ocr_case_fusion import build_supplemental_extraction_blob
+
+        ocr_blob_app = build_supplemental_extraction_blob(v6_ocr_signals)
+    lowered_lane_app = lowered_merged
+    if ocr_blob_app:
+        lowered_lane_app = f"{lowered_merged}\n[ocr]\n{ocr_blob_app.lower()}"
     _lane_matches = re.findall(r"\[客户\]\s*([^[]+)", merged_for_lane or "")
     _last_cust_lane = (_lane_matches[-1] or "").strip() if _lane_matches else new_message.strip()
     is_add_car_lane = _effective_add_car_lane_active(
-        lowered_merged=lowered_merged,
+        lowered_merged=lowered_lane_app,
         merged_text=merged_for_lane,
         reply_truth_context=ctx,
         last_customer_raw=_last_cust_lane,
+        v6_ocr_signals=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
     )
     if is_add_car_lane:
         pv_raw = ctx.get("vehicle_key")
@@ -3673,10 +3768,9 @@ def _extract_add_car_material_signals(merged_text: str) -> dict[str, bool]:
 
 
 def _extract_add_car_fields(merged_text: str) -> dict[str, bool]:
-    """Extract add-car quote fields from CUSTOMER messages only (exclude system replies)."""
-    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    customer_text = " ".join(matches).lower()
-    t = customer_text
+    """Extract add-car fields from customer text plus [OCR] supplement (image intake)."""
+    scan = _customer_text_for_add_car_extraction(merged_text)
+    t = (scan or "").lower()
     has_year = text_has_vehicle_year_signal(t)
     has_zip = _text_has_ca_zip_signal(t)
     has_model = text_has_vehicle_make_model_signal(t)
@@ -4844,6 +4938,9 @@ def _get_add_car_acknowledgement(
         segs = re.findall(r"\[客户\]\s*([^[]+)", raw_in)
         if segs:
             msg = (segs[-1] or "").strip()
+    if _is_image_intake_placeholder(msg):
+        # Leads into the VIN / vehicle follow-up without echoing the placeholder token.
+        return "收到您发的图片，" if (language or "").strip().lower() == "zh" else "Thanks for the photo — "
     if not msg or len(msg) > 120:
         return ""
     # Completed-send statements: do not echo customer wording; office handoff / next-ask handles tone.
@@ -4913,6 +5010,28 @@ def _get_add_car_acknowledgement(
     return ack if ack.endswith("。") or ack.endswith(".") else ack + ("。" if language == "zh" else ".")
 
 
+def _ack_prefix_for_next_ask(ack: str, language: str) -> str:
+    """Glue acknowledgement to the following question without wrong-script punctuation (EN vs ZH)."""
+    if not (ack or "").strip():
+        return ""
+    lang = (language or "").strip().lower()
+    a = ack.rstrip()
+    if lang == "zh":
+        if a.endswith(("，", ",")):
+            return a
+        if a.endswith("。"):
+            return a[:-1] + "，"
+        if a.endswith(("吗", "么", "嘛")) or a.endswith("？"):
+            return a + " "
+        return a + "，"
+    if a.endswith(("—", "–")):
+        return a + " "
+    if a.endswith((".", "!", "?")):
+        return a + " "
+    a = a.rstrip("。").rstrip()
+    return a + ". "
+
+
 def _get_next_ask_for_add_car(
     merged_text: str,
     fields: dict[str, bool],
@@ -4935,8 +5054,7 @@ def _get_next_ask_for_add_car(
             and fields.get("delivery")
             and not fields.get("driver")
         ):
-            matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-            last_seg_raw = (matches[-1] or "").strip() if matches else ""
+            last_seg_raw = _last_labeled_customer_content(merged_text or "")
             last_customer = last_seg_raw.lower()
             # HANDOFF_TIMING_AUDIT: When customer asks document clarification (garaging, dec page) in same
             # turn as add-car info, answer the question and hand off — don't ask for driver.
@@ -4963,9 +5081,7 @@ def _get_next_ask_for_add_car(
                 return None
             rules = add_car_rules or get_add_car_rules()
             ack = _get_add_car_acknowledgement(last_seg_raw, fields, language, merged_text)
-            prefix = (ack.rstrip("。") + "。") if ack else ""
-            if prefix and language != "zh":
-                prefix = prefix + " "
+            prefix = _ack_prefix_for_next_ask(ack, language)
             ps_lead = _get_prospective_send_materials_lead(last_seg_raw, language, client_id)
             if ps_lead:
                 prefix = ps_lead + prefix
@@ -4977,13 +5093,10 @@ def _get_next_ask_for_add_car(
             return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
         return None
     rules = add_car_rules or get_add_car_rules()
-    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    last_customer = matches[-1].strip() if matches else ""
+    last_customer = _last_labeled_customer_content(merged_text or "")
     ps_lead = _get_prospective_send_materials_lead(last_customer, language, client_id)
     ack = _get_add_car_acknowledgement(last_customer, fields, language, merged_text)
-    prefix = (ack.rstrip("。") + "。") if ack else ""
-    if prefix and language != "zh":
-        prefix = prefix + " "
+    prefix = _ack_prefix_for_next_ask(ack, language)
     if ps_lead:
         prefix = ps_lead + prefix
 
@@ -5158,8 +5271,7 @@ def triage_conversation(
 
     # SALES_READINESS_HARDENING: Talk to Agent free-text detection.
     # If last customer message requests human contact, hand off immediately (any turn).
-    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    last_customer_raw = (matches[-1] or "").strip() if matches else (latest_text or "").strip()
+    last_customer_raw = _last_labeled_customer_content(merged_text)
     if _is_talk_to_agent_request(last_customer_raw):
         handoff_phrases = _get_handoff_phrases(resolved_client_id)
         phrases = handoff_phrases.get("customer_requested_human", {}) if handoff_phrases else {}
@@ -5196,18 +5308,31 @@ def triage_conversation(
         return out_human
 
     lowered_merged = (merged_text or "").lower()
-    is_add_car = _effective_add_car_lane_active(
-        lowered_merged=lowered_merged,
-        merged_text=merged_text,
-        reply_truth_context=reply_truth_context,
-        last_customer_raw=last_customer_raw,
-    )
-
     ocr_blob = ""
     if v6_ocr_signals and isinstance(v6_ocr_signals, dict):
         from services.fiqa_api.inbox_triage.ocr_case_fusion import build_supplemental_extraction_blob
 
         ocr_blob = build_supplemental_extraction_blob(v6_ocr_signals)
+    lowered_lane = lowered_merged
+    if ocr_blob:
+        lowered_lane = f"{lowered_merged}\n[ocr]\n{ocr_blob.lower()}"
+
+    is_add_car = _effective_add_car_lane_active(
+        lowered_merged=lowered_lane,
+        merged_text=merged_text,
+        reply_truth_context=reply_truth_context,
+        last_customer_raw=last_customer_raw,
+        v6_ocr_signals=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
+    )
+    weak_inline_first_turn = (
+        not for_append
+        and customer_count == 0
+        and _v6_weak_inline_image_intake(
+            last_customer_raw,
+            v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
+        )
+    )
+
     merged_text_for_ocr = merged_text
     if ocr_blob:
         merged_text_for_ocr = f"{merged_text}\n\n[OCR]\n{ocr_blob}"
@@ -5327,6 +5452,19 @@ def triage_conversation(
                 _lang_v4_pre,
                 resolved_client_id,
             )
+            # OCR extracted VIN but pilot bar not met → single highest-value ask (minimal back-and-forth).
+            if _v6_structured_has_vin(v6_ocr_signals) and _qrs_v4_pre != "quote_ready":
+                slim = _get_next_ask_for_add_car(
+                    merged_for_add_car_extraction,
+                    _extract_add_car_fields_truth_safe(merged_for_add_car_extraction),
+                    _lang_v4_pre,
+                    add_car_rules_override,
+                    customer_turn_count=customer_count + 1,
+                    client_id=resolved_client_id,
+                    questioning_variant=intake_evolution_variant,
+                )
+                if slim:
+                    next_ask = slim
         else:
             _usable, _, _ = evaluate_v5_case_usable(
                 v4_bundle_early,
@@ -5380,6 +5518,10 @@ def triage_conversation(
         result_draft = base_result.get("client_reply_draft", "")
         if is_add_car and next_ask and not handoff:
             result_draft = next_ask
+    if weak_inline_first_turn and not is_add_car:
+        _wlang = "zh" if _contains_chinese(merged_text) else "en"
+        result_draft = _weak_image_service_clarify_reply(_wlang)
+        handoff = False
 
     _matches_gate = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
     _last_c_gate = (_matches_gate[-1] or "").strip() if _matches_gate else (latest_text or "").strip()
