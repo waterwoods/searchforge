@@ -28,12 +28,15 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_workflow_fallbacks,
 )
 from services.fiqa_api.inbox_triage.case_draft_engine import (
+    action_ready_vin_soft_confirmation_warranted,
     augment_next_ask_with_variant,
+    build_auto_progress_client_reply,
     build_generic_case_draft,
     build_v4_case_draft_bundle,
     build_v4_confirmation_client_reply_from_bundle,
     estimate_v4_error_risk_score,
     estimate_v5_handoff_risk_score,
+    evaluate_action_ready_rule,
     evaluate_v5_case_usable,
     min_v5_case_usable_core_met,
 )
@@ -119,6 +122,8 @@ WORKFLOW_STATE_KEYS = (
     "next_best_question",  # Phase 2: what to ask when handoff_ready=false
     "lifecycle_status",  # Phase 2: collecting | handoff_pending | handed_off | office_followup
     "triage_mode",  # greenfield | append — disambiguates handoff_ready (see PILOT_CONTRACT_ADD_CAR_V1.md §4.3)
+    "action_ready",  # V2.6: min-core truth bar met (VIN+ZIP+tier1+(driver|delivery), HT1)
+    "intake_flow_milestone",  # collecting | near_usable | usable | action_ready
 )
 
 VALID_URGENCIES = ("low", "medium", "high", "critical")
@@ -5295,6 +5300,7 @@ def triage_conversation(
     if v6_variant_eff not in ("A", "B", "C"):
         v6_variant_eff = "A"
     v4_bundle_early: dict[str, Any] | None = None
+    _turn1_action_ready_lift = False
     truth_guardrail_debug_session_start()
     customer_turns = [t for t in conversation_turns if (t.get("role") or "").strip().lower() == "customer"]
     customer_count = len(customer_turns)
@@ -5311,6 +5317,8 @@ def triage_conversation(
             "handoff_ready": False,
             "conversation_summary": "",
             "triage_mode": "greenfield",
+            "action_ready": False,
+            "intake_flow_milestone": "collecting",
         }
         maybe_attach_truth_guardrail_debug_to_triage(out_empty)
         return out_empty
@@ -5349,6 +5357,8 @@ def triage_conversation(
             "lifecycle_status": "handoff_pending",
             "collection_stage": "enough_for_handoff",
             "triage_mode": "greenfield",
+            "action_ready": False,
+            "intake_flow_milestone": "collecting",
         }
         maybe_attach_truth_guardrail_debug_to_triage(out_human)
         return out_human
@@ -5482,27 +5492,44 @@ def triage_conversation(
             ocr_context=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
             v6_auto_input_variant=v6_variant_eff,
         )
+        if customer_count + 1 == 1:
+            # quote_ready turn 1 is owned by conversion / confirm-first flow — do not auto-handoff here.
+            _turn1_action_ready_lift = _qrs_v4_pre != "quote_ready" and evaluate_action_ready_rule(
+                list(v4_bundle_early.get("collected_fields") or []),
+                list(v4_bundle_early.get("still_needed_fields") or []),
+                merged_text=merged_for_add_car_extraction,
+                primary_vehicle_summary=_pvc_v4_pre_arg,
+            )
+            if _turn1_action_ready_lift:
+                would_handoff = True
 
     if is_add_car and v4_bundle_early is not None:
         if customer_count + 1 == 1:
-            next_ask = build_v4_confirmation_client_reply_from_bundle(
-                v4_bundle_early,
-                merged_text=merged_for_add_car_extraction,
-                primary_vehicle_summary=_pvc_v4_pre_arg,
-                language=_lang_v4_pre,
-                variant=intake_evolution_variant,
-            )
-            next_ask = _maybe_append_add_car_price_caveat(
-                merged_for_add_car_extraction,
-                next_ask or "",
-                _lang_v4_pre,
-                resolved_client_id,
-            )
+            if _turn1_action_ready_lift:
+                next_ask = ""
+            else:
+                next_ask = build_v4_confirmation_client_reply_from_bundle(
+                    v4_bundle_early,
+                    merged_text=merged_for_add_car_extraction,
+                    primary_vehicle_summary=_pvc_v4_pre_arg,
+                    language=_lang_v4_pre,
+                    variant=intake_evolution_variant,
+                )
+                next_ask = _maybe_append_add_car_price_caveat(
+                    merged_for_add_car_extraction,
+                    next_ask or "",
+                    _lang_v4_pre,
+                    resolved_client_id,
+                )
             # VIN present from merged extraction (incl. raw [OCR] lines) or v6 structured VIN;
             # pilot bar not met → single highest-value ask (minimal back-and-forth).
             # Raw OCR often has a 17-char VIN in last_raw_text without structured_fields.vin.
             _vin_for_slim_ask = bool(_tf_v4_pre.get("vin")) or _v6_structured_has_vin(v6_ocr_signals)
-            if _vin_for_slim_ask and _qrs_v4_pre != "quote_ready":
+            if (
+                _vin_for_slim_ask
+                and _qrs_v4_pre != "quote_ready"
+                and not _turn1_action_ready_lift
+            ):
                 _usable_t1, _, _ = evaluate_v5_case_usable(
                     v4_bundle_early,
                     merged_text=merged_for_add_car_extraction,
@@ -5576,7 +5603,9 @@ def triage_conversation(
         )
 
     if would_handoff and next_ask and not (
-        is_add_car and customer_count + 1 == 1 and _turn1_qr_handoff_lift
+        is_add_car
+        and customer_count + 1 == 1
+        and (_turn1_qr_handoff_lift or _turn1_action_ready_lift)
     ):
         handoff = False
         result_draft = next_ask
@@ -6418,12 +6447,39 @@ def triage_conversation(
             case_usable=bool(_cd.get("case_usable")),
         )
         result["zero_question_intake"] = True
+        _ar = evaluate_action_ready_rule(
+            list(_cd.get("collected_fields") or []),
+            list(_cd.get("still_needed_fields") or []),
+            merged_text=merged_for_add_car_extraction,
+            primary_vehicle_summary=result.get("primary_vehicle_summary"),
+        )
+        result["action_ready"] = bool(_ar)
+        if _ar:
+            result["intake_flow_milestone"] = "action_ready"
+        elif bool(_cd.get("case_usable")):
+            result["intake_flow_milestone"] = "usable"
+        else:
+            _coll = {str(x).lower() for x in (_cd.get("collected_fields") or []) if x}
+            if "vin" in _coll and "zip" in _coll:
+                result["intake_flow_milestone"] = "near_usable"
+            else:
+                result["intake_flow_milestone"] = "collecting"
+        _qrs_fin = str(result.get("quote_ready_status") or "").strip()
+        if _ar and _qrs_fin != "quote_ready":
+            _auto_lang = "zh" if _contains_chinese(last_customer_raw) else "en"
+            result["client_reply_draft"] = build_auto_progress_client_reply(
+                _cd,
+                language=_auto_lang,
+                soft_vin_confirm=action_ready_vin_soft_confirmation_warranted(_cd),
+            )
     else:
         result["case_draft"] = build_generic_case_draft(
             merged_text=merged_text,
             issue_category=str(result.get("issue_category") or ""),
             language=_lang_cd,
         )
+        result["action_ready"] = False
+        result["intake_flow_milestone"] = "collecting"
     return result
 
 

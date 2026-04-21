@@ -616,10 +616,12 @@ def test_evolution_v25_scenario_a_image_heavy_min_core_usable():
     )
     assert r.get("service_type") == "add_car"
     assert r.get("case_usable") is True
+    assert r.get("action_ready") is True
+    assert r.get("intake_flow_milestone") == "action_ready"
     draft = r.get("client_reply_draft") or ""
-    # Turn 1: broker-usable → confirmation block, not a slim slot chase for delivery / ZIP.
-    assert "我先根据" in draft
-    assert vin in draft
+    # Turn 1 action_ready → auto-progress toward quote, not redundant confirm / slot chase.
+    assert "我先根据" not in draft
+    assert "我已经帮你整理好" in draft or "推进报价" in draft
     assert "提车日期发我" not in draft
 
 
@@ -645,6 +647,7 @@ def test_evolution_v25_scenario_b_mixed_noisy_two_turns_no_question_loop():
     )
     assert t2.get("service_type") == "add_car"
     assert t2.get("case_usable") is True
+    assert t2.get("action_ready") is True
     # Single follow-up turn: do not stack many distinct slot questions in one reply.
     draft = (t2.get("client_reply_draft") or "").lower()
     assert draft.count("?") <= 3
@@ -666,4 +669,63 @@ def test_evolution_v25_scenario_c_fragmented_partial_reaches_usable_fast():
     turns.append({"role": "customer", "text": "邮编90210 下周提车 就这样吧"})
     t3 = triage_conversation("主驾驶人是我本人", turns, client_id="chen_kui")
     assert t3.get("case_usable") is True
+    assert t3.get("action_ready") is True
     assert t3.get("quote_ready_status") in ("need_more", "almost_ready", "quote_ready")
+
+
+# --- AUTO_EVOLUTION_V2_6 — action_ready auto-close + conversion-oriented reply ---
+
+
+def test_evolution_v26_scenario_d_perfect_en_auto_progress_no_question():
+    """D: VIN + ZIP + driver in one EN turn → action_ready, no question, auto-progress copy."""
+    vin = "1HGCM82633A004352"
+    msg = f"Add car — VIN {vin}, ZIP 90210, I'm the primary driver."
+    r = triage_conversation(msg, [], client_id="chen_kui")
+    assert r.get("service_type") == "add_car"
+    assert r.get("action_ready") is True
+    assert r.get("intake_flow_milestone") == "action_ready"
+    draft = r.get("client_reply_draft") or ""
+    assert "?" not in draft
+    assert "I've got everything I need to get started" in draft
+
+
+def test_evolution_v26_scenario_e_image_partial_plus_driver_no_slot_chase():
+    """E: OCR VIN/ZIP + one line for driver (still almost_ready) → action_ready; auto-progress, no slot chase."""
+    vin = "1HGCM82633A004352"
+    v6 = {
+        "structured_fields": {
+            "zip": {"value": "92602", "confidence": 0.74, "source": "ocr_regex"},
+        },
+        "last_raw_text": f"VIN {vin}",
+        "last_engine": "unit_test",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "unit_test", "raw_len": 24}],
+    }
+    r = triage_conversation(
+        "[image intake] I am the main driver.",
+        [],
+        client_id="chen_kui",
+        v6_ocr_signals=v6,
+    )
+    assert r.get("service_type") == "add_car"
+    assert r.get("quote_ready_status") == "almost_ready"
+    assert r.get("action_ready") is True
+    assert r.get("intake_flow_milestone") == "action_ready"
+    draft = r.get("client_reply_draft") or ""
+    assert "提车日期发我" not in draft
+    assert "我先根据" not in draft
+    assert "I've got everything I need to get started" in draft or "推进报价" in draft
+
+
+def test_evolution_v26_scenario_f_noisy_single_turn_still_action_ready():
+    """F: Noisy blob but min-core satisfied → proceed, no multi-ask loop."""
+    vin = "1HGCM82633A004352"
+    blob = (
+        f"加车啦乱七八糟 VIN {vin} zip 90210 吧大概 "
+        "提车就下周五 主驾驶人本人 别一个个问了"
+    )
+    r = triage_conversation(blob, [], client_id="chen_kui")
+    assert r.get("service_type") == "add_car"
+    assert r.get("action_ready") is True
+    draft = r.get("client_reply_draft") or ""
+    assert draft.count("？") + draft.count("?") <= 1
+    assert "我先根据" not in draft

@@ -441,6 +441,66 @@ def min_v5_case_usable_core_met(
     return True
 
 
+# ACTION_READY_RULE (AUTO_EVOLUTION_V2_6): truth VIN + truth ZIP + tier-1 vehicle identity,
+# plus (primary_driver OR delivery_date) in truth slots, with HT1 satisfied — same predicate as
+# min_v5_case_usable_core_met (explicit driver when delivery+YM already known).
+def evaluate_action_ready_rule(
+    collected_field_ids: list[str],
+    missing_field_ids: list[str],
+    *,
+    merged_text: str,
+    primary_vehicle_summary: str | None,
+) -> bool:
+    return min_v5_case_usable_core_met(
+        collected_field_ids,
+        missing_field_ids,
+        merged_text=merged_text,
+        primary_vehicle_summary=primary_vehicle_summary,
+    )
+
+
+def action_ready_vin_soft_confirmation_warranted(bundle: dict[str, Any]) -> bool:
+    """True when VIN came from OCR / medium tier — light optional line, does not block progress."""
+    inf = bundle.get("inferred_fields") or {}
+    vfo = inf.get("vin_from_ocr")
+    if isinstance(vfo, dict):
+        tier = str(vfo.get("tier") or "").strip().lower()
+        if tier == CONF_MEDIUM:
+            return True
+        if vfo.get("needs_confirmation"):
+            return True
+        conf = float(vfo.get("confidence") or 0.0)
+        if 0 < conf < 0.82:
+            return True
+    return False
+
+
+def build_auto_progress_client_reply(
+    bundle: dict[str, Any],
+    *,
+    language: str,
+    soft_vin_confirm: bool = False,
+) -> str:
+    """Conversion-oriented close: proceed with quote prep instead of redundant confirm / slot chase."""
+    is_zh = (language or "").strip().lower() == "zh"
+    if is_zh:
+        lines = [
+            "我已经帮你整理好信息了，现在可以帮你推进报价了。",
+            "我先帮你往下走，如果需要补充我再跟你确认。",
+        ]
+    else:
+        lines = [
+            "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed.",
+        ]
+    if soft_vin_confirm:
+        lines.append(
+            "如果这个 VIN 有误可以告诉我，我可以帮你修正。"
+            if is_zh
+            else "If this VIN is wrong, tell me and I can help correct it."
+        )
+    return "\n".join(lines).strip()
+
+
 def add_car_tier1_vehicle_ok(
     merged_text: str,
     primary_vehicle_summary: str | None,

@@ -79,6 +79,8 @@ def _extract_workflow_state(triage_result: dict[str, Any]) -> dict[str, Any]:
         "triage_mode",
         "conversion_stage",
         "last_conversion_turn_index",
+        "action_ready",
+        "intake_flow_milestone",
     )
     out: dict[str, Any] = {}
     for k in keys:
