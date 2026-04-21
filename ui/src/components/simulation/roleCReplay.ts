@@ -26,6 +26,8 @@ export type RoleCConfig = {
     customNote: string;
     difficulty: RoleCDifficulty;
     maxTurns: number;
+    /** Role C / C+ autoplay: stop early when triage returns action_ready. */
+    stopOnActionReady?: boolean;
 };
 
 export const ROLE_C_PERSONAS: Array<{ id: RoleCPersonaId; label: string; hint: string }> = [
@@ -62,6 +64,7 @@ export function buildRoleCScenarioCard(config: RoleCConfig): AddCarReplayScenari
         risk: '实验中',
         placeholder: false,
         turns: [],
+        stopOnActionReady: config.stopOnActionReady === true,
     };
 }
 
@@ -79,6 +82,7 @@ export function buildRoleCPlusScenarioCard(config: RoleCConfig): AddCarReplaySce
         risk: '实验中',
         placeholder: false,
         turns: [],
+        stopOnActionReady: config.stopOnActionReady === true,
     };
 }
 
@@ -87,4 +91,5 @@ export const DEFAULT_ROLE_C_CONFIG: RoleCConfig = {
     customNote: '',
     difficulty: 'realistic',
     maxTurns: 6,
+    stopOnActionReady: false,
 };

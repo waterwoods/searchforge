@@ -164,16 +164,28 @@ export type ReplayStepIntelProps = {
     triage: TriageResult;
     /** Prior customer line for this triage step, if any */
     userInput?: string;
+    /** Scripted replay: text vs image customer turn */
+    userInputKind?: 'text' | 'image';
 };
 
 /** Inner content for replay accordion: mirrors main visibility at a single step. */
-export function ReplayStepIntelPanel({ triage, userInput }: ReplayStepIntelProps) {
+export function ReplayStepIntelPanel({ triage, userInput, userInputKind }: ReplayStepIntelProps) {
     const extracted = extractedFieldKeysFromTriage(triage);
     const collected = triage.collected_fields?.filter(Boolean) ?? [];
     const userFlow = triage.still_needed_user_flow?.filter(Boolean) ?? [];
     const broker = triage.deferred_to_broker_fields?.filter(Boolean) ?? [];
     return (
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            {userInputKind ? (
+                <div>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        本步输入类型
+                    </Text>
+                    <Tag color={userInputKind === 'image' ? 'purple' : 'blue'}>
+                        {userInputKind === 'image' ? '图片（含 OCR）' : '文字'}
+                    </Tag>
+                </div>
+            ) : null}
             {userInput ? (
                 <div>
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>

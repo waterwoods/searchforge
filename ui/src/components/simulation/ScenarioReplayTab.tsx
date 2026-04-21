@@ -2,8 +2,24 @@
  * Add-Car Simulation / Scenario Replay — third-tab surface (§4.6 master outline).
  * Record-first: right column is primary; thread is audit trail.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Collapse, Input, Progress, Row, Select, Space, Spin, Tag, Typography, message } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    Alert,
+    Button,
+    Card,
+    Checkbox,
+    Col,
+    Collapse,
+    Input,
+    Progress,
+    Row,
+    Select,
+    Space,
+    Spin,
+    Tag,
+    Typography,
+    message,
+} from 'antd';
 import {
     PlayCircleOutlined,
     ReloadOutlined,
@@ -11,6 +27,8 @@ import {
     ThunderboltOutlined,
     UnorderedListOutlined,
     FastForwardOutlined,
+    PauseOutlined,
+    CaretRightOutlined,
 } from '@ant-design/icons';
 import {
     fetchSimulationRoleCCustomer,
@@ -26,6 +44,12 @@ import { AddCarRecordSummaryRail, computeAddCarFlowStep } from '../intake/AddCar
 import { CaseProgressionVisibilityBlock, ReplayStepIntelPanel } from './CaseProgressionVisibility';
 import replayConfig from '../../config/add_car_scenario_replay.json';
 import type { AddCarReplayScenario } from './addCarReplayTypes';
+import {
+    customerLineForStep,
+    isReplayImageStep,
+    loadInlineImageForStep,
+    normalizeReplaySteps,
+} from './simulationReplaySteps';
 import {
     DEFAULT_ROLE_C_CONFIG,
     ROLE_C_DIFFICULTIES,
@@ -65,11 +89,37 @@ function priorCustomerLineForIndex(turns: ReplayTurn[], systemIndex: number): st
     return undefined;
 }
 
+function priorCustomerInputKindForSystemIndex(
+    turns: ReplayTurn[],
+    systemIndex: number,
+): 'text' | 'image' | undefined {
+    for (let i = systemIndex - 1; i >= 0; i -= 1) {
+        if (turns[i]?.role === 'customer') {
+            return turns[i].inputKind;
+        }
+    }
+    return undefined;
+}
+
 type ReplayTurn = {
     role: 'customer' | 'system';
     content: string;
     triageResult?: TriageResult;
+    /** Customer turn only: scripted image vs text */
+    inputKind?: 'text' | 'image';
 };
+
+type AutoplayRunState = 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+
+const AUTPLAY_STEP_DELAY_MS: Record<'slow' | 'normal' | 'fast', number> = {
+    slow: 880,
+    normal: 420,
+    fast: 110,
+};
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+}
 
 export function ScenarioReplayTab() {
     const { clientId, uiCopy } = useClientConfig();
@@ -113,6 +163,11 @@ export function ScenarioReplayTab() {
     const [loading, setLoading] = useState(false);
     const [saveLoading, setSaveLoading] = useState(false);
     const [savedTestCase, setSavedTestCase] = useState<SavedCase | null>(null);
+    const [autoplayState, setAutoplayState] = useState<AutoplayRunState>('idle');
+    const [speedPreset, setSpeedPreset] = useState<'slow' | 'normal' | 'fast'>('normal');
+    const autoplayPausedRef = useRef(false);
+    const autoplayRunIdRef = useRef(0);
+    const stepDelayMs = AUTPLAY_STEP_DELAY_MS[speedPreset];
 
     useEffect(() => {
         const base = (replayConfig as { scenarios: AddCarReplayScenario[] }).scenarios.filter(
@@ -149,10 +204,11 @@ export function ScenarioReplayTab() {
         selected?.id === ROLE_C_SCENARIO_ID || selected?.id === ROLE_C_PLUS_SCENARIO_ID;
     const isRoleCManual = selected?.id === ROLE_C_SCENARIO_ID;
     const isRoleCPlusSelected = selected?.id === ROLE_C_PLUS_SCENARIO_ID;
+    const scriptedStepCount = selected ? normalizeReplaySteps(selected.turns).length : 0;
     const hasMore = selected
         ? isRoleCLane
             ? customerCount < roleCConfig.maxTurns
-            : customerCount < selected.turns.length
+            : customerCount < scriptedStepCount
         : false;
     const flowStep = computeAddCarFlowStep(lastTriage, replayTurns.length > 0);
     const priorReplayTriage = useMemo(() => {
@@ -185,78 +241,13 @@ export function ScenarioReplayTab() {
     const canPersistAsTest =
         !!lastTriage && !lastTriage.case_id && !!finalCustomerTurnBeforeLastSystem && !saveLoading;
 
-    /** Bounded auto-run: same live Role C + triage stack as manual 「下一步」, turn-by-turn. */
-    const runRoleCFullSimulation = useCallback(async () => {
-        if (
-            !selected ||
-            (selected.id !== ROLE_C_SCENARIO_ID && selected.id !== ROLE_C_PLUS_SCENARIO_ID) ||
-            loading
-        )
-            return;
-        setLoading(true);
-        setReplayTurns([]);
-        let prior: ReplayTurn[] = [];
-        try {
-            for (let n = 0; n < roleCConfig.maxTurns; n++) {
-                const custDone = prior.filter((t) => t.role === 'customer').length;
-                if (custDone >= roleCConfig.maxTurns) break;
-
-                const conversationTurnsForApi: ConversationTurn[] = prior.map((t) => ({
-                    role: t.role,
-                    text: t.content,
-                }));
-
-                const llm = await fetchSimulationRoleCCustomer({
-                    persona_id: roleCConfig.personaId,
-                    optional_note: roleCConfig.customNote,
-                    difficulty: roleCConfig.difficulty,
-                    max_turns: roleCConfig.maxTurns,
-                    conversation_turns: conversationTurnsForApi,
-                    client_id: clientId,
-                });
-                const text = (llm.customer_message || '').trim();
-                if (!text) {
-                    message.error('角色 C 未返回有效客户话术');
-                    break;
-                }
-                const customerTurn: ReplayTurn = { role: 'customer', content: text };
-                setReplayTurns([...prior, customerTurn]);
-                const data = await triageMessage(
-                    text,
-                    false,
-                    conversationTurnsForApi,
-                    'add_car',
-                    undefined,
-                    clientId,
-                );
-                const systemTurn: ReplayTurn = {
-                    role: 'system',
-                    content: data.client_reply_draft,
-                    triageResult: data,
-                };
-                prior = [...prior, customerTurn, systemTurn];
-                setReplayTurns(prior);
-                await new Promise((r) => setTimeout(r, 72));
-            }
-            if (prior.length > 0) {
-                message.success('Role C Plus：已按轮次上限跑完（或提前结束）');
-            }
-        } catch (e: unknown) {
-            setReplayTurns(prior);
-            const msg =
-                (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ??
-                (e as { message?: string })?.message ??
-                'Role C Plus 自动跑失败，请确认后端可用。';
-            message.error(typeof msg === 'string' ? msg : 'Role C Plus 自动跑失败');
-        } finally {
-            setLoading(false);
-        }
-    }, [selected, loading, clientId, roleCConfig]);
-
-    /** `priorReplay` = turns before this customer message (avoids stale closure after reset). */
-    const runNextTurn = useCallback(
-        async (priorReplay: ReplayTurn[]) => {
-            if (!selected || loading) return;
+    /**
+     * One simulation step (Role C LLM, scripted text, or scripted image + inline OCR path).
+     * Returns the new replay array on success; on recoverable failure returns null after restoring prior.
+     */
+    const executeReplayStep = useCallback(
+        async (priorReplay: ReplayTurn[]): Promise<ReplayTurn[] | null> => {
+            if (!selected) return null;
             const custDone = priorReplay.filter((t) => t.role === 'customer').length;
 
             const conversationTurnsForApi: ConversationTurn[] = priorReplay.map((t) => ({
@@ -265,7 +256,7 @@ export function ScenarioReplayTab() {
             }));
 
             if (selected.id === ROLE_C_SCENARIO_ID || selected.id === ROLE_C_PLUS_SCENARIO_ID) {
-                if (custDone >= roleCConfig.maxTurns) return;
+                if (custDone >= roleCConfig.maxTurns) return null;
 
                 setLoading(true);
                 try {
@@ -280,17 +271,30 @@ export function ScenarioReplayTab() {
                     const text = (llm.customer_message || '').trim();
                     if (!text) {
                         message.error('角色 C 未返回有效客户话术');
-                        return;
+                        return null;
                     }
-                    const customerTurn: ReplayTurn = { role: 'customer', content: text };
+                    const customerTurn: ReplayTurn = {
+                        role: 'customer',
+                        content: text,
+                        inputKind: 'text',
+                    };
                     setReplayTurns([...priorReplay, customerTurn]);
-                    const data = await triageMessage(text, false, conversationTurnsForApi, 'add_car', undefined, clientId);
+                    const data = await triageMessage(
+                        text,
+                        false,
+                        conversationTurnsForApi,
+                        'add_car',
+                        undefined,
+                        clientId,
+                    );
                     const systemTurn: ReplayTurn = {
                         role: 'system',
                         content: data.client_reply_draft,
                         triageResult: data,
                     };
-                    setReplayTurns([...priorReplay, customerTurn, systemTurn]);
+                    const next = [...priorReplay, customerTurn, systemTurn];
+                    setReplayTurns(next);
+                    return next;
                 } catch (e: unknown) {
                     setReplayTurns(priorReplay);
                     const msg =
@@ -298,44 +302,205 @@ export function ScenarioReplayTab() {
                         (e as { message?: string })?.message ??
                         '角色 C 请求失败，请确认后端可用且已配置 OPENAI_API_KEY。';
                     message.error(typeof msg === 'string' ? msg : '角色 C 请求失败');
+                    return null;
                 } finally {
                     setLoading(false);
                 }
-                return;
             }
 
-            if (custDone >= selected.turns.length) return;
+            const steps = normalizeReplaySteps(selected.turns);
+            if (custDone >= steps.length) return null;
 
-            const text = selected.turns[custDone]?.text?.trim();
-            if (!text) return;
+            const step = steps[custDone]!;
 
             setLoading(true);
-            const customerTurn: ReplayTurn = { role: 'customer', content: text };
-            setReplayTurns([...priorReplay, customerTurn]);
-
             try {
-                const data = await triageMessage(text, false, conversationTurnsForApi, 'add_car', undefined, clientId);
+                if (isReplayImageStep(step)) {
+                    const inline = await loadInlineImageForStep(step);
+                    if (!inline) {
+                        message.error('无法加载仿真图片（检查 public 路径或网络）');
+                        return null;
+                    }
+                    const display = customerLineForStep(step);
+                    const customerTurn: ReplayTurn = {
+                        role: 'customer',
+                        content: display,
+                        inputKind: 'image',
+                    };
+                    setReplayTurns([...priorReplay, customerTurn]);
+                    const textForTriage = (step.text || '').trim();
+                    const data = await triageMessage(
+                        textForTriage,
+                        false,
+                        conversationTurnsForApi,
+                        'add_car',
+                        undefined,
+                        clientId,
+                        false,
+                        undefined,
+                        undefined,
+                        inline,
+                    );
+                    const systemTurn: ReplayTurn = {
+                        role: 'system',
+                        content: data.client_reply_draft,
+                        triageResult: data,
+                    };
+                    const next = [...priorReplay, customerTurn, systemTurn];
+                    setReplayTurns(next);
+                    return next;
+                }
+
+                const text = (step.text || '').trim();
+                if (!text) {
+                    message.error('该步无有效文字内容');
+                    return null;
+                }
+                const customerTurn: ReplayTurn = {
+                    role: 'customer',
+                    content: text,
+                    inputKind: 'text',
+                };
+                setReplayTurns([...priorReplay, customerTurn]);
+
+                const data = await triageMessage(
+                    text,
+                    false,
+                    conversationTurnsForApi,
+                    'add_car',
+                    undefined,
+                    clientId,
+                );
                 const systemTurn: ReplayTurn = {
                     role: 'system',
                     content: data.client_reply_draft,
                     triageResult: data,
                 };
-                setReplayTurns([...priorReplay, customerTurn, systemTurn]);
+                const next = [...priorReplay, customerTurn, systemTurn];
+                setReplayTurns(next);
+                return next;
             } catch (e: unknown) {
                 setReplayTurns(priorReplay);
                 const errMsg =
                     (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ??
                     (e as { message?: string })?.message ??
                     '仿真请求失败，请确认后端可用。';
-                message.error(errMsg);
+                message.error(typeof errMsg === 'string' ? errMsg : '仿真请求失败');
+                return null;
             } finally {
                 setLoading(false);
             }
         },
-        [selected, loading, clientId, roleCConfig],
+        [selected, clientId, roleCConfig],
     );
 
+    /** `priorReplay` = turns before this customer message (avoids stale closure after reset). */
+    const runNextTurn = useCallback(
+        async (priorReplay: ReplayTurn[]) => {
+            if (!selected || loading) return;
+            await executeReplayStep(priorReplay);
+        },
+        [selected, loading, executeReplayStep],
+    );
+
+    const waitWhilePaused = useCallback(async (runId: number) => {
+        while (autoplayPausedRef.current) {
+            if (runId !== autoplayRunIdRef.current) return false;
+            setAutoplayState('paused');
+            await sleep(220);
+        }
+        return runId === autoplayRunIdRef.current;
+    }, []);
+
+    const startAutoplay = useCallback(async () => {
+        if (!selected || loading) return;
+
+        autoplayRunIdRef.current += 1;
+        const runId = autoplayRunIdRef.current;
+        autoplayPausedRef.current = false;
+        setAutoplayState('running');
+        setReplayTurns([]);
+        setSavedTestCase(null);
+
+        let prior: ReplayTurn[] = [];
+        try {
+            const isRoleCLaneSel =
+                selected.id === ROLE_C_SCENARIO_ID || selected.id === ROLE_C_PLUS_SCENARIO_ID;
+            const maxScripted = normalizeReplaySteps(selected.turns).length;
+            const maxIter = isRoleCLaneSel ? roleCConfig.maxTurns : maxScripted;
+
+            for (let i = 0; i < maxIter; i += 1) {
+                if (runId !== autoplayRunIdRef.current) return;
+                if (!(await waitWhilePaused(runId))) return;
+                setAutoplayState('running');
+
+                const next = await executeReplayStep(prior);
+                if (!next) {
+                    setAutoplayState('failed');
+                    return;
+                }
+                prior = next;
+
+                const lastSys = [...next].reverse().find((t) => t.role === 'system');
+                const tri = lastSys?.triageResult;
+                if (selected.stopOnActionReady && tri?.action_ready === true) {
+                    message.success('已到达 action_ready，按场景配置停止');
+                    if (runId === autoplayRunIdRef.current) setAutoplayState('completed');
+                    return;
+                }
+
+                const custN = next.filter((t) => t.role === 'customer').length;
+                const doneScripted = !isRoleCLaneSel && custN >= maxScripted;
+                const doneRoleC = isRoleCLaneSel && custN >= roleCConfig.maxTurns;
+                if (doneScripted || doneRoleC) {
+                    if (runId === autoplayRunIdRef.current) {
+                        setAutoplayState('completed');
+                        message.success('自动回放完成');
+                    }
+                    return;
+                }
+
+                if (runId !== autoplayRunIdRef.current) return;
+                if (!(await waitWhilePaused(runId))) return;
+                if (i < maxIter - 1) {
+                    await sleep(stepDelayMs);
+                }
+            }
+
+            if (runId === autoplayRunIdRef.current) {
+                setAutoplayState('completed');
+                message.success('自动回放完成');
+            }
+        } catch (e: unknown) {
+            if (runId === autoplayRunIdRef.current) {
+                setAutoplayState('failed');
+                const msg = (e as { message?: string })?.message ?? '自动回放异常中断';
+                message.error(typeof msg === 'string' ? msg : '自动回放失败');
+            }
+        }
+    }, [selected, loading, executeReplayStep, waitWhilePaused, stepDelayMs, roleCConfig.maxTurns]);
+
+    /** Role C Plus legacy button — same as main 「开始自动回放」. */
+    const runRoleCFullSimulation = useCallback(() => {
+        void startAutoplay();
+    }, [startAutoplay]);
+
+    const pauseAutoplay = useCallback(() => {
+        if (autoplayState !== 'running') return;
+        autoplayPausedRef.current = true;
+        setAutoplayState('paused');
+    }, [autoplayState]);
+
+    const resumeAutoplay = useCallback(() => {
+        if (autoplayState !== 'paused') return;
+        autoplayPausedRef.current = false;
+        setAutoplayState('running');
+    }, [autoplayState]);
+
     const handleReset = () => {
+        autoplayRunIdRef.current += 1;
+        autoplayPausedRef.current = false;
+        setAutoplayState('idle');
         setReplayTurns([]);
         setLoading(false);
         setSaveLoading(false);
@@ -464,6 +629,14 @@ export function ScenarioReplayTab() {
             <Text style={{ fontSize: 12, color: '#595959', lineHeight: 1.55 }}>
                 每步由后端 LLM 生成客户话，再走真实 triage；有轮次上限，非无限对话。需后端 OPENAI_API_KEY。
             </Text>
+            <Checkbox
+                checked={roleCConfig.stopOnActionReady === true}
+                onChange={(e) =>
+                    setRoleCConfig((c) => ({ ...c, stopOnActionReady: e.target.checked }))
+                }
+            >
+                自动回放：到达 action_ready 即停（可选）
+            </Checkbox>
         </Space>
     );
 
@@ -610,7 +783,7 @@ export function ScenarioReplayTab() {
                                             <Text style={{ fontSize: 12, color: '#595959' }}>
                                                 {s.id === ROLE_C_SCENARIO_ID || s.id === ROLE_C_PLUS_SCENARIO_ID
                                                     ? `最多 ${roleCConfig.maxTurns} 轮 · 受控 LLM`
-                                                    : `${s.turns.length} 轮客户发言`}
+                                                    : `${normalizeReplaySteps(s.turns).length} 轮客户发言`}
                                             </Text>
                                         </Space>
                                     </Card>
@@ -797,6 +970,85 @@ export function ScenarioReplayTab() {
                         {selected?.placeholder && selected.placeholder_note && (
                             <Alert type="info" showIcon style={{ marginBottom: 12 }} message={selected.placeholder_note} />
                         )}
+                        <div
+                            style={{
+                                marginBottom: 12,
+                                padding: '10px 12px',
+                                background: '#fafafa',
+                                borderRadius: 8,
+                                border: '1px solid #f0f0f0',
+                            }}
+                        >
+                            <Space wrap size={[8, 8]} align="center">
+                                <Text style={{ fontSize: 12, fontWeight: 600, color: '#262626' }}>自动回放</Text>
+                                <Button
+                                    type="primary"
+                                    size="small"
+                                    onClick={() => void startAutoplay()}
+                                    disabled={!selected || loading || autoplayState === 'running'}
+                                >
+                                    开始自动回放
+                                </Button>
+                                <Button
+                                    size="small"
+                                    icon={<PauseOutlined />}
+                                    onClick={pauseAutoplay}
+                                    disabled={autoplayState !== 'running'}
+                                >
+                                    暂停
+                                </Button>
+                                <Button
+                                    size="small"
+                                    icon={<CaretRightOutlined />}
+                                    onClick={resumeAutoplay}
+                                    disabled={autoplayState !== 'paused'}
+                                >
+                                    继续
+                                </Button>
+                                <Button size="small" onClick={handleReset} disabled={loading}>
+                                    重置
+                                </Button>
+                                <Select<'slow' | 'normal' | 'fast'>
+                                    size="small"
+                                    style={{ width: 112 }}
+                                    value={speedPreset}
+                                    onChange={setSpeedPreset}
+                                    options={[
+                                        { value: 'slow', label: '慢速' },
+                                        { value: 'normal', label: '正常' },
+                                        { value: 'fast', label: '快速' },
+                                    ]}
+                                />
+                                <Tag
+                                    color={
+                                        autoplayState === 'completed'
+                                            ? 'green'
+                                            : autoplayState === 'failed'
+                                              ? 'red'
+                                              : autoplayState === 'paused'
+                                                ? 'orange'
+                                                : autoplayState === 'running'
+                                                  ? 'processing'
+                                                  : 'default'
+                                    }
+                                >
+                                    {autoplayState === 'idle' && '待开始'}
+                                    {autoplayState === 'running' && '运行中'}
+                                    {autoplayState === 'paused' && '已暂停'}
+                                    {autoplayState === 'completed' && '已完成'}
+                                    {autoplayState === 'failed' && '失败'}
+                                </Tag>
+                            </Space>
+                            <Text
+                                type="secondary"
+                                style={{ fontSize: 11, display: 'block', marginTop: 8, lineHeight: 1.5 }}
+                            >
+                                停止条件：{selected?.stopOnActionReady ? '到达 action_ready 即停' : '跑完全部步骤'}
+                                {selected?.id === ROLE_C_SCENARIO_ID || selected?.id === ROLE_C_PLUS_SCENARIO_ID
+                                    ? '（角色 C 旋钮可勾选 action_ready 停止）'
+                                    : null}
+                            </Text>
+                        </div>
                         <Text style={{ fontSize: 12, color: '#595959', display: 'block', marginBottom: 12, lineHeight: 1.55 }}>
                             {threadHint}
                         </Text>
@@ -845,9 +1097,18 @@ export function ScenarioReplayTab() {
                                                 <Text
                                                     style={{ fontSize: 11, display: 'block', marginBottom: 6, color: '#595959' }}
                                                 >
-                                                    {t.role === 'customer'
-                                                        ? (uiCopy.portal_customer_bubble_label ?? '客户')
-                                                        : (uiCopy.portal_office_bubble_label ?? '系统整理')}
+                                                    {t.role === 'customer' ? (
+                                                        <Space size={6}>
+                                                            <span>{uiCopy.portal_customer_bubble_label ?? '客户'}</span>
+                                                            {t.inputKind === 'image' ? (
+                                                                <Tag color="purple" style={{ margin: 0 }}>
+                                                                    图片
+                                                                </Tag>
+                                                            ) : null}
+                                                        </Space>
+                                                    ) : (
+                                                        (uiCopy.portal_office_bubble_label ?? '系统整理')
+                                                    )}
                                                 </Text>
                                                 <Text style={{ whiteSpace: 'pre-wrap' }}>{t.content}</Text>
                                             </div>
@@ -870,7 +1131,14 @@ export function ScenarioReplayTab() {
                                                             children: (
                                                                 <ReplayStepIntelPanel
                                                                     triage={t.triageResult}
-                                                                    userInput={priorCustomerLineForIndex(replayTurns, idx)}
+                                                                    userInput={priorCustomerLineForIndex(
+                                                                        replayTurns,
+                                                                        idx,
+                                                                    )}
+                                                                    userInputKind={priorCustomerInputKindForSystemIndex(
+                                                                        replayTurns,
+                                                                        idx,
+                                                                    )}
                                                                 />
                                                             ),
                                                         },

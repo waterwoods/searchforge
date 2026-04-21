@@ -16,6 +16,20 @@
       ]
     },
     {
+      "id": "ADD_CAR_A_STOP_AR",
+      "role": "A",
+      "title": "标准加车（action_ready 即停）",
+      "subtitle": "与 A 同脚本；自动回放在 action_ready 时提前结束（回归 / 演示）",
+      "risk": "标准",
+      "placeholder": false,
+      "stopOnActionReady": true,
+      "turns": [
+        { "text": "我想加一台新车报价。" },
+        { "text": "2024 年宝马 X5，邮编 90210，下周五提车。" },
+        { "text": "主驾是我本人。这些够了吗？" }
+      ]
+    },
+    {
       "id": "ADD_CAR_B",
       "role": "B",
       "title": "高风险加车（材料/家庭/追问）",
@@ -28,6 +42,46 @@
         { "text": "邮编 91776。VIN 我晚点拍给你可以吗？" },
         { "text": "另外想问一下，我现在保单里另一台旧车能不能拿掉重新报？" },
         { "text": "先专注把这台 RX 加进去吧，另一台我之后再单独说。" }
+      ]
+    },
+    {
+      "id": "ADD_CAR_IMG_A",
+      "role": "IMG",
+      "title": "图片步 · VIN / 车辆线索（OCR）",
+      "subtitle": "先发文字，再发登记图；系统从 OCR 抽取 VIN / 邮编等线索",
+      "risk": "标准",
+      "placeholder": false,
+      "stopOnActionReady": false,
+      "turns": [
+        { "text": "我想给新买的车加保险，先发一张登记信息。" },
+        {
+          "type": "image",
+          "text": "这个是我拍的车牌和登记信息，VIN 能看清吗？",
+          "caption": "VIN / 登记信息",
+          "fixturePath": "/simulation-fixtures/vin_clue.png",
+          "contentType": "image/png"
+        },
+        { "text": "主驾是我本人，这些够你们先整理吗？" }
+      ]
+    },
+    {
+      "id": "ADD_CAR_IMG_B",
+      "role": "IMG",
+      "title": "图片步 · 弱图澄清",
+      "subtitle": "模糊小图：系统宜追问澄清而非硬失败",
+      "risk": "偏高",
+      "placeholder": false,
+      "stopOnActionReady": false,
+      "turns": [
+        { "text": "我想加车，先发一张照片你们看下。" },
+        {
+          "type": "image",
+          "text": "这个拍得有点糊，你们能看清吗？看不清我晚点再发清楚的。",
+          "caption": "模糊照片",
+          "fixturePath": "/simulation-fixtures/weak_blurry.png",
+          "contentType": "image/png"
+        },
+        { "text": "如果还需要别的材料我再补。" }
       ]
     }
   ]
