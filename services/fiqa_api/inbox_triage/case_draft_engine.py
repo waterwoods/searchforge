@@ -825,7 +825,7 @@ def build_v4_confirmation_client_reply_from_bundle(
     pvc = (primary_vehicle_summary or "").strip()
     if not pvc:
         pvc = (merged_text or "").strip()[:120]
-    lab_v = "车辆" if is_zh else "Vehicle"
+    lab_v = "车型" if is_zh else "Vehicle"
     lines.append((lab_v, pvc or ("(待确认)" if is_zh else "(to confirm)")))
 
     z = _zip5_from_text(merged_text or "")
