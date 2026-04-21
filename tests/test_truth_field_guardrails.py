@@ -179,12 +179,50 @@ def test_multi_slot_ocr_year_make_truth_ok_image_turn_then_asks_zip_only():
 
 
 def test_multi_slot_jump_vin_zip_skips_year_make_nag():
-    """When VIN and ZIP are already literal, do not spend a turn on year/make before delivery/driver."""
+    """When VIN and ZIP are already literal, do not spend a turn on year/make; ask one critical slot (delivery first)."""
     merged = _blob("add car") + "\n\n[OCR]\nVIN 1HGCM82633A004352\n92602"
     fields = _extract_add_car_fields_truth_safe(merged)
     assert fields.get("vin") and fields.get("zip")
     ask = _get_next_ask_for_add_car(merged, fields, "en", customer_turn_count=1)
     assert ask
-    assert "year" not in ask.lower()
-    assert "make" not in ask.lower()
-    assert "delivery" in ask.lower() and "driver" in ask.lower()
+    al = ask.lower()
+    assert "year" not in al
+    assert "make" not in al
+    assert "delivery" in al or "effective" in al
+    assert "driver" not in al
+
+
+def test_near_one_shot_vin_zip_partial_vehicle_asks_delivery_only_not_year_make():
+    """VIN + ZIP + partial Y/M from OCR: skip year/make ladder; single delivery ask."""
+    merged = _blob("想加车") + "\n\n[OCR]\nVIN 1HGCM82633A004352\n92602\n2020 Toyota Camry"
+    fields = _extract_add_car_fields_truth_safe(merged)
+    assert fields.get("vin") and fields.get("zip")
+    ask = _get_next_ask_for_add_car(merged, fields, "zh", customer_turn_count=1)
+    assert ask
+    assert "年份" not in ask and "车型" not in ask
+    assert "提车" in ask or "生效" in ask
+    assert "驾驶人" not in ask
+
+
+def test_year_make_zip_no_vin_still_combined_delivery_driver_when_both_missing():
+    """Without VIN (Y/M+ZIP identity), keep one message for both gaps when both delivery and driver are missing."""
+    merged = _blob("2020 Toyota Camry zip 92602")
+    fields = _extract_add_car_fields_truth_safe(merged)
+    assert fields.get("year") and fields.get("model") and fields.get("zip")
+    assert not fields.get("vin")
+    ask = _get_next_ask_for_add_car(merged, fields, "en", customer_turn_count=1)
+    assert ask
+    al = ask.lower()
+    assert "delivery" in al and "driver" in al
+
+
+def test_near_one_shot_vin_zip_driver_present_asks_delivery_only():
+    """Dense thread: VIN+ZIP+driver present, delivery missing — one delivery ask (not driver+VIN noise)."""
+    merged = _blob("VIN 1HGCM82633A004352 zip 92602 primary driver is Jane")
+    fields = _extract_add_car_fields_truth_safe(merged)
+    assert fields.get("vin") and fields.get("zip") and fields.get("driver")
+    assert not fields.get("delivery")
+    ask = _get_next_ask_for_add_car(merged, fields, "en", customer_turn_count=1)
+    assert ask
+    al = ask.lower()
+    assert ("delivery" in al or "effective" in al) and "driver" not in al

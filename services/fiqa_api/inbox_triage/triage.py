@@ -4258,6 +4258,14 @@ def _add_car_enough_for_handoff(fields: dict[str, bool]) -> bool:
     return True
 
 
+def _add_car_near_dense_case_ready(fields: dict[str, bool]) -> bool:
+    """VIN + ZIP + vehicle identity (explicit Y/M or VIN) — skip intermediate ladder; one critical ask at a time."""
+    if not fields.get("vin") or not fields.get("zip"):
+        return False
+    vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
+    return bool(vehicle_ok)
+
+
 def _add_car_llm_slot_should_invoke(
     rule_fields: dict[str, bool], merged_text: str, last_bubble: str
 ) -> tuple[bool, str]:
@@ -5160,12 +5168,38 @@ def _get_next_ask_for_add_car(
             else "Send me the zip or address first and I will run the quote."
         )
         return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
-    if not fields.get("delivery") and not fields.get("driver"):
-        ask = rules.get("ask_delivery_driver", {}).get(language) or (
-            "提车日期和主要驾驶人发我一下，我好安排报价。"
+
+    _near_dense = _add_car_near_dense_case_ready(fields)
+
+    # Exactly one of delivery / driver missing — ask that slot only (avoids silent None after combined branch).
+    if not fields.get("delivery") and fields.get("driver"):
+        ask = rules.get("ask_delivery_only", {}).get(language) or (
+            "提车日期发我一下（或生效日），我好安排报价。"
             if language == "zh"
-            else "Send me the delivery date and main driver so I can prepare the quote."
+            else "Send the delivery or effective date so I can prepare the quote."
         )
+        return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
+    if not fields.get("driver") and fields.get("delivery"):
+        ask = rules.get("ask_driver_only", {}).get(language) or (
+            "主要驾驶人发我一下，我好安排报价。"
+            if language == "zh"
+            else "Send me the main driver so I can prepare the quote."
+        )
+        return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
+
+    if not fields.get("delivery") and not fields.get("driver"):
+        if _near_dense:
+            ask = rules.get("ask_delivery_only", {}).get(language) or (
+                "提车日期发我一下（或生效日），我好安排报价。"
+                if language == "zh"
+                else "Send the delivery or effective date so I can prepare the quote."
+            )
+        else:
+            ask = rules.get("ask_delivery_driver", {}).get(language) or (
+                "提车日期和主要驾驶人发我一下，我好安排报价。"
+                if language == "zh"
+                else "Send me the delivery date and main driver so I can prepare the quote."
+            )
         return _maybe_append_add_car_price_caveat(merged_text, prefix + ask, language, client_id)
     if not fields.get("vin"):
         # PTD §9: defer_to_broker — do not extend the chat interview for VIN when strategy defers.

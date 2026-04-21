@@ -13,6 +13,10 @@
     "zh": "提车日和主要驾驶人发我，好一并交给办公室报价。",
     "en": "Send the delivery date and main driver so we can hand a complete file to the office."
   },
+  "ask_delivery_only": {
+    "zh": "提车日期发我一下（或生效日），办公室好安排报价。",
+    "en": "Send the delivery or effective date so we can line up the quote with the office."
+  },
   "ask_driver_only": {
     "zh": "主要驾驶人发我一下，办公室报价前还缺这项。",
     "en": "Send the main driver—the office still needs that for the quote."
