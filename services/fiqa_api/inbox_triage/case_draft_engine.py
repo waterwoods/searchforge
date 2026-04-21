@@ -351,10 +351,10 @@ def v5_completeness_threshold(variant: str) -> float:
     """Aligned with structural completeness (year/make/zip alone ≈0.66). A = conservative, C = minimal."""
     v = (variant or "A").strip().upper()
     if v == "B":
-        return 0.58
+        return 0.56
     if v == "C":
-        return 0.50
-    return 0.62
+        return 0.48
+    return 0.60
 
 
 def compute_v5_handoff_completeness(
@@ -393,6 +393,52 @@ def compute_v5_handoff_completeness(
             else:
                 earned += w
     return round(min(1.0, earned / total_w), 3)
+
+
+def min_v5_case_usable_core_met(
+    collected_field_ids: list[str],
+    missing_field_ids: list[str],
+    *,
+    merged_text: str,
+    primary_vehicle_summary: str | None,
+) -> bool:
+    """
+    Lighter broker-preprocess bar: truth VIN + truth ZIP + tier-1 vehicle identity,
+    plus at least one of delivery_date or primary_driver (truth slots only).
+
+    ZIP must be a collected slot (not garaging_area_hint partial credit).
+    """
+    coll = {str(x).lower() for x in collected_field_ids}
+    miss = {str(x).lower() for x in missing_field_ids}
+    if "vin" not in coll or "vin" in miss:
+        return False
+    if "zip" not in coll or "zip" in miss:
+        return False
+    if not add_car_tier1_vehicle_ok(
+        merged_text,
+        primary_vehicle_summary,
+        collected_field_ids,
+        missing_field_ids,
+    ):
+        return False
+    has_delivery = "delivery_date" in coll and "delivery_date" not in miss
+    has_driver = "primary_driver" in coll and "primary_driver" not in miss
+    if not (has_delivery or has_driver):
+        return False
+    # When calendar delivery is already truth-collected but primary driver is not, defer min-core
+    # if year/make were stated earlier (pilot quote bar expects explicit driver — handoff_timing HT1).
+    if (
+        has_delivery
+        and not has_driver
+        and "primary_driver" in miss
+        and (
+            ("year" in coll and "year" not in miss)
+            or ("make_model" in coll and "make_model" not in miss)
+            or ("model" in coll and "model" not in miss)
+        )
+    ):
+        return False
+    return True
 
 
 def add_car_tier1_vehicle_ok(
@@ -444,6 +490,13 @@ def evaluate_v5_case_usable(
     thresh = v5_completeness_threshold(variant)
     if v5c + 1e-9 >= thresh:
         return True, v5c, "usable"
+    if min_v5_case_usable_core_met(
+        collected,
+        missing,
+        merged_text=merged_text,
+        primary_vehicle_summary=primary_vehicle_summary,
+    ):
+        return True, v5c, "min_core_usable"
     return False, v5c, "below_completeness_threshold"
 
 
@@ -457,6 +510,13 @@ def estimate_v5_handoff_risk_score(
     base = estimate_v4_error_risk_score(bundle, quote_ready_status=quote_ready_status)
     if case_usable and quote_ready_status != "quote_ready":
         base = min(1.0, base + 0.12)
+    try:
+        v5_hc = float(bundle.get("v5_handoff_completeness_score") or 0.0)
+        v5_thr = float(bundle.get("v5_completeness_threshold") or 0.62)
+    except (TypeError, ValueError):
+        v5_hc, v5_thr = 0.0, 0.62
+    if case_usable and quote_ready_status != "quote_ready" and v5_hc + 1e-9 < v5_thr:
+        base = min(1.0, base + 0.06)
     return round(min(1.0, base), 3)
 
 
@@ -628,7 +688,13 @@ def build_v4_case_draft_bundle(
         missing,
     )
     v5_thresh = v5_completeness_threshold(variant)
-    case_usable = bool(tier1_ok and v5_hc + 1e-9 >= v5_thresh)
+    min_core = min_v5_case_usable_core_met(
+        collected,
+        missing,
+        merged_text=merged_text,
+        primary_vehicle_summary=primary_vehicle_summary,
+    )
+    case_usable = bool(tier1_ok and (v5_hc + 1e-9 >= v5_thresh or min_core))
     confirm_priority = build_confirm_priority_fields(confidence_map, inferred, variant=variant)
 
     partial_eligible = completeness >= 0.70
@@ -892,6 +958,7 @@ def augment_next_ask_with_variant(
     language: str,
     primary_vehicle_summary: str | None,
     fields: dict[str, bool],
+    pre_quote_soft_handoff_tone: bool = False,
 ) -> str | None:
     """
     Adjust add-car next ask for variant B (shorter). C is handled in triage vehicle branch.
@@ -901,6 +968,14 @@ def augment_next_ask_with_variant(
     v = (variant or "A").strip().upper()
     _ = primary_vehicle_summary, fields  # reserved for future merged asks
     is_zh = (language or "").strip().lower() == "zh"
+
+    if pre_quote_soft_handoff_tone and is_zh:
+        lead = "我已经帮你整理好了基本信息，现在只差一个信息就可以帮你推进报价准备。"
+        body = (ask or "").strip()
+        if body and lead[:8] not in body:
+            ask = f"{lead}\n{body}"
+        elif body:
+            ask = body
 
     if v == "B":
         # Tighter single-line nudge (aggressive brevity)

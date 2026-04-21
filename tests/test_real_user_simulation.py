@@ -592,3 +592,78 @@ def test_scenario_typed_intent_plus_dense_ocr_merges_stronger_collected():
     assert r.get("service_type") == "add_car"
     coll = {str(x).lower() for x in (r.get("collected_fields") or [])}
     assert "vin" in coll and "zip" in coll and "year" in coll and "make_model" in coll
+
+
+# --- AUTO_EVOLUTION_V2_5 — case_usable acceleration (complex simulations) ---
+
+
+def test_evolution_v25_scenario_a_image_heavy_min_core_usable():
+    """A: OCR VIN + ZIP + vehicle hint; one zh line supplies driver — broker-usable without long ladder."""
+    vin = "1HGCM82633A004352"
+    v6 = {
+        "structured_fields": {
+            "zip": {"value": "92602", "confidence": 0.74, "source": "ocr_regex"},
+        },
+        "last_raw_text": f"VIN {vin} 2021 Toyota Camry",
+        "last_engine": "unit_test",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "unit_test", "raw_len": 48}],
+    }
+    r = triage_conversation(
+        "[image intake] 想加车，主要驾驶人是我本人",
+        [],
+        client_id="chen_kui",
+        v6_ocr_signals=v6,
+    )
+    assert r.get("service_type") == "add_car"
+    assert r.get("case_usable") is True
+    draft = r.get("client_reply_draft") or ""
+    # Turn 1: broker-usable → confirmation block, not a slim slot chase for delivery / ZIP.
+    assert "我先根据" in draft
+    assert vin in draft
+    assert "提车日期发我" not in draft
+
+
+def test_evolution_v25_scenario_b_mixed_noisy_two_turns_no_question_loop():
+    """B: Weak image then messy text — reach usable in ≤2 customer turns without multi-question churn."""
+    v6_weak = {
+        "structured_fields": {},
+        "last_raw_text": "",
+        "last_engine": "none",
+        "attachment_history": [{"attachment_id": "inline_image", "engine": "none", "raw_len": 0}],
+    }
+    t1 = triage_conversation("[image intake]", [], client_id="chen_kui", v6_ocr_signals=v6_weak)
+    assert t1.get("service_type") != "add_car"
+    messy = (
+        "加车啦 VIN 1HGCM82633A004352 那个 z i p 是 90210 吧 "
+        "2026年4月25日提车 主驾驶人是我本人"
+    )
+    t2 = triage_conversation(
+        messy,
+        [{"role": "customer", "text": "[image intake]"}],
+        client_id="chen_kui",
+        v6_ocr_signals=None,
+    )
+    assert t2.get("service_type") == "add_car"
+    assert t2.get("case_usable") is True
+    # Single follow-up turn: do not stack many distinct slot questions in one reply.
+    draft = (t2.get("client_reply_draft") or "").lower()
+    assert draft.count("?") <= 3
+
+
+def test_evolution_v25_scenario_c_fragmented_partial_reaches_usable_fast():
+    """C: VIN + ZIP + noise + partial answers — minimal churn; usable once delivery is explicit."""
+    vin = "1HGCM82633A004352"
+    t1 = triage_conversation(
+        f"加车 随便问问保费 VIN {vin} 对了还有别的事晚点说",
+        [],
+        client_id="chen_kui",
+    )
+    assert t1.get("service_type") == "add_car"
+    assert t1.get("case_usable") is not True
+    turns = [{"role": "customer", "text": f"加车 随便问问保费 VIN {vin} 对了还有别的事晚点说"}]
+    t2 = triage_conversation("邮编90210 下周提车 就这样吧", turns, client_id="chen_kui")
+    assert "zip" in {str(x).lower() for x in (t2.get("collected_fields") or [])}
+    turns.append({"role": "customer", "text": "邮编90210 下周提车 就这样吧"})
+    t3 = triage_conversation("主驾驶人是我本人", turns, client_id="chen_kui")
+    assert t3.get("case_usable") is True
+    assert t3.get("quote_ready_status") in ("need_more", "almost_ready", "quote_ready")

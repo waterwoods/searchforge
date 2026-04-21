@@ -35,6 +35,7 @@ from services.fiqa_api.inbox_triage.case_draft_engine import (
     estimate_v4_error_risk_score,
     estimate_v5_handoff_risk_score,
     evaluate_v5_case_usable,
+    min_v5_case_usable_core_met,
 )
 from services.fiqa_api.inbox_triage.field_strategy import should_skip_user_prompt_for_missing_field
 from services.fiqa_api.inbox_triage.add_car_field_contract import (
@@ -5050,7 +5051,8 @@ def _get_next_ask_for_add_car(
     questioning_variant: str = "A",
 ) -> str | None:
     """Return the next most useful ask for add-car, or None if we should hand off.
-    Ask order: vehicle (year+model) first when missing, then zip, then delivery+driver.
+    Ask order: vehicle (year+model) first when missing, then zip, then delivery/driver.
+    When VIN+ZIP+dense identity (near one-shot), ask one critical slot at a time (delivery before driver).
     Adds acknowledgement of what customer just said for office-natural flow.
     Uses add_car_rules from config when not overridden.
     TOP_COMMERCIAL_DEEPENING: when we have delivery but not driver at turn 2 only,
@@ -5501,17 +5503,25 @@ def triage_conversation(
             # Raw OCR often has a 17-char VIN in last_raw_text without structured_fields.vin.
             _vin_for_slim_ask = bool(_tf_v4_pre.get("vin")) or _v6_structured_has_vin(v6_ocr_signals)
             if _vin_for_slim_ask and _qrs_v4_pre != "quote_ready":
-                slim = _get_next_ask_for_add_car(
-                    merged_for_add_car_extraction,
-                    _extract_add_car_fields_truth_safe(merged_for_add_car_extraction),
-                    _lang_v4_pre,
-                    add_car_rules_override,
-                    customer_turn_count=customer_count + 1,
-                    client_id=resolved_client_id,
-                    questioning_variant=intake_evolution_variant,
+                _usable_t1, _, _ = evaluate_v5_case_usable(
+                    v4_bundle_early,
+                    merged_text=merged_for_add_car_extraction,
+                    primary_vehicle_summary=_pvc_v4_pre_arg,
+                    variant=intake_evolution_variant,
                 )
-                if slim:
-                    next_ask = slim
+                # Min-core / V5 usable: prefer one confirmation block over a slot chase on turn 1.
+                if not _usable_t1:
+                    slim = _get_next_ask_for_add_car(
+                        merged_for_add_car_extraction,
+                        _extract_add_car_fields_truth_safe(merged_for_add_car_extraction),
+                        _lang_v4_pre,
+                        add_car_rules_override,
+                        customer_turn_count=customer_count + 1,
+                        client_id=resolved_client_id,
+                        questioning_variant=intake_evolution_variant,
+                    )
+                    if slim:
+                        next_ask = slim
         else:
             _usable, _, _ = evaluate_v5_case_usable(
                 v4_bundle_early,
@@ -5547,12 +5557,22 @@ def triage_conversation(
     if is_add_car and next_ask and customer_count + 1 > 1:
         _f_aug = _extract_add_car_fields_truth_safe(merged_for_add_car_extraction)
         _pvc_aug = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip() or None
+        _soft_tone = (
+            _next_lang_pre == "zh"
+            and bool(_f_aug.get("vin"))
+            and bool(_f_aug.get("zip"))
+            and (
+                (bool(_f_aug.get("driver")) and not bool(_f_aug.get("delivery")))
+                or (bool(_f_aug.get("delivery")) and not bool(_f_aug.get("driver")))
+            )
+        )
         next_ask = augment_next_ask_with_variant(
             next_ask,
             variant=intake_evolution_variant,
             language=_next_lang_pre,
             primary_vehicle_summary=_pvc_aug,
             fields=_f_aug,
+            pre_quote_soft_handoff_tone=_soft_tone,
         )
 
     if would_handoff and next_ask and not (
@@ -5590,8 +5610,14 @@ def triage_conversation(
                 x in {str(f).lower() for f in (_still_v4_pre or [])}
                 for x in ("primary_driver", "vin")
             )
+            and not min_v5_case_usable_core_met(
+                list(v4_bundle_early.get("collected_fields") or []),
+                list(v4_bundle_early.get("still_needed_fields") or []),
+                merged_text=merged_for_add_car_extraction,
+                primary_vehicle_summary=_pvc_v4_pre_arg,
+            )
         ):
-            # V5 case_usable can be true before pilot quote bar; wait for missing VIN or primary driver.
+            # Pre-quote handoff: require VIN + primary_driver unless min-core (VIN+ZIP+(delivery|driver)) is satisfied.
             handoff = False
 
     handoff_phrases = _get_handoff_phrases(resolved_client_id)
