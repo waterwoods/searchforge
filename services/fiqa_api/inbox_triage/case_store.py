@@ -22,6 +22,7 @@ from typing import Any
 from uuid import uuid4
 
 from services.fiqa_api.inbox_triage.config_loader import get_case_message_labels
+from services.fiqa_api.db.service_record_settings import is_production_mode
 
 CASE_STATUS_VALUES = ("new", "reviewing", "waiting_client", "waiting_customer", "agent_followup", "done", "closed")
 CASE_WAITING_ON_VALUES = ("none", "client", "broker", "carrier", "underwriting")
@@ -475,6 +476,9 @@ def _empty_payload() -> dict[str, list[dict[str, Any]]]:
 
 
 def _read_payload() -> dict[str, list[dict[str, Any]]]:
+    if is_production_mode():
+        logger.warning("JSON path should not be used in production")
+        return _empty_payload()
     path = _store_path()
     if not path.exists():
         return _empty_payload()
@@ -488,6 +492,9 @@ def _read_payload() -> dict[str, list[dict[str, Any]]]:
 
 
 def _write_payload(payload: dict[str, list[dict[str, Any]]]) -> None:
+    if is_production_mode():
+        logger.warning("JSON path should not be used in production")
+        return
     path = _store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent), delete=False) as tmp:

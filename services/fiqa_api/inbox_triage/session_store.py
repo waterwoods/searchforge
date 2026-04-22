@@ -12,10 +12,14 @@ writes are no-ops and reads return None (see session_repository).
 from __future__ import annotations
 
 import copy
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from services.fiqa_api.db.service_record_settings import is_production_mode, service_record_database_url
 from services.fiqa_api.inbox_triage import session_repository as repo
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now_iso() -> str:
@@ -113,6 +117,9 @@ def save_in_progress_session(
     Call when triage returns and no case was persisted.
     Preserves optional WeChat/light_identity_binding across saves.
     """
+    if is_production_mode() and not service_record_database_url():
+        logger.warning("Postgres is required for intake session persistence in production")
+        return
     sid = (session_id or "").strip()
     if not sid:
         return

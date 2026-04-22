@@ -18,9 +18,11 @@ from typing import Any
 
 from services.fiqa_api.db.service_record_settings import (
     db_primary_reads_enabled,
+    is_production_mode,
     json_read_fallback_allowed,
     json_case_writes_enabled,
     postgres_case_persistence_primary,
+    service_record_database_url,
 )
 from services.fiqa_api.inbox_triage.case_store import (
     _normalize_case,
@@ -48,6 +50,8 @@ def _merge_workbench_flags_from_json(case_id: str, case: dict[str, Any]) -> None
     (strict DB-only reads), Postgres `extra.workbench_*` hydrated in load_full_case_from_postgres
     must win — do not let a stale JSON row override PG truth.
     """
+    if is_production_mode():
+        return
     if not json_case_writes_enabled() or not json_read_fallback_allowed():
         return
     j = json_get_case_by_id(case_id)
@@ -66,6 +70,14 @@ def get_case_for_read(case_id: str) -> dict[str, Any] | None:
     """
     cid = (case_id or "").strip()
     if not cid:
+        return None
+
+    if is_production_mode() and not service_record_database_url():
+        logger.warning(
+            "JSON path should not be used in production (missing database URL; case_id=%s) %s",
+            cid,
+            _OBS,
+        )
         return None
 
     if not db_primary_reads_enabled():
@@ -97,6 +109,10 @@ def get_case_for_read(case_id: str) -> dict[str, Any] | None:
 
 def count_cases_for_read() -> int:
     """Total persisted cases visible to the list endpoint (PG when DB-primary reads, else JSON)."""
+    if is_production_mode() and not service_record_database_url():
+        logger.warning("JSON path should not be used in production (missing database URL) %s", _OBS)
+        return 0
+
     if not db_primary_reads_enabled():
         return json_count_stored_cases()
 
@@ -118,6 +134,10 @@ def list_recent_cases_for_read(limit: int = 8, offset: int = 0) -> list[dict[str
     """Recent cases for GET /api/inbox/cases (newest first)."""
     safe_limit = max(1, min(int(limit or 8), 50))
     safe_offset = max(0, min(int(offset or 0), 10_000))
+
+    if is_production_mode() and not service_record_database_url():
+        logger.warning("JSON path should not be used in production (missing database URL) %s", _OBS)
+        return []
 
     if not db_primary_reads_enabled():
         return json_list_recent_cases(limit=safe_limit, offset=safe_offset)
@@ -182,6 +202,10 @@ def list_recent_cases_for_read(limit: int = 8, offset: int = 0) -> list[dict[str
 
 def list_all_cases_for_read() -> list[dict[str, Any]]:
     """All persisted cases (bounded), newest-first — used by service_record_read and similar."""
+    if is_production_mode() and not service_record_database_url():
+        logger.warning("JSON path should not be used in production (missing database URL) %s", _OBS)
+        return []
+
     if not db_primary_reads_enabled():
         return json_list_all_cases()
 

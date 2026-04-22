@@ -29,13 +29,14 @@ def test_db_primary_reads_auto_on_when_json_case_writes_off(monkeypatch):
     assert s.db_primary_reads_enabled() is True
 
 
-def test_db_primary_reads_not_auto_when_json_still_written(monkeypatch):
+def test_db_primary_reads_forced_when_db_primary_writes(monkeypatch):
+    """UNIFIED_INTAKE_DB_PRIMARY_WRITES enables production mode — Postgres-first case reads."""
     monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://localhost/test")
     monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
     monkeypatch.delenv("UNIFIED_INTAKE_JSON_CASE_WRITES", raising=False)
     monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
     monkeypatch.delenv("UNIFIED_INTAKE_PG_DUAL_WRITE", raising=False)
-    assert s.db_primary_reads_enabled() is False
+    assert s.db_primary_reads_enabled() is True
 
 
 def test_db_primary_reads_auto_on_when_pg_dual_write(monkeypatch):
@@ -91,3 +92,13 @@ def test_json_read_fallback_disallowed_when_postgres_case_persistence_primary(mo
     monkeypatch.setenv("UNIFIED_INTAKE_JSON_READ_FALLBACK", "1")
     assert s.postgres_case_persistence_primary() is True
     assert s.json_read_fallback_allowed() is False
+
+
+def test_is_production_mode_env_prod(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    assert s.is_production_mode() is True
+
+
+def test_json_case_writes_disabled_when_env_prod(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    assert s.json_case_writes_enabled() is False

@@ -57,6 +57,19 @@ def _falsy_env(name: str) -> bool:
     return raw in ("0", "false", "no", "off")
 
 
+def is_production_mode() -> bool:
+    """
+    Production-like runtime: Postgres is the only durable case source of truth.
+
+    True when ENV=prod (deployment) or UNIFIED_INTAKE_DB_PRIMARY_WRITES is on (PG-primary
+    writes). Used to gate JSON case file reads/writes and read fallbacks — not a substitute
+    for configuring SERVICE_RECORD_DATABASE_URL / DATABASE_URL.
+    """
+    if (os.getenv("ENV") or "").strip().lower() == "prod":
+        return True
+    return _truthy_env("UNIFIED_INTAKE_DB_PRIMARY_WRITES")
+
+
 def db_primary_reads_enabled() -> bool:
     """
     When True, HTTP/API case reads (and case_store mutations via the same facade)
@@ -77,6 +90,8 @@ def db_primary_reads_enabled() -> bool:
     """
     if not service_record_database_url():
         return False
+    if is_production_mode():
+        return True
     if _falsy_env("UNIFIED_INTAKE_DB_PRIMARY_READS"):
         return False
     if _truthy_env("UNIFIED_INTAKE_DB_PRIMARY_READS"):
@@ -99,10 +114,15 @@ def json_read_fallback_allowed() -> bool:
     ``UNIFIED_INTAKE_JSON_READ_FALLBACK`` is set to a truthy value (avoids
     misconfiguration during pilot).
 
+    :func:`is_production_mode` is always False-return here: production must not use JSON
+    as case truth.
+
     When not in that mode: default is to allow JSON fallback. Set
     UNIFIED_INTAKE_JSON_READ_FALLBACK=0|false|no|off to disable
     (strict DB-only reads; missing row → None / 404).
     """
+    if is_production_mode():
+        return False
     if postgres_case_persistence_primary():
         return False
     raw = (os.getenv("UNIFIED_INTAKE_JSON_READ_FALLBACK") or "").strip().lower()
@@ -134,6 +154,8 @@ def json_case_writes_enabled() -> bool:
 
     Rollback: UNIFIED_INTAKE_JSON_CASE_WRITES=1 or unset.
     """
+    if is_production_mode():
+        return False
     if _falsy_env("UNIFIED_INTAKE_JSON_CASE_WRITES"):
         return False
     return True
