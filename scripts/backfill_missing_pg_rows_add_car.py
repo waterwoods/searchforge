@@ -3,7 +3,7 @@
 One-off backfill for missing PG mirror rows on formally-submitted Add-Car cases.
 
 Scope is intentionally narrow:
-- JSON source of truth remains unchanged
+- loads case payloads via case_truth_repository (Postgres-first when DB-primary reads are on)
 - only explicit service_lane=add_car cases are considered
 - only cases with missing Postgres row are inserted
 """
@@ -20,7 +20,7 @@ from services.fiqa_api.db.service_record_settings import (
     service_record_database_url,
     service_record_dual_write_enabled,
 )
-from services.fiqa_api.inbox_triage.case_store import get_case_by_id
+from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
 from services.fiqa_api.inbox_triage.service_record_read import ServiceRecordReadRepository
 
 
@@ -58,9 +58,9 @@ def main() -> int:
     failed: list[dict[str, str]] = []
     if args.apply:
         for cid in missing_case_ids:
-            case = get_case_by_id(cid)
+            case = get_case_for_read(cid)
             if not case:
-                failed.append({"case_id": cid, "error": "missing_json_case"})
+                failed.append({"case_id": cid, "error": "missing_case_payload"})
                 continue
             try:
                 persist_new_case(case)

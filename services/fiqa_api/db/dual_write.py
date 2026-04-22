@@ -35,7 +35,8 @@ def maybe_dual_write_new_case(case: dict[str, Any]) -> None:
         persist_new_case(case)
     except Exception:
         logger.exception(
-            "UNIFIED_INTAKE_DB_OBS signal=PG_DUAL_WRITE_NEW_CASE_FAIL (JSON store is source of truth)"
+            "UNIFIED_INTAKE_DB_OBS signal=PG_DUAL_WRITE_NEW_CASE_FAIL "
+            "(JSON received the write; Postgres mirror failed — reconcile or retry)"
         )
 
 
@@ -50,5 +51,6 @@ def maybe_dual_write_case_append(case: dict[str, Any]) -> None:
         persist_case_append(case)
     except Exception:
         logger.exception(
-            "UNIFIED_INTAKE_DB_OBS signal=PG_DUAL_WRITE_APPEND_FAIL (JSON store is source of truth)"
+            "UNIFIED_INTAKE_DB_OBS signal=PG_DUAL_WRITE_APPEND_FAIL "
+            "(JSON received the write; Postgres mirror failed — reconcile or retry)"
         )

@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "description": "Office workbench case_activity strings (broker-facing). Override for locale or tone; keep keys stable.",
+  "prefix": "工作台：",
+  "mark_test_on": "标记为测试",
+  "mark_test_off": "取消测试标记",
+  "archive_on": "已归档隐藏",
+  "archive_off": "取消归档",
+  "generic_update": "更新"
+}

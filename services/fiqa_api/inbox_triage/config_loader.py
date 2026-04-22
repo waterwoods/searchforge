@@ -166,6 +166,34 @@ def get_workflow_fallbacks() -> dict[str, str]:
     return {k: (v or "").strip() for k, v in fallbacks.items() if isinstance(v, str)}
 
 
+_WORKBENCH_ACTIVITY_DEFAULTS: dict[str, str] = {
+    "prefix": "工作台：",
+    "mark_test_on": "标记为测试",
+    "mark_test_off": "取消测试标记",
+    "archive_on": "已归档隐藏",
+    "archive_off": "取消归档",
+    "generic_update": "更新",
+}
+
+
+def get_workbench_activity_copy() -> dict[str, str]:
+    """
+    Broker-visible workbench activity lines (case_activity) — keep wording in config, not code.
+
+    Load: configs/common/workbench_activity_copy.json (optional). Unknown keys fall back to
+    _WORKBENCH_ACTIVITY_DEFAULTS. Per-client overrides belong in future client packs if needed.
+    """
+    data = _load_json("configs/common/workbench_activity_copy.json")
+    out = dict(_WORKBENCH_ACTIVITY_DEFAULTS)
+    if not data or not isinstance(data, dict):
+        return out
+    for key in _WORKBENCH_ACTIVITY_DEFAULTS:
+        raw = data.get(key)
+        if isinstance(raw, str) and raw.strip():
+            out[key] = raw.strip()
+    return out
+
+
 def get_category_templates() -> dict[str, dict[str, str]]:
     """
     Load per-category broker_next_step and client_prep from configs/industries/insurance/category_templates.json.
@@ -362,6 +390,10 @@ def get_active_client_id() -> str:
     """
     Return active client ID from CLIENT_ID env or default.
     Used by API to select which client config to serve.
+
+    Hot-plug boundary (add a client pack under configs/clients/<id>/):
+    handoff_phrases.json, reply_overrides.json, ui_copy.json — selected by CLIENT_ID.
+    Industry-wide behavior stays under configs/industries/; avoid per-client branches in core triage.
     """
     raw = os.environ.get("CLIENT_ID", "").strip()
     return raw if raw else _DEFAULT_CLIENT_ID

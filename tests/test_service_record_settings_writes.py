@@ -68,3 +68,26 @@ def test_json_case_writes_explicit_off(monkeypatch):
 def test_json_case_writes_falsy(val, monkeypatch):
     monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", val)
     assert s.json_case_writes_enabled() is False
+
+
+def test_json_session_writes_default_on(monkeypatch):
+    monkeypatch.delenv("UNIFIED_INTAKE_JSON_SESSION_WRITES", raising=False)
+    assert s.json_session_writes_enabled() is True
+
+
+def test_json_session_writes_explicit_off(monkeypatch):
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_SESSION_WRITES", "0")
+    assert s.json_session_writes_enabled() is False
+
+
+def test_postgres_case_persistence_primary(monkeypatch):
+    monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", "0")
+    assert s.postgres_case_persistence_primary() is False
+
+    monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://localhost/test")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", "0")
+    assert s.postgres_case_persistence_primary() is True

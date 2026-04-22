@@ -112,3 +112,33 @@ def json_case_writes_enabled() -> bool:
     if _falsy_env("UNIFIED_INTAKE_JSON_CASE_WRITES"):
         return False
     return True
+
+
+def json_session_writes_enabled() -> bool:
+    """
+    When False, session_store skips writing unified_intake_sessions.json (no server-side
+    in-progress restore after refresh). Use for strict production deployments that must
+    not create or update session JSON on disk.
+
+    Default: True (session JSON writes on). Set UNIFIED_INTAKE_JSON_SESSION_WRITES=0|false|no|off
+    to disable.
+
+    Rollback: unset UNIFIED_INTAKE_JSON_SESSION_WRITES or set to 1|true|yes|on.
+    """
+    if _falsy_env("UNIFIED_INTAKE_JSON_SESSION_WRITES"):
+        return False
+    return True
+
+
+def postgres_case_persistence_primary() -> bool:
+    """
+    True when DB URL is set, Postgres primary writes are on, and JSON case file writes are off.
+
+    In this configuration the durable case record is Postgres; JSON case files must not be
+    treated as authoritative (see case_truth_repository + UNIFIED_INTAKE_JSON_READ_FALLBACK).
+    """
+    return bool(
+        service_record_database_url()
+        and db_primary_writes_enabled()
+        and not json_case_writes_enabled()
+    )

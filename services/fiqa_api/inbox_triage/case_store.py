@@ -899,12 +899,17 @@ def update_case_workbench_flags(
     if not changed:
         return normalized_case
     normalized_case["updated_at"] = _utc_now_iso()
+    from services.fiqa_api.inbox_triage.config_loader import get_workbench_activity_copy
+
+    wb = get_workbench_activity_copy()
+    prefix = wb.get("prefix") or "工作台："
     parts: list[str] = []
     if is_test is not None:
-        parts.append("标记为测试" if is_test else "取消测试标记")
+        parts.append(wb["mark_test_on"] if is_test else wb["mark_test_off"])
     if archived is not None:
-        parts.append("已归档隐藏" if archived else "取消归档")
-    msg = "工作台：" + ("；".join(parts) if parts else "更新")
+        parts.append(wb["archive_on"] if archived else wb["archive_off"])
+    joiner = "；"
+    msg = prefix + (joiner.join(parts) if parts else wb.get("generic_update") or "更新")
     normalized_case["case_activity"] = [
         _build_activity_entry("workbench_flags", msg),
         *normalized_case.get("case_activity", []),

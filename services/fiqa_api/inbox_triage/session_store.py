@@ -8,13 +8,19 @@ Enables refresh recovery: frontend can restore conversation by session_id.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from services.fiqa_api.db.service_record_settings import json_session_writes_enabled
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
+logger = logging.getLogger(__name__)
+
+_SESSION_WRITES_DISABLED_LOGGED = False
 DEFAULT_SESSIONS_PATH = REPO_ROOT / "data" / "unified_intake_sessions.json"
 MAX_STORED_SESSIONS = 50
 
@@ -54,6 +60,15 @@ def _read_payload() -> dict[str, Any]:
 
 
 def _write_payload(payload: dict[str, Any]) -> None:
+    global _SESSION_WRITES_DISABLED_LOGGED
+    if not json_session_writes_enabled():
+        if not _SESSION_WRITES_DISABLED_LOGGED:
+            _SESSION_WRITES_DISABLED_LOGGED = True
+            logger.warning(
+                "UNIFIED_INTAKE_DB_OBS signal=JSON_SESSION_WRITES_DISABLED "
+                "(UNIFIED_INTAKE_JSON_SESSION_WRITES off; session JSON will not be created/updated)"
+            )
+        return
     path = _store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent), delete=False) as tmp:
