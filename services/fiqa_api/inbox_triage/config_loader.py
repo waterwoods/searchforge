@@ -194,6 +194,31 @@ def get_workbench_activity_copy() -> dict[str, str]:
     return out
 
 
+# Bracket tags in persisted case source_text (case_messages display / round-trip)
+_CASE_MESSAGE_LABEL_DEFAULTS: dict[str, str] = {
+    "customer": "客户",
+    "system": "系统",
+}
+
+
+def get_case_message_labels() -> dict[str, str]:
+    """
+    Human-readable [customer] / [system] labels in case `source_text`.
+
+    Optional: configs/common/case_message_labels.json with keys `customer` and `system`.
+    New locales or client packs change wording without editing case_store.
+    """
+    data = _load_json("configs/common/case_message_labels.json")
+    out = dict(_CASE_MESSAGE_LABEL_DEFAULTS)
+    if not data or not isinstance(data, dict):
+        return out
+    for key in _CASE_MESSAGE_LABEL_DEFAULTS:
+        raw = data.get(key)
+        if isinstance(raw, str) and raw.strip():
+            out[key] = raw.strip()
+    return out
+
+
 def get_category_templates() -> dict[str, dict[str, str]]:
     """
     Load per-category broker_next_step and client_prep from configs/industries/insurance/category_templates.json.

@@ -157,3 +157,43 @@ def test_load_case_for_mutation_calls_truth_repository(monkeypatch, tmp_path):
     assert seen == ["case_abc"]
     assert out is not None
     assert out["case_id"] == "case_abc"
+
+
+def test_strict_pilot_list_recent_does_not_use_stale_json(monkeypatch, tmp_path):
+    """Postgres-only case store: list must not fall back to JSON (even with READ_FALLBACK=1)."""
+    store = tmp_path / "cases.json"
+    store.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "case_id": "case_stale_json",
+                        "case_status": "new",
+                        "issue_category": "x",
+                        "urgency": "low",
+                        "broker_next_step": "b",
+                        "client_prep": "c",
+                        "client_reply_draft": "d",
+                        "manual_followup_needed": False,
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("UNIFIED_INTAKE_CASES_PATH", str(store))
+    monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://invalid")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", "0")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_READ_FALLBACK", "1")
+    monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
+
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_repository.list_record_ids_recent",
+        lambda _lim, _off=0: [],
+    )
+
+    rows = ctr.list_recent_cases_for_read(limit=8)
+    assert rows == []

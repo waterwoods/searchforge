@@ -18,9 +18,9 @@ from typing import Any
 
 from services.fiqa_api.db.service_record_settings import (
     db_primary_reads_enabled,
-    db_primary_writes_enabled,
-    json_case_writes_enabled,
     json_read_fallback_allowed,
+    json_case_writes_enabled,
+    postgres_case_persistence_primary,
 )
 from services.fiqa_api.inbox_triage.case_store import (
     _normalize_case,
@@ -86,14 +86,13 @@ def get_case_for_read(case_id: str) -> dict[str, Any] | None:
         _merge_workbench_flags_from_json(cid, normalized)
         return normalized
 
-    if json_read_fallback_allowed():
-        if db_primary_writes_enabled() and not json_case_writes_enabled():
+    if not json_read_fallback_allowed():
+        if postgres_case_persistence_primary():
             logger.warning("%s signal=PG_GET_MISSING_STRICT_NO_JSON_FALLBACK case_id=%s", _OBS, cid)
-            return None
-        sig = "JSON_READ_FALLBACK_AFTER_PG_ERROR" if pg_error else "JSON_READ_FALLBACK_MISSING_PG_ROW"
-        logger.warning("%s signal=%s case_id=%s", _OBS, sig, cid)
-        return json_get_case_by_id(cid)
-    return None
+        return None
+    sig = "JSON_READ_FALLBACK_AFTER_PG_ERROR" if pg_error else "JSON_READ_FALLBACK_MISSING_PG_ROW"
+    logger.warning("%s signal=%s case_id=%s", _OBS, sig, cid)
+    return json_get_case_by_id(cid)
 
 
 def count_cases_for_read() -> int:

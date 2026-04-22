@@ -217,6 +217,7 @@ def test_strict_db_only_no_json_fallback_when_pg_missing(monkeypatch, tmp_path):
     monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://invalid")
     monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
     monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", "0")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_READ_FALLBACK", "1")
     monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
 
     monkeypatch.setattr(

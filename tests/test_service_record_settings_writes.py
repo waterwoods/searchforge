@@ -91,3 +91,13 @@ def test_postgres_case_persistence_primary(monkeypatch):
     monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
     monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", "0")
     assert s.postgres_case_persistence_primary() is True
+
+
+def test_json_read_fallback_disallowed_when_postgres_case_persistence_primary(monkeypatch):
+    """Strict pilot: never read JSON for case truth, even if UNIFIED_INTAKE_JSON_READ_FALLBACK=1."""
+    monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://localhost/test")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_CASE_WRITES", "0")
+    monkeypatch.setenv("UNIFIED_INTAKE_JSON_READ_FALLBACK", "1")
+    assert s.postgres_case_persistence_primary() is True
+    assert s.json_read_fallback_allowed() is False

@@ -77,9 +77,18 @@ def json_read_fallback_allowed() -> bool:
     When DB-primary reads are on, allow falling back to JSON if the PG row is missing
     or the DB read errors (transition / dual-track).
 
-    Default: allowed. Set UNIFIED_INTAKE_JSON_READ_FALLBACK=0|false|no|off to disable
+    When :func:`postgres_case_persistence_primary` is True (Postgres is the only durable
+    case store — DB primary writes on, JSON case file writes off), this always returns
+    False. No silent JSON case reads in that mode, even if
+    ``UNIFIED_INTAKE_JSON_READ_FALLBACK`` is set to a truthy value (avoids
+    misconfiguration during pilot).
+
+    When not in that mode: default is to allow JSON fallback. Set
+    UNIFIED_INTAKE_JSON_READ_FALLBACK=0|false|no|off to disable
     (strict DB-only reads; missing row → None / 404).
     """
+    if postgres_case_persistence_primary():
+        return False
     raw = (os.getenv("UNIFIED_INTAKE_JSON_READ_FALLBACK") or "").strip().lower()
     if not raw:
         return True

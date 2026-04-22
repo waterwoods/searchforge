@@ -21,6 +21,8 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from uuid import uuid4
 
+from services.fiqa_api.inbox_triage.config_loader import get_case_message_labels
+
 CASE_STATUS_VALUES = ("new", "reviewing", "waiting_client", "waiting_customer", "agent_followup", "done", "closed")
 CASE_WAITING_ON_VALUES = ("none", "client", "broker", "carrier", "underwriting")
 MAX_STORED_CASES = 200
@@ -109,13 +111,17 @@ def _humanize_waiting_on(waiting_on: str) -> str:
 def _parse_source_to_messages(source_text: str, base_timestamp: str | None = None) -> list[dict[str, Any]]:
     """
     Parse source_text ([客户]/[系统] format) into case_messages.
-    Used for migration and initial save.
+    Used for migration and initial save. Bracket labels come from
+    :func:`get_case_message_labels` (optional configs/common/case_message_labels.json).
     """
+    labels = get_case_message_labels()
+    cust = labels.get("customer") or "客户"
+    sys_l = labels.get("system") or "系统"
     raw = (source_text or "").strip()
     ts = base_timestamp or _utc_now_iso()
     if not raw:
         return []
-    if "[客户]" not in raw and "[系统]" not in raw:
+    if f"[{cust}]" not in raw and f"[{sys_l}]" not in raw:
         return [
             {
                 "message_id": f"msg_{uuid4().hex[:12]}",
@@ -126,7 +132,10 @@ def _parse_source_to_messages(source_text: str, base_timestamp: str | None = Non
             }
         ]
     messages: list[dict[str, Any]] = []
-    pattern = re.compile(r"\[(客户|系统)\]\s*", re.IGNORECASE)
+    pattern = re.compile(
+        rf"\[({re.escape(cust)}|{re.escape(sys_l)})\]\s*",
+        re.IGNORECASE,
+    )
     parts = pattern.split(raw)
     if len(parts) < 2:
         return [
@@ -143,7 +152,7 @@ def _parse_source_to_messages(source_text: str, base_timestamp: str | None = Non
     while i < len(parts) - 1:
         role_label = (parts[i] or "").strip()
         content = (parts[i + 1] or "").split("[")[0].strip() if i + 1 < len(parts) else ""
-        role = "customer" if role_label == "客户" else "system"
+        role = "customer" if role_label == cust else "system"
         if content:
             messages.append({
                 "message_id": f"msg_{uuid4().hex[:12]}",
@@ -168,14 +177,17 @@ def _parse_source_to_messages(source_text: str, base_timestamp: str | None = Non
 
 
 def _build_source_from_messages(messages: list[dict[str, Any]]) -> str:
-    """Build source_text from case_messages for triage/display."""
+    """Build source_text from case_messages for triage/display (labels from config)."""
     if not messages:
         return ""
+    labels = get_case_message_labels()
+    cust_l = labels.get("customer") or "客户"
+    sys_l = labels.get("system") or "系统"
     sorted_msgs = sorted(messages, key=lambda m: (m.get("sequence", 0), m.get("created_at", "")))
     parts: list[str] = []
     for m in sorted_msgs:
         role = (m.get("role") or "customer").strip().lower()
-        label = "客户" if role == "customer" else "系统"
+        label = cust_l if role == "customer" else sys_l
         text = (m.get("text") or "").strip()
         if text:
             parts.append(f"[{label}] {text}")
