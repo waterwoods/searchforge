@@ -1,81 +1,25 @@
 """
 In-progress session store for Unified Intake.
 
-Lightweight JSON persistence for pre-handoff conversation turns + workflow_state.
-Enables refresh recovery: frontend can restore conversation by session_id.
+Persists pre-handoff conversation turns + workflow_state to Postgres when
+SERVICE_RECORD_DATABASE_URL / DATABASE_URL is set.
+
+Without a DB URL, persistence uses the in-process repository only if
+UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS is explicitly enabled; otherwise
+writes are no-ops and reads return None (see session_repository).
 """
 
 from __future__ import annotations
 
-import json
-import logging
-import os
+import copy
 from datetime import datetime, timezone
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Any
 
-from services.fiqa_api.db.service_record_settings import json_session_writes_enabled
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-logger = logging.getLogger(__name__)
-
-_SESSION_WRITES_DISABLED_LOGGED = False
-DEFAULT_SESSIONS_PATH = REPO_ROOT / "data" / "unified_intake_sessions.json"
-MAX_STORED_SESSIONS = 50
+from services.fiqa_api.inbox_triage import session_repository as repo
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _store_path() -> Path:
-    raw_path = (os.getenv("UNIFIED_INTAKE_SESSIONS_PATH") or "").strip()
-    if not raw_path:
-        return DEFAULT_SESSIONS_PATH
-    path = Path(raw_path)
-    if not path.is_absolute():
-        path = REPO_ROOT / path
-    return path
-
-
-def _empty_payload() -> dict[str, Any]:
-    return {"sessions": []}
-
-
-def _read_payload() -> dict[str, Any]:
-    path = _store_path()
-    if not path.exists():
-        return _empty_payload()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return _empty_payload()
-    if not isinstance(payload, dict):
-        return _empty_payload()
-    sessions = payload.get("sessions")
-    if not isinstance(sessions, list):
-        return _empty_payload()
-    return {"sessions": [s for s in sessions if isinstance(s, dict) and s.get("session_id")]}
-
-
-def _write_payload(payload: dict[str, Any]) -> None:
-    global _SESSION_WRITES_DISABLED_LOGGED
-    if not json_session_writes_enabled():
-        if not _SESSION_WRITES_DISABLED_LOGGED:
-            _SESSION_WRITES_DISABLED_LOGGED = True
-            logger.warning(
-                "UNIFIED_INTAKE_DB_OBS signal=JSON_SESSION_WRITES_DISABLED "
-                "(UNIFIED_INTAKE_JSON_SESSION_WRITES off; session JSON will not be created/updated)"
-            )
-        return
-    path = _store_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent), delete=False) as tmp:
-        json.dump(payload, tmp, ensure_ascii=False, indent=2)
-        tmp.write("\n")
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)
 
 
 def _extract_workflow_state(triage_result: dict[str, Any]) -> dict[str, Any]:
@@ -180,57 +124,36 @@ def save_in_progress_session(
     workflow_state = _extract_workflow_state(triage_result)
     updated_at = _utc_now_iso()
 
-    payload = _read_payload()
-    sessions = payload["sessions"]
     existing_li: dict[str, Any] | None = None
     existing_active: str | None = None
     existing_lv: str | None = None
     existing_uh: dict[str, str] | None = None
-    for s in sessions:
-        if (s.get("session_id") or "").strip() == sid:
-            raw_li = s.get("light_identity_binding")
-            existing_li = _normalize_light_identity_binding(raw_li)
-            ac = str(s.get("active_case_id") or "").strip()
-            existing_active = ac if ac else None
-            lv = str(s.get("last_vehicle_key") or "").strip()
-            existing_lv = lv if lv else None
-            existing_uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
-            break
-    # Update existing or append
-    found = False
-    for i, s in enumerate(sessions):
-        if (s.get("session_id") or "").strip() == sid:
-            row: dict[str, Any] = {
-                "session_id": sid,
-                "turns": normalized_turns,
-                "workflow_state": workflow_state,
-                "updated_at": updated_at,
-            }
-            if existing_li:
-                row["light_identity_binding"] = existing_li
-            if existing_active:
-                row["active_case_id"] = existing_active
-            if existing_lv:
-                row["last_vehicle_key"] = existing_lv
-            if existing_uh:
-                row["user_identity_hint"] = existing_uh
-            sessions[i] = row
-            found = True
-            break
-    if not found:
-        row = {
-            "session_id": sid,
-            "turns": normalized_turns,
-            "workflow_state": workflow_state,
-            "updated_at": updated_at,
-        }
-        if existing_li:
-            row["light_identity_binding"] = existing_li
-        sessions.append(row)
-    # Evict oldest if over limit
-    sessions.sort(key=lambda s: s.get("updated_at") or "", reverse=True)
-    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
-    _write_payload(payload)
+    raw = repo.get_session(sid)
+    if raw:
+        raw_li = raw.get("light_identity_binding")
+        existing_li = _normalize_light_identity_binding(raw_li)
+        ac = str(raw.get("active_case_id") or "").strip()
+        existing_active = ac if ac else None
+        lv = str(raw.get("last_vehicle_key") or "").strip()
+        existing_lv = lv if lv else None
+        existing_uh = _normalize_user_identity_hint(raw.get("user_identity_hint"))
+
+    row: dict[str, Any] = {
+        "session_id": sid,
+        "turns": normalized_turns,
+        "workflow_state": workflow_state,
+        "updated_at": updated_at,
+    }
+    if existing_li:
+        row["light_identity_binding"] = existing_li
+    if existing_active:
+        row["active_case_id"] = existing_active
+    if existing_lv:
+        row["last_vehicle_key"] = existing_lv
+    if existing_uh:
+        row["user_identity_hint"] = existing_uh
+    if not repo.upsert_session(sid, row):
+        return
 
 
 def get_in_progress_session(session_id: str) -> dict[str, Any] | None:
@@ -241,34 +164,33 @@ def get_in_progress_session(session_id: str) -> dict[str, Any] | None:
     sid = (session_id or "").strip()
     if not sid:
         return None
-    payload = _read_payload()
-    for s in payload["sessions"]:
-        if (s.get("session_id") or "").strip() == sid:
-            turns = s.get("turns") or []
-            workflow_state = s.get("workflow_state") or {}
-            out: dict[str, Any] = {
-                "turns": turns,
-                "workflow_state": workflow_state,
-                "updated_at": s.get("updated_at", ""),
-            }
-            li = _normalize_light_identity_binding(s.get("light_identity_binding"))
-            if li:
-                out["light_identity_binding"] = li
-            ac = str(s.get("active_case_id") or "").strip()
-            if ac:
-                out["active_case_id"] = ac
-            lv = str(s.get("last_vehicle_key") or "").strip()
-            if lv:
-                out["last_vehicle_key"] = lv
-            uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
-            if uh:
-                out["user_identity_hint"] = uh
-            return out
-    return None
+    s = repo.get_session(sid)
+    if s is None:
+        return None
+    turns = s.get("turns") or []
+    workflow_state = s.get("workflow_state") or {}
+    out: dict[str, Any] = {
+        "turns": turns,
+        "workflow_state": workflow_state,
+        "updated_at": s.get("updated_at", ""),
+    }
+    li = _normalize_light_identity_binding(s.get("light_identity_binding"))
+    if li:
+        out["light_identity_binding"] = li
+    ac = str(s.get("active_case_id") or "").strip()
+    if ac:
+        out["active_case_id"] = ac
+    lv = str(s.get("last_vehicle_key") or "").strip()
+    if lv:
+        out["last_vehicle_key"] = lv
+    uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
+    if uh:
+        out["user_identity_hint"] = uh
+    return out
 
 
 def get_session_light_identity_binding(session_id: str) -> dict[str, Any] | None:
-    """Pending identity fields for triage merge before formal submit (JSON truth)."""
+    """Pending identity fields for triage merge before formal submit (session truth)."""
     sid = (session_id or "").strip()
     if not sid:
         return None
@@ -289,22 +211,14 @@ def patch_session_light_identity_binding(session_id: str, identity: dict[str, An
     merged = _normalize_light_identity_binding(identity)
     if not merged:
         return
-    payload = _read_payload()
-    sessions = payload["sessions"]
-    found = False
-    for i, s in enumerate(sessions):
-        if (s.get("session_id") or "").strip() != sid:
-            continue
-        prev = _normalize_light_identity_binding(s.get("light_identity_binding")) or {}
-        prev.update(merged)
-        sessions[i] = {**s, "light_identity_binding": prev}
-        found = True
-        break
-    if not found:
+    raw = repo.get_session(sid)
+    if not raw:
         raise ValueError("session_not_found")
-    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
-    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
-    _write_payload(payload)
+    prev = _normalize_light_identity_binding(raw.get("light_identity_binding")) or {}
+    prev.update(merged)
+    new_row = {**raw, "light_identity_binding": prev, "updated_at": _utc_now_iso()}
+    if not repo.upsert_session(sid, new_row):
+        return
 
 
 def delete_in_progress_session(session_id: str) -> bool:
@@ -312,13 +226,7 @@ def delete_in_progress_session(session_id: str) -> bool:
     sid = (session_id or "").strip()
     if not sid:
         return False
-    payload = _read_payload()
-    before = len(payload["sessions"])
-    payload["sessions"] = [s for s in payload["sessions"] if (s.get("session_id") or "").strip() != sid]
-    if len(payload["sessions"]) < before:
-        _write_payload(payload)
-        return True
-    return False
+    return repo.delete_session(sid)
 
 
 def patch_session_case_binding(
@@ -335,13 +243,19 @@ def patch_session_case_binding(
     sid = (session_id or "").strip()
     if not sid:
         return
-    payload = _read_payload()
-    sessions = payload["sessions"]
     updated_at = _utc_now_iso()
     hint = _normalize_user_identity_hint(user_identity_hint) if user_identity_hint else None
 
+    raw = repo.get_session(sid) or {
+        "session_id": sid,
+        "turns": [],
+        "workflow_state": {},
+        "updated_at": updated_at,
+    }
+
     def _apply_to_row(row: dict[str, Any]) -> dict[str, Any]:
-        out = dict(row)
+        out = copy.deepcopy(row)
+        out["session_id"] = sid
         out["updated_at"] = updated_at
         if clear_active_case:
             out.pop("active_case_id", None)
@@ -357,28 +271,12 @@ def patch_session_case_binding(
                 out.pop("last_vehicle_key", None)
         if hint:
             prev = _normalize_user_identity_hint(out.get("user_identity_hint")) or {}
-            merged = {**prev, **hint}
-            out["user_identity_hint"] = merged
+            out["user_identity_hint"] = {**prev, **hint}
         return out
 
-    found = False
-    for i, s in enumerate(sessions):
-        if (s.get("session_id") or "").strip() != sid:
-            continue
-        sessions[i] = _apply_to_row(s)
-        found = True
-        break
-    if not found:
-        base: dict[str, Any] = {
-            "session_id": sid,
-            "turns": [],
-            "workflow_state": {},
-            "updated_at": updated_at,
-        }
-        sessions.append(_apply_to_row(base))
-    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
-    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
-    _write_payload(payload)
+    new_row = _apply_to_row(raw)
+    if not repo.upsert_session(sid, new_row):
+        return
 
 
 def save_session_binding_after_case_created(
@@ -391,41 +289,23 @@ def save_session_binding_after_case_created(
     cid = (case_id or "").strip()
     if not sid or not cid:
         return
-    payload = _read_payload()
-    sessions = payload["sessions"]
+    existing = repo.get_session(sid) or {}
     updated_at = _utc_now_iso()
     vk = str(vehicle_key or "").strip() or None
-    for i, s in enumerate(sessions):
-        if (s.get("session_id") or "").strip() != sid:
-            continue
-        prev_li = _normalize_light_identity_binding(s.get("light_identity_binding"))
-        uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
-        row: dict[str, Any] = {
-            "session_id": sid,
-            "turns": [],
-            "workflow_state": {},
-            "updated_at": updated_at,
-            "active_case_id": cid,
-        }
-        if vk:
-            row["last_vehicle_key"] = vk
-        if prev_li:
-            row["light_identity_binding"] = prev_li
-        if uh:
-            row["user_identity_hint"] = uh
-        sessions[i] = row
-        break
-    else:
-        row = {
-            "session_id": sid,
-            "turns": [],
-            "workflow_state": {},
-            "updated_at": updated_at,
-            "active_case_id": cid,
-        }
-        if vk:
-            row["last_vehicle_key"] = vk
-        sessions.append(row)
-    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
-    payload["sessions"] = sessions[:MAX_STORED_SESSIONS]
-    _write_payload(payload)
+    prev_li = _normalize_light_identity_binding(existing.get("light_identity_binding"))
+    uh = _normalize_user_identity_hint(existing.get("user_identity_hint"))
+    row: dict[str, Any] = {
+        "session_id": sid,
+        "turns": [],
+        "workflow_state": {},
+        "updated_at": updated_at,
+        "active_case_id": cid,
+    }
+    if vk:
+        row["last_vehicle_key"] = vk
+    if prev_li:
+        row["light_identity_binding"] = prev_li
+    if uh:
+        row["user_identity_hint"] = uh
+    if not repo.upsert_session(sid, row):
+        return

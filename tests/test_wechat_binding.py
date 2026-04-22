@@ -56,7 +56,6 @@ def test_build_redirect_uri_from_public_api_base(monkeypatch):
 
 
 def test_patch_session_light_identity_requires_session(tmp_path, monkeypatch):
-    monkeypatch.setenv("UNIFIED_INTAKE_SESSIONS_PATH", str(tmp_path / "sess.json"))
     sid = "sess_wechat_patch_test"
     with pytest.raises(ValueError, match="session_not_found"):
         patch_session_light_identity_binding(
@@ -71,7 +70,6 @@ def test_patch_session_light_identity_requires_session(tmp_path, monkeypatch):
 
 
 def test_patch_and_read_session_identity(tmp_path, monkeypatch):
-    monkeypatch.setenv("UNIFIED_INTAKE_SESSIONS_PATH", str(tmp_path / "sess.json"))
     from services.fiqa_api.inbox_triage import session_store as ss
 
     sid = "sess_wechat_patch_ok_12"

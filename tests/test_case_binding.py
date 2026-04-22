@@ -64,24 +64,10 @@ def test_closed_case_not_counted_as_open_for_binding():
 
 
 def test_conflict_clears_binding_via_append_api(monkeypatch, tmp_path):
-    import json
     from services.fiqa_api.inbox_triage import session_store as ss
 
-    store = tmp_path / "sessions.json"
-    monkeypatch.setenv("UNIFIED_INTAKE_SESSIONS_PATH", str(store))
     sid = "sess-bind-clear-1"
-    payload = {
-        "sessions": [
-            {
-                "session_id": sid,
-                "turns": [],
-                "workflow_state": {},
-                "updated_at": "2026-01-01T00:00:00Z",
-                "active_case_id": "case_old",
-            }
-        ]
-    }
-    store.write_text(json.dumps(payload), encoding="utf-8")
+    ss.patch_session_case_binding(sid, active_case_id="case_old")
 
     case = {
         "case_id": "case_old",
@@ -104,9 +90,9 @@ def test_conflict_clears_binding_via_append_api(monkeypatch, tmp_path):
     body = asyncio.run(_run())
     assert body.get("append_allowed") is False
     assert body.get("case_boundary_action") == "requires_new_case"
-    data = json.loads(store.read_text(encoding="utf-8"))
-    row = next(s for s in data["sessions"] if s.get("session_id") == sid)
-    assert "active_case_id" not in row
+    data = ss.get_in_progress_session(sid)
+    assert data is not None
+    assert "active_case_id" not in data
 
 
 def test_short_reply_continuity_same_case_greenfield_context():

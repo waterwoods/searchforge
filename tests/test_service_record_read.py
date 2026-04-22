@@ -6,6 +6,9 @@ from services.fiqa_api.inbox_triage.service_record_read import ServiceRecordRead
 
 
 def test_list_formally_submitted_add_car_uses_json_truth(monkeypatch, tmp_path):
+    # Isolate from host DATABASE_URL: list_all_cases would otherwise prefer Postgres and ignore temp JSON.
+    monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     store = tmp_path / "cases.json"
     payload = {
         "cases": [

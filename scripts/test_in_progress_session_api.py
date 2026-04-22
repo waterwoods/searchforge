@@ -5,7 +5,12 @@ Verifies session store save/get and GET /api/inbox/session/{session_id}.
 """
 from __future__ import annotations
 
+import os
 import sys
+
+# Standalone script (not pytest): opt in to in-memory intake sessions when no DB URL.
+if not (os.getenv("SERVICE_RECORD_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip():
+    os.environ.setdefault("UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS", "1")
 
 # Test session store directly (no server)
 from services.fiqa_api.inbox_triage.session_store import (

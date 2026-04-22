@@ -70,16 +70,6 @@ def test_json_case_writes_falsy(val, monkeypatch):
     assert s.json_case_writes_enabled() is False
 
 
-def test_json_session_writes_default_on(monkeypatch):
-    monkeypatch.delenv("UNIFIED_INTAKE_JSON_SESSION_WRITES", raising=False)
-    assert s.json_session_writes_enabled() is True
-
-
-def test_json_session_writes_explicit_off(monkeypatch):
-    monkeypatch.setenv("UNIFIED_INTAKE_JSON_SESSION_WRITES", "0")
-    assert s.json_session_writes_enabled() is False
-
-
 def test_postgres_case_persistence_primary(monkeypatch):
     monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)

@@ -112,7 +112,8 @@ def test_check1_ui_contract_first_turn_mid_flow_append_blocked():
 
 def test_check1_session_same_browser_continues_case(monkeypatch, tmp_path):
     """CHECK 1 — With session + active_case_id, same case loads for a follow-up zip line."""
-    store = tmp_path / "sessions.json"
+    from services.fiqa_api.inbox_triage import session_store as session_store_mod
+
     cid = "case-sim-1"
     vin = "1HGCM82633A004352"
     fake_case = {
@@ -126,23 +127,7 @@ def test_check1_session_same_browser_continues_case(monkeypatch, tmp_path):
         "still_needed_fields": ["zip"],
         "client_id": "chen_kui",
     }
-    monkeypatch.setenv("UNIFIED_INTAKE_SESSIONS_PATH", str(store))
-    store.write_text(
-        json.dumps(
-            {
-                "sessions": [
-                    {
-                        "session_id": "sess-same-browser",
-                        "turns": [],
-                        "workflow_state": {},
-                        "updated_at": "2026-01-01T00:00:00Z",
-                        "active_case_id": cid,
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
+    session_store_mod.patch_session_case_binding("sess-same-browser", active_case_id=cid)
     monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: fake_case if _id == cid else None)
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [fake_case])
 
@@ -190,7 +175,8 @@ def test_check3_case_binding_log(caplog):
 
 def test_check3_append_blocked_log(caplog, monkeypatch, tmp_path):
     """CHECK 3 — append_blocked_reason when new vehicle clears session binding."""
-    store = tmp_path / "sessions.json"
+    from services.fiqa_api.inbox_triage import session_store as session_store_mod
+
     cid = "case-block"
     vin_a = "1HGCM82633A004352"
     fake_case = {
@@ -201,23 +187,7 @@ def test_check3_append_blocked_log(caplog, monkeypatch, tmp_path):
         "vehicle_key": f"vin:{vin_a}",
         "client_id": "chen_kui",
     }
-    monkeypatch.setenv("UNIFIED_INTAKE_SESSIONS_PATH", str(store))
-    store.write_text(
-        json.dumps(
-            {
-                "sessions": [
-                    {
-                        "session_id": "sess-block",
-                        "turns": [],
-                        "workflow_state": {},
-                        "updated_at": "2026-01-01T00:00:00Z",
-                        "active_case_id": cid,
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
+    session_store_mod.patch_session_case_binding("sess-block", active_case_id=cid)
     monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: fake_case if _id == cid else None)
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [fake_case])
 
@@ -364,7 +334,8 @@ def test_scenario4_ambiguous_vehicle_requires_confirmation():
 
 def test_scenario5_return_user_zip_with_session(monkeypatch, tmp_path):
     """SCENARIO 5 — Return user with session continues same case."""
-    store = tmp_path / "sess-ret.json"
+    from services.fiqa_api.inbox_triage import session_store as session_store_mod
+
     cid = "case-ret"
     vin = "1HGCM82633A004352"
     fake_case = {
@@ -378,23 +349,7 @@ def test_scenario5_return_user_zip_with_session(monkeypatch, tmp_path):
         "still_needed_fields": ["zip"],
         "client_id": "chen_kui",
     }
-    monkeypatch.setenv("UNIFIED_INTAKE_SESSIONS_PATH", str(store))
-    store.write_text(
-        json.dumps(
-            {
-                "sessions": [
-                    {
-                        "session_id": "sess-ret",
-                        "turns": [],
-                        "workflow_state": {},
-                        "updated_at": "2026-01-02T00:00:00Z",
-                        "active_case_id": cid,
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
+    session_store_mod.patch_session_case_binding("sess-ret", active_case_id=cid)
     monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: fake_case if _id == cid else None)
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [fake_case])
 

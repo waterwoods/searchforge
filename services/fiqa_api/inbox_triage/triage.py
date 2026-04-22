@@ -5649,6 +5649,26 @@ def triage_conversation(
             # Pre-quote handoff: require VIN + primary_driver unless min-core (VIN+ZIP+(delivery|driver)) is satisfied.
             handoff = False
 
+    # PILOT_CONTRACT_ADD_CAR_V1 §4.2: from customer turn ≥4, quote_ready but name/phone still
+    # missing in-thread → handoff_ready false (collecting) unless post-submit / on-record contact.
+    if (
+        handoff
+        and is_add_car
+        and not for_append
+        and (customer_count + 1) >= 4
+        and _qrs_v4_pre == "quote_ready"
+    ):
+        _gate_ctx = reply_truth_context or {}
+        _post_submit_ex = bool(str(_gate_ctx.get("formal_submitted_at") or "").strip())
+        _record_contact_ex = bool(
+            str(_gate_ctx.get("record_contact_name") or "").strip()
+            or str(_gate_ctx.get("record_contact_phone") or "").strip()
+        )
+        if not _post_submit_ex and not _record_contact_ex:
+            _still_gate = {str(x).lower() for x in (_still_v4_pre or [])}
+            if "name" in _still_gate or "phone" in _still_gate:
+                handoff = False
+
     handoff_phrases = _get_handoff_phrases(resolved_client_id)
     stitched_cfg = _get_stitched_phrases(resolved_client_id)
     is_remove_car = _is_remove_vehicle_request(lowered_merged)
@@ -6169,8 +6189,7 @@ def triage_conversation(
             result["extracted_contact_name"] = extracted_name
         if extracted_phone:
             result["extracted_contact_phone"] = extracted_phone
-        # Conversion Flow V3: customer-facing contact completion is handled in conversion_layer; do not
-        # force handoff_ready false here when name/phone are still missing (avoids quote_ready → handoff funnel stall).
+        # Contact completion for handoff: §4.2 gate above (turn ≥4 + quote_ready + missing name/phone).
     elif _is_premium_review_request(lowered):
         collected, still_needed = _renewal_structured_fields(merged_text)
         result["collected_fields"] = collected

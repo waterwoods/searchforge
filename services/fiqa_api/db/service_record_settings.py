@@ -18,6 +18,22 @@ def service_record_database_url() -> str | None:
     return None
 
 
+def allow_inmemory_intake_sessions() -> bool:
+    """
+    When no database URL is set, intake session persistence may use an in-process store
+    only if this flag is explicitly enabled (tests and ad-hoc local scripts).
+
+    Env: UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS=1|true|yes|on
+
+    Normal / production-like runtime should leave this unset and configure
+    SERVICE_RECORD_DATABASE_URL or DATABASE_URL so sessions are Postgres-backed.
+
+    Rollback: unset this variable; configure a database URL for durable sessions.
+    """
+    raw = (os.getenv("UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS") or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def service_record_dual_write_enabled() -> bool:
     """
     When True and a database URL is set, new case writes also go to Postgres.
@@ -119,22 +135,6 @@ def json_case_writes_enabled() -> bool:
     Rollback: UNIFIED_INTAKE_JSON_CASE_WRITES=1 or unset.
     """
     if _falsy_env("UNIFIED_INTAKE_JSON_CASE_WRITES"):
-        return False
-    return True
-
-
-def json_session_writes_enabled() -> bool:
-    """
-    When False, session_store skips writing unified_intake_sessions.json (no server-side
-    in-progress restore after refresh). Use for strict production deployments that must
-    not create or update session JSON on disk.
-
-    Default: True (session JSON writes on). Set UNIFIED_INTAKE_JSON_SESSION_WRITES=0|false|no|off
-    to disable.
-
-    Rollback: unset UNIFIED_INTAKE_JSON_SESSION_WRITES or set to 1|true|yes|on.
-    """
-    if _falsy_env("UNIFIED_INTAKE_JSON_SESSION_WRITES"):
         return False
     return True
 
