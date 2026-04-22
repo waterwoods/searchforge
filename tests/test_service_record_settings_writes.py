@@ -34,6 +34,23 @@ def test_db_primary_reads_not_auto_when_json_still_written(monkeypatch):
     monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
     monkeypatch.delenv("UNIFIED_INTAKE_JSON_CASE_WRITES", raising=False)
     monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_PG_DUAL_WRITE", raising=False)
+    assert s.db_primary_reads_enabled() is False
+
+
+def test_db_primary_reads_auto_on_when_pg_dual_write(monkeypatch):
+    """Neon mirror path: same creates/appends hit PG — reads must follow for multi-instance."""
+    monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://localhost/test")
+    monkeypatch.setenv("UNIFIED_INTAKE_PG_DUAL_WRITE", "1")
+    monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", raising=False)
+    assert s.db_primary_reads_enabled() is True
+
+
+def test_db_primary_reads_explicit_off_disables_even_with_dual_write(monkeypatch):
+    monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://localhost/test")
+    monkeypatch.setenv("UNIFIED_INTAKE_PG_DUAL_WRITE", "1")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_READS", "0")
     assert s.db_primary_reads_enabled() is False
 
 

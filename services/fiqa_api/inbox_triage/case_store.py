@@ -488,31 +488,16 @@ def _write_payload(payload: dict[str, list[dict[str, Any]]]) -> None:
 def _load_case_for_mutation(case_id: str) -> dict[str, Any] | None:
     """
     Load a case dict for in-place mutation (append, customer update, etc.).
-    When JSON case writes are on, reads from JSON. When JSON writes are off (pilot),
-    reads from Postgres only.
+
+    Uses the same read facade as HTTP/triage (`case_truth_repository.get_case_for_read`)
+    so Postgres-primary / dual-write / JSON fallback rules cannot diverge from list/get/append.
     """
-    from services.fiqa_api.db.service_record_settings import (
-        db_primary_writes_enabled,
-        json_case_writes_enabled,
-    )
+    from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
 
     cid = (case_id or "").strip()
     if not cid:
         return None
-    if json_case_writes_enabled():
-        return get_case_by_id(cid)
-    if db_primary_writes_enabled():
-        from services.fiqa_api.db.service_record_repository import load_full_case_from_postgres
-
-        raw = load_full_case_from_postgres(cid)
-        if raw is None:
-            logger.warning(
-                "UNIFIED_INTAKE_DB_OBS signal=PG_MUTATION_LOAD_MISS case_id=%s",
-                cid,
-            )
-            return None
-        return _normalize_case(raw)
-    return get_case_by_id(cid)
+    return get_case_for_read(cid)
 
 
 def _replace_case_in_json_store(case_id: str, updated_case: dict[str, Any]) -> bool:

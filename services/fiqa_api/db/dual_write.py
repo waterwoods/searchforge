@@ -1,7 +1,12 @@
 """
 Opt-in dual-write from JSON case_store to Postgres.
 
-Pilot behavior: JSON remains authoritative; Postgres errors are logged only.
+When UNIFIED_INTAKE_PG_DUAL_WRITE is on (and a DB URL is set), creates/appends are
+mirrored to Postgres; failures are logged only (JSON still receives the write).
+
+Reads: with dual-write enabled, `db_primary_reads_enabled()` is true so HTTP and
+mutations prefer Postgres first (JSON fallback when allowed) — see case_truth_repository.
+
 When UNIFIED_INTAKE_DB_PRIMARY_WRITES is on, Postgres is written from case_store
 directly; these helpers become no-ops to avoid duplicate inserts/appends.
 """

@@ -35,23 +35,39 @@ def _truthy_env(name: str) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def _falsy_env(name: str) -> bool:
+    """True when env is explicitly 0/false/no/off (unset = not falsy)."""
+    raw = (os.getenv(name) or "").strip().lower()
+    return raw in ("0", "false", "no", "off")
+
+
 def db_primary_reads_enabled() -> bool:
     """
-    When True, HTTP/API case reads prefer Postgres (see case_truth_repository).
+    When True, HTTP/API case reads (and case_store mutations via the same facade)
+    prefer Postgres (see case_truth_repository).
 
-    Requires SERVICE_RECORD_DATABASE_URL or DATABASE_URL, and
-    UNIFIED_INTAKE_DB_PRIMARY_READS=1|true|yes|on (default off).
+    Requires SERVICE_RECORD_DATABASE_URL or DATABASE_URL.
 
-    **Strict pilot alignment:** if UNIFIED_INTAKE_DB_PRIMARY_WRITES is on and
-    UNIFIED_INTAKE_JSON_CASE_WRITES is off, reads are forced to Postgres so
-    workbench/list/detail cannot read an empty or stale JSON file while writes
-    go only to the database.
+    Enabled when any of:
+    - UNIFIED_INTAKE_DB_PRIMARY_READS=1|true|yes|on
+    - UNIFIED_INTAKE_DB_PRIMARY_WRITES=1 with UNIFIED_INTAKE_JSON_CASE_WRITES off
+      (strict pilot: writes are DB-only, reads must not be JSON-first).
+    - UNIFIED_INTAKE_PG_DUAL_WRITE=1 (Postgres mirror receives the same creates/appends
+      as JSON; JSON-first reads break read-your-writes across instances).
+
+    **Rollback / debug:** set UNIFIED_INTAKE_DB_PRIMARY_READS=0|false|no|off to force
+    JSON-first reads even when dual-write or strict pilot writes would otherwise
+    prefer Postgres (use only when re-enabling JSON authority locally).
     """
     if not service_record_database_url():
+        return False
+    if _falsy_env("UNIFIED_INTAKE_DB_PRIMARY_READS"):
         return False
     if _truthy_env("UNIFIED_INTAKE_DB_PRIMARY_READS"):
         return True
     if db_primary_writes_enabled() and not json_case_writes_enabled():
+        return True
+    if service_record_dual_write_enabled():
         return True
     return False
 
@@ -68,12 +84,6 @@ def json_read_fallback_allowed() -> bool:
     if not raw:
         return True
     return raw not in ("0", "false", "no", "off")
-
-
-def _falsy_env(name: str) -> bool:
-    """True when env is explicitly 0/false/no/off (unset = not falsy)."""
-    raw = (os.getenv(name) or "").strip().lower()
-    return raw in ("0", "false", "no", "off")
 
 
 def db_primary_writes_enabled() -> bool:

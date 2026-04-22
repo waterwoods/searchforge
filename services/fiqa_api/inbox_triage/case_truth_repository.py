@@ -6,7 +6,9 @@ so DB-primary cutover stays behind env flags without rewiring routes every time.
 
 Writes: case_store (JSON by default) with optional UNIFIED_INTAKE_DB_PRIMARY_WRITES +
 UNIFIED_INTAKE_JSON_CASE_WRITES (pilot can disable JSON file writes); legacy dual-write
-when PG_DUAL_WRITE without DB-primary writes.
+(UNIFIED_INTAKE_PG_DUAL_WRITE) mirrors to Postgres while JSON remains the default local
+authoritative file unless DB-primary reads are on (including auto-on when dual-write is
+enabled — see service_record_settings.db_primary_reads_enabled).
 """
 
 from __future__ import annotations
