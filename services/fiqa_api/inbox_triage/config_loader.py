@@ -108,7 +108,7 @@ def get_stitched_handoff_phrases(client_id: str | None = None) -> dict[str, Any]
       - why_still_chasing_reassurance: {\"zh\": \"...\", \"en\": \"...\"}
       - prospective_send: {\"zh_wechat\", \"zh_screenshot\", \"zh_bundle\", \"en_wechat\", ...}
       - append_boundary: customer-visible append / new-issue / borderline wording (merged over
-        engine defaults in triage._apply_append_case_boundary). Subkeys (all optional):
+        engine defaults in append_case_boundary_copy.merged_append_boundary_copy, applied in triage._apply_append_case_boundary). Subkeys (all optional):
         continuity_zh: {add_car, claim, remove_car, payment, missing_doc, premium, generic}
         new_issue_tail_zh: {claim, billing, remove_car, premium, add_car, default}
         continuity_en_add_car, continuity_en_other (strings)

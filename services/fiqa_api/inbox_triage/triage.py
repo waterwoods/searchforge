@@ -7,7 +7,6 @@ Loads markers and handoff phrases from config when available; falls back to hard
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -85,6 +84,19 @@ from services.fiqa_api.inbox_triage.truth_field_guardrails import (
     maybe_attach_truth_guardrail_debug_to_triage,
     should_accept_field,
     truth_guardrail_debug_session_start,
+)
+from services.fiqa_api.inbox_triage.add_car_triage_post_submit import (
+    ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN as _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN,
+    ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH as _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH,
+    POST_SUBMIT_ADD_CAR_FALLBACK_POOLS as _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS,
+    effective_add_car_handoff_storage_key as _effective_add_car_handoff_storage_key,
+    post_submit_add_car_fallback_line as _post_submit_add_car_fallback_line,
+    post_submit_rot_idx as _post_submit_rot_idx,
+    prepend_add_car_post_submit_intent_head as _prepend_add_car_post_submit_intent_head,
+    truth_allows_post_submit_handoff_phrasing as _truth_allows_post_submit_handoff_phrasing,
+)
+from services.fiqa_api.inbox_triage.append_case_boundary_copy import (
+    merged_append_boundary_copy as _merged_append_boundary_copy,
 )
 
 logger = logging.getLogger(__name__)
@@ -312,221 +324,6 @@ def _stitched_customer_visible_line_prefer(
         if default_zh_post is not None:
             return default_zh_post if lang == "zh" else (default_en_post or default_en)
     return _stitched_customer_visible_line(client_id, primary_key, lang, default_zh, default_en)
-
-
-def _truth_allows_post_submit_handoff_phrasing(reply_truth_context: dict[str, Any] | None) -> bool:
-    """
-    True when customer-facing copy may use office-receipt / in-queue language for Add-Car.
-    Requires formal office-visible time, persisted post-submit lifecycle, or this request's formal submit.
-    Never inferred from handoff_ready alone (two-layer standard).
-    """
-    if not reply_truth_context:
-        return False
-    if reply_truth_context.get("formal_submit_this_turn") is True:
-        return True
-    fsa = str(reply_truth_context.get("formal_submitted_at") or "").strip()
-    if fsa:
-        return True
-    ls = str(reply_truth_context.get("lifecycle_status") or "").strip()
-    return ls in ("handed_off", "office_followup")
-
-
-def _effective_add_car_handoff_storage_key(
-    base_key: str,
-    handoff_phrases: dict[str, dict[str, str]],
-    post_submit: bool,
-) -> str:
-    """Prefer handoff.add_car_*_submitted when post-submit truth holds and pack provides it."""
-    if not post_submit:
-        return base_key
-    alt = f"{base_key}_submitted"
-    if handoff_phrases.get(alt):
-        return alt
-    return base_key
-
-
-# When pack omits *_submitted keys, keep post-submit replies truthful (bounded defaults, Add-Car only).
-# Multiple variants per key reduce late-turn identical stems (REPLY_REPEATED_BLOCK) while staying truth-equivalent.
-_POST_SUBMIT_ADD_CAR_FALLBACK_POOLS: dict[str, list[tuple[str, str]]] = {
-    "add_car": [
-        (
-            "这条记录已正式送达办公室；办公室会按当前记录继续核对与处理。",
-            "This record has been formally delivered to our office; our team will verify and continue from the current details.",
-        ),
-        (
-            "办公室已收到本条正式提交；后续核对与联系会以当前服务记录为准。",
-            "Your formal submission is on file with our office; verification and follow-up will use your current service record.",
-        ),
-        (
-            "同事已能在队列里看到本条正式提交；后续以当前记录为准继续处理。",
-            "Your formal submission is visible in the office queue; next steps follow from your current service record.",
-        ),
-    ],
-    "add_car_supplement": [
-        (
-            "已把这次补充记到当前服务记录里；办公室会按更新后的记录继续处理。",
-            "I've added this update to your current service record; our office will continue from the updated details.",
-        ),
-        (
-            "补充已写入同一条服务记录；办公室会按最新内容继续跟进。",
-            "Your update is saved on the same service record; our office will continue from the latest details.",
-        ),
-    ],
-    "add_car_timeline": [
-        (
-            "这条记录已在办公室处理中；后续时间以办公室核对与排队进度为准。",
-            "This record is already with our office; timing depends on their verification queue.",
-        ),
-        (
-            "进度与排队以办公室实际处理为准；有节点变化会联系您。",
-            "Timing follows the office queue and verification steps; we will reach out when there is a meaningful update.",
-        ),
-        (
-            "具体节点要看办公室核对顺序；有能对外说的进展会主动联系您。",
-            "Exact timing follows the office verification order; we will reach out when there is a shareable update.",
-        ),
-        (
-            "办公室侧会按队列核对；若出现可同步给您的节点，会主动联系。",
-            "Our office verifies in queue order; we will reach out when there is a customer-visible milestone.",
-        ),
-        (
-            "当前阶段以记录核对与排队为准；不建议用聊天承诺具体日期。",
-            "At this stage timing follows verification and queue load; we avoid promising a fixed date in chat.",
-        ),
-    ],
-    "add_car_quote_detail": [
-        (
-            "这类具体选项会结合当前记录继续核对；你的关注点已附到这条记录里，便于后续处理。",
-            "Specific options will be confirmed against your current record; we've attached your note to this record for the next steps.",
-        ),
-        (
-            "条款/额度类细节要办公室结合记录核对后才能定；你的问题已记在记录里便于报价时对照。",
-            "Coverage and limit details must be confirmed against your record by our office; your question is noted for quoting.",
-        ),
-        (
-            "免赔/保额组合要以核保与记录为准；你的偏好已记在案，便于同事对照。",
-            "Deductible/limit combinations depend on underwriting and your record; your preferences are noted for the team.",
-        ),
-        (
-            "比价时看到的数字往往不含全部条件；最终以办公室核对后的方案为准，你的问题已记在案。",
-            "Quoted numbers you see online may omit conditions; final options follow office verification—your note is on the record.",
-        ),
-        (
-            "这类取舍需要结合车辆与驾驶信息核对；你的关注点已写入记录，报价时会一并考虑。",
-            "These tradeoffs need vehicle and driver context; your points are on the record for quoting.",
-        ),
-    ],
-    "add_car_correction": [
-        (
-            "已按你这次的最新说法更新当前记录；办公室会按更新后的信息继续核对。",
-            "We've updated the current record to match your latest message; our office will verify using the updated information.",
-        ),
-        (
-            "已按你最新一条更正记录内容；办公室后续核对会以更新后的信息为准。",
-            "Your latest correction is reflected on the record; verification will use the updated details.",
-        ),
-    ],
-    "add_car_office_receipt": [
-        (
-            "这条记录已在办公室侧排队处理中；是否已送达以系统「正式提交办公室」为准，办公室会按队列核对并联系您。",
-            "This record is in the office-side queue; delivery to the team follows formal submit—our office will verify in the queue and follow up.",
-        ),
-        (
-            "若已点「正式提交办公室」，同事会在队列里按记录处理；入口提交状态可作为是否送达的参考。",
-            "If you completed formal submit, our team processes it in the queue; use the portal submit status as the visibility check.",
-        ),
-    ],
-}
-
-
-# Pre-submit office-receipt intent: pack may omit add_car_office_receipt; never claim office already has the record without formal submit.
-_ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH = (
-    "若您关心办公室是否已看到本条记录：请先在入口完成「正式提交办公室」。提交后同事才会在处理队列里接收并核对；"
-    "若尚未提交，我们无法代替办公室确认“已收到”。"
-)
-_ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN = (
-    "If you are asking whether the office can see this record: please complete formal submit in the portal first—that is when "
-    "our office can receive it in the queue. If you have not submitted yet, we cannot confirm office receipt."
-)
-
-
-def _post_submit_rot_idx(turn: int, base_key: str, intent_family: str | None) -> int:
-    """Spread pool / opener rotation so late-thread turns rarely align on the same slot."""
-    h = int(hashlib.md5(f"{base_key}|{intent_family or ''}".encode()).hexdigest()[:8], 16)
-    return turn * 7 + h
-
-
-def _post_submit_add_car_fallback_line(base_key: str, lang: str, *, rot_idx: int = 0) -> str | None:
-    pool = _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS.get(base_key)
-    if not pool:
-        return None
-    pair = pool[rot_idx % len(pool)]
-    return pair[0] if lang == "zh" else pair[1]
-
-
-# Late-turn post-submit: short intent-specific openers (rotate so long threads don't share one 96-char stem).
-_ADD_CAR_POST_SUBMIT_INTENT_HEADS: dict[str, list[tuple[str, str]]] = {
-    INTENT_TIMELINE_QUESTION: [
-        ("关于时间安排与进度：", "On timing and next steps—"),
-        ("进度与排队：", "On queue timing—"),
-        ("后续联络节奏：", "On follow-up cadence—"),
-    ],
-    INTENT_QUOTE_DETAIL_QUESTION: [
-        ("关于保额、免赔或条款细节：", "On coverage limits and deductible details—"),
-        ("关于比价/条款取舍：", "On tradeoffs and coverage options—"),
-        ("关于自付额与保额组合：", "On deductible and limit combinations—"),
-    ],
-    INTENT_OFFICE_RECEIPT_QUESTION: [
-        ("关于办公室是否已能看到本条记录：", "On whether the office can see this record yet—"),
-        ("关于入口提交状态：", "On portal submit status—"),
-        ("关于是否已进办公室队列：", "On whether this is in the office queue—"),
-    ],
-    INTENT_MATERIALS_CLAIM: [
-        ("关于你提到的资料发送情况：", "On what you mentioned sending—"),
-        ("关于材料与发送渠道：", "On materials and how you sent them—"),
-    ],
-    INTENT_SUPPLEMENT_INFO: [
-        ("收到你补充的信息。", "Thanks for the additional detail—"),
-        ("补充已看到。", "Thanks for the update—"),
-    ],
-    INTENT_CORRECTION: [
-        ("已记录你希望更正的内容。", "Noted your correction—"),
-        ("按你最新一条更新理解。", "Interpreting from your latest message—"),
-    ],
-}
-
-
-def _prepend_add_car_post_submit_intent_head(
-    reply: str,
-    *,
-    lang: str,
-    intent_family: str,
-    variant_idx: int = 0,
-) -> str:
-    body = (reply or "").strip()
-    if not body:
-        return body
-    if intent_family == INTENT_GENERIC_FOLLOWUP:
-        return body
-    variants = _ADD_CAR_POST_SUBMIT_INTENT_HEADS.get(intent_family)
-    if not variants:
-        return body
-    pair = variants[variant_idx % len(variants)]
-    head = pair[0] if lang == "zh" else pair[1]
-    if not head:
-        return body
-    # Avoid double-prefix if the reply already opens with the same stem
-    if lang == "zh":
-        prefix = head[: min(6, len(head))]
-        if prefix and body.startswith(prefix):
-            return body
-        return head + body
-    hl = head.rstrip("—").strip()
-    if hl and body.lower().startswith(hl.lower()[: min(10, len(hl))].lower()):
-        return body
-    if head.endswith("—"):
-        return f"{head}{body}"
-    return f"{head} {body}"
 
 
 def _maybe_append_add_car_price_caveat(
@@ -3399,87 +3196,6 @@ def _derive_service_type(
     return "general_inquiry"
 
 
-def _merge_append_boundary_str_subdict(base: dict[str, str], override: Any) -> dict[str, str]:
-    out = dict(base)
-    if not isinstance(override, dict):
-        return out
-    for k, v in override.items():
-        if isinstance(v, str) and v.strip():
-            out[str(k)] = v.strip()
-    return out
-
-
-# Engine defaults for append-boundary customer copy; merged with stitched.append_boundary per client (no cross-client fallback).
-_APPEND_BOUNDARY_DEFAULTS: dict[str, Any] = {
-    "continuity_zh": {
-        "add_car": "本条加车记录办公室在跟进中；",
-        "claim": "理赔这边办公室会继续跟进。",
-        "remove_car": "车辆变更这边办公室会继续跟进。",
-        "payment": "付款/通知相关办公室会继续跟进。",
-        "missing_doc": "材料补件这边办公室会继续跟进。",
-        "premium": "续保/保费这边办公室会继续跟进。",
-        "generic": "前一件事办公室会继续跟进。",
-    },
-    "new_issue_tail_zh": {
-        "claim": "您这条理赔我先转给办公室，请他们尽快联系您。",
-        "billing": "账单问题我也一起转给办公室核实。",
-        "remove_car": "删车/卖车我也转给办公室一并处理。",
-        "premium": "续保/保费相关我也转给办公室一并跟进。",
-        "add_car": "加车报价需求我也转给办公室一并处理。",
-        "default": "您这条新问题我也转给办公室一并处理。",
-    },
-    "continuity_en_add_car": "We'll keep your add-car quote with the office. ",
-    "continuity_en_other": "We'll keep your prior request with the office. ",
-    "new_issue_tail_en": {
-        "claim": "I've flagged this claim item for them to follow up.",
-        "billing": "I've asked them to review the billing question too.",
-        "remove_car": "I've included the vehicle-removal request as well.",
-        "premium": "I've also flagged the renewal/premium question for the office.",
-        "add_car": "I've passed along the new vehicle quote request as well.",
-        "default": "I've shared this new item with them to handle.",
-    },
-    "add_car_split_hint_zh": (
-        " 如属完全不同的事项，建议您用「提交新问题」另开服务记录，不要和本条加车混在同一对话里。"
-    ),
-    "add_car_split_hint_en": (
-        " If this is a separate topic, please start a new request next time so the office can track it cleanly."
-    ),
-    "borderline_zh": "收到。我先按您这条整理给办公室；如果和前面不是同一件事，也请简单说明一下，方便分开跟进。",
-    "borderline_en": (
-        "Got it—I'm forwarding this to the office. "
-        "If this is separate from what we discussed before, a quick note helps us track it cleanly."
-    ),
-}
-
-
-def _merged_append_boundary_copy(client_id: str | None) -> dict[str, Any]:
-    d = _APPEND_BOUNDARY_DEFAULTS
-    raw_any = _get_stitched_phrases(client_id).get("append_boundary")
-    raw = raw_any if isinstance(raw_any, dict) else {}
-    continuity_zh = _merge_append_boundary_str_subdict(d["continuity_zh"], raw.get("continuity_zh"))
-    new_issue_tail_zh = _merge_append_boundary_str_subdict(d["new_issue_tail_zh"], raw.get("new_issue_tail_zh"))
-    new_issue_tail_en = _merge_append_boundary_str_subdict(d["new_issue_tail_en"], raw.get("new_issue_tail_en"))
-
-    def _str_override(key: str) -> str:
-        v = raw.get(key)
-        if isinstance(v, str) and v.strip():
-            # Preserve intentional trailing spaces (EN continuity + tail stitching).
-            return v.rstrip("\r\n")
-        return d[key]
-
-    return {
-        "continuity_zh": continuity_zh,
-        "new_issue_tail_zh": new_issue_tail_zh,
-        "new_issue_tail_en": new_issue_tail_en,
-        "continuity_en_add_car": _str_override("continuity_en_add_car"),
-        "continuity_en_other": _str_override("continuity_en_other"),
-        "add_car_split_hint_zh": _str_override("add_car_split_hint_zh"),
-        "add_car_split_hint_en": _str_override("add_car_split_hint_en"),
-        "borderline_zh": _str_override("borderline_zh"),
-        "borderline_en": _str_override("borderline_en"),
-    }
-
-
 def _apply_append_case_boundary(
     result: dict[str, Any],
     existing_source_text: str,
@@ -3497,7 +3213,7 @@ def _apply_append_case_boundary(
     domains = _last_message_issue_domains(new_message)
     merged_for_lang = f"{existing_source_text}\n\n{new_message}"
     language = _detect_client_language(merged_for_lang)
-    bc = _merged_append_boundary_copy(client_id)
+    bc = _merged_append_boundary_copy(client_id, _get_stitched_phrases(client_id))
     cz = bc["continuity_zh"]
     tzh = bc["new_issue_tail_zh"]
     ten = bc["new_issue_tail_en"]
