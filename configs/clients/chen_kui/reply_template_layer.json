@@ -1,0 +1,5 @@
+{
+  "version": "1",
+  "description": "Per-client override for hot-swappable reply template families. Shallow merge over configs/common/reply_template_layer.json per family id. Leave families empty to use common defaults only.",
+  "families": {}
+}

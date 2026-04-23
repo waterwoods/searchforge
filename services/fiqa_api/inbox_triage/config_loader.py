@@ -4,6 +4,7 @@ Unified Intake config loader — loads industry and client config from configs/.
 Load order: common (future) → industry → client.
 - Industry: markers, reply_templates.
 - Client: handoff_phrases; reply_overrides merged into industry templates per client_id (no cross-client fallback).
+- Common: reply_template_layer (hot-swappable family wording); clients may override per family in reply_template_layer.json.
 Falls back to hardcoded defaults when config files are missing.
 """
 
@@ -21,6 +22,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Default client when CLIENT_ID env not set
 _DEFAULT_CLIENT_ID = "chen_kui"
+
+# client_id -> merged families dict from get_reply_template_layer
+_REPLY_TEMPLATE_LAYER_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def _load_json(rel_path: str) -> dict[str, Any] | None:
@@ -268,6 +272,39 @@ def get_reply_templates(client_id: str | None = None) -> dict[str, Any]:
     return templates
 
 
+def get_reply_template_layer(client_id: str | None = None) -> dict[str, Any]:
+    """
+    Hot-swappable customer-visible reply template families (non–LLM path).
+
+    Load order:
+    1. configs/common/reply_template_layer.json (families: family_id -> {zh, en})
+    2. Shallow merge each family from configs/clients/<client_id>/reply_template_layer.json
+
+    Client keys override only that client's wording; no cross-client fallback. Missing
+    per-client file uses common only. Returns a flat {family_id: {zh, en}} map.
+    """
+    cid = (client_id or "").strip() or get_active_client_id()
+    if cid in _REPLY_TEMPLATE_LAYER_CACHE:
+        return _REPLY_TEMPLATE_LAYER_CACHE[cid]
+    common = _load_json("configs/common/reply_template_layer.json") or {}
+    fam: dict[str, Any] = {}
+    if isinstance(common.get("families"), dict):
+        for k, v in common["families"].items():
+            if isinstance(v, dict):
+                fam[k] = dict(v)
+    client = _load_json(f"configs/clients/{cid}/reply_template_layer.json")
+    if client and isinstance(client.get("families"), dict):
+        for kid, val in client["families"].items():
+            if isinstance(val, dict) and val:
+                base = fam.get(kid) if isinstance(fam.get(kid), dict) else {}
+                if isinstance(base, dict):
+                    fam[kid] = {**base, **val}
+                else:
+                    fam[kid] = val
+    _REPLY_TEMPLATE_LAYER_CACHE[cid] = fam
+    return _REPLY_TEMPLATE_LAYER_CACHE[cid]
+
+
 # Defaults for add_car next-step prompts (used when config missing)
 _ADD_CAR_RULES_DEFAULTS: dict[str, dict[str, str]] = {
     "ask_vehicle": {
@@ -417,7 +454,7 @@ def get_active_client_id() -> str:
     Used by API to select which client config to serve.
 
     Hot-plug boundary (add a client pack under configs/clients/<id>/):
-    handoff_phrases.json, reply_overrides.json, ui_copy.json — selected by CLIENT_ID.
+    handoff_phrases.json, reply_overrides.json, reply_template_layer.json, ui_copy.json — selected by CLIENT_ID.
     Industry-wide behavior stays under configs/industries/; avoid per-client branches in core triage.
     """
     raw = os.environ.get("CLIENT_ID", "").strip()

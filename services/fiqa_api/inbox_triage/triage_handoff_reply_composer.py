@@ -7,15 +7,27 @@ handoff_phrases.json, stitched client blocks, and post-submit pools.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from services.fiqa_api.inbox_triage.add_car_intent import ResolvedAddCarIntent
+
+# Internal / staging markers that must never reach customer-visible copy.
+_CLIENT_VISIBLE_MARKER_RE = re.compile(
+    r"\[\s*(?:客户|系统|internal)\s*\]\s*",
+    re.IGNORECASE,
+)
 from services.fiqa_api.inbox_triage.add_car_triage_post_submit import (
     ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN,
     ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH,
     POST_SUBMIT_ADD_CAR_FALLBACK_POOLS,
     post_submit_add_car_fallback_line,
     post_submit_rot_idx,
+)
+from services.fiqa_api.inbox_triage.reply_template_composer import render_family
+from services.fiqa_api.inbox_triage.reply_template_policy import (
+    FAMILY_HANDOFF_CORRECTION_ACK,
+    other_corrected_urgency_uses_stitched_line,
 )
 
 
@@ -66,6 +78,38 @@ def stitched_customer_visible_line_prefer(
     return stitched_customer_visible_line(stitched, primary_key, lang, default_zh, default_en)
 
 
+def finalize_client_reply(text: str, context: dict | None = None) -> str:
+    """
+    Last-mile cleanup for customer-visible client_reply_draft. Does not change triage policy.
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+
+    t = _CLIENT_VISIBLE_MARKER_RE.sub("", t)
+
+    t = re.sub(r"(?<=\d)\.(?=[A-Za-z])", ". ", t)
+    t = re.sub(r"(?<![0-9])(\d{5})([A-Z][a-z]+)", r"\1 \2", t)
+    t = re.sub(r"(?<![0-9])(\d{4})([A-Z][a-z]+)", r"\1 \2", t)
+    t = re.sub(r"([\u4e00-\u9fff])([A-Za-z0-9])", r"\1 \2", t)
+    t = re.sub(r"([A-Za-z0-9])([\u4e00-\u9fff])", r"\1 \2", t)
+
+    t = re.sub(r"(?i)\bThanks,\s*(\d{4})\b", r"Got it, \1 model.", t)
+
+    t = re.sub(r"[\t\n]+", " ", t)
+    t = re.sub(r" {2,}", " ", t).strip()
+    return t
+
+
+def apply_client_reply_finalize_to_result(
+    result: dict[str, Any], context: dict | None = None
+) -> None:
+    d = result.get("client_reply_draft")
+    if not isinstance(d, str):
+        return
+    result["client_reply_draft"] = finalize_client_reply(d, context)
+
+
 def compose_handoff_reply(
     *,
     language: str,
@@ -89,6 +133,7 @@ def compose_handoff_reply(
     prospective_send_prefix: str,
     last_customer_lower: str,
     add_car_materials_sent: bool,
+    reply_template_families: dict[str, Any] | None = None,
 ) -> str:
     """
     Assemble final handoff string for the current language. Expects triage to pass
@@ -373,5 +418,18 @@ def compose_handoff_reply(
                     "您这边最要紧的是等办公室确认付款是否到账；如果确认了您这边就不用再做什么。办公室会尽快处理，有结果会联系您。",
                     "The most important thing for you now is to wait for our office to confirm whether the payment was received; if confirmed, you don't need to do anything else. Our office will process this and follow up with you.",
                 )
+
+    if (
+        key == "other_corrected"
+        and reply_template_families
+        and not other_corrected_urgency_uses_stitched_line(issue_category, last_customer_lower)
+    ):
+        handoff_reply = render_family(
+            reply_template_families,
+            FAMILY_HANDOFF_CORRECTION_ACK,
+            language,
+            None,
+            handoff_reply,
+        )
 
     return handoff_reply

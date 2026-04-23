@@ -22,6 +22,7 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_insurance_markers,
     get_intake_evolution_variant,
     get_v6_auto_input_variant,
+    get_reply_template_layer,
     get_reply_templates,
     get_stitched_handoff_phrases,
     get_workflow_fallbacks,
@@ -62,6 +63,15 @@ from services.fiqa_api.inbox_triage.triage_handoff_reply_policy import (
     merge_still_needed_for_intent,
     resolve_add_car_handoff_phrase_key,
     resolve_non_add_car_handoff_phrase_key,
+)
+from services.fiqa_api.inbox_triage.reply_template_composer import (
+    add_car_collecting_fallback_line,
+    render_family,
+)
+from services.fiqa_api.inbox_triage.reply_template_policy import (
+    FAMILY_ADD_CAR_ASK_FULL,
+    select_add_car_collecting_family_id,
+    select_missing_doc_already_sent_family_id,
 )
 from services.fiqa_api.inbox_triage.add_car_field_contract import (
     dedupe_preserve_order,
@@ -124,6 +134,7 @@ _DOCUMENT_ITEMS_CACHE: tuple[tuple[tuple[str, ...], str, str], ...] | None = Non
 _HANDOFF_CACHE: dict[str, dict[str, dict[str, str]]] = {}  # client_id -> phrases
 _STITCHED_CACHE: dict[str, dict[str, Any]] = {}  # client_id -> stitched phrase map
 _REPLY_TEMPLATES_CACHE: dict[str, dict[str, Any]] = {}  # client_id -> merged templates
+_REPLY_TEMPLATE_LAYER_CACHE: dict[str, dict[str, Any]] = {}
 _CATEGORY_TEMPLATES_CACHE: dict[str, dict[str, str]] | None = None
 _WORKFLOW_FALLBACKS_CACHE: dict[str, str] | None = None
 
@@ -377,6 +388,15 @@ def _get_reply_templates(client_id: str | None = None) -> dict[str, Any]:
     if cid not in _REPLY_TEMPLATES_CACHE:
         _REPLY_TEMPLATES_CACHE[cid] = get_reply_templates(cid)
     return _REPLY_TEMPLATES_CACHE[cid]
+
+
+def _get_reply_template_layer(client_id: str | None = None) -> dict[str, Any]:
+    """Merged common + client reply template families. Per-client cache."""
+    global _REPLY_TEMPLATE_LAYER_CACHE
+    cid = (client_id or "").strip() or get_active_client_id()
+    if cid not in _REPLY_TEMPLATE_LAYER_CACHE:
+        _REPLY_TEMPLATE_LAYER_CACHE[cid] = get_reply_template_layer(cid)
+    return _REPLY_TEMPLATE_LAYER_CACHE[cid]
 
 
 def _get_category_templates_config() -> dict[str, dict[str, str]]:
@@ -932,10 +952,16 @@ def _build_client_reply_draft(text: str, category: str, client_id: str | None = 
                 m in lowered for m in ["发过", "发过了", "发了", "又发", "sent", "already sent", "上周发", "上周寄"]
             )
             if already_sent_lead:
+                layer_rd = _get_reply_template_layer(client_id)
+                fid = select_missing_doc_already_sent_family_id(has_item=bool(item_text))
                 if item_text:
-                    base = (t.get("zh_already_sent_with_item") or "收到。办公室会核对已有材料（含 {item_text}），一般不用重复整套发；若还缺项会明确告诉您。").replace("{item_text}", item_text)
+                    fb = (t.get("zh_already_sent_with_item") or "收到。办公室会核对已有材料（含 {item_text}），一般不用重复整套发；若还缺项会明确告诉您。").replace(
+                        "{item_text}", item_text
+                    )
+                    base = render_family(layer_rd, fid, "zh", {"item_text": item_text}, fb)
                 else:
-                    base = t.get("zh_already_sent_without_item") or "收到。办公室会核对您已发的材料，一般不用重复整套发；若还缺项会明确告诉您。"
+                    fb = t.get("zh_already_sent_without_item") or "收到。办公室会核对您已发的材料，一般不用重复整套发；若还缺项会明确告诉您。"
+                    base = render_family(layer_rd, fid, "zh", None, fb)
                 return base
             if item_text:
                 base = (t.get("zh_with_item") or "现在文件里还缺 {item_text}。请再发我一次；如果你之前已经发过，也跟我说一声，我这边帮你核对，核对好后就能往下推。").replace("{item_text}", item_text)
@@ -975,21 +1001,13 @@ def _build_client_reply_draft(text: str, category: str, client_id: str | None = 
                 # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
                 merged_slots, _last_cust = _merged_and_last_customer_for_add_car_draft(text)
                 fields = _extract_add_car_fields_truth_safe(merged_slots)
-                vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
-                if vehicle_ok and not fields.get("zip"):
-                    base = "邮编发我一下，我好往下报价。"
-                elif vehicle_ok and fields.get("zip") and fields.get("delivery") and not fields.get("driver"):
-                    base = "主要驾驶人发我一下，我好安排报价。"
-                elif vehicle_ok and fields.get("zip") and not fields.get("delivery") and not fields.get("driver"):
-                    base = "提车日和主要驾驶人发我一下，我好安排报价。"
-                elif fields.get("model") and not vehicle_ok:
-                    base = "年份和邮编发我，我好继续报价。"
-                elif fields.get("year") and not fields.get("model"):
-                    base = "车型和邮编发我，我好继续报价。"
-                elif not vehicle_ok:
-                    base = "可以帮你看这台车报价。年份和车型先发我。"
+                fam_id = select_add_car_collecting_family_id(fields)
+                layer_ac = _get_reply_template_layer(client_id)
+                if fam_id == FAMILY_ADD_CAR_ASK_FULL:
+                    fb = t.get("zh") or add_car_collecting_fallback_line(fam_id, "zh")
                 else:
-                    base = t.get("zh") or "可以帮你看这台车报价。请发：年份、车型、VIN（有的话）、提车日、邮编、主要驾驶人。"
+                    fb = add_car_collecting_fallback_line(fam_id, "zh")
+                base = render_family(layer_ac, fam_id, "zh", None, fb)
                 lead_ps = _get_prospective_send_materials_lead(text, "zh", client_id)
                 ack = _get_add_car_acknowledgement(text, fields, "zh", merged_slots)
                 if ack:
@@ -1101,10 +1119,16 @@ def _build_client_reply_draft(text: str, category: str, client_id: str | None = 
             m in lowered for m in ["sent", "already sent", "发过", "发过了", "发了", "又发", "last week"]
         )
         if already_sent_lead:
+            layer_rd = _get_reply_template_layer(client_id)
+            fid = select_missing_doc_already_sent_family_id(has_item=bool(item_text))
             if item_text:
-                base = (t.get("en_already_sent_with_item") or "Got it. Our office will verify what is already on file (including the {item_text}). You usually do not need to resend everything—we will only ask if something is still missing.").replace("{item_text}", item_text)
+                fb = (t.get("en_already_sent_with_item") or "Got it. Our office will verify what is already on file (including the {item_text}). You usually do not need to resend everything—we will only ask if something is still missing.").replace(
+                    "{item_text}", item_text
+                )
+                base = render_family(layer_rd, fid, "en", {"item_text": item_text}, fb)
             else:
-                base = t.get("en_already_sent_without_item") or "Got it. Our office will verify what you already sent. You usually do not need to resend everything—we will only ask if something is still missing."
+                fb = t.get("en_already_sent_without_item") or "Got it. Our office will verify what you already sent. You usually do not need to resend everything—we will only ask if something is still missing."
+                base = render_family(layer_rd, fid, "en", None, fb)
             return base
         if item_text:
             pronoun = "them" if len(items) > 1 else "it"
@@ -1144,21 +1168,13 @@ def _build_client_reply_draft(text: str, category: str, client_id: str | None = 
             # Progressive ask: acknowledge what customer said, ask 1–2 next things (not 6)
             merged_slots, _last_cust = _merged_and_last_customer_for_add_car_draft(text)
             fields = _extract_add_car_fields_truth_safe(merged_slots)
-            vehicle_ok = (fields.get("year") and fields.get("model")) or fields.get("vin")
-            if vehicle_ok and not fields.get("zip"):
-                base = "Send the zip and I will run the quote."
-            elif vehicle_ok and fields.get("zip") and fields.get("delivery") and not fields.get("driver"):
-                base = "Send me the main driver so I can prepare the quote."
-            elif vehicle_ok and fields.get("zip") and not fields.get("delivery") and not fields.get("driver"):
-                base = "Send the delivery date and main driver so I can prepare the quote."
-            elif fields.get("model") and not vehicle_ok:
-                base = "Send the year and zip so I can run the quote."
-            elif fields.get("year") and not fields.get("model"):
-                base = "Send the make/model and zip so I can run the quote."
-            elif not vehicle_ok:
-                base = "I can quote the new car—send year and make/model first."
+            fam_id = select_add_car_collecting_family_id(fields)
+            layer_ac = _get_reply_template_layer(client_id)
+            if fam_id == FAMILY_ADD_CAR_ASK_FULL:
+                fb = t.get("en") or add_car_collecting_fallback_line(fam_id, "en")
             else:
-                base = t.get("en") or "I can quote the new car. Send year, make/model, VIN if you have it, delivery date, zip, and main driver."
+                fb = add_car_collecting_fallback_line(fam_id, "en")
+            base = render_family(layer_ac, fam_id, "en", None, fb)
             lead_ps = _get_prospective_send_materials_lead(text, "en", client_id)
             ack = _get_add_car_acknowledgement(text, fields, "en", merged_slots)
             if ack:
@@ -5235,6 +5251,7 @@ def triage_conversation(
             prospective_send_prefix=prospective_send_prefix,
             last_customer_lower=last_customer_lower,
             add_car_materials_sent=add_car_materials_sent_flag,
+            reply_template_families=_get_reply_template_layer(resolved_client_id),
         )
 
     # Correction-aware add-car handoff: lead with effective vehicle when customer just corrected it.
