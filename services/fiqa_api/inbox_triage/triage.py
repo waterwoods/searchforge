@@ -52,6 +52,16 @@ from services.fiqa_api.inbox_triage.triage_handoff_policy import (
     generic_should_handoff,
     next_ask_defers_instant_handoff,
 )
+from services.fiqa_api.inbox_triage.triage_handoff_reply_composer import (
+    compose_handoff_reply,
+    stitched_customer_visible_line,
+    stitched_customer_visible_line_prefer,
+)
+from services.fiqa_api.inbox_triage.triage_handoff_reply_policy import (
+    merge_still_needed_for_intent,
+    resolve_add_car_handoff_phrase_key,
+    resolve_non_add_car_handoff_phrase_key,
+)
 from services.fiqa_api.inbox_triage.add_car_field_contract import (
     dedupe_preserve_order,
     quote_ready_matches_still_needed,
@@ -66,8 +76,6 @@ from services.fiqa_api.inbox_triage.add_car_intent import (
     INTENT_SUPPLEMENT_INFO,
     INTENT_TIMELINE_QUESTION,
     ResolvedAddCarIntent,
-    nudge_append_generic_to_supplement_intent,
-    resolve_add_car_turn_intent,
 )
 from services.fiqa_api.inbox_triage.add_car_llm_slot_candidates import (
     maybe_augment_merged_text_for_add_car_slots,
@@ -98,11 +106,7 @@ from services.fiqa_api.inbox_triage.truth_field_guardrails import (
     truth_guardrail_debug_session_start,
 )
 from services.fiqa_api.inbox_triage.add_car_triage_post_submit import (
-    ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN as _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN,
-    ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH as _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH,
-    POST_SUBMIT_ADD_CAR_FALLBACK_POOLS as _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS,
     effective_add_car_handoff_storage_key as _effective_add_car_handoff_storage_key,
-    post_submit_add_car_fallback_line as _post_submit_add_car_fallback_line,
     post_submit_rot_idx as _post_submit_rot_idx,
     prepend_add_car_post_submit_intent_head as _prepend_add_car_post_submit_intent_head,
     truth_allows_post_submit_handoff_phrasing as _truth_allows_post_submit_handoff_phrasing,
@@ -297,15 +301,9 @@ def _stitched_customer_visible_line(
     default_en: str,
 ) -> str:
     """One zh/en line from stitched map; engine defaults when client omits key (no cross-client fallback)."""
-    stitched = _get_stitched_phrases(client_id)
-    block = stitched.get(key)
-    if not isinstance(block, dict):
-        return default_zh if lang == "zh" else default_en
-    if lang == "zh":
-        v = (block.get("zh") or "").strip()
-        return v or default_zh
-    v = (block.get("en") or "").strip()
-    return v or default_en
+    return stitched_customer_visible_line(
+        _get_stitched_phrases(client_id), key, lang, default_zh, default_en
+    )
 
 
 def _stitched_customer_visible_line_prefer(
@@ -321,21 +319,17 @@ def _stitched_customer_visible_line_prefer(
     default_en_post: str | None = None,
 ) -> str:
     """Pick post_submit stitched block when allowed and present; else primary (or post defaults)."""
-    if use_post_submit:
-        stitched = _get_stitched_phrases(client_id)
-        block = stitched.get(post_submit_key)
-        if isinstance(block, dict):
-            if lang == "zh":
-                v = (block.get("zh") or "").strip()
-                if v:
-                    return v
-            else:
-                v = (block.get("en") or "").strip()
-                if v:
-                    return v
-        if default_zh_post is not None:
-            return default_zh_post if lang == "zh" else (default_en_post or default_en)
-    return _stitched_customer_visible_line(client_id, primary_key, lang, default_zh, default_en)
+    return stitched_customer_visible_line_prefer(
+        _get_stitched_phrases(client_id),
+        primary_key,
+        post_submit_key,
+        lang,
+        default_zh,
+        default_en,
+        use_post_submit=use_post_submit,
+        default_zh_post=default_zh_post,
+        default_en_post=default_en_post,
+    )
 
 
 def _maybe_append_add_car_price_caveat(
@@ -2294,47 +2288,6 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
         return "next_step_question"
 
     return "new_info"
-
-
-def _resolve_add_car_handoff_phrase_key(
-    last_customer_raw: str,
-    follow_up_type: str,
-    handoff_phrases: dict[str, dict[str, str]],
-    customer_turn_index: int,
-    merged_text: str,
-    reply_truth_context: dict[str, Any] | None,
-) -> tuple[str, ResolvedAddCarIntent]:
-    """
-    Pick handoff_phrases.json key for add-car using bounded Intent Layer (add_car_intent.py).
-    Merges still_needed_fields from merged_text with persisted case gaps (append / case_id) for intent ceiling checks.
-    """
-    truth_for_intent: dict[str, Any] = dict(reply_truth_context or {})
-    _, still_gap, _, _ = _add_car_structured_fields(merged_text)
-    prior_still = list((reply_truth_context or {}).get("still_needed_fields") or [])
-    merged_still: list[str] = []
-    _seen_still: set[str] = set()
-    for x in list(still_gap or []) + prior_still:
-        xs = str(x).strip()
-        if not xs:
-            continue
-        key = xs.lower()
-        if key in _seen_still:
-            continue
-        _seen_still.add(key)
-        merged_still.append(xs)
-    if merged_still:
-        truth_for_intent["still_needed_fields"] = merged_still
-    resolved = resolve_add_car_turn_intent(
-        last_customer_raw,
-        follow_up_type,
-        customer_turn_index,
-        truth_for_intent,
-    )
-    resolved = nudge_append_generic_to_supplement_intent(resolved, reply_truth_context)
-    base = resolved.handoff_base_key
-    if handoff_phrases.get(base):
-        return base, resolved
-    return "add_car", resolved
 
 
 def _is_turn1_lightweight_candidate(merged_text: str) -> bool:
@@ -5154,12 +5107,15 @@ def triage_conversation(
     add_car_handoff_base_key = ""
     add_car_resolved_intent: ResolvedAddCarIntent | None = None
     if is_add_car:
-        add_car_handoff_base_key, add_car_resolved_intent = _resolve_add_car_handoff_phrase_key(
+        _, still_gap_intent, _, _ = _add_car_structured_fields(merged_for_add_car_extraction)
+        prior_still_intent = list((reply_truth_context or {}).get("still_needed_fields") or [])
+        merged_still_intent = merge_still_needed_for_intent(still_gap_intent, prior_still_intent)
+        add_car_handoff_base_key, add_car_resolved_intent = resolve_add_car_handoff_phrase_key(
             last_customer_raw,
             follow_up_type,
             handoff_phrases,
             customer_count + 1,
-            merged_for_add_car_extraction,
+            merged_still_intent,
             reply_truth_context,
         )
         key = _effective_add_car_handoff_storage_key(
@@ -5167,319 +5123,68 @@ def triage_conversation(
             handoff_phrases,
             post_submit_phrasing,
         )
-    elif is_remove_car:
-        key = "remove_car" if handoff_phrases.get("remove_car") else "other"
     else:
-        # Use derived follow_up_type for reply strategy (LIGHTWEIGHT_STATE_MACHINE_BLUEPRINT)
-        if follow_up_type in ("clarification_question", "urgency_question", "next_step_question", "office_review_question"):
-            key = "other_clarification" if handoff_phrases.get("other_clarification") else "other"
-        elif follow_up_type == "already_sent":
-            key = "other_received" if handoff_phrases.get("other_received") else "other"
-        elif follow_up_type == "correction":
-            key = "other_corrected" if handoff_phrases.get("other_corrected") else "other"
-        else:
-            key = "other"
+        key = resolve_non_add_car_handoff_phrase_key(
+            is_remove_car=is_remove_car,
+            follow_up_type=follow_up_type,
+            handoff_phrases=handoff_phrases,
+        )
     phrases = handoff_phrases.get(key, {}) if handoff_phrases else {}
     language = _detect_client_language(merged_text)
-    _turn_idx = customer_count + 1
-    _intent_f = (
-        add_car_resolved_intent.intent_family
-        if add_car_resolved_intent is not None
-        else None
+    _intent_f_rot = (
+        add_car_resolved_intent.intent_family if add_car_resolved_intent is not None else None
     )
-    _rot = _post_submit_rot_idx(_turn_idx, add_car_handoff_base_key or "", _intent_f)
-    # Reassure-first: when already_sent + "why still chasing", answer first then hand off
-    why_still_chasing = any(
-        m in last_customer_raw.lower()
-        for m in ("怎么还在追", "为什么还在追", "为什么还追", "怎么还追", "why still", "why are they still")
-    )
-    if handoff and key == "other_received" and why_still_chasing:
-        wsc = stitched_cfg.get("why_still_chasing_reassurance")
-        wsc_d: dict[str, str] = wsc if isinstance(wsc, dict) else {}
-        handoff_reply_zh = (wsc_d.get("zh") or "").strip() or (
-            "有时提醒和实际到账不同步。办公室会尽快核实；有结果会联系您。"
-        )
-        handoff_reply_en = (wsc_d.get("en") or "").strip() or (
-            "Reminders sometimes arrive before the file updates. Our office will verify and follow up with you."
-        )
-    else:
-        zh_alt = (phrases.get("zh_alt") or "").strip() if isinstance(phrases, dict) else ""
-        en_alt = (phrases.get("en_alt") or "").strip() if isinstance(phrases, dict) else ""
-        use_alt = (
-            key == "add_car"
-            and not post_submit_phrasing
-            and (customer_count + 1) >= 2
-            and bool(zh_alt or en_alt)
-            and ((customer_count + 1) % 2 == 0)
-        )
-        _engine_post_submit_pool = bool(
-            is_add_car
-            and post_submit_phrasing
-            and add_car_handoff_base_key
-            and add_car_handoff_base_key in _POST_SUBMIT_ADD_CAR_FALLBACK_POOLS
-        )
-        fb_zh = _post_submit_add_car_fallback_line(
-            add_car_handoff_base_key, "zh", rot_idx=_rot
-        ) if _engine_post_submit_pool else None
-        fb_en = _post_submit_add_car_fallback_line(
-            add_car_handoff_base_key, "en", rot_idx=_rot
-        ) if _engine_post_submit_pool else None
-        # Engine pool beats static *_submitted pack lines (otherwise key != base_key skips pool → REPLY_REPEATED_BLOCK).
-        if _engine_post_submit_pool and fb_zh:
-            handoff_reply_zh = fb_zh
-        else:
-            handoff_reply_zh = (phrases.get("zh") or "").strip() or (
-                _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_ZH
-                if (
-                    is_add_car
-                    and key == "add_car_office_receipt"
-                    and not post_submit_phrasing
-                )
-                else (
-                    "加车要点已整理进本条服务记录；请在入口完成正式提交办公室后，同事才会在队列里接收并核对，随后出价并联系您。"
-                    if is_add_car
-                    else "您说的卖车信息已整理好了，办公室会尽快处理，有结果会联系您。" if is_remove_car
-                    else "您说的情况已整理好了，办公室会尽快处理，有结果会联系您。"
-                )
-            )
-        if _engine_post_submit_pool and fb_en:
-            handoff_reply_en = fb_en
-        else:
-            handoff_reply_en = (phrases.get("en") or "").strip() or (
-                _ADD_CAR_OFFICE_RECEIPT_PRE_FALLBACK_EN
-                if (
-                    is_add_car
-                    and key == "add_car_office_receipt"
-                    and not post_submit_phrasing
-                )
-                else (
-                    "Your add-car details are on this service record—after formal submit in the portal, our office will receive it in the queue, verify, price, and follow up."
-                    if is_add_car
-                    else "Got your vehicle removal details. Our office will process this and follow up with you." if is_remove_car
-                    else "Got it. We've noted your info—our office will review and follow up with you."
-                )
-            )
-        if use_alt:
-            if zh_alt and language == "zh":
-                handoff_reply_zh = zh_alt
-            elif en_alt and language != "zh":
-                handoff_reply_en = en_alt
-        # Late-turn variety for post-submit Add-Car: alternate zh/en when pack provides zh_alt (truth-equivalent).
-        use_alt_post_submit = (
-            post_submit_phrasing
-            and is_add_car
-            and (customer_count + 1) >= 3
-            and bool(zh_alt or en_alt)
-            and ((customer_count + 1) % 2 == 0)
-            and not _engine_post_submit_pool
-        )
-        if use_alt_post_submit:
-            if zh_alt and language == "zh":
-                handoff_reply_zh = zh_alt
-            elif en_alt and language != "zh":
-                handoff_reply_en = en_alt
-
-    handoff_reply = handoff_reply_zh if language == "zh" else handoff_reply_en
-
-    # Add-car thread, after system has spoken: "还缺什么 / 你先看看" → office review, not repeat flagship handoff
-    if (
-        handoff
-        and is_add_car
-        and follow_up_type == "clarification_question"
-        and "[系统]" in (merged_text or "")
-    ):
-        hr_zh = _stitched_customer_visible_line_prefer(
-            resolved_client_id,
-            "add_car_clarification_followup",
-            "add_car_clarification_followup_submitted",
-            "zh",
-            "收到。办公室按您已发资料逐条核对；仅在有缺项时再联系您。",
-            "Got it. Our office will check what you sent line by line and only follow up if something is still missing.",
-            use_post_submit=post_submit_phrasing,
-            default_zh_post="收到。办公室会按当前服务记录与您已发资料继续核对；仅在有缺项时再联系您。",
-            default_en_post="Got it. Our office will continue checking against your current service record and what you sent, and will follow up only if something is still missing.",
-        )
-        hr_en = _stitched_customer_visible_line_prefer(
-            resolved_client_id,
-            "add_car_clarification_followup",
-            "add_car_clarification_followup_submitted",
-            "en",
-            "收到。办公室按您已发资料逐条核对；仅在有缺项时再联系您。",
-            "Got it. Our office will check what you sent line by line and only follow up if something is still missing.",
-            use_post_submit=post_submit_phrasing,
-            default_zh_post="收到。办公室会按当前服务记录与您已发资料继续核对；仅在有缺项时再联系您。",
-            default_en_post="Got it. Our office will continue checking against your current service record and what you sent, and will follow up only if something is still missing.",
-        )
-        handoff_reply = hr_zh if language == "zh" else hr_en
-
-    # Document clarification: when customer asks "what does garaging proof mean? what to send?"
-    # after handoff, answer the question first instead of generic handoff (SIM2 fix)
-    # HANDOFF_TIMING_AUDIT: Same for add-car when customer asks doc question in same turn as vehicle info
-    last_customer_lower = last_customer_raw.lower() if last_customer_raw else ""
-    has_doc_clarification = (
-        _is_document_confusion_request(last_customer_lower)
-        and any(
-            m in last_customer_lower
-            for m in ("garaging", "garaging proof", "停放", "declaration page", "dec page", "保单首页")
-        )
-    )
-    if handoff and has_doc_clarification and (key == "other_clarification" or is_add_car):
-        tailored = _build_client_reply_draft(merged_text, "customer_question", resolved_client_id)
-        if tailored and len(tailored) > 30 and (
-            "garaging" in tailored.lower() or "停放" in tailored or "declaration" in tailored.lower()
-        ):
-            handoff_suffix_zh = (
-                _stitched_customer_visible_line_prefer(
-                    resolved_client_id,
-                    "handoff_doc_clarification_suffix_add_car",
-                    "handoff_doc_clarification_suffix_add_car_submitted",
-                    "zh",
-                    "。加车要点已记入本条记录；请在入口完成正式提交办公室后，由同事在队列中跟进，有结果会联系您。",
-                    " Your add-car details are on this record—after formal submit, our office will pick it up in the queue and follow up.",
-                    use_post_submit=post_submit_phrasing,
-                    default_zh_post="。加车要点已记入本条办公室可见记录；办公室会按当前记录继续核对，有结果会联系您。",
-                    default_en_post=" Your add-car details are on the office-visible record; our office will continue verification from the current record and follow up.",
-                )
-                if is_add_car
-                else _stitched_customer_visible_line(
-                    resolved_client_id,
-                    "handoff_doc_clarification_suffix_other",
-                    "zh",
-                    "。办公室会尽快处理，有结果会联系您。",
-                    ". Our office will process this and follow up with you.",
-                )
-            )
-            handoff_suffix_en = (
-                _stitched_customer_visible_line_prefer(
-                    resolved_client_id,
-                    "handoff_doc_clarification_suffix_add_car",
-                    "handoff_doc_clarification_suffix_add_car_submitted",
-                    "en",
-                    "。加车要点已记入本条记录；请在入口完成正式提交办公室后，由同事在队列中跟进，有结果会联系您。",
-                    " Your add-car details are on this record—after formal submit, our office will pick it up in the queue and follow up.",
-                    use_post_submit=post_submit_phrasing,
-                    default_zh_post="。加车要点已记入本条办公室可见记录；办公室会按当前记录继续核对，有结果会联系您。",
-                    default_en_post=" Your add-car details are on the office-visible record; our office will continue verification from the current record and follow up.",
-                )
-                if is_add_car
-                else _stitched_customer_visible_line(
-                    resolved_client_id,
-                    "handoff_doc_clarification_suffix_other",
-                    "en",
-                    "。办公室会尽快处理，有结果会联系您。",
-                    ". Our office will process this and follow up with you.",
-                )
-            )
-            handoff_suffix = handoff_suffix_zh if language == "zh" else handoff_suffix_en
-            handoff_reply = tailored.rstrip("。.") + handoff_suffix
-
-    # ADD_CAR_QUOTE_EXCELLENCE: Coverage-adjust side question in same turn — brief answer, then hand off.
-    has_coverage_question = any(
-        m in last_customer_lower
-        for m in ("coverage 可以调", "coverage 可以调吗", "coverage 能调", "顺便 coverage", "coverage 能改", "coverage adjust")
-    )
-    if handoff and is_add_car and has_coverage_question:
-        coverage_answer_zh = _stitched_customer_visible_line(
-            resolved_client_id,
-            "handoff_add_car_coverage_answer",
-            "zh",
-            "保额可以调整，报价时办公室会跟您确认。",
-            "Coverage can be adjusted; the office will confirm options when quoting.",
-        )
-        coverage_answer_en = _stitched_customer_visible_line(
-            resolved_client_id,
-            "handoff_add_car_coverage_answer",
-            "en",
-            "保额可以调整，报价时办公室会跟您确认。",
-            "Coverage can be adjusted; the office will confirm options when quoting.",
-        )
-        coverage_answer = coverage_answer_zh if language == "zh" else coverage_answer_en
-        handoff_suffix_zh = _stitched_customer_visible_line_prefer(
-            resolved_client_id,
-            "handoff_add_car_coverage_suffix",
-            "handoff_add_car_coverage_suffix_submitted",
-            "zh",
-            "要点已记入本条记录；正式提交办公室后，同事会在队列中核对并尽快出价，有结果会联系您。",
-            "Details are on this record—after formal submit, our office will verify in the queue, price, and follow up.",
-            use_post_submit=post_submit_phrasing,
-            default_zh_post="要点已在办公室可见记录里；办公室会结合当前记录继续核对与报价准备，有结果会联系您。",
-            default_en_post="The details are on the office-visible record; our office will continue verification and quote prep from the current record and follow up.",
-        )
-        handoff_suffix_en = _stitched_customer_visible_line_prefer(
-            resolved_client_id,
-            "handoff_add_car_coverage_suffix",
-            "handoff_add_car_coverage_suffix_submitted",
-            "en",
-            "要点已记入本条记录；正式提交办公室后，同事会在队列中核对并尽快出价，有结果会联系您。",
-            "Details are on this record—after formal submit, our office will verify in the queue, price, and follow up.",
-            use_post_submit=post_submit_phrasing,
-            default_zh_post="要点已在办公室可见记录里；办公室会结合当前记录继续核对与报价准备，有结果会联系您。",
-            default_en_post="The details are on the office-visible record; our office will continue verification and quote prep from the current record and follow up.",
-        )
-        handoff_suffix = handoff_suffix_zh if language == "zh" else handoff_suffix_en
-        handoff_reply = coverage_answer + " " + handoff_suffix
-
-    # Prospective-send question + quote-ready handoff: answer "要不要发你" style asks before office line.
-    prospective_send_lead = _get_prospective_send_materials_lead(
-        last_customer_raw, language, resolved_client_id
-    )
-    if handoff and is_add_car and prospective_send_lead:
-        handoff_reply = prospective_send_lead + handoff_reply
-
-    # ADD_CAR_COMMERCIAL_FLOW_HARDENING: Warmer handoff when customer says materials sent (发你微信了)
-    add_car_materials_sent = handoff and is_add_car and follow_up_type == "already_sent" and _message_claims_completed_material_send(
-        last_customer_raw
-    )
-    if add_car_materials_sent:
-        ams = stitched_cfg.get("add_car_materials_sent")
-        ams_sub = stitched_cfg.get("add_car_materials_sent_submitted")
-        ams_d: dict[str, str] = ams if isinstance(ams, dict) else {}
-        ams_sub_d: dict[str, str] = ams_sub if isinstance(ams_sub, dict) else {}
-        if post_submit_phrasing:
-            handoff_reply_zh = (ams_sub_d.get("zh") or "").strip() or (
-                "收到。办公室正按当前服务记录核对您已发的加车材料；无需整套重发，缺项会主动联系您。"
-            )
-            handoff_reply_en = (ams_sub_d.get("en") or "").strip() or (
-                "Thanks—our office is verifying what you sent against your current add-car record. "
-                "No need to resend the full set; we will reach out only if something is still missing."
-            )
-        else:
-            handoff_reply_zh = (ams_d.get("zh") or "").strip() or (
-                "收到。办公室正核对您已发的加车材料；无需整套重发，缺项会主动联系您。"
-            )
-            handoff_reply_en = (ams_d.get("en") or "").strip() or (
-                "Thanks—our office is verifying what you sent for this add-car quote. "
-                "No need to resend the full set; we will reach out only if something is still missing."
-            )
-        handoff_reply = handoff_reply_zh if language == "zh" else handoff_reply_en
-
-    # Correction + embedded urgency/next-step question: answer the question first (SIM1 Turn 3 fix)
-    # When user says "其实已经付了...那我现在最要紧做什么？", don't just say "好的明白了" — answer the ask
-    if handoff and key == "other_corrected":
+    _rot = _post_submit_rot_idx(customer_count + 1, add_car_handoff_base_key or "", _intent_f_rot)
+    handoff_reply = ""
+    if handoff:
         last_customer_lower = last_customer_raw.lower() if last_customer_raw else ""
-        urgency_next_markers = (
-            "最要紧", "先干嘛", "先看什么", "办公室先看什么", "what matters most",
-            "what should i do", "is this urgent", "是不是今天", "一定要处理",
+        has_doc_clarification = (
+            _is_document_confusion_request(last_customer_lower)
+            and any(
+                m in last_customer_lower
+                for m in ("garaging", "garaging proof", "停放", "declaration page", "dec page", "保单首页")
+            )
         )
-        has_embedded_question = any(m in last_customer_lower for m in urgency_next_markers)
-        cat = base_result.get("issue_category", "")
-        if has_embedded_question and cat in ("payment_lapse_expiration", "cancellation_warning"):
-            if language == "zh":
-                handoff_reply = _stitched_customer_visible_line(
-                    resolved_client_id,
-                    "handoff_payment_correction_urgency",
-                    "zh",
-                    "您这边最要紧的是等办公室确认付款是否到账；如果确认了您这边就不用再做什么。办公室会尽快处理，有结果会联系您。",
-                    "The most important thing for you now is to wait for our office to confirm whether the payment was received; if confirmed, you don't need to do anything else. Our office will process this and follow up with you.",
-                )
-            else:
-                handoff_reply = _stitched_customer_visible_line(
-                    resolved_client_id,
-                    "handoff_payment_correction_urgency",
-                    "en",
-                    "您这边最要紧的是等办公室确认付款是否到账；如果确认了您这边就不用再做什么。办公室会尽快处理，有结果会联系您。",
-                    "The most important thing for you now is to wait for our office to confirm whether the payment was received; if confirmed, you don't need to do anything else. Our office will process this and follow up with you.",
-                )
+        tailored_doc_clarification_reply = ""
+        if has_doc_clarification and (key == "other_clarification" or is_add_car):
+            _tailored = _build_client_reply_draft(merged_text, "customer_question", resolved_client_id)
+            if _tailored and len(_tailored) > 30 and (
+                "garaging" in _tailored.lower() or "停放" in _tailored or "declaration" in _tailored.lower()
+            ):
+                tailored_doc_clarification_reply = _tailored
+        prospective_send_prefix = (
+            _get_prospective_send_materials_lead(last_customer_raw, language, resolved_client_id)
+            if is_add_car
+            else ""
+        )
+        add_car_materials_sent_flag = (
+            is_add_car
+            and follow_up_type == "already_sent"
+            and _message_claims_completed_material_send(last_customer_raw)
+        )
+        handoff_reply = compose_handoff_reply(
+            language=language,
+            handoff=True,
+            key=key,
+            is_add_car=is_add_car,
+            is_remove_car=is_remove_car,
+            follow_up_type=follow_up_type,
+            post_submit_phrasing=post_submit_phrasing,
+            customer_turn_index=customer_count + 1,
+            last_customer_raw=last_customer_raw,
+            merged_text=merged_text,
+            handoff_phrases=handoff_phrases,
+            stitched_cfg=stitched_cfg,
+            add_car_handoff_base_key=add_car_handoff_base_key,
+            add_car_resolved_intent=add_car_resolved_intent,
+            phrases=phrases if isinstance(phrases, dict) else {},
+            issue_category=base_result.get("issue_category", ""),
+            tailored_doc_clarification_reply=tailored_doc_clarification_reply,
+            has_doc_clarification=has_doc_clarification,
+            prospective_send_prefix=prospective_send_prefix,
+            last_customer_lower=last_customer_lower,
+            add_car_materials_sent=add_car_materials_sent_flag,
+        )
 
     # Correction-aware add-car handoff: lead with effective vehicle when customer just corrected it.
     if (
