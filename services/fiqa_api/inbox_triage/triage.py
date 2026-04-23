@@ -3442,7 +3442,10 @@ def triage_for_append(
         result["case_boundary_action"] = "append_allowed"
         result["append_allowed"] = True
         result["boundary_reason"] = "No clear boundary conflict detected; append stays on current case."
-    apply_handoff_trust_fixes_to_result(result)
+    apply_handoff_trust_fixes_to_result(
+        result,
+        merged_add_car_text=merged_for_lane if is_add_car_lane else None,
+    )
     apply_client_reply_finalize_to_result(result, {"merged_text": merged_for_lane})
     return result
 
@@ -5745,7 +5748,10 @@ def triage_conversation(
         )
         result["action_ready"] = False
         result["intake_flow_milestone"] = "collecting"
-    apply_handoff_trust_fixes_to_result(result)
+    apply_handoff_trust_fixes_to_result(
+        result,
+        merged_add_car_text=merged_for_add_car_extraction if is_add_car else None,
+    )
     apply_client_reply_finalize_to_result(result, {"merged_text": merged_text})
     return result
 

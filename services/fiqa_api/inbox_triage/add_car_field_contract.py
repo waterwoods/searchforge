@@ -78,6 +78,31 @@ def validate_add_car_field_lists(
     return _check(collected, "collected_fields") + _check(still_needed, "still_needed_fields")
 
 
+def still_needed_contradicts_structural_ready(
+    still_needed: list[str] | None,
+    collected_fields: list[str] | None,
+) -> bool:
+    """
+    True when still_needed still lists a structural field that genuinely contradicts
+    a ready/aut-progress posture (min-core allows driver XOR delivery; VIN covers year/make UI gaps).
+    """
+    sn = {str(x).lower() for x in (still_needed or []) if x}
+    coll = {str(x).lower() for x in (collected_fields or []) if x}
+    struct = {str(s).lower() for s in structural_still_needed_ids()}
+    blocking: set[str] = sn & struct
+    if not blocking:
+        return False
+    if "vin" in coll and "vin" not in sn:
+        blocking -= {"year", "make_model", "model"}
+    has_driver = "primary_driver" in coll and "primary_driver" not in sn
+    has_delivery = "delivery_date" in coll and "delivery_date" not in sn
+    if has_driver and "delivery_date" in blocking:
+        blocking -= {"delivery_date"}
+    if has_delivery and "primary_driver" in blocking:
+        blocking -= {"primary_driver"}
+    return bool(blocking)
+
+
 def quote_ready_matches_still_needed(
     quote_ready_status: str,
     still_needed: list[str] | None,

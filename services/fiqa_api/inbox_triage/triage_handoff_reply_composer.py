@@ -110,6 +110,34 @@ def apply_client_reply_finalize_to_result(
     result["client_reply_draft"] = finalize_client_reply(d, context)
 
 
+def prefer_primary_vehicle_summary_from_last_correction_bubble(
+    result: dict[str, Any],
+    merged_add_car_text: str | None,
+) -> None:
+    """When the last customer bubble is a vehicle correction, prefer its concrete line for API primary."""
+    if str(result.get("service_type") or "").strip().lower() != "add_car":
+        return
+    if not (merged_add_car_text or "").strip():
+        return
+    from services.fiqa_api.inbox_triage.triage import (  # noqa: PLC0415
+        _add_car_vehicle_concrete_from_scope,
+        _is_add_car_vehicle_correction_signal,
+    )
+
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_add_car_text)
+    last = (matches[-1] or "").strip() if matches else ""
+    if not last or not _is_add_car_vehicle_correction_signal(last):
+        return
+    year_pool = " ".join(m.strip() for m in matches if m.strip())
+    hit = (_add_car_vehicle_concrete_from_scope(last, year_pool) or "").strip()
+    if len(hit) < 3:
+        return
+    auth = (result.get("primary_vehicle_summary") or "").strip()
+    if auth and hit.lower() == auth.lower():
+        return
+    result["primary_vehicle_summary"] = hit
+
+
 def sync_add_car_client_reply_vehicle_to_primary_summary(result: dict[str, Any]) -> None:
     """Replace a stale concrete vehicle phrase in the draft when it disagrees with primary_vehicle_summary."""
     if str(result.get("service_type") or "").strip().lower() != "add_car":
@@ -139,7 +167,7 @@ def enforce_add_car_handoff_structural_consistency(result: dict[str, Any]) -> No
     Append mode skips this guard; triage_for_append uses separate broker handoff semantics.
     """
     from services.fiqa_api.inbox_triage.add_car_field_contract import (  # noqa: PLC0415
-        structural_still_needed_ids,
+        still_needed_contradicts_structural_ready,
     )
     from services.fiqa_api.inbox_triage.conversion_layer import CS_NOT_READY  # noqa: PLC0415
     from services.fiqa_api.inbox_triage.intake_engine import (  # noqa: PLC0415
@@ -154,13 +182,32 @@ def enforce_add_car_handoff_structural_consistency(result: dict[str, Any]) -> No
     if append_mode:
         return
     still = list(result.get("still_needed_fields") or [])
+    collected = list(result.get("collected_fields") or [])
     sn = {str(x).lower() for x in still if x}
-    structural = {str(x).lower() for x in structural_still_needed_ids()}
-    blocking = sn & structural
-    if not blocking or not result.get("handoff_ready"):
+    structural_c = still_needed_contradicts_structural_ready(still, collected)
+    contact_still = bool(sn & {"name", "phone"})
+    ar = bool(result.get("action_ready"))
+    qrs = str(result.get("quote_ready_status") or "").strip()
+    # Auto-progress "everything I need" is wrong at quote_ready while contact slots are open;
+    # when handoff is already true, broker/ack paths own next steps (V5 / scenario 6).
+    contact_contradicts_ready = (
+        ar
+        and contact_still
+        and qrs == "quote_ready"
+        and not result.get("handoff_ready")
+    )
+    # Handoff + contact-only (no action_ready): keep broker semantics — office can follow up on identity.
+    if (
+        result.get("handoff_ready")
+        and not ar
+        and not structural_c
+        and contact_still
+    ):
         return
-    # action_ready uses a dedicated auto-progress reply; do not replace with intake_next_best_ask.
-    if bool(result.get("action_ready")):
+    if not (result.get("handoff_ready") or ar):
+        return
+    # Structural truth gap, or quote_ready + contact; almost_ready may keep min-core action_ready (e.g. OCR A path).
+    if not structural_c and not contact_contradicts_ready:
         return
     lang = _infer_language_for_next_ask(result)
     replacement = (result.get("intake_next_best_ask") or "").strip() or compute_next_step(still, language=lang)
@@ -171,9 +218,12 @@ def enforce_add_car_handoff_structural_consistency(result: dict[str, Any]) -> No
             else "Please send the remaining details so I can keep everything on this record."
         )
 
-    result["handoff_ready"] = False
-    if result.get("lifecycle_status") == "handoff_pending":
-        result["lifecycle_status"] = "collecting"
+    if result.get("handoff_ready"):
+        result["handoff_ready"] = False
+        if result.get("lifecycle_status") == "handoff_pending":
+            result["lifecycle_status"] = "collecting"
+    result["action_ready"] = False
+    result["intake_flow_milestone"] = "collecting"
     result["collection_stage"] = "collecting"
     result["case_creation_suggested"] = False
     result["conversion_layer_active"] = False
@@ -185,8 +235,13 @@ def enforce_add_car_handoff_structural_consistency(result: dict[str, Any]) -> No
     result["client_reply_draft"] = replacement
 
 
-def apply_handoff_trust_fixes_to_result(result: dict[str, Any]) -> None:
+def apply_handoff_trust_fixes_to_result(
+    result: dict[str, Any],
+    *,
+    merged_add_car_text: str | None = None,
+) -> None:
     """Last-mile trust: vehicle text binding + structural handoff/draft consistency."""
+    prefer_primary_vehicle_summary_from_last_correction_bubble(result, merged_add_car_text)
     sync_add_car_client_reply_vehicle_to_primary_summary(result)
     enforce_add_car_handoff_structural_consistency(result)
 
