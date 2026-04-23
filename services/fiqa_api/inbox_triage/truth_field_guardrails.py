@@ -434,7 +434,16 @@ def _thread_explicit_accepts_field(
                 return True
         return False
     if fn == "year":
-        segs = customer_bubbles if customer_bubbles is not None else ([text] if text else [])
+        segs_all = customer_bubbles if customer_bubbles is not None else ([text] if text else [])
+        segs = segs_all
+        if segs_all:
+            from services.fiqa_api.inbox_triage.triage import _is_add_car_vehicle_correction_signal
+
+            last_s = (segs_all[-1] or "").strip()
+            if last_s and _is_add_car_vehicle_correction_signal(last_s):
+                slast = last_s.lower()
+                if utterance_has_explicit_vehicle_identity(last_s) and text_has_vehicle_year_signal(slast):
+                    segs = [last_s]
         for seg in segs:
             s = (seg or "").strip()
             if not s:
@@ -445,6 +454,12 @@ def _thread_explicit_accepts_field(
         return False
     if fn == "make_model":
         segs = customer_bubbles if customer_bubbles is not None else ([text] if text else [])
+        if segs:
+            from services.fiqa_api.inbox_triage.triage import _is_add_car_vehicle_correction_signal
+
+            last_s = (segs[-1] or "").strip()
+            if last_s and _is_add_car_vehicle_correction_signal(last_s):
+                segs = [last_s]
         for seg in segs:
             s = (seg or "").strip()
             if not s:

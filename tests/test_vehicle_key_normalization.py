@@ -59,3 +59,14 @@ def test_vehicle_key_follows_vehicle_correction_bubble():
     )
     # Model slug is tokenized from correction bubble (year must not stay on old X5).
     assert _derive_vehicle_key_from_add_car_text(t) == "ymz:2023|x3|90210"
+
+
+def test_vehicle_key_scrubs_partial_vin_after_keyword_from_model_slug():
+    t = "[客户] 2024 Toyota Camry zip 90210 VIN 12345"
+    assert _derive_vehicle_key_from_add_car_text(t) == "ymz:2024|toyota_camry|90210"
+
+
+def test_vehicle_key_keeps_inline_full_vin_after_keyword_in_model_path():
+    vin = "1HGBH41JXMN109186"
+    t = f"[客户] 2024 Toyota Camry zip 90210 VIN {vin}"
+    assert _derive_vehicle_key_from_add_car_text(t) == f"vin:{vin}"

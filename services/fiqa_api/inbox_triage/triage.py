@@ -53,6 +53,7 @@ from services.fiqa_api.inbox_triage.triage_handoff_policy import (
     next_ask_defers_instant_handoff,
 )
 from services.fiqa_api.inbox_triage.triage_handoff_reply_composer import (
+    apply_client_reply_finalize_to_result,
     compose_handoff_reply,
     stitched_customer_visible_line,
     stitched_customer_visible_line_prefer,
@@ -2225,6 +2226,12 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
     if not msg:
         return "unknown"
 
+    # Materials completed-send must win over broad "actually" correction heuristics so add-car /
+    # missing-doc lanes still get follow_up_type=already_sent (broker_next_step + reply policy).
+    raw_last = (last_customer_msg or "").strip()
+    if _message_claims_completed_material_send(raw_last):
+        return "already_sent"
+
     # Correction: "不是", "不是这个", "说错了", "其实已经" (actually already paid/sent)
     correction_markers = (
         "不是",
@@ -2272,10 +2279,6 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
     # Offer / question to send — not a claim that materials were already sent (guards e.g. 要不要发你).
     if _is_prospective_send_offer_message(msg):
         return "new_info"
-
-    # Already sent: completed-send only (WIRC: bare 截图 / 先发你 substring is NOT enough).
-    if _message_claims_completed_material_send((last_customer_msg or "").strip()):
-        return "already_sent"
 
     # Urgency question: is this urgent, what matters most today
     urgency_markers = ("最要紧", "是不是今天", "一定要处理", "is this urgent", "urgent?", "due today")
@@ -2973,6 +2976,30 @@ def _customer_text_for_add_car_extraction(merged_text: str) -> str:
     return base
 
 
+def _scrub_identity_mid_for_model_slug(mid: str) -> str:
+    """Drop postal/VIN labels and partial VIN tails so model_slug stays make/model tokens only.
+
+    Preserves a full 17-char VIN token after ``vin`` (same charset as _VIN_17_RE) when customers
+    write ``VIN 1HG...`` inline with year/make (downstream path may still prefer vin: key).
+    """
+    if not (mid or "").strip():
+        return mid
+    mid = re.sub(r"(?i)\bzip\b", " ", mid)
+
+    def _repl(m: re.Match[str]) -> str:
+        token = (m.group(1) or "").strip()
+        if len(token) == 17 and re.fullmatch(r"[a-hj-npr-z0-9]{17}", token, flags=re.IGNORECASE):
+            return m.group(0)
+        return " "
+
+    mid = re.sub(
+        r"(?i)\bvin\b[:\s\-–—]*([a-hj-npr-z0-9]{1,32})(?=\s|$|[^\w])",
+        _repl,
+        mid,
+    )
+    return mid
+
+
 def _extract_add_car_fields_truth_safe(merged_text: str) -> dict[str, bool]:
     """Rule extract + strict Truth guardrails (Add-Car slots only)."""
     raw = _customer_text_for_add_car_extraction(merged_text)
@@ -3036,6 +3063,7 @@ def _extract_vehicle_identity_for_key_scoped(
     mid = re.sub(r"^\s*款\s*", "", mid)
     mid = re.sub(r"\(?\d{3}\)?[-.\s]*\d{3}[-.\s]*\d{4}\b", " ", mid, flags=re.IGNORECASE)
     mid = re.sub(r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b", " ", mid)
+    mid = _scrub_identity_mid_for_model_slug(mid)
     mid = re.sub(r"\s+", " ", mid).strip()
     parts = re.findall(r"[a-z0-9]+", mid)
     model_slug = "_".join(parts)[:96].strip("_") if parts else ""
@@ -3094,6 +3122,7 @@ def _extract_vehicle_identity_for_key(merged_text: str) -> dict[str, str | None]
     # Drop US phone patterns so digits do not become part of model_slug (e.g. Tesla line + phone before zip).
     mid = re.sub(r"\(?\d{3}\)?[-.\s]*\d{3}[-.\s]*\d{4}\b", " ", mid, flags=re.IGNORECASE)
     mid = re.sub(r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b", " ", mid)
+    mid = _scrub_identity_mid_for_model_slug(mid)
     mid = re.sub(r"\s+", " ", mid).strip()
     parts = re.findall(r"[a-z0-9]+", mid)
     model_slug = "_".join(parts)[:96].strip("_") if parts else ""
@@ -3396,6 +3425,7 @@ def triage_for_append(
         result["case_boundary_action"] = "append_allowed"
         result["append_allowed"] = True
         result["boundary_reason"] = "No clear boundary conflict detected; append stays on current case."
+    apply_client_reply_finalize_to_result(result, {"merged_text": merged_for_lane})
     return result
 
 
@@ -3810,6 +3840,18 @@ def _is_add_car_vehicle_correction_signal(text: str) -> bool:
     if any(m in raw for m in ("不是这个", "不是这辆", "不是那辆", "不是这台车", "不是那台", "另一辆")):
         return True
     if any(m in tl for m in ("not that one", "wrong car", "wrong vehicle", "meant the", "meant a")):
+        return True
+    if re.search(
+        r"(?i)\bnot\s+(the\s+|a\s+)?(toyota|honda|bmw|lexus|tesla|nissan)\b",
+        tl,
+    ) and re.search(
+        r"(?i)\b(it\s*'?s|its|is)\s+(the\s+|a\s+)?(toyota|honda|bmw|lexus|tesla|nissan|accord|civic|camry|corolla)\b",
+        tl,
+    ):
+        return True
+    if re.search(r"(?i)\bnot\s+toyota\b", tl) and re.search(r"(?i)\bhonda\b", tl):
+        return True
+    if re.search(r"(?i)\bnot\s+honda\b", tl) and re.search(r"(?i)\btoyota\b", tl):
         return True
     if re.search(r"\b(i meant|actually)\b.+\b(20[12][0-9]|tesla|bmw|honda|toyota|lexus)\b", tl):
         return True
@@ -4790,6 +4832,7 @@ def triage_conversation(
             "intake_flow_milestone": "collecting",
         }
         maybe_attach_truth_guardrail_debug_to_triage(out_empty)
+        apply_client_reply_finalize_to_result(out_empty, None)
         return out_empty
 
     # SALES_READINESS_HARDENING: Talk to Agent free-text detection.
@@ -4830,6 +4873,7 @@ def triage_conversation(
             "intake_flow_milestone": "collecting",
         }
         maybe_attach_truth_guardrail_debug_to_triage(out_human)
+        apply_client_reply_finalize_to_result(out_human, {"merged_text": merged_text})
         return out_human
 
     lowered_merged = (merged_text or "").lower()
@@ -5675,6 +5719,7 @@ def triage_conversation(
         )
         result["action_ready"] = False
         result["intake_flow_milestone"] = "collecting"
+    apply_client_reply_finalize_to_result(result, {"merged_text": merged_text})
     return result
 
 
@@ -5686,7 +5731,7 @@ def triage_message(text: str) -> dict[str, Any]:
     client_reply_draft, manual_followup_needed.
     """
     if not text or not str(text).strip():
-        return {
+        r_empty: dict[str, Any] = {
             "issue_category": "unclear",
             "urgency": "medium",
             "broker_next_step": "Request clarification from sender.",
@@ -5694,7 +5739,13 @@ def triage_message(text: str) -> dict[str, Any]:
             "client_reply_draft": "Could you please provide more details about your inquiry?",
             "manual_followup_needed": True,
         }
+        apply_client_reply_finalize_to_result(r_empty, None)
+        return r_empty
 
     if _is_llm_enabled():
-        return _llm_triage(text)
-    return _rule_based_triage(text)
+        r_llm = _llm_triage(text)
+        apply_client_reply_finalize_to_result(r_llm, {"merged_text": text})
+        return r_llm
+    r_rule = _rule_based_triage(text)
+    apply_client_reply_finalize_to_result(r_rule, {"merged_text": text})
+    return r_rule
