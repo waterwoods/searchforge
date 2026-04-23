@@ -4128,6 +4128,9 @@ def _is_add_car_vehicle_correction_for_merge(last_msg: str) -> bool:
     tl = raw.lower()
     if not _VEHICLE_CORRECTION_TOKEN_RE.search(tl):
         return False
+    # VIN literal correction (same vehicle): not a make/model swap — narrow invalidation handled elsewhere.
+    if _is_add_car_vin_field_correction_signal(raw) and _VIN_17_RE.search(tl):
+        return False
     if _is_add_car_vehicle_correction_signal(raw):
         return True
     if re.search(r"不是[^，。\n]{0,40}是\s*", raw):
@@ -4276,15 +4279,17 @@ def _effective_persisted_for_add_car_merge(
     if _is_add_car_vehicle_correction_for_merge(last):
         strip.update(["year", "make_model", "vin"])
         meta["correction_turn"] = True
+    elif _is_add_car_vin_field_correction_signal(last):
+        # VIN typo / replacement only — do not drop year/make from persisted truth; those are not contradicted.
+        # Must run before generic follow_up_type==correction + vehicle-token (which also matches "vin").
+        strip.add("vin")
+        meta["correction_turn"] = True
     elif (
         not _correction_is_cross_topic_pivot_not_vehicle_fix(last)
         and ft == "correction"
         and _VEHICLE_CORRECTION_TOKEN_RE.search(last.lower())
     ):
         strip.update(["year", "make_model", "vin"])
-        meta["correction_turn"] = True
-    elif _is_add_car_vin_field_correction_signal(last):
-        strip.update({"vin", "year", "make_model"})
         meta["correction_turn"] = True
 
     if _is_add_car_zip_correction_signal(last):
@@ -4656,9 +4661,11 @@ def _get_add_car_acknowledgement(
         return "收到您发的图片，" if (language or "").strip().lower() == "zh" else "Thanks for the photo — "
     if not msg or len(msg) > 120:
         return ""
-    # Completed-send statements: do not echo customer wording; office handoff / next-ask handles tone.
+    # Materials already sent: fixed ack (collecting path has no handoff materials block; echo is empty).
     if _message_claims_completed_material_send(msg):
-        return ""
+        if (language or "").strip().lower() == "zh":
+            return "收到，你发过资料我这边先记上。"
+        return "Thanks—I've noted that you already sent the materials. "
     ctx = (
         merged_text_for_vehicle.strip()
         if (merged_text_for_vehicle and merged_text_for_vehicle.strip())
