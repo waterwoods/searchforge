@@ -46,6 +46,12 @@ from services.fiqa_api.inbox_triage.triage_add_car_policy import (
     apply_add_car_handoff_readiness_gates,
     get_next_ask_for_add_car as _get_next_ask_for_add_car,
 )
+from services.fiqa_api.inbox_triage.triage_handoff_policy import (
+    apply_add_car_turn1_quote_ready_gates_to_would_handoff,
+    compute_add_car_turn1_action_ready_handoff_lift,
+    generic_should_handoff,
+    next_ask_defers_instant_handoff,
+)
 from services.fiqa_api.inbox_triage.add_car_field_contract import (
     dedupe_preserve_order,
     quote_ready_matches_still_needed,
@@ -4780,19 +4786,6 @@ def _get_next_ask_draft(
     return None
 
 
-def _should_handoff(
-    customer_turn_count: int,
-    manual_followup_needed: bool,
-    category: str,
-) -> bool:
-    """Decide if we have enough info to hand off to broker."""
-    if not manual_followup_needed:
-        return True
-    if customer_turn_count >= 2:
-        return True
-    return False
-
-
 def triage_conversation(
     latest_text: str,
     conversation_turns: list[dict[str, str]],
@@ -4963,40 +4956,23 @@ def triage_conversation(
         base_result = _rule_based_triage(merged_text, resolved_client_id)
         base_result["triage_path"] = "rule"
 
-    would_handoff = _should_handoff(
+    would_handoff = generic_should_handoff(
         customer_count + 1,
         base_result.get("manual_followup_needed", True),
         base_result.get("issue_category", "unclear"),
     )
 
     # V5: turn-1 confirm-first when customer opens conversationally (e.g. 我想加车 / mixed EN facts).
-    # Lift to broker handoff when quote_ready and: empty still, EN "add car" opener, or fact-dense ZH with
-    # only name/phone gaps (cross-client / pilot paste — not VIN-first EN blobs).
-    _turn1_qr_handoff_lift = False
-    if is_add_car and customer_count + 1 == 1:
-        _raw_t1 = (last_customer_raw or "").strip()
-        _en_add_car_opener = bool(re.match(r"(?i)add\s*car\b", _raw_t1))
-        _no_struct_still = not bool(_still_v4_pre)
-        _still_lo = {str(x).lower() for x in (_still_v4_pre or [])}
-        _contact_only_still = _still_lo <= {"name", "phone"} and bool(_still_lo)
-        # Require punctuation after opener so "我想加车 2024 …" (dense same-line facts) can still hand off.
-        _zh_conv_add_opener = bool(
-            re.match(
-                r"^\s*(我?想加车|我要加车|帮忙加车|想加一台车|想加一辆车|加一台车|加一辆车|我想加一台|我想加一辆)([。．，,])",
-                _raw_t1,
-            )
-        )
-        if _qrs_v4_pre == "quote_ready":
-            if _no_struct_still:
-                _turn1_qr_handoff_lift = True
-            elif _lang_v4_pre == "en" and _en_add_car_opener:
-                _turn1_qr_handoff_lift = True
-            elif _contact_only_still and _lang_v4_pre == "zh" and not _zh_conv_add_opener:
-                _turn1_qr_handoff_lift = True
-        if _turn1_qr_handoff_lift:
-            would_handoff = True
-        elif _qrs_v4_pre != "quote_ready":
-            would_handoff = False
+    # Quote-ready lift + not-quote_ready gate live in triage_handoff_policy.
+    would_handoff, _turn1_qr_handoff_lift = apply_add_car_turn1_quote_ready_gates_to_would_handoff(
+        would_handoff,
+        is_add_car=is_add_car,
+        customer_turn=customer_count + 1,
+        qrs=_qrs_v4_pre,
+        last_customer_raw=last_customer_raw,
+        still_needed=list(_still_v4_pre or []),
+        language=_lang_v4_pre,
+    )
     _pvc_raw = _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction)
     _pvc_v4_pre_arg = None
     if isinstance(_pvc_raw, str) and _pvc_raw.strip():
@@ -5017,11 +4993,11 @@ def triage_conversation(
         )
         if customer_count + 1 == 1:
             # quote_ready turn 1 is owned by conversion / confirm-first flow — do not auto-handoff here.
-            _turn1_action_ready_lift = _qrs_v4_pre != "quote_ready" and evaluate_action_ready_rule(
-                list(v4_bundle_early.get("collected_fields") or []),
-                list(v4_bundle_early.get("still_needed_fields") or []),
-                merged_text=merged_for_add_car_extraction,
-                primary_vehicle_summary=_pvc_v4_pre_arg,
+            _turn1_action_ready_lift = compute_add_car_turn1_action_ready_handoff_lift(
+                _qrs_v4_pre,
+                v4_bundle_early,
+                merged_for_add_car_extraction,
+                _pvc_v4_pre_arg,
             )
             if _turn1_action_ready_lift:
                 would_handoff = True
@@ -5125,10 +5101,13 @@ def triage_conversation(
             pre_quote_soft_handoff_tone=_soft_tone,
         )
 
-    if would_handoff and next_ask and not (
-        is_add_car
-        and customer_count + 1 == 1
-        and (_turn1_qr_handoff_lift or _turn1_action_ready_lift)
+    if next_ask_defers_instant_handoff(
+        would_handoff,
+        next_ask,
+        is_add_car=is_add_car,
+        customer_turn=customer_count + 1,
+        turn1_qr_handoff_lift=_turn1_qr_handoff_lift,
+        turn1_action_ready_lift=_turn1_action_ready_lift,
     ):
         handoff = False
         result_draft = next_ask
