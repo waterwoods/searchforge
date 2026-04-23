@@ -110,6 +110,87 @@ def apply_client_reply_finalize_to_result(
     result["client_reply_draft"] = finalize_client_reply(d, context)
 
 
+def sync_add_car_client_reply_vehicle_to_primary_summary(result: dict[str, Any]) -> None:
+    """Replace a stale concrete vehicle phrase in the draft when it disagrees with primary_vehicle_summary."""
+    if str(result.get("service_type") or "").strip().lower() != "add_car":
+        return
+    auth = (result.get("primary_vehicle_summary") or "").strip()
+    if len(auth) < 3:
+        return
+    draft = result.get("client_reply_draft")
+    if not isinstance(draft, str) or not draft.strip():
+        return
+    from services.fiqa_api.inbox_triage.triage import (  # noqa: PLC0415 — late bind; triage imports this module
+        _extract_primary_add_car_vehicle_concrete,
+    )
+
+    from_draft = (_extract_primary_add_car_vehicle_concrete(f"[客户] {draft}") or "").strip()
+    if not from_draft or from_draft.lower() == auth.lower():
+        return
+    pattern = re.escape(from_draft)
+    result["client_reply_draft"] = re.sub(pattern, auth, draft, count=1, flags=re.IGNORECASE)
+
+
+def enforce_add_car_handoff_structural_consistency(result: dict[str, Any]) -> None:
+    """
+    Downgrade handoff and refresh customer copy when structural fields are still missing.
+
+    Contact-only gaps (name/phone) keep handoff semantics intact; conversion ladder may still run.
+    Append mode skips this guard; triage_for_append uses separate broker handoff semantics.
+    """
+    from services.fiqa_api.inbox_triage.add_car_field_contract import (  # noqa: PLC0415
+        structural_still_needed_ids,
+    )
+    from services.fiqa_api.inbox_triage.conversion_layer import CS_NOT_READY  # noqa: PLC0415
+    from services.fiqa_api.inbox_triage.intake_engine import (  # noqa: PLC0415
+        compute_next_step,
+        _infer_language_for_next_ask,
+    )
+
+    if str(result.get("service_type") or "").strip().lower() != "add_car":
+        return
+    append_mode = str(result.get("triage_mode") or "").strip().lower() == "append"
+    # Append keeps broker handoff semantics; greenfield triage_conversation owns structural gates.
+    if append_mode:
+        return
+    still = list(result.get("still_needed_fields") or [])
+    sn = {str(x).lower() for x in still if x}
+    structural = {str(x).lower() for x in structural_still_needed_ids()}
+    blocking = sn & structural
+    if not blocking or not result.get("handoff_ready"):
+        return
+    # action_ready uses a dedicated auto-progress reply; do not replace with intake_next_best_ask.
+    if bool(result.get("action_ready")):
+        return
+    lang = _infer_language_for_next_ask(result)
+    replacement = (result.get("intake_next_best_ask") or "").strip() or compute_next_step(still, language=lang)
+    if not replacement.strip():
+        replacement = (
+            "请把还差的信息发我一下，我好在同一条记录里继续整理。"
+            if lang == "zh"
+            else "Please send the remaining details so I can keep everything on this record."
+        )
+
+    result["handoff_ready"] = False
+    if result.get("lifecycle_status") == "handoff_pending":
+        result["lifecycle_status"] = "collecting"
+    result["collection_stage"] = "collecting"
+    result["case_creation_suggested"] = False
+    result["conversion_layer_active"] = False
+    result["conversion_flow_version"] = ""
+    result["conversion_stage"] = CS_NOT_READY
+    result["next_best_question"] = replacement
+
+    # Customer-visible copy must not imply quote/office completion while structural slots are open.
+    result["client_reply_draft"] = replacement
+
+
+def apply_handoff_trust_fixes_to_result(result: dict[str, Any]) -> None:
+    """Last-mile trust: vehicle text binding + structural handoff/draft consistency."""
+    sync_add_car_client_reply_vehicle_to_primary_summary(result)
+    enforce_add_car_handoff_structural_consistency(result)
+
+
 def compose_handoff_reply(
     *,
     language: str,

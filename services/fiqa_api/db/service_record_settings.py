@@ -7,6 +7,7 @@ Dual-write is opt-in so local demo and Cloud Run without DB are unchanged.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 
 def service_record_database_url() -> str | None:
@@ -173,3 +174,48 @@ def postgres_case_persistence_primary() -> bool:
         and db_primary_writes_enabled()
         and not json_case_writes_enabled()
     )
+
+
+def unified_intake_case_persistence_report() -> dict[str, Any]:
+    """
+    Operator-facing snapshot: Postgres vs JSON case persistence posture (no deploy changes).
+
+    ``unified_intake_case_persistence_mode`` is one of:
+    STRICT_PG_ONLY, PG_FIRST_BUT_NOT_STRICT, MIXED_STATE, UNKNOWN
+    """
+    has_db = service_record_database_url() is not None
+    prod = is_production_mode()
+    db_w = db_primary_writes_enabled()
+    db_r = db_primary_reads_enabled()
+    jw = json_case_writes_enabled()
+    dual = service_record_dual_write_enabled()
+    pg_primary = postgres_case_persistence_primary()
+    jfb = json_read_fallback_allowed()
+
+    mode = "UNKNOWN"
+    if not has_db:
+        mode = "MIXED_STATE" if prod else "UNKNOWN"
+    elif prod:
+        mode = "STRICT_PG_ONLY" if db_w else "MIXED_STATE"
+    elif pg_primary:
+        mode = "STRICT_PG_ONLY"
+    elif dual or (db_w and jw) or (db_r and jw):
+        mode = "PG_FIRST_BUT_NOT_STRICT"
+    elif db_w and not jw:
+        mode = "STRICT_PG_ONLY"
+    elif db_r and jw and not db_w:
+        mode = "PG_FIRST_BUT_NOT_STRICT"
+    else:
+        mode = "UNKNOWN"
+
+    return {
+        "unified_intake_case_persistence_mode": mode,
+        "has_service_record_database_url": has_db,
+        "is_production_mode": prod,
+        "db_primary_writes": db_w,
+        "db_primary_reads": db_r,
+        "json_case_writes": jw,
+        "dual_write": dual,
+        "postgres_case_persistence_primary": pg_primary,
+        "json_read_fallback_allowed": jfb,
+    }

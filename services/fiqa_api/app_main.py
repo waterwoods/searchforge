@@ -315,6 +315,21 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info("SearchForge Main API - Starting Up")
     logger.info("=" * 60)
+    try:
+        from services.fiqa_api.db.service_record_settings import unified_intake_case_persistence_report
+
+        _ui_posture = unified_intake_case_persistence_report()
+        logger.info(
+            "[STARTUP] unified_intake_case_persistence_mode=%s (db=%s prod=%s pg_primary=%s dual=%s json_writes=%s)",
+            _ui_posture.get("unified_intake_case_persistence_mode"),
+            _ui_posture.get("has_service_record_database_url"),
+            _ui_posture.get("is_production_mode"),
+            _ui_posture.get("postgres_case_persistence_primary"),
+            _ui_posture.get("dual_write"),
+            _ui_posture.get("json_case_writes"),
+        )
+    except Exception as _e:
+        logger.debug("[STARTUP] unified intake persistence report skipped: %s", _e)
     
     from services.fiqa_api.clients import initialize_clients, start_embedding_warmup
     from services.fiqa_api.search import initialize_bm25
@@ -895,8 +910,15 @@ async def health():
             _PHASE = "degraded"
     except Exception as e:
         logger.debug(f"[HEALTH] Check error (non-critical): {e}")
-    
-    return {"ok": True, "phase": _PHASE}
+
+    try:
+        from services.fiqa_api.db.service_record_settings import unified_intake_case_persistence_report
+
+        _persist = unified_intake_case_persistence_report()
+    except Exception:
+        _persist = {"unified_intake_case_persistence_mode": "UNKNOWN"}
+
+    return {"ok": True, "phase": _PHASE, "unified_intake_case_persistence": _persist}
 
 @app.get("/ready")
 async def ready():

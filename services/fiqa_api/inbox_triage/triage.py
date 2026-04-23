@@ -55,6 +55,7 @@ from services.fiqa_api.inbox_triage.triage_handoff_policy import (
 )
 from services.fiqa_api.inbox_triage.triage_handoff_reply_composer import (
     apply_client_reply_finalize_to_result,
+    apply_handoff_trust_fixes_to_result,
     compose_handoff_reply,
     stitched_customer_visible_line,
     stitched_customer_visible_line_prefer,
@@ -3441,6 +3442,7 @@ def triage_for_append(
         result["case_boundary_action"] = "append_allowed"
         result["append_allowed"] = True
         result["boundary_reason"] = "No clear boundary conflict detected; append stays on current case."
+    apply_handoff_trust_fixes_to_result(result)
     apply_client_reply_finalize_to_result(result, {"merged_text": merged_for_lane})
     return result
 
@@ -5592,7 +5594,7 @@ def triage_conversation(
         result["primary_vehicle_summary"] = None
         result["additional_vehicle_count_hint"] = None
 
-    result["triage_mode"] = "greenfield"
+    result["triage_mode"] = "append" if for_append else "greenfield"
 
     from services.fiqa_api.inbox_triage.conversion_layer import maybe_apply_quote_ready_conversion_reply
     from services.fiqa_api.inbox_triage.intake_engine import run_intake_engine
@@ -5743,6 +5745,7 @@ def triage_conversation(
         )
         result["action_ready"] = False
         result["intake_flow_milestone"] = "collecting"
+    apply_handoff_trust_fixes_to_result(result)
     apply_client_reply_finalize_to_result(result, {"merged_text": merged_text})
     return result
 
