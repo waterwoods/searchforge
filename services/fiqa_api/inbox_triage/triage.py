@@ -810,6 +810,13 @@ def _is_add_vehicle_request(text: str) -> bool:
         and _CA_ZIP_STRICT_RE.search(raw)
     ):
         return True
+    # Sparse broker-style bubble: garaging CA ZIP + explicit make/model + who drives (no "add a car" boilerplate)
+    if (
+        _CA_ZIP_STRICT_RE.search(raw)
+        and text_has_vehicle_make_model_signal(raw)
+        and _text_has_add_car_driver_signal(raw)
+    ):
+        return True
     if not _contains_any(lowered, _get_markers("add_vehicle")):
         return False
     if _contains_any(lowered, _get_markers("vehicle_context")) or "quote" in lowered or "报价" in lowered:
@@ -852,6 +859,14 @@ def _is_claim_intake_request(text: str) -> bool:
     Exclude underwriting 'prior claims' context."""
     lowered = (text or "").lower()
     if any(x in lowered for x in ("prior claims", "underwriting needs", "clarification on")):
+        return False
+    # Idiom: "by accident" / "on accident" = unintentional, not a crash claim; keep unless real FNOL phrasing.
+    if re.search(r"\b(?:by|on)\s+accident\b", lowered) and not re.search(
+        r"\b(?:file a claim|make a claim|the claim|at[- ]fault|other driver|collision|wreck|"
+        r"报事故|出事故|出险|理赔|撞|受伤|hospital|injured|other party)\b|"
+        r"车\s*祸|人\s*伤",
+        lowered,
+    ):
         return False
     # Add-car / underwriting docs: "registration photos" hits claim marker "photos" — not FNOL intake.
     if "registration" in lowered and any(
@@ -2005,6 +2020,9 @@ _ADD_CAR_DRIVER_MARKERS: tuple[str, ...] = (
     "老婆开",
     "老公开",
     "我开",
+    "i drive",
+    "i'll drive",
+    "ill drive",
     "我自己开",
     "本人开",
     "主要我本人",
@@ -2025,6 +2043,8 @@ _ADD_CAR_DRIVER_MARKERS: tuple[str, ...] = (
     "都可能开",
     "我跟老婆",
     "我跟我老婆",
+    "i am primary",
+    "i'm primary",
 )
 
 # Explicit primary-driver identity (narrow regex — not "my wife drives mostly" style ambiguity).
@@ -2253,7 +2273,12 @@ FOLLOW_UP_TYPES = (
 )
 
 
-def _derive_follow_up_type(last_customer_msg: str) -> str:
+def _all_customer_concat_from_merged(merged_text: str) -> str:
+    """Concatenate all [客户] bodies for follow-up heuristics (e.g. sticky already_sent)."""
+    return " ".join(m.strip() for m in re.findall(r"\[客户\]\s*([^[]+)", merged_text or "") if m.strip())
+
+
+def _derive_follow_up_type(last_customer_msg: str, all_customer_concat: str | None = None) -> str:
     """
     Derive follow-up type from the last customer message.
     Used for reply strategy: clarification → answer first; already_sent → warmer handoff.
@@ -2293,6 +2318,34 @@ def _derive_follow_up_type(last_customer_msg: str) -> str:
     )
     if any(m in msg for m in correction_markers):
         return "correction"
+
+    # Sticky: earlier bubble said materials were sent; last line is a slot fill, not a new question
+    _acc = (all_customer_concat or "").strip()
+    if (
+        _acc
+        and not _message_claims_completed_material_send(raw_last)
+        and _message_claims_completed_material_send(_acc)
+    ):
+        if re.search(r"[?？]", raw_last) or any(
+            m in msg
+            for m in (
+                "what is",
+                "what are",
+                "what does",
+                "什么意思",
+                "为什么还",
+                "怎么还",
+            )
+        ):
+            pass
+        # Vague “another question” (append borderline) — not a materials slot fill
+        elif len(msg) <= 36 and re.search(
+            r"(?i)(还有一个问题|我还有一个问题|我还有个问题|我还有个|one more question)\b",
+            raw_last,
+        ):
+            pass
+        elif len(raw_last) < 320:
+            return "already_sent"
 
     # "Why still chasing" (发过了，怎么还在追) → already_sent for reassure-first handoff
     why_still_chasing = any(
@@ -2404,7 +2457,7 @@ def _is_fast_path_candidate(merged_text: str, customer_count: int) -> bool:
     if customer_count <= 1:
         return _is_turn1_lightweight_candidate(merged_text)
 
-    follow_up = _derive_follow_up_type(last_customer)
+    follow_up = _derive_follow_up_type(last_customer, _all_customer_concat_from_merged(merged_text))
 
     # Simple follow-up types: rules handle these well
     if follow_up in (
@@ -2926,7 +2979,7 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
         else:
             return "new_issue"
 
-    fu = _derive_follow_up_type(last_msg)
+    fu = _derive_follow_up_type(last_msg, _all_customer_concat_from_merged(source_text))
     if fu == "correction" and not _correction_is_cross_topic_pivot_not_vehicle_fix(last_msg):
         return ""
     if fu in ("already_sent", "clarification_question"):
@@ -3900,13 +3953,60 @@ def _extract_make_model_from_lower(t: str) -> str:
             t,
         ):
             return ""
+    # Tesla/Model-3 words used only to reject or de-prioritize — not a positive vehicle line
+    if re.search(
+        r"(?i)(ignore|noise|wrong|fantasy|mistake|not\s+tesla|no\s+tesla|back\s+to|was\s+a\s+mistake)",
+        t,
+    ) and re.search(r"(?i)(tesla|model\s*y|model\s*3|特斯拉)", t):
+        if re.search(
+            r"(?i)(toyota|honda|nissan|ford|mazda|subaru|kia|lexus|宝马|本田|丰田)\b|\b(accord|camry|corolla|civic|cr-v|crv|rav4|highlander|outback|cx-5)\b",
+            t,
+        ) and re.search(
+            r"(?i)(final|only|add\s+this|为准|以这条)",
+            t,
+        ):
+            pass
+        else:
+            return ""
+    if re.search(r"(?i)\bignore\b", t) and re.search(r"(?i)(cr-?v|crv|cr-v)", t) and not re.search(
+        r"(?i)(toyota|honda|camry|accord|corolla)\b.+(only|add|this)|final|为准",
+        t,
+    ):
+        return ""
     customer_text = t
+    tesla_noise = re.search(
+        r"(?i)(ignore|mistake|noise|wrong|fantasy)\b", t
+    ) and re.search(r"(?i)(tesla|model\s*y|model\s*3)\b", t) and re.search(
+        r"(?i)(toyota|honda|ford|mazda|nissan|subaru|kia|lexus)\b|(?i)(camry|accord|corolla|civic|cr-v|rav4|f-150|highlander|outback)\b",
+        t,
+    )
     if "model y" in t or ("tesla" in t and re.search(r"\by\b", t) and "model" in t):
-        return "Tesla Model Y"
+        if tesla_noise:
+            pass
+        else:
+            return "Tesla Model Y"
     if "model 3" in t or ("tesla" in t and re.search(r"\b3\b", t) and "model" in t):
-        return "Tesla Model 3"
+        if tesla_noise:
+            pass
+        else:
+            return "Tesla Model 3"
     if "tesla" in t or "特斯拉" in customer_text:
-        return "Tesla" if "特斯拉" not in customer_text else "特斯拉"
+        neg_tesla = tesla_noise or (
+            re.search(r"(?i)mention\s+was\s+a\s+mistake", t) and re.search(r"(?i)\btesla\b", t)
+        )
+        if neg_tesla:
+            if re.search(
+                r"(?i)(camry|accord|corolla|civic|toyota|honda|subaru|ford|mazda|nissan|kia|lexus)\b|(?i)(outback|highlander|cr-v|crv|rav4|f-150|cx-5|model\s+ y)",
+                t,
+            ) and re.search(
+                r"(?i)(final|only|为准|以这条|ignore|noise|mistake|back\s+to)",
+                t,
+            ):
+                pass
+            else:
+                return ""
+        else:
+            return "Tesla" if "特斯拉" not in customer_text else "特斯拉"
     if list(re.finditer(r"[xX]([35])(?![0-9])", customer_text)):
         xi = list(re.finditer(r"[xX]([35])(?![0-9])", customer_text))[-1].group(1)
         return f"BMW X{xi}"
@@ -3914,12 +4014,33 @@ def _extract_make_model_from_lower(t: str) -> str:
         return "宝马"
     if "honda" in t and ("accord" in t or "civic" in t or "cr-v" in t):
         return "Honda " + ("Accord" if "accord" in t else "Civic" if "civic" in t else "CR-V")
-    if "toyota" in t and ("camry" in t or "corolla" in t or "rav4" in t):
-        return "Toyota " + ("Camry" if "camry" in t else "Corolla" if "corolla" in t else "RAV4")
+    if "4runner" in t or "4-runner" in t:
+        return "Toyota 4Runner"
+    if "toyota" in t and (
+        "camry" in t or "corolla" in t or "rav4" in t or "highlander" in t or "4runner" in t or "4-runner" in t
+    ):
+        if "highlander" in t:
+            return "Toyota Highlander"
+        if "4runner" in t or "4-runner" in t:
+            return "Toyota 4Runner"
+        return "Toyota " + (
+            "Camry" if "camry" in t else "Corolla" if "corolla" in t else "RAV4"
+        )
     if "nissan" in t and "altima" in t:
         return "Nissan Altima"
+    # Chinese model names before English tokens (same bubble can mention a trade + new car).
+    if "汉兰达" in customer_text:
+        return "Toyota Highlander"
+    if "雅阁" in customer_text:
+        return "Honda Accord"
+    if "思域" in customer_text:
+        return "Honda Civic"
+    if "凯美瑞" in customer_text or "凱美瑞" in customer_text:
+        return "Toyota Camry"
     if "camry" in t:
         return "Toyota Camry"
+    if "highlander" in t:
+        return "Toyota Highlander"
     if "corolla" in t:
         return "Toyota Corolla"
     if "accord" in t:
@@ -3936,12 +4057,14 @@ def _extract_make_model_from_lower(t: str) -> str:
         return "Mazda CX-5"
     if "f-150" in t or "f150" in t:
         return "Ford F-150"
+    if "silverado" in t or ("chevrolet" in t and "silverado" in t) or ("chevy" in t and "silverado" in t):
+        return "Chevrolet Silverado"
+    if "telluride" in t and "kia" in t:
+        return "Kia Telluride"
+    if "telluride" in t:
+        return "Kia Telluride"
     if "mach-e" in t or "mach e" in t or "mustang mach" in t:
         return "Ford Mustang Mach-E"
-    if "雅阁" in customer_text:
-        return "Honda Accord"
-    if "凯美瑞" in customer_text or "凱美瑞" in customer_text:
-        return "Toyota Camry"
     if any(m in t for m in ["bmw", "honda", "toyota", "lexus", "nissan", "subaru", "mazda", "ford"]):
         for m in ["tesla", "bmw", "honda", "toyota", "lexus", "nissan", "subaru", "mazda", "ford"]:
             if m in t:
@@ -4219,6 +4342,8 @@ def _extract_primary_add_car_vehicle_concrete(merged_text: str) -> str:
     if not model:
         model = _extract_make_model_from_lower(year_pool.lower())
     year = _resolve_corrected_year_from_text(last_seg) if last_seg else ""
+    if not year and year_pool:
+        year = _resolve_corrected_year_from_text(year_pool)
     if not year:
         cleaned = strip_likely_calendar_dates_for_year_scan(year_pool)
         ys = re.findall(r"(20[12][0-9])", cleaned)
@@ -5205,7 +5330,7 @@ def triage_conversation(
             skip_reason=_skip_slot,
         )
 
-    _follow_v4_pre = _derive_follow_up_type(last_customer_raw)
+    _follow_v4_pre = _derive_follow_up_type(last_customer_raw, _all_customer_concat_from_merged(merged_text))
     _col_v4_pre, _still_v4_pre, _, _, _ = _compute_add_car_collected_still_lists(
         merged_for_add_car_extraction,
         last_customer_raw,
@@ -5404,7 +5529,7 @@ def triage_conversation(
 
     _matches_gate = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
     _last_c_gate = (_matches_gate[-1] or "").strip() if _matches_gate else (latest_text or "").strip()
-    _follow_gate = _derive_follow_up_type(_last_c_gate)
+    _follow_gate = _derive_follow_up_type(_last_c_gate, _all_customer_concat_from_merged(merged_text))
     handoff = apply_add_car_handoff_readiness_gates(
         AddCarHandoffReadinessContext(
             handoff=handoff,
@@ -5425,7 +5550,7 @@ def triage_conversation(
     stitched_cfg = _get_stitched_phrases(resolved_client_id)
     is_remove_car = _is_remove_vehicle_request(lowered_merged)
     post_submit_phrasing = _truth_allows_post_submit_handoff_phrasing(reply_truth_context)
-    follow_up_type = _derive_follow_up_type(last_customer_raw)
+    follow_up_type = _derive_follow_up_type(last_customer_raw, _all_customer_concat_from_merged(merged_text))
     collection_stage = _derive_collection_stage(
         base_result.get("issue_category", "unclear"),
         merged_text,
