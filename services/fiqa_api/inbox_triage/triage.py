@@ -802,12 +802,12 @@ def _is_add_vehicle_request(text: str) -> bool:
         "行驶证" in (text or "") or "registration" in lowered
     ):
         return True
-    # Natural add-car facts: model year + make/model cue + CA ZIP (e.g. "Camry 2020 zip 92618")
+    # Natural add-car facts: model year + make/model cue + CA ZIP (e.g. "Camry 2020 zip 92618"
+    # or "garaging 94115" without the word "zip").
     if (
         text_has_vehicle_year_signal(lowered)
         and text_has_vehicle_make_model_signal(raw)
         and _CA_ZIP_STRICT_RE.search(raw)
-        and "zip" in lowered
     ):
         return True
     if not _contains_any(lowered, _get_markers("add_vehicle")):
@@ -852,6 +852,11 @@ def _is_claim_intake_request(text: str) -> bool:
     Exclude underwriting 'prior claims' context."""
     lowered = (text or "").lower()
     if any(x in lowered for x in ("prior claims", "underwriting needs", "clarification on")):
+        return False
+    # Add-car / underwriting docs: "registration photos" hits claim marker "photos" — not FNOL intake.
+    if "registration" in lowered and any(
+        x in lowered for x in ("sent", "already", "wechat", "微信", "upload", "emailed", "e-mail", "发", "发了", "发过了")
+    ):
         return False
     return _contains_any(text, _get_markers("claim_intake"))
 
@@ -2172,6 +2177,11 @@ def _message_claims_completed_material_send(msg: str) -> bool:
     if re.search(r"\b(i'?ve|i have)\s+sent\b", s) or re.search(
         r"\b(i\s+sent|already\s+sent|sent\s+it|sent\s+them|sent\s+via|sent\s+on\s+wechat)\b", s
     ):
+        return True
+    # "I emailed you the declaration page already" — no contiguous "already sent"
+    if re.search(r"\b(e-?mailed|emailed)\b", s) and "already" in s:
+        return True
+    if re.search(r"\bin\s+wechat\s+already\b", s) and any(x in s for x in ("photo", "photos", "pic", "截图")):
         return True
     if re.search(r"\bsent\b", s) and len(raw) <= 36:
         if re.search(r"\b(can|could|should|may|want to|going to)\b", s):
@@ -3856,6 +3866,14 @@ def _resolve_corrected_year_from_text(scope: str) -> str:
     m = re.search(r"(?<![0-9])(20[12][0-9])\s+not\s+(?<![0-9])20[12][0-9]\b", scope, re.I)
     if m:
         return m.group(1)
+    # "2020 Camry not 2018" / "2020 Toyota not 2018" — tokens between new year and "not"
+    m_gap = re.search(
+        r"\b(20[12][0-9])\b[\s\S]{0,40}\bnot\b[\s\S]{0,12}\b(20[12][0-9])\b",
+        scope,
+        re.I,
+    )
+    if m_gap and m_gap.group(1) != m_gap.group(2):
+        return m_gap.group(1)
     m2 = re.search(
         r"(?i)(?:model\s*)?(?:year|年份|年款)\s*(?:is|为|是|应该是)\s*(20[12][0-9])",
         scope,
@@ -3918,6 +3936,12 @@ def _extract_make_model_from_lower(t: str) -> str:
         return "Mazda CX-5"
     if "f-150" in t or "f150" in t:
         return "Ford F-150"
+    if "mach-e" in t or "mach e" in t or "mustang mach" in t:
+        return "Ford Mustang Mach-E"
+    if "雅阁" in customer_text:
+        return "Honda Accord"
+    if "凯美瑞" in customer_text or "凱美瑞" in customer_text:
+        return "Toyota Camry"
     if any(m in t for m in ["bmw", "honda", "toyota", "lexus", "nissan", "subaru", "mazda", "ford"]):
         for m in ["tesla", "bmw", "honda", "toyota", "lexus", "nissan", "subaru", "mazda", "ford"]:
             if m in t:
