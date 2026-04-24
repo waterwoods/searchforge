@@ -94,6 +94,7 @@ from services.fiqa_api.inbox_triage.add_car_llm_slot_candidates import (
 )
 from services.fiqa_api.inbox_triage.add_car_vehicle_signals import (
     _VIN_17_RE,
+    strip_likely_calendar_dates_for_year_scan,
     text_has_vehicle_make_model_signal,
     text_has_vehicle_year_signal,
 )
@@ -799,6 +800,14 @@ def _is_add_vehicle_request(text: str) -> bool:
     # 行驶证 / registration + send-permission — common add-car doc offer, route off generic unclear
     if _is_prospective_send_offer_message(lowered) and (
         "行驶证" in (text or "") or "registration" in lowered
+    ):
+        return True
+    # Natural add-car facts: model year + make/model cue + CA ZIP (e.g. "Camry 2020 zip 92618")
+    if (
+        text_has_vehicle_year_signal(lowered)
+        and text_has_vehicle_make_model_signal(raw)
+        and _CA_ZIP_STRICT_RE.search(raw)
+        and "zip" in lowered
     ):
         return True
     if not _contains_any(lowered, _get_markers("add_vehicle")):
@@ -2776,7 +2785,11 @@ def _effective_add_car_lane_active(
     reply_truth_context: dict[str, Any] | None,
     last_customer_raw: str,
     v6_ocr_signals: dict[str, Any] | None = None,
+    soft_route: str | None = None,
 ) -> bool:
+    if (soft_route or "").strip().lower() == "add_car":
+        if not _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw):
+            return True
     if _is_add_vehicle_request(lowered_merged):
         return True
     if _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw):
@@ -3084,6 +3097,9 @@ def _extract_vehicle_identity_for_key_scoped(
     mid = re.sub(r"\s+", " ", mid).strip()
     parts = re.findall(r"[a-z0-9]+", mid)
     model_slug = "_".join(parts)[:96].strip("_") if parts else ""
+    yr_corr = _resolve_corrected_year_from_text(scope)
+    if yr_corr:
+        year = yr_corr
     return {"vin": None, "year": year or None, "model": model_slug or None, "zip": zip_code}
 
 
@@ -3111,8 +3127,9 @@ def _extract_vehicle_identity_for_key(merged_text: str) -> dict[str, str | None]
     if vin_matches:
         return {"vin": vin_matches[-1].group(1).upper(), "year": None, "model": None, "zip": None}
     # 款 immediately after year has no ASCII \\b boundary (Unicode "word" char); allow optional 款.
-    year_m = re.search(r"(?<![0-9])(20[12][0-9])(?:\s*款)?", tl)
-    if not year_m:
+    cleaned_tl = strip_likely_calendar_dates_for_year_scan(tl)
+    year_iters = list(re.finditer(r"(?<![0-9])(20[12][0-9])(?:\s*款)?", cleaned_tl))
+    if not year_iters:
         z_only = _CA_ZIP_STRICT_RE.search(tl)
         return {
             "vin": None,
@@ -3120,8 +3137,9 @@ def _extract_vehicle_identity_for_key(merged_text: str) -> dict[str, str | None]
             "model": None,
             "zip": z_only.group(1) if z_only else None,
         }
+    year_m = year_iters[-1]
     year = year_m.group(1)
-    sub = tl[year_m.end() :]
+    sub = cleaned_tl[year_m.end() :]
     seg = re.split(r"还有|另一辆|第二辆|;", sub, maxsplit=1)[0]
     z_m = _CA_ZIP_STRICT_RE.search(seg)
     if z_m:
@@ -3831,6 +3849,199 @@ def _cancellation_structured_fields(merged_text: str) -> tuple[list[str], list[s
     return (collected, still_needed)
 
 
+def _resolve_corrected_year_from_text(scope: str) -> str:
+    """Model-year token the customer intended after explicit corrections (not naive findall order)."""
+    if not (scope or "").strip():
+        return ""
+    m = re.search(r"(?<![0-9])(20[12][0-9])\s+not\s+(?<![0-9])20[12][0-9]\b", scope, re.I)
+    if m:
+        return m.group(1)
+    m2 = re.search(
+        r"(?i)(?:model\s*)?(?:year|年份|年款)\s*(?:is|为|是|应该是)\s*(20[12][0-9])",
+        scope,
+    )
+    if m2:
+        return m2.group(1)
+    m3 = re.search(r"不是\s*(20[12][0-9])\s*是\s*(20[12][0-9])", scope)
+    if m3:
+        return m3.group(2)
+    return ""
+
+
+def _extract_make_model_from_lower(t: str) -> str:
+    """Make/model fragment from one customer segment (already lowercased ASCII; may contain CJK)."""
+    if not (t or "").strip():
+        return ""
+    # Negation-only bubbles ("wait not honda") must not latch onto the negated make.
+    if re.search(r"(?i)\bnot\s+(the\s+|a\s+)?(honda|toyota|bmw|nissan|tesla|lexus)\b", t) and not re.search(
+        r"(?i)\b(it\s*'?s|its|is|actually|meant)\b.+\b(honda|toyota|bmw|nissan|tesla|lexus|accord|civic|camry|corolla)\b",
+        t,
+    ):
+        if not re.search(
+            r"(?i)\b(honda|toyota|bmw)\s+(accord|civic|camry|corolla|cr-v|crv|rav4)\b",
+            t,
+        ):
+            return ""
+    customer_text = t
+    if "model y" in t or ("tesla" in t and re.search(r"\by\b", t) and "model" in t):
+        return "Tesla Model Y"
+    if "model 3" in t or ("tesla" in t and re.search(r"\b3\b", t) and "model" in t):
+        return "Tesla Model 3"
+    if "tesla" in t or "特斯拉" in customer_text:
+        return "Tesla" if "特斯拉" not in customer_text else "特斯拉"
+    if list(re.finditer(r"[xX]([35])(?![0-9])", customer_text)):
+        xi = list(re.finditer(r"[xX]([35])(?![0-9])", customer_text))[-1].group(1)
+        return f"BMW X{xi}"
+    if "宝马" in customer_text:
+        return "宝马"
+    if "honda" in t and ("accord" in t or "civic" in t or "cr-v" in t):
+        return "Honda " + ("Accord" if "accord" in t else "Civic" if "civic" in t else "CR-V")
+    if "toyota" in t and ("camry" in t or "corolla" in t or "rav4" in t):
+        return "Toyota " + ("Camry" if "camry" in t else "Corolla" if "corolla" in t else "RAV4")
+    if "nissan" in t and "altima" in t:
+        return "Nissan Altima"
+    if "camry" in t:
+        return "Toyota Camry"
+    if "corolla" in t:
+        return "Toyota Corolla"
+    if "accord" in t:
+        return "Honda Accord"
+    if "civic" in t:
+        return "Honda Civic"
+    if "rav4" in t or "rav 4" in t:
+        return "Toyota RAV4"
+    if "cr-v" in t or "crv" in t:
+        return "Honda CR-V"
+    if "outback" in t:
+        return "Subaru Outback"
+    if "cx-5" in t or "cx5" in t:
+        return "Mazda CX-5"
+    if "f-150" in t or "f150" in t:
+        return "Ford F-150"
+    if any(m in t for m in ["bmw", "honda", "toyota", "lexus", "nissan", "subaru", "mazda", "ford"]):
+        for m in ["tesla", "bmw", "honda", "toyota", "lexus", "nissan", "subaru", "mazda", "ford"]:
+            if m in t:
+                return m.title()
+    if any(m in customer_text for m in ["特斯拉", "宝马", "本田", "丰田"]):
+        for m in ["特斯拉", "宝马", "本田", "丰田"]:
+            if m in customer_text:
+                return m
+    return ""
+
+
+def _customer_impatience_signal(text: str) -> bool:
+    raw = (text or "").strip().lower()
+    if not raw:
+        return False
+    return any(
+        m in raw
+        for m in (
+            "why do you keep",
+            "why are you asking",
+            "stop asking",
+            "quit asking",
+            "enough questions",
+            "too many questions",
+            "just do it",
+            "just get it done",
+            "stop with the questions",
+            "already told you",
+            "i already gave you",
+            "i gave you",
+            "别问了",
+            "别一直问",
+            "有完没完",
+            "没完没了",
+            "你怎么一直问",
+            "为什么一直问",
+            "直接办",
+            "快点",
+            "我很急",
+        )
+    )
+
+
+def _impatient_field_rationale(field_id: str, lang: str) -> str:
+    f = (field_id or "").strip().lower()
+    if lang == "zh":
+        reasons = {
+            "year": "我需要确认年份，才能把车款信息对齐到正确的车型年款。",
+            "make_model": "我需要车型信息，避免把报价做到错误的车上。",
+            "zip": "邮编决定车库地址和费率，不能靠猜。",
+            "vin": "车架号能锁定具体配置，避免报价格式对不上。",
+            "delivery_date": "交付/生效日期会影响承保起点，办公室需要这个才能正确评级。",
+            "primary_driver": "主驾驶人影响风险分级，我得记清楚再交给办公室。",
+            "name": "办公室需要称呼和备案姓名，方便回电和出单。",
+            "phone": "办公室需要可用的电话，才能尽快把报价发您。",
+        }
+        return reasons.get(f, "我还差一个关键字段，才能把材料一次性交给办公室，不想让您重复解释。")
+    reasons_en = {
+        "year": "I need the model year so we match the right vehicle year—not guess.",
+        "make_model": "I need the make/model so we don’t run a quote on the wrong car.",
+        "zip": "The ZIP sets garaging/rating; I can’t assume it.",
+        "vin": "The VIN locks the exact vehicle build so the quote matches.",
+        "delivery_date": "The delivery/effective date affects when coverage starts—underwriters need it to rate correctly.",
+        "primary_driver": "The main driver affects the risk tier; I want the office to price the right person.",
+        "name": "The office needs how to address you on the file.",
+        "phone": "The office needs a reachable number to send the quote.",
+    }
+    return reasons_en.get(
+        f,
+        "I’m missing one key field so the office can finish this without back-and-forth.",
+    )
+
+
+def _first_still_needed_for_impatient(still: list[str]) -> str:
+    order_index = {
+        "year": 0,
+        "make_model": 1,
+        "model": 1,
+        "vin": 2,
+        "zip": 3,
+        "delivery_date": 4,
+        "primary_driver": 5,
+        "name": 6,
+        "phone": 7,
+    }
+    still_norm = [str(x) for x in still if x]
+
+    def _sort_key(fid: str) -> tuple[int, int]:
+        fl = fid.lower()
+        if fl in order_index:
+            return (0, order_index[fl])
+        return (1, 99)
+
+    if not still_norm:
+        return ""
+    return min(still_norm, key=_sort_key)
+
+
+def maybe_apply_impatient_add_car_collecting_prefix(result: dict[str, Any], last_customer_raw: str) -> None:
+    if not last_customer_raw or not _customer_impatience_signal(last_customer_raw):
+        return
+    if str(result.get("service_type") or "").strip().lower() != "add_car":
+        return
+    if result.get("handoff_ready"):
+        return
+    draft = result.get("client_reply_draft")
+    if not isinstance(draft, str) or not draft.strip():
+        return
+    if "avoid guessing" in draft.lower() or "不想猜" in draft or "避免猜" in draft:
+        return
+    still = list(result.get("still_needed_fields") or [])
+    fid = _first_still_needed_for_impatient(still)
+    lang = "zh" if _contains_chinese(last_customer_raw) else "en"
+    if lang == "zh":
+        prefix = "理解您着急——我是在避免猜错关键信息。" + _impatient_field_rationale(fid, lang)
+    else:
+        prefix = "Got it — I’m trying to avoid guessing wrong on coverage. " + _impatient_field_rationale(fid, lang)
+    if lang == "zh" and not prefix.endswith(("。", "！", "？")):
+        prefix += ""
+    elif lang != "zh" and not prefix.endswith((".", "!", "?")):
+        prefix += " "
+    result["client_reply_draft"] = prefix + draft
+
+
 def _is_add_car_vehicle_correction_signal(text: str) -> bool:
     """
     True when the customer is clearly correcting *which vehicle* (not e.g. driver-only fixes).
@@ -3884,40 +4095,36 @@ def _is_add_car_vehicle_correction_signal(text: str) -> bool:
         return True
     if _is_add_car_vin_field_correction_signal(raw) and _VIN_17_RE.search(tl):
         return True
+    if _resolve_corrected_year_from_text(raw):
+        return True
     return False
 
 
-def _add_car_vehicle_concrete_from_scope(scope: str, year_pool: str) -> str:
-    """Resolve year (prefer digits in scope, else latest in year_pool) + model from scope text."""
+def _add_car_vehicle_concrete_from_scope(
+    scope: str,
+    year_pool: str,
+    *,
+    bubble_segments: list[str] | None = None,
+) -> str:
+    """Resolve model-year + make/model; year corrections and last-wins model use thread pool."""
     if not (scope or "").strip():
         return ""
-    customer_text = scope
     t = scope.lower()
-    ys = re.findall(r"(20[12][0-9])", scope)
-    yp = re.findall(r"(20[12][0-9])", year_pool)
-    year = ys[-1] if ys else (yp[-1] if yp else "")
-    model = ""
-    if "model y" in t or ("tesla" in t and re.search(r"\by\b", t) and "model" in t):
-        model = "Tesla Model Y"
-    elif "model 3" in t or ("tesla" in t and re.search(r"\b3\b", t) and "model" in t):
-        model = "Tesla Model 3"
-    elif "tesla" in t or "特斯拉" in customer_text:
-        model = "Tesla" if "特斯拉" not in customer_text else "特斯拉"
-    elif list(re.finditer(r"[xX]([35])(?![0-9])", scope)):
-        xi = list(re.finditer(r"[xX]([35])(?![0-9])", scope))[-1].group(1)
-        model = f"BMW X{xi}"
-    elif "宝马" in customer_text:
-        model = "宝马"
-    elif "honda" in t and ("accord" in t or "civic" in t or "cr-v" in t):
-        model = "Honda " + ("Accord" if "accord" in t else "Civic" if "civic" in t else "CR-V")
-    elif "toyota" in t and ("camry" in t or "corolla" in t or "rav4" in t):
-        model = "Toyota " + ("Camry" if "camry" in t else "Corolla" if "corolla" in t else "RAV4")
-    elif "nissan" in t and "altima" in t:
-        model = "Nissan Altima"
-    elif any(m in t for m in ["bmw", "honda", "toyota", "lexus", "nissan"]):
-        model = next((m.title() for m in ["tesla", "bmw", "honda", "toyota", "lexus", "nissan"] if m in t), "")
-    elif any(m in customer_text for m in ["特斯拉", "宝马", "本田", "丰田"]):
-        model = next((m for m in ["特斯拉", "宝马", "本田", "丰田"] if m in customer_text), "")
+    cleaned_scope = strip_likely_calendar_dates_for_year_scan(scope)
+    cleaned_pool = strip_likely_calendar_dates_for_year_scan(year_pool or "")
+    yr_corr = _resolve_corrected_year_from_text(scope)
+    ys = re.findall(r"(20[12][0-9])", cleaned_scope)
+    yp = re.findall(r"(20[12][0-9])", cleaned_pool)
+    year = yr_corr or (ys[-1] if ys else "") or (yp[-1] if yp else "")
+    model = _extract_make_model_from_lower(t)
+    if not model and bubble_segments:
+        for seg in reversed(bubble_segments):
+            mm = _extract_make_model_from_lower((seg or "").lower())
+            if mm:
+                model = mm
+                break
+    if not model:
+        model = _extract_make_model_from_lower((year_pool or "").lower())
     if year and model:
         return f"{year} {model}"
     if year:
@@ -3957,19 +4164,8 @@ def _count_prior_system_contact_gap_tails_in_thread(merged_text: str, language: 
 
 
 def _extract_add_car_vehicle_concrete(merged_text: str) -> str:
-    """Extract concrete vehicle string (e.g. '2024 Tesla Model Y') for broker summary.
-    Uses customer messages only; on vehicle-correction turns, model/year resolve from the last bubble
-    so X5→X3 and similar overrides beat earlier mentions."""
-    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
-    customer_text = " ".join(matches).replace("\n", " ")
-    if not customer_text:
-        return ""
-    last_seg = (matches[-1] or "").strip() if matches else ""
-    if last_seg and _is_add_car_vehicle_correction_signal(last_seg):
-        hit = _add_car_vehicle_concrete_from_scope(last_seg, customer_text)
-        if hit:
-            return hit
-    return _add_car_vehicle_concrete_from_scope(customer_text, customer_text)
+    """Extract concrete vehicle string (e.g. '2024 Tesla Model Y') for broker summary."""
+    return _extract_primary_add_car_vehicle_concrete(merged_text)
 
 
 def _extract_primary_add_car_vehicle_concrete(merged_text: str) -> str:
@@ -3978,18 +4174,36 @@ def _extract_primary_add_car_vehicle_concrete(merged_text: str) -> str:
     customer_text = " ".join(matches).replace("\n", " ")
     if not customer_text:
         return ""
+    year_pool = " ".join(m.strip() for m in matches if m.strip())
     last_seg = (matches[-1] or "").strip() if matches else ""
     if last_seg and _is_add_car_vehicle_correction_signal(last_seg):
-        hit = _add_car_vehicle_concrete_from_scope(last_seg, customer_text)
+        hit = _add_car_vehicle_concrete_from_scope(last_seg, year_pool, bubble_segments=matches)
         if hit:
             return hit
     cust_only = customer_text.strip()
     if _add_car_mentions_multiple_vehicles(cust_only):
         first = re.split(r"还有|另一辆|第二辆|;", cust_only, maxsplit=1)[0]
-        hit = _add_car_vehicle_concrete_from_scope(first, first)
+        hit = _add_car_vehicle_concrete_from_scope(first, first, bubble_segments=[first])
         if hit:
             return hit
-    return _add_car_vehicle_concrete_from_scope(customer_text, customer_text)
+    model = ""
+    for m in reversed(matches):
+        mm = _extract_make_model_from_lower((m or "").lower())
+        if mm:
+            model = mm
+            break
+    if not model:
+        model = _extract_make_model_from_lower(year_pool.lower())
+    year = _resolve_corrected_year_from_text(last_seg) if last_seg else ""
+    if not year:
+        cleaned = strip_likely_calendar_dates_for_year_scan(year_pool)
+        ys = re.findall(r"(20[12][0-9])", cleaned)
+        year = ys[-1] if ys else ""
+    if year and model:
+        return f"{year} {model}"
+    if year:
+        return year
+    return model if model else ""
 
 
 def _add_car_llm_slot_should_invoke(
@@ -4682,11 +4896,27 @@ def _get_add_car_acknowledgement(
         return "收到您发的图片，" if (language or "").strip().lower() == "zh" else "Thanks for the photo — "
     if not msg or len(msg) > 120:
         return ""
-    # Materials already sent: fixed ack (collecting path has no handoff materials block; echo is empty).
+    # Materials already sent: acknowledge + vehicle anchor (collecting path has no handoff materials block).
     if _message_claims_completed_material_send(msg):
+        ctx_v = (
+            merged_text_for_vehicle.strip()
+            if (merged_text_for_vehicle and merged_text_for_vehicle.strip())
+            else f"[客户] {msg}"
+        )
+        pvc_ack = (_extract_primary_add_car_vehicle_concrete(ctx_v) or "").strip()
         if (language or "").strip().lower() == "zh":
-            return "收到，你发过资料我这边先记上。"
-        return "Thanks—I've noted that you already sent the materials. "
+            if pvc_ack:
+                return f"收到——我已记下您为 {pvc_ack} 发来的材料；办公室会核对，若仍有缺项会再联系您。"
+            return "收到——我已记下您发来的材料；办公室会核对，若仍有缺项会再联系您。"
+        if pvc_ack:
+            return (
+                f"Got it — I've noted the materials you sent for your {pvc_ack}. "
+                "Our office will review and follow up if anything is still missing. "
+            )
+        return (
+            "Got it — I've noted the materials you sent. "
+            "Our office will review and follow up if anything is still missing. "
+        )
     ctx = (
         merged_text_for_vehicle.strip()
         if (merged_text_for_vehicle and merged_text_for_vehicle.strip())
@@ -4820,6 +5050,7 @@ def triage_conversation(
     prior_workflow_state: dict[str, Any] | None = None,
     v6_ocr_signals: dict[str, Any] | None = None,
     v6_auto_input_variant: str | None = None,
+    soft_route: str | None = None,
 ) -> dict[str, Any]:
     """
     Triage within a multi-turn conversation.
@@ -4920,6 +5151,7 @@ def triage_conversation(
         reply_truth_context=reply_truth_context,
         last_customer_raw=last_customer_raw,
         v6_ocr_signals=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
+        soft_route=soft_route,
     )
     weak_inline_first_turn = (
         not for_append
@@ -5257,6 +5489,7 @@ def triage_conversation(
             last_customer_lower=last_customer_lower,
             add_car_materials_sent=add_car_materials_sent_flag,
             reply_template_families=_get_reply_template_layer(resolved_client_id),
+            primary_vehicle_summary=_pvc_v4_pre_arg,
         )
 
     # Correction-aware add-car handoff: lead with effective vehicle when customer just corrected it.
@@ -5439,6 +5672,42 @@ def triage_conversation(
         if extracted_phone:
             result["extracted_contact_phone"] = extracted_phone
         # Contact completion for handoff: §4.2 gate above (turn ≥4 + quote_ready + missing name/phone).
+        # V5 "usable" can clear next_ask while pilot slots remain — salvage a collecting reply instead of
+        # a mismatched category template from base_result.
+        if not handoff and next_ask is None and still_needed:
+            salvage_lang = _detect_client_language(merged_text)
+            salvage = _get_next_ask_for_add_car(
+                merged_for_add_car_extraction,
+                _extract_add_car_fields_truth_safe(merged_for_add_car_extraction),
+                salvage_lang,
+                add_car_rules_override,
+                customer_count + 1,
+                resolved_client_id,
+                questioning_variant=intake_evolution_variant,
+            )
+            if salvage and customer_count + 1 > 1:
+                _f_aug = _extract_add_car_fields_truth_safe(merged_for_add_car_extraction)
+                _pvc_aug = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip() or None
+                _next_lang_pre = "zh" if _contains_chinese(merged_text) else "en"
+                _soft_tone = (
+                    _next_lang_pre == "zh"
+                    and bool(_f_aug.get("vin"))
+                    and bool(_f_aug.get("zip"))
+                    and (
+                        (bool(_f_aug.get("driver")) and not bool(_f_aug.get("delivery")))
+                        or (bool(_f_aug.get("delivery")) and not bool(_f_aug.get("driver")))
+                    )
+                )
+                salvage = augment_next_ask_with_variant(
+                    salvage,
+                    variant=intake_evolution_variant,
+                    language=_next_lang_pre,
+                    primary_vehicle_summary=_pvc_aug,
+                    fields=_f_aug,
+                    pre_quote_soft_handoff_tone=_soft_tone,
+                )
+            if salvage:
+                result["client_reply_draft"] = salvage
     elif _is_premium_review_request(lowered):
         collected, still_needed = _renewal_structured_fields(merged_text)
         result["collected_fields"] = collected
@@ -5752,6 +6021,7 @@ def triage_conversation(
         result,
         merged_add_car_text=merged_for_add_car_extraction if is_add_car else None,
     )
+    maybe_apply_impatient_add_car_collecting_prefix(result, last_customer_raw)
     apply_client_reply_finalize_to_result(result, {"merged_text": merged_text})
     return result
 

@@ -88,6 +88,13 @@ from services.fiqa_api.inbox_triage.v6_attachment_sidecar import (
     extract_ocr_from_inline_base64,
     merge_v6_ocr_signals,
 )
+from services.fiqa_api.inbox_triage.triage_handoff_reply_composer import (
+    apply_client_reply_finalize_to_result,
+)
+from services.fiqa_api.inbox_triage.add_car_vehicle_signals import (
+    text_has_vehicle_make_model_signal,
+    text_has_vehicle_year_signal,
+)
 from services.fiqa_api.inbox_triage.triage import (
     triage_conversation,
     triage_for_append,
@@ -302,6 +309,7 @@ def _finalize_triage_api_result(result: dict[str, Any]) -> None:
     result.setdefault("conversion_flow_version", "")
     if "case_lifecycle" not in result:
         _attach_case_lifecycle(result)
+    apply_client_reply_finalize_to_result(result, None)
 
 
 def _user_identity_hint_from_triage(result: dict[str, Any]) -> dict[str, str] | None:
@@ -952,6 +960,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         reply_truth_context=reply_truth_ctx,
         prior_workflow_state=prior_ws,
         v6_ocr_signals=_v6_ocr,
+        soft_route=soft_route_pre,
     )
 
     reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
@@ -983,13 +992,23 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             or "Could you please provide more" in draft
         )
         if is_generic and soft_route in soft_route_starter_replies:
-            result["client_reply_draft"] = soft_route_starter_replies[soft_route]
-            result["issue_category"] = (
-                "payment_lapse_expiration" if soft_route == "cancellation_warning" else "customer_question"
+            thread_lower_sr = _full_thread_lower(text, turns)
+            skip_add_car_starter = soft_route == "add_car" and (
+                text_has_vehicle_make_model_signal(thread_lower_sr)
+                or text_has_vehicle_year_signal(thread_lower_sr)
             )
-            if soft_route == "add_car":
+            if skip_add_car_starter:
+                pass
+            else:
+                result["client_reply_draft"] = soft_route_starter_replies[soft_route]
+                result["issue_category"] = (
+                    "payment_lapse_expiration" if soft_route == "cancellation_warning" else "customer_question"
+                )
+            if soft_route == "add_car" and not skip_add_car_starter:
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["year", "make_model", "zip"]
+            elif soft_route == "add_car" and skip_add_car_starter:
+                pass
             elif soft_route == "claim_intake":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["accident_time", "accident_location", "photos"]

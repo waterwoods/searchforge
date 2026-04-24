@@ -641,7 +641,10 @@ def test_evolution_v26_scenario_d_perfect_en_auto_progress_no_question():
     assert r.get("intake_flow_milestone") == "action_ready"
     draft = r.get("client_reply_draft") or ""
     assert "?" not in draft
-    assert "I've got everything I need to get started" in draft
+    assert (
+        "I've got everything I need to get started" in draft
+        or "I've pulled your details together" in draft
+    )
 
 
 def test_evolution_v26_scenario_e_image_partial_plus_driver_no_slot_chase():
@@ -668,7 +671,11 @@ def test_evolution_v26_scenario_e_image_partial_plus_driver_no_slot_chase():
     draft = r.get("client_reply_draft") or ""
     assert "提车日期发我" not in draft
     assert "我先根据" not in draft
-    assert "I've got everything I need to get started" in draft or "推进报价" in draft
+    assert (
+        "I've got everything I need to get started" in draft
+        or "I've pulled your details together" in draft
+        or "推进报价" in draft
+    )
 
 
 def test_evolution_v26_scenario_f_noisy_single_turn_still_action_ready():

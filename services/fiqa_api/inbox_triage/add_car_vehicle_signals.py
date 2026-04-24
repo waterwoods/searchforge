@@ -128,6 +128,11 @@ def _strip_likely_calendar_dates_for_year_scan(t: str) -> str:
     return s
 
 
+def strip_likely_calendar_dates_for_year_scan(t: str) -> str:
+    """Public wrapper for year scanning (triage imports)."""
+    return _strip_likely_calendar_dates_for_year_scan(t)
+
+
 def text_has_vehicle_year_signal(t: str) -> bool:
     """True when a 20xx token appears in a non-calendar-date context (vehicle model year)."""
     cleaned = _strip_likely_calendar_dates_for_year_scan(t)

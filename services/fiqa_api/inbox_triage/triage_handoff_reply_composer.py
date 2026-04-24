@@ -129,7 +129,7 @@ def prefer_primary_vehicle_summary_from_last_correction_bubble(
     if not last or not _is_add_car_vehicle_correction_signal(last):
         return
     year_pool = " ".join(m.strip() for m in matches if m.strip())
-    hit = (_add_car_vehicle_concrete_from_scope(last, year_pool) or "").strip()
+    hit = (_add_car_vehicle_concrete_from_scope(last, year_pool, bubble_segments=matches) or "").strip()
     if len(hit) < 3:
         return
     auth = (result.get("primary_vehicle_summary") or "").strip()
@@ -270,6 +270,7 @@ def compose_handoff_reply(
     last_customer_lower: str,
     add_car_materials_sent: bool,
     reply_template_families: dict[str, Any] | None = None,
+    primary_vehicle_summary: str | None = None,
 ) -> str:
     """
     Assemble final handoff string for the current language. Expects triage to pass
