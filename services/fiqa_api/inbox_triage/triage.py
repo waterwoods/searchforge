@@ -4053,6 +4053,8 @@ def _extract_make_model_from_lower(t: str) -> str:
         return "Honda CR-V"
     if "outback" in t:
         return "Subaru Outback"
+    if re.search(r"(?i)\bwrx\b", t):
+        return "Subaru WRX"
     if "cx-5" in t or "cx5" in t:
         return "Mazda CX-5"
     if "f-150" in t or "f150" in t:
@@ -4315,6 +4317,56 @@ def _extract_add_car_vehicle_concrete(merged_text: str) -> str:
     return _extract_primary_add_car_vehicle_concrete(merged_text)
 
 
+def _add_car_revert_to_first_mentioned_scope(
+    merged_text: str, matches: list[str], year_pool: str
+) -> str:
+    """User re-anchors to the first vehicle (identity collapse / 'car I said earlier')."""
+    mt = merged_text or ""
+    if not re.search(
+        r"(?i)(?:^|[\n。！？])\s*(?:go\s+back|return)\s+to\s+(?:the\s+)?first"
+        r"|back\s+to\s+(?:the\s+)?first\s+(?:car|line|one)|same\s+as\s+the\s+very\s+first"
+        r"|car\s+i\s+said\s+earlier|first\s+car\s+i\s+mentioned|first\s+bubble\s+wins"
+        r"|[最开]始那台|第一台|最上面(?:那条)?|我一开始说|上面第一条|为准.*(?:凯美瑞|camry|accord)|"
+        r"最开始的(?:那个|那台)?车",
+        mt,
+    ):
+        return ""
+    for seg in matches[:6]:
+        s = (seg or "").strip()
+        if len(s) < 10:
+            continue
+        if not _extract_make_model_from_lower(s.lower()):
+            continue
+        return _add_car_vehicle_concrete_from_scope(s, year_pool, bubble_segments=matches)
+    return ""
+
+
+def _add_car_prefer_model_when_sibling_ignored(
+    cust_only: str, year_pool: str, matches: list[str]
+) -> str:
+    """When CRV/CR-V is explicitly dropped for the bind, don't let it win over Camry in-thread."""
+    t = f"{cust_only} {year_pool}".lower()
+    if not (re.search(r"(?i)camry", t) and re.search(r"(?i)cr-?v|\bcrv\b", t)):
+        return ""
+    if not re.search(
+        r"(?i)ignore.*(?:cr-?v|crv|the\s+crv)|drop.*(?:cr-?v|crv)|delete.*(?:cr-?v|crv)|"
+        r"not (?:the )?CR-?V|for the (?:new )?camry, not|"
+        r"only.*camry|camry only|add only.*camry|for this add.*only.*camry|separate(ly)?.*crv|"
+        r"别.*(cr-?v|crv)|不要.*(cr-?v|crv)",
+        t,
+    ):
+        return ""
+    for seg in matches:
+        s = (seg or "").strip()
+        if re.search(r"(?i)camry", s) and re.search(r"20[12][0-9]", s):
+            return _add_car_vehicle_concrete_from_scope(s, year_pool, bubble_segments=matches)
+    for seg in reversed(matches):
+        s = (seg or "").strip()
+        if re.search(r"(?i)camry", s):
+            return _add_car_vehicle_concrete_from_scope(s, year_pool, bubble_segments=matches)
+    return ""
+
+
 def _extract_primary_add_car_vehicle_concrete(merged_text: str) -> str:
     """Office-facing primary vehicle line: matches vehicle_key first-segment policy when multi-vehicle."""
     matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
@@ -4322,12 +4374,18 @@ def _extract_primary_add_car_vehicle_concrete(merged_text: str) -> str:
     if not customer_text:
         return ""
     year_pool = " ".join(m.strip() for m in matches if m.strip())
+    _first_anchor = _add_car_revert_to_first_mentioned_scope(merged_text, matches, year_pool)
+    if _first_anchor and not re.match(r"^20[12][0-9]$", _first_anchor.strip()):
+        return _first_anchor
     last_seg = (matches[-1] or "").strip() if matches else ""
     if last_seg and _is_add_car_vehicle_correction_signal(last_seg):
         hit = _add_car_vehicle_concrete_from_scope(last_seg, year_pool, bubble_segments=matches)
         if hit:
             return hit
     cust_only = customer_text.strip()
+    _sibling = _add_car_prefer_model_when_sibling_ignored(cust_only, year_pool, matches)
+    if _sibling and not re.match(r"^20[12][0-9]$", _sibling.strip()):
+        return _sibling
     if _add_car_mentions_multiple_vehicles(cust_only):
         first = re.split(r"还有|另一辆|第二辆|;", cust_only, maxsplit=1)[0]
         hit = _add_car_vehicle_concrete_from_scope(first, first, bubble_segments=[first])
