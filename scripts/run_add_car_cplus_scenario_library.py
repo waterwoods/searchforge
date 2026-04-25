@@ -174,8 +174,16 @@ def run_all(
         fail_msgs: list[str] = []
         assertion_results: list[dict[str, Any]] = []
 
+        base_reply_ctx: dict[str, Any] = {"session_id": f"scenario_entity_{sid}"}
+        extra_ctx = s.get("reply_truth_context")
+        if isinstance(extra_ctx, dict):
+            base_reply_ctx = {**base_reply_ctx, **extra_ctx}
+
         for i, text in enumerate(turns):
-            kwargs: dict[str, Any] = {"client_id": client_id}
+            kwargs: dict[str, Any] = {
+                "client_id": client_id,
+                "reply_truth_context": dict(base_reply_ctx),
+            }
             if soft_route:
                 kwargs["soft_route"] = soft_route
             out = triage_conversation(text, conv, **kwargs)
@@ -200,7 +208,10 @@ def run_all(
             # Re-run not stored full result — snapshot only. Assertions run on full out per turn.
             # Reconstruct by re-running triage up to idx (cheap for library size).
             conv2: list[dict[str, str]] = []
-            kwargs2: dict[str, Any] = {"client_id": client_id}
+            kwargs2: dict[str, Any] = {
+                "client_id": client_id,
+                "reply_truth_context": dict(base_reply_ctx),
+            }
             if soft_route:
                 kwargs2["soft_route"] = soft_route
             res_at: dict[str, Any] | None = None

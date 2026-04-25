@@ -23,14 +23,27 @@ def _stable_vehicle_entity_id(session_id: str) -> str:
     return f"veh:{session_id}"
 
 
+_VEHICLE_SCALAR_KEYS = frozenset({"year", "make", "model", "vin", "zip", "driver"})
+
+
 def _merge_payload(existing: Any, incoming: dict[str, Any]) -> dict[str, Any]:
-    """Shallow dict merge: incoming overwrites; nested dicts under confidence merged."""
+    """Shallow dict merge: incoming overwrites; nested dicts under confidence merged.
+
+    Vehicle scalars: empty/whitespace strings do not clobber non-empty stored values.
+    VIN: non-empty incoming always wins (normalized uppercase).
+    """
     base: dict[str, Any] = {}
     if isinstance(existing, dict):
         base = dict(existing)
     for k, v in incoming.items():
         if v is None:
             continue
+        if k == "vin" and isinstance(v, str) and v.strip():
+            base["vin"] = v.strip().upper()
+            continue
+        if k in _VEHICLE_SCALAR_KEYS:
+            if isinstance(v, str) and not v.strip():
+                continue
         if k == "confidence" and isinstance(v, dict) and isinstance(base.get("confidence"), dict):
             base["confidence"] = {**base["confidence"], **v}
         elif isinstance(v, dict) and isinstance(base.get(k), dict):

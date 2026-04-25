@@ -27,6 +27,7 @@ from services.fiqa_api.inbox_triage.config_loader import (
     get_stitched_handoff_phrases,
     get_workflow_fallbacks,
 )
+from services.fiqa_api.inbox_triage.entity_repository import get_active_vehicle
 from services.fiqa_api.inbox_triage.case_draft_engine import (
     action_ready_vin_soft_confirmation_warranted,
     augment_next_ask_with_variant,
@@ -3264,6 +3265,73 @@ def _derive_vehicle_key_from_add_car_text(merged_text: str) -> str | None:
     return None
 
 
+def _last_turn_prefers_first_mentioned_vehicle_anchor(last_customer_raw: str) -> bool:
+    """True when the latest customer message re-anchors identity to the first vehicle in-thread."""
+    msg = (last_customer_raw or "").strip()
+    if not msg:
+        return False
+    return bool(
+        re.search(
+            r"(?i)(?:^|[\n。！？])\s*(?:go\s+back|return)\s+to\s+(?:the\s+)?first"
+            r"|back\s+to\s+(?:the\s+)?first\s+(?:car|line|one)|same\s+as\s+the\s+very\s+first"
+            r"|car\s+i\s+said\s+earlier|first\s+car\s+i\s+mentioned|first\s+bubble\s+wins"
+            r"|[最开]始那台|第一台|最上面(?:那条)?|我一开始说|上面第一条|为准.*(?:车|car)|"
+            r"最开始的(?:那个|那台)?车",
+            msg,
+        )
+    )
+
+
+def _entity_payload_has_vehicle_identity(pl: dict[str, Any] | None) -> bool:
+    if not pl:
+        return False
+    vin = str(pl.get("vin") or "").strip()
+    if len(vin) >= 11:
+        return True
+    year = str(pl.get("year") or "").strip()
+    model = str(pl.get("model") or "").strip()
+    return bool(year and model)
+
+
+def _primary_vehicle_summary_from_entity_payload(pl: dict[str, Any]) -> str | None:
+    if not _entity_payload_has_vehicle_identity(pl):
+        return None
+    vin = str(pl.get("vin") or "").strip().upper()
+    year = str(pl.get("year") or "").strip()
+    make = str(pl.get("make") or "").strip()
+    model_raw = str(pl.get("model") or "").strip()
+    model_disp = model_raw.replace("_", " ") if model_raw else ""
+    if year and model_disp:
+        if make and make.lower() not in f"{year} {model_disp}".lower():
+            return f"{year} {make} {model_disp}".strip()
+        return f"{year} {model_disp}".strip()
+    if vin:
+        return f"VIN {vin}"
+    return None
+
+
+def _vehicle_key_from_entity_payload(pl: dict[str, Any]) -> str | None:
+    if not pl:
+        return None
+    vin = str(pl.get("vin") or "").strip().upper()
+    if vin and len(vin) >= 11:
+        return f"vin:{vin}"
+    zip_code = str(pl.get("zip") or "").strip()
+    year = str(pl.get("year") or "").strip()
+    model_norm = str(pl.get("model") or "").strip().lower()
+    if year and not re.fullmatch(r"20[12][0-9]", year):
+        year = ""
+    if zip_code and not re.fullmatch(r"9[0-9]{4}", zip_code):
+        zip_code = ""
+    if model_norm in {"", "true", "false", "none"}:
+        model_norm = ""
+    if year and model_norm and zip_code:
+        return f"ymz:{year}|{model_norm}|{zip_code}"
+    if year and model_norm:
+        return f"ym:{year}|{model_norm}"
+    return None
+
+
 def _derive_service_type(
     *,
     issue_category: str,
@@ -5446,6 +5514,27 @@ def triage_conversation(
         merged_for_add_car_extraction,
         _tf_v4_pre,
     )
+    _add_car_effective_pvc: str | None = None
+    _add_car_effective_vk: str | None = None
+    if is_add_car:
+        _sid_ent = str((reply_truth_context or {}).get("session_id") or "").strip()
+        _row_e = get_active_vehicle(_sid_ent) if _sid_ent else None
+        _raw_pl = _row_e.get("payload") if _row_e else None
+        _entity_pl_live: dict[str, Any] = dict(_raw_pl) if isinstance(_raw_pl, dict) else {}
+        _heu_pvc = (
+            _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or ""
+        ).strip() or None
+        _heu_vk = _derive_vehicle_key_from_add_car_text(merged_for_add_car_extraction)
+        if _entity_payload_has_vehicle_identity(_entity_pl_live) and not _last_turn_prefers_first_mentioned_vehicle_anchor(
+            last_customer_raw
+        ):
+            _ent_pvc = _primary_vehicle_summary_from_entity_payload(_entity_pl_live)
+            _ent_vk = _vehicle_key_from_entity_payload(_entity_pl_live)
+            _add_car_effective_pvc = _ent_pvc or _heu_pvc
+            _add_car_effective_vk = _ent_vk or _heu_vk
+        else:
+            _add_car_effective_pvc = _heu_pvc
+            _add_car_effective_vk = _heu_vk
     _qrs_v4_pre = _add_car_quote_ready_status(_tf_v4_pre)
     # Latest customer segment for language — merged_text includes [客户] labels (Chinese chars).
     _lang_v4_pre = "zh" if _contains_chinese(last_customer_raw) else "en"
@@ -5482,10 +5571,7 @@ def triage_conversation(
         still_needed=list(_still_v4_pre or []),
         language=_lang_v4_pre,
     )
-    _pvc_raw = _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction)
-    _pvc_v4_pre_arg = None
-    if isinstance(_pvc_raw, str) and _pvc_raw.strip():
-        _pvc_v4_pre_arg = _pvc_raw.strip()
+    _pvc_v4_pre_arg = _add_car_effective_pvc if is_add_car else None
     if is_add_car:
         v4_bundle_early = build_v4_case_draft_bundle(
             merged_text=merged_for_add_car_extraction,
@@ -5591,7 +5677,7 @@ def triage_conversation(
     _next_lang_pre = "zh" if _contains_chinese(merged_text) else "en"
     if is_add_car and next_ask and customer_count + 1 > 1:
         _f_aug = _extract_add_car_fields_truth_safe(merged_for_add_car_extraction)
-        _pvc_aug = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip() or None
+        _pvc_aug = _add_car_effective_pvc
         _soft_tone = (
             _next_lang_pre == "zh"
             and bool(_f_aug.get("vin"))
@@ -5751,7 +5837,10 @@ def triage_conversation(
         and last_customer_raw
         and _is_add_car_vehicle_correction_signal(last_customer_raw)
     ):
-        vc = _extract_add_car_vehicle_concrete(merged_for_add_car_extraction)
+        vc = (
+            (_add_car_effective_pvc or "").strip()
+            or _extract_add_car_vehicle_concrete(merged_for_add_car_extraction)
+        )
         if vc:
             if language == "zh" and "这台车继续" not in handoff_reply:
                 handoff_reply = f"收到，按 {vc} 这台车继续。" + handoff_reply
@@ -5939,7 +6028,7 @@ def triage_conversation(
             )
             if salvage and customer_count + 1 > 1:
                 _f_aug = _extract_add_car_fields_truth_safe(merged_for_add_car_extraction)
-                _pvc_aug = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip() or None
+                _pvc_aug = _add_car_effective_pvc
                 _next_lang_pre = "zh" if _contains_chinese(merged_text) else "en"
                 _soft_tone = (
                     _next_lang_pre == "zh"
@@ -6045,7 +6134,12 @@ def triage_conversation(
             follow_up_type,
         )
         if _add_car_is_quote_ready(truth_fields):
-            vehicle_concrete = _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction)
+            vehicle_concrete = (
+                (_add_car_effective_pvc or "").strip()
+                or (
+                    _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or ""
+                ).strip()
+            )
             has_delivery = bool(truth_fields.get("delivery"))
             has_driver = bool(truth_fields.get("driver"))
             if has_delivery and not has_driver:
@@ -6098,13 +6192,17 @@ def triage_conversation(
         is_remove_car=is_remove_car,
     )
     if is_add_car:
-        result["vehicle_key"] = _derive_vehicle_key_from_add_car_text(merged_for_add_car_extraction)
+        result["vehicle_key"] = _add_car_effective_vk or _derive_vehicle_key_from_add_car_text(
+            merged_for_add_car_extraction
+        )
         cust_only = " ".join(
             re.findall(r"\[客户\]\s*([^[]+)", merged_for_add_car_extraction or "")
         ).strip()
         multi = _add_car_mentions_multiple_vehicles(cust_only)
         result["additional_vehicle_mentioned"] = multi
-        pvc = (_extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or "").strip()
+        pvc = (_add_car_effective_pvc or "").strip() or (
+            _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or ""
+        ).strip()
         result["primary_vehicle_summary"] = pvc if pvc else None
         result["additional_vehicle_count_hint"] = 2 if multi else None
         if multi and is_add_car:
