@@ -62,19 +62,23 @@ def get_active_vehicle(session_id: str) -> dict[str, Any] | None:
         return None
     from psycopg.rows import dict_row
 
-    with service_record_connection() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                SELECT id, session_id, case_id, entity_type, entity_id, payload, is_active, updated_at
-                FROM intake_entities
-                WHERE session_id = %s AND entity_type = %s AND is_active = true
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                (sid, ENTITY_TYPE_VEHICLE),
-            )
-            row = cur.fetchone()
+    try:
+        with service_record_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT id, session_id, case_id, entity_type, entity_id, payload, is_active, updated_at
+                    FROM intake_entities
+                    WHERE session_id = %s AND entity_type = %s AND is_active = true
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (sid, ENTITY_TYPE_VEHICLE),
+                )
+                row = cur.fetchone()
+    except Exception:
+        logger.debug("get_active_vehicle failed (non-fatal)", exc_info=True)
+        return None
     if not row:
         return None
     out = dict(row)
