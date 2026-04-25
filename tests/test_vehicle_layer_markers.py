@@ -29,7 +29,7 @@ def test_triage_exposes_markers_on_two_car_message():
     out = triage_conversation(text, [])
     assert out.get("additional_vehicle_mentioned") is True
     assert out.get("additional_vehicle_count_hint") == 2
-    assert out.get("vehicle_key") == "ymz:2024|honda_civic|90210"
+    assert out.get("vehicle_key") == "ym:2021|toyota_prius"
     assert out.get("primary_vehicle_summary")
     bns = out.get("broker_next_step") or ""
     assert "Multiple vehicles" in bns

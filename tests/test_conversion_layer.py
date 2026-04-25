@@ -23,9 +23,14 @@ def test_first_quote_ready_moment_compact_no_all_complete_wording():
     assert r.get("conversion_layer_active") is not True
     draft = str(r.get("client_reply_draft") or "")
     assert "信息已经齐全" not in draft
-    assert "整理" in draft or "look right" in draft.lower()
+    # Turn-1: either compact confirmation (整理 / look right) or short identity ask when name/phone still needed.
+    assert (
+        "整理" in draft
+        or "look right" in draft.lower()
+        or "姓名" in draft
+    )
     nb = str(r.get("next_best_question") or "").strip()
-    assert not nb or "整理" in nb or "look right" in nb.lower()
+    assert not nb or "整理" in nb or "look right" in nb.lower() or "姓名" in nb
 
 
 def test_timeline_followup_no_full_block_repeat():

@@ -1,8 +1,8 @@
 """Bounded regression: Add-Car append / follow-up truth vs formal-submit model."""
 
-from services.fiqa_api.inbox_triage.triage import (
-    _resolve_add_car_handoff_phrase_key,
-    triage_for_append,
+from services.fiqa_api.inbox_triage.triage import triage_for_append
+from services.fiqa_api.inbox_triage.triage_handoff_reply_policy import (
+    resolve_add_car_handoff_phrase_key as _resolve_add_car_handoff_phrase_key,
 )
 
 
@@ -28,13 +28,12 @@ def test_resolve_add_car_merges_persisted_still_needed_into_intent_truth():
         "add_car_quote_detail": {"zh": "zh", "en": "en"},
         "add_car": {"zh": "zh", "en": "en"},
     }
-    merged = "[客户] 免赔额选500还是1000？"
     _, resolved = _resolve_add_car_handoff_phrase_key(
         "免赔额选500还是1000？",
         "new_info",
         hp,
         4,
-        merged,
+        ["name"],
         {
             "formal_submitted_at": "2026-03-01T12:00:00Z",
             "still_needed_fields": ["name"],

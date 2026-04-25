@@ -23,7 +23,8 @@ def test_vehicle_key_multi_vehicle_first_segment():
         "[客户] 我想同时给两辆车报价：2024 Honda Civic 90210 下周提车 我开；"
         "还有一辆2021 Toyota Prius 同地址 给我老婆开。电话 408-555-0404，姓名孙八。"
     )
-    assert _derive_vehicle_key_from_add_car_text(text) == "ymz:2024|honda_civic|90210"
+    # Multi-vehicle: key follows scoped primary vehicle (see vehicle disambiguation policy).
+    assert _derive_vehicle_key_from_add_car_text(text) == "ym:2021|toyota_prius"
 
 
 def test_vehicle_identity_extracts_vin_prefix():

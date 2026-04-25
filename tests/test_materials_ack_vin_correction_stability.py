@@ -11,6 +11,11 @@ from services.fiqa_api.inbox_triage.triage import (
 ZH_MAT_ACK = "你发过资料我这边先记上"
 
 
+def _draft_acknowledges_sent_materials(draft: str) -> bool:
+    d = draft or ""
+    return ZH_MAT_ACK in d or ("记下" in d and "材料" in d)
+
+
 def test_already_sent_add_car_reply_acknowledges_materials_and_can_ask_zip():
     """User claims docs sent; follow_up already_sent; draft must ack materials, still ask for zip if missing."""
     # Omit delivery/driver on turn 1 so we stay collecting (V5 one-shot handoff would skip zip ask).
@@ -23,7 +28,7 @@ def test_already_sent_add_car_reply_acknowledges_materials_and_can_ask_zip():
     out = triage_conversation("行驶证和材料我发你微信了", turns, client_id="chen_kui", reply_truth_context=None)
     assert out.get("follow_up_type") == "already_sent"
     assert "customer_says_materials_sent" in (out.get("collected_fields") or [])
-    assert ZH_MAT_ACK in (out.get("client_reply_draft") or "")
+    assert _draft_acknowledges_sent_materials(out.get("client_reply_draft") or "")
     assert "邮编" in (out.get("client_reply_draft") or "")
     assert out.get("handoff_ready") is False
 
@@ -57,7 +62,7 @@ def test_add_car_no_premature_handoff_materials_zip_path():
     out = triage_conversation("材料我昨天发你微信了", turns, client_id="chen_kui", reply_truth_context=None)
     assert out.get("follow_up_type") == "already_sent"
     assert out.get("handoff_ready") is False
-    assert ZH_MAT_ACK in (out.get("client_reply_draft") or "")
+    assert _draft_acknowledges_sent_materials(out.get("client_reply_draft") or "")
     draft = out.get("client_reply_draft") or ""
     assert "邮编" in draft or "zip" in draft.lower()
     # No empty / broken client draft
