@@ -157,3 +157,42 @@ SCENARIOS.append(
         ),
     )
 )
+
+# --- Loop 2: harder chains ---
+SCENARIOS.append(
+    _sc(
+        "ent_flip_flop_year_final",
+        "entity_hard",
+        "Multiple year edits; final comma-style correction before VIN",
+        [
+            "Add a Toyota Camry, zip 94102, Friday pickup, I drive.",
+            "Year is 2020.",
+            "Wait make that 2022.",
+            "Actually 2023, not 2022.",
+            "VIN 2HGFC2F59KH123456.",
+        ],
+        ["year_chain"],
+        _last(
+            _eq("service_type", "add_car"),
+            _contains("primary_vehicle_summary", "2023"),
+            _contains("vehicle_key", "vin:"),
+        ),
+    )
+)
+
+SCENARIOS.append(
+    _sc(
+        "ent_zh_year_comma_not",
+        "entity_hard",
+        "Chinese thread with comma year correction",
+        [
+            "我要加一台2020丰田凯美瑞，邮编95014，下周五提车，主要我自己开。",
+            "年份写错了，是2021，不是2020。",
+        ],
+        ["zh", "correction"],
+        _last(
+            _eq("service_type", "add_car"),
+            _contains("primary_vehicle_summary", "2021"),
+        ),
+    )
+)

@@ -3991,6 +3991,9 @@ def _resolve_corrected_year_from_text(scope: str) -> str:
     )
     if m_adj and m_adj.group(1) != m_adj.group(2):
         return m_adj.group(1)
+    m_zh_y = re.search(r"是\s*(20[12][0-9])\s*[,，]?\s*不是\s*(20[12][0-9])", scope)
+    if m_zh_y and m_zh_y.group(1) != m_zh_y.group(2):
+        return m_zh_y.group(1)
     m = re.search(r"(?<![0-9])(20[12][0-9])\s+not\s+(?<![0-9])20[12][0-9]\b", scope, re.I)
     if m:
         return m.group(1)
