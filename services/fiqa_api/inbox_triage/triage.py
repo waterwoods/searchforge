@@ -3984,6 +3984,13 @@ def _resolve_corrected_year_from_text(scope: str) -> str:
     """Model-year token the customer intended after explicit corrections (not naive findall order)."""
     if not (scope or "").strip():
         return ""
+    # "2021, not 2020" / "2021 not 2020" — first year is the correction (avoid greedy m_gap spanning older years).
+    m_adj = re.search(
+        r"(?i)(?<![0-9])(20[12][0-9])\s*,?\s*not\s+(?<![0-9])(20[12][0-9])\b",
+        scope,
+    )
+    if m_adj and m_adj.group(1) != m_adj.group(2):
+        return m_adj.group(1)
     m = re.search(r"(?<![0-9])(20[12][0-9])\s+not\s+(?<![0-9])20[12][0-9]\b", scope, re.I)
     if m:
         return m.group(1)
