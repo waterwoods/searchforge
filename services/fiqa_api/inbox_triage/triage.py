@@ -5246,6 +5246,45 @@ def _get_next_ask_draft(
     return None
 
 
+def _try_persist_vehicle_entity_mvp(
+    is_add_car: bool,
+    reply_truth_context: dict[str, Any] | None,
+    merged_text: str,
+    truth_fields: dict[str, bool],
+) -> None:
+    """Best-effort vehicle entity mirror to Postgres; failures are ignored; no triage output changes."""
+    if not is_add_car:
+        return
+    ctx = reply_truth_context or {}
+    sid = str(ctx.get("session_id") or "").strip()
+    if not sid:
+        return
+    try:
+        vid = _extract_vehicle_identity_for_key(merged_text)
+        pvc = (_extract_primary_add_car_vehicle_concrete(merged_text) or "").strip()
+        year_s = str(vid.get("year") or "").strip()
+        model_s = str(vid.get("model") or "").strip()
+        if not model_s and pvc:
+            model_s = pvc[:256]
+        driver_s = "primary_driver" if truth_fields.get("driver") else ""
+        pl: dict[str, Any] = {
+            "year": year_s,
+            "make": "",
+            "model": model_s,
+            "vin": str(vid.get("vin") or "").strip(),
+            "zip": str(vid.get("zip") or "").strip(),
+            "driver": driver_s,
+            "source_turns": [],
+            "confidence": {},
+        }
+        case_part = str(ctx.get("case_id") or "").strip() or None
+        from services.fiqa_api.inbox_triage.entity_repository import update_vehicle_entity as _ve_upd
+
+        _ve_upd(sid, pl, case_id=case_part)
+    except Exception:
+        logger.debug("vehicle entity MVP persist failed (non-fatal)", exc_info=True)
+
+
 def triage_conversation(
     latest_text: str,
     conversation_turns: list[dict[str, str]],
@@ -5400,6 +5439,12 @@ def triage_conversation(
         reply_truth_context,
         last_customer_raw,
         _follow_v4_pre,
+    )
+    _try_persist_vehicle_entity_mvp(
+        is_add_car,
+        reply_truth_context,
+        merged_for_add_car_extraction,
+        _tf_v4_pre,
     )
     _qrs_v4_pre = _add_car_quote_ready_status(_tf_v4_pre)
     # Latest customer segment for language — merged_text includes [客户] labels (Chinese chars).

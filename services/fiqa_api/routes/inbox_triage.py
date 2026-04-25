@@ -229,14 +229,24 @@ def _reply_truth_context_for_triage(
     case: dict[str, Any] | None,
     formal_submit: bool,
     add_car_lane: bool,
+    session_id: str | None = None,
+    case_id: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Structured inputs for Add-Car reply routing (pre- vs post-submit phrasing).
     See triage.triage_conversation(reply_truth_context=...).
     When `case` is loaded (case_id / reopen), includes persisted collected/still_needed so
     triage can reconcile chat extraction with office-visible record truth (append coherence).
+    Optional session_id / case_id: passed through for best-effort vehicle entity memory (MVP);
+    does not change triage decisions.
     """
     ctx: dict[str, Any] = {}
+    sid = (session_id or "").strip()
+    if sid:
+        ctx["session_id"] = sid
+    cid_pass = (case_id or "").strip()
+    if cid_pass:
+        ctx["case_id"] = cid_pass
     if case:
         fsa = str(case.get("formal_submitted_at") or "").strip()
         if fsa:
@@ -937,6 +947,8 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         case=existing_case,
         formal_submit=bool(request.formal_submit),
         add_car_lane=add_car_lane_pre,
+        session_id=sid,
+        case_id=effective_case_id,
     )
     prior_ws: dict[str, Any] | None = None
     if sess_raw and isinstance(sess_raw.get("workflow_state"), dict):
