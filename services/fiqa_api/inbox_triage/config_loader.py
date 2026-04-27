@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -425,10 +426,12 @@ _SOFT_ROUTE_STARTER_DEFAULTS: dict[str, str] = {
 }
 
 
+@lru_cache(maxsize=1)
 def get_soft_route_inbox_copy() -> tuple[dict[str, str], dict[str, str]]:
     """
     Load reroute_messages and soft_route_starter_replies for inbox triage soft_route handling.
     Merges configs/common/soft_route_inbox.json over code defaults (same strings by default).
+    Cached for the process (hot path: avoid re-reading/merging JSON on every request).
     """
     reroute = dict(_SOFT_ROUTE_REROUTE_DEFAULTS)
     starters = dict(_SOFT_ROUTE_STARTER_DEFAULTS)

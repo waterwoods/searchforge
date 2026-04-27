@@ -128,8 +128,11 @@ def test_check1_session_same_browser_continues_case(monkeypatch, tmp_path):
         "client_id": "chen_kui",
     }
     session_store_mod.patch_session_case_binding("sess-same-browser", active_case_id=cid)
-    monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: fake_case if _id == cid else None)
+    _fc = lambda _id: fake_case if _id == cid else None
+    monkeypatch.setattr(inbox_triage, "get_case_triage_stub_for_read", _fc)
+    monkeypatch.setattr(inbox_triage, "get_case_for_read", _fc)
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [fake_case])
+    monkeypatch.setattr(inbox_triage, "list_recent_cases_for_binding", lambda **_: [fake_case])
 
     req = TriageRequest(
         text="zip is 95014",
@@ -156,7 +159,10 @@ def test_check1_no_session_safe_when_multiple_open_cases(monkeypatch):
         "vehicle_key": "vin:1HGBH41JXMN109186",
     }
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [a, b])
-    monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: None)
+    monkeypatch.setattr(inbox_triage, "list_recent_cases_for_binding", lambda **_: [a, b])
+    _none = lambda _id: None
+    monkeypatch.setattr(inbox_triage, "get_case_triage_stub_for_read", _none)
+    monkeypatch.setattr(inbox_triage, "get_case_for_read", _none)
 
     req = TriageRequest(text="zip is 95014", client_id="chen_kui")
     out = _run_triage(req)
@@ -188,8 +194,11 @@ def test_check3_append_blocked_log(caplog, monkeypatch, tmp_path):
         "client_id": "chen_kui",
     }
     session_store_mod.patch_session_case_binding("sess-block", active_case_id=cid)
-    monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: fake_case if _id == cid else None)
+    _fc = lambda _id: fake_case if _id == cid else None
+    monkeypatch.setattr(inbox_triage, "get_case_triage_stub_for_read", _fc)
+    monkeypatch.setattr(inbox_triage, "get_case_for_read", _fc)
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [fake_case])
+    monkeypatch.setattr(inbox_triage, "list_recent_cases_for_binding", lambda **_: [fake_case])
 
     import logging
 
@@ -350,8 +359,11 @@ def test_scenario5_return_user_zip_with_session(monkeypatch, tmp_path):
         "client_id": "chen_kui",
     }
     session_store_mod.patch_session_case_binding("sess-ret", active_case_id=cid)
-    monkeypatch.setattr(inbox_triage, "get_case_for_read", lambda _id: fake_case if _id == cid else None)
+    _fc = lambda _id: fake_case if _id == cid else None
+    monkeypatch.setattr(inbox_triage, "get_case_triage_stub_for_read", _fc)
+    monkeypatch.setattr(inbox_triage, "get_case_for_read", _fc)
     monkeypatch.setattr(inbox_triage, "list_recent_cases_for_read", lambda **_: [fake_case])
+    monkeypatch.setattr(inbox_triage, "list_recent_cases_for_binding", lambda **_: [fake_case])
 
     out = _run_triage(
         TriageRequest(text="zip is 95014", session_id="sess-ret", client_id="chen_kui")

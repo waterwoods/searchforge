@@ -12,6 +12,7 @@ writes are no-ops and reads return None (see session_repository).
 from __future__ import annotations
 
 import copy
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -107,15 +108,45 @@ def _normalize_light_identity_binding(raw: Any) -> dict[str, Any] | None:
     return out if out else None
 
 
+def _in_progress_session_payload_unchanged(
+    raw: dict[str, Any],
+    normalized_turns: list[dict[str, Any]],
+    workflow_state: dict[str, Any],
+) -> bool:
+    """True if persisted turns and workflow already match (skip no-op write)."""
+    try:
+        prev_t = raw.get("turns") or []
+        prev_w = raw.get("workflow_state") or {}
+        if json.dumps(
+            prev_t, sort_keys=True, default=str, ensure_ascii=False
+        ) != json.dumps(
+            normalized_turns, sort_keys=True, default=str, ensure_ascii=False
+        ):
+            return False
+        if json.dumps(
+            prev_w, sort_keys=True, default=str, ensure_ascii=False
+        ) != json.dumps(
+            workflow_state, sort_keys=True, default=str, ensure_ascii=False
+        ):
+            return False
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def save_in_progress_session(
     session_id: str,
     turns: list[dict[str, Any]],
     triage_result: dict[str, Any],
+    *,
+    pre_read_raw: dict[str, Any] | None = None,
 ) -> None:
     """
     Save or update an in-progress session with turns and workflow_state.
     Call when triage returns and no case was persisted.
     Preserves optional WeChat/light_identity_binding across saves.
+    pre_read_raw: if the caller already loaded this session in the same request, pass it to avoid
+    a second read; merged fields still apply.
     """
     if is_production_mode() and not service_record_database_url():
         logger.warning("Postgres is required for intake session persistence in production")
@@ -135,7 +166,9 @@ def save_in_progress_session(
     existing_active: str | None = None
     existing_lv: str | None = None
     existing_uh: dict[str, str] | None = None
-    raw = repo.get_session(sid)
+    raw: dict[str, Any] | None = pre_read_raw
+    if raw is None:
+        raw = repo.get_session(sid)
     if raw:
         raw_li = raw.get("light_identity_binding")
         existing_li = _normalize_light_identity_binding(raw_li)
@@ -159,6 +192,8 @@ def save_in_progress_session(
         row["last_vehicle_key"] = existing_lv
     if existing_uh:
         row["user_identity_hint"] = existing_uh
+    if raw and _in_progress_session_payload_unchanged(raw, normalized_turns, workflow_state):
+        return
     if not repo.upsert_session(sid, row):
         return
 

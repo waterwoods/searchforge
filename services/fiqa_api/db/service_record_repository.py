@@ -658,6 +658,151 @@ def list_record_ids_recent(limit: int, offset: int = 0) -> list[str]:
             return [str(r[0]) for r in cur.fetchall()]
 
 
+def list_binding_stub_rows_recent(limit: int, offset: int = 0) -> list[dict[str, Any]]:
+    """
+    One round-trip: rows shaped for :func:`resolve_active_case` / :func:`is_case_open_for_binding`
+    without loading messages, state history, or full structured hydration per row.
+    """
+    from psycopg.rows import dict_row
+
+    safe = max(1, min(int(limit or 8), 500))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+    out: list[dict[str, Any]] = []
+    with service_record_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT
+                    sr.record_id,
+                    sr.case_status,
+                    sr.extra,
+                    srd.structured_payload
+                FROM service_records sr
+                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+                ORDER BY sr.updated_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (safe, safe_offset),
+            )
+            for r in cur.fetchall():
+                rid = _str(r.get("record_id"))
+                if not rid:
+                    continue
+                extra = r.get("extra") if isinstance(r.get("extra"), dict) else {}
+                sp = r.get("structured_payload") if isinstance(r.get("structured_payload"), dict) else {}
+                vk = sp.get("vehicle_key")
+                if vk is None and isinstance(extra, dict):
+                    vk = extra.get("vehicle_key")
+                out.append(
+                    {
+                        "case_id": rid,
+                        "case_status": _str(r.get("case_status") or "new") or "new",
+                        "workbench_archived": bool(extra.get("workbench_archived")),
+                        "vehicle_key": vk,
+                    }
+                )
+    return out
+
+
+def load_case_triage_stub_from_postgres(record_id: str) -> dict[str, Any] | None:
+    """
+    Triage hot path: same truth fields as :func:`load_full_case_from_postgres` for reply/routing
+    without second round-trips to record_messages or state_history (no case_activity, no
+    case_messages, empty source_text).
+    """
+    from psycopg.rows import dict_row
+
+    rid = _str(record_id)
+    if not rid:
+        return None
+    with service_record_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT
+                    sr.record_id,
+                    sr.client_id,
+                    sr.issue_category,
+                    sr.title_summary,
+                    sr.case_status,
+                    sr.lifecycle_status,
+                    sr.waiting_on,
+                    sr.next_contact_by,
+                    sr.current_next_action,
+                    sr.customer_name,
+                    sr.customer_phone,
+                    sr.customer_email,
+                    sr.policy_number,
+                    sr.contact_note,
+                    sr.origin_session_id,
+                    sr.created_at,
+                    sr.updated_at,
+                    sr.extra,
+                    srd.structured_payload,
+                    srd.quote_readiness
+                FROM service_records sr
+                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+                WHERE sr.record_id = %s
+                """,
+                (rid,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    extra = row["extra"] if isinstance(row.get("extra"), dict) else {}
+    structured = row["structured_payload"] if isinstance(row.get("structured_payload"), dict) else {}
+    q_readiness_col = _str(row.get("quote_readiness") or "")
+
+    case: dict[str, Any] = {}
+    for k, v in structured.items():
+        case[k] = v
+
+    case["case_id"] = str(row["record_id"])
+    if row.get("client_id"):
+        case["client_id"] = str(row["client_id"]).strip()
+    case["issue_category"] = _str(row.get("issue_category"))
+    case["conversation_summary"] = _str(row.get("title_summary"))
+    case["case_status"] = _str(row.get("case_status") or "new") or "new"
+    case["lifecycle_status"] = _str(row.get("lifecycle_status"))
+    case["waiting_on"] = _str(row.get("waiting_on") or "none") or "none"
+    case["next_contact_by"] = _str(row.get("next_contact_by"))
+    case["broker_next_step"] = _str(row.get("current_next_action"))
+    case["customer_name"] = _str(row.get("customer_name"))
+    case["customer_phone"] = _str(row.get("customer_phone"))
+    case["customer_email"] = _str(row.get("customer_email"))
+    case["policy_number"] = _str(row.get("policy_number"))
+    case["contact_note"] = _str(row.get("contact_note"))
+    if row.get("origin_session_id"):
+        case["origin_session_id"] = str(row.get("origin_session_id")).strip()
+
+    case["created_at"] = _ts_to_iso(row.get("created_at"))
+    case["updated_at"] = _ts_to_iso(row.get("updated_at"))
+
+    if extra.get("formal_submitted_at"):
+        case["formal_submitted_at"] = str(extra["formal_submitted_at"]).strip()
+    else:
+        case["formal_submitted_at"] = case["created_at"]
+
+    if isinstance(extra.get("case_notes"), list):
+        case["case_notes"] = extra["case_notes"]
+    if isinstance(extra.get("case_attachments"), list):
+        case["case_attachments"] = extra["case_attachments"]
+    if "workbench_test" in extra:
+        case["workbench_test"] = bool(extra.get("workbench_test"))
+    if "workbench_archived" in extra:
+        case["workbench_archived"] = bool(extra.get("workbench_archived"))
+
+    if q_readiness_col:
+        case["quote_ready_status"] = q_readiness_col
+    elif "quote_ready_status" not in case:
+        case["quote_ready_status"] = ""
+
+    case["case_messages"] = []
+    case["case_activity"] = []
+    case["source_text"] = ""
+    return case
+
+
 def delete_service_record(record_id: str) -> bool:
     """Delete one service record (child rows CASCADE). Returns True if a row was removed."""
     rid = (record_id or "").strip()

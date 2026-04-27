@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from services.fiqa_api.db.service_record_repository import service_record_connection
@@ -17,6 +19,19 @@ from services.fiqa_api.db.service_record_settings import service_record_database
 logger = logging.getLogger(__name__)
 
 ENTITY_TYPE_VEHICLE = "vehicle"
+
+# Per-request cache: triage + route may call get_active_vehicle(session_id) multiple times; one PG read.
+_av_get_cache: ContextVar[dict[str, dict[str, Any] | None] | None] = ContextVar("_av_get_cache", default=None)
+
+
+@contextmanager
+def active_vehicle_request_cache_scope():
+    """Use around POST /api/inbox/triage so repeated get_active_vehicle hits share one read."""
+    tok = _av_get_cache.set({})
+    try:
+        yield
+    finally:
+        _av_get_cache.reset(tok)
 
 
 def _stable_vehicle_entity_id(session_id: str) -> str:
@@ -60,6 +75,9 @@ def get_active_vehicle(session_id: str) -> dict[str, Any] | None:
         return None
     if not service_record_database_url():
         return None
+    bucket = _av_get_cache.get()
+    if bucket is not None and sid in bucket:
+        return bucket[sid]
     from psycopg.rows import dict_row
 
     try:
@@ -80,6 +98,8 @@ def get_active_vehicle(session_id: str) -> dict[str, Any] | None:
         logger.debug("get_active_vehicle failed (non-fatal)", exc_info=True)
         return None
     if not row:
+        if bucket is not None:
+            bucket[sid] = None
         return None
     out = dict(row)
     p = out.get("payload")
@@ -88,6 +108,46 @@ def get_active_vehicle(session_id: str) -> dict[str, Any] | None:
             out["payload"] = json.loads(p)
         except (json.JSONDecodeError, TypeError):
             out["payload"] = {}
+    if bucket is not None:
+        bucket[sid] = out
+    return out
+
+
+def get_all_vehicles(session_id: str) -> list[dict[str, Any]]:
+    """Return all vehicle entity rows for this session (validation / chaos; not a hot path)."""
+    sid = (session_id or "").strip()
+    if not sid:
+        return []
+    if not service_record_database_url():
+        return []
+    from psycopg.rows import dict_row
+
+    try:
+        with service_record_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT id, session_id, case_id, entity_type, entity_id, payload, is_active, updated_at
+                    FROM intake_entities
+                    WHERE session_id = %s AND entity_type = %s
+                    ORDER BY id ASC
+                    """,
+                    (sid, ENTITY_TYPE_VEHICLE),
+                )
+                rows = cur.fetchall()
+    except Exception:
+        logger.debug("get_all_vehicles failed (non-fatal)", exc_info=True)
+        return []
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        r = dict(row)
+        p = r.get("payload")
+        if isinstance(p, (bytes, str)):
+            try:
+                r["payload"] = json.loads(p)
+            except (json.JSONDecodeError, TypeError):
+                r["payload"] = {}
+        out.append(r)
     return out
 
 
@@ -141,6 +201,9 @@ def _upsert_vehicle_entity(
                         """,
                         (sid, cid_ins, ENTITY_TYPE_VEHICLE, eid, Json(merged)),
                     )
+    b = _av_get_cache.get()
+    if b is not None and sid in b:
+        del b[sid]
 
 
 def save_vehicle_entity(session_id: str, payload: dict[str, Any], case_id: str | None = None) -> None:

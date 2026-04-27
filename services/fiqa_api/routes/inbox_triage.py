@@ -11,6 +11,7 @@ Returns: aggregated scenario inventory for founder/broker review.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -44,6 +45,7 @@ from services.fiqa_api.inbox_triage.case_binding import is_case_open_for_binding
 from services.fiqa_api.inbox_triage.case_truth_repository import (
     count_cases_for_read,
     get_case_for_read,
+    get_case_triage_stub_for_read,
     list_recent_cases_for_binding,
     list_recent_cases_for_read,
 )
@@ -86,7 +88,10 @@ from services.fiqa_api.inbox_triage.assist_layer import (
     _assist_layer_enabled,
     build_assist_layer,
 )
-from services.fiqa_api.inbox_triage.entity_repository import get_active_vehicle
+from services.fiqa_api.inbox_triage.entity_repository import (
+    active_vehicle_request_cache_scope,
+    get_active_vehicle,
+)
 from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
 from services.fiqa_api.analytics.minimal_events import track_event
 from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
@@ -124,6 +129,17 @@ from services.fiqa_api.inbox_triage.triage import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox-triage"])
+
+
+def _active_vehicle_cache_route(fn: Any) -> Any:
+    """One PG read per request for get_active_vehicle (triage + post-triage identity sync)."""
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with active_vehicle_request_cache_scope():
+            return await fn(*args, **kwargs)
+
+    return _wrapped
 
 
 def _expose_route_perf_metrics() -> bool:
@@ -894,6 +910,7 @@ async def publish_add_car_rules(request: AddCarRulesPublishRequest) -> dict[str,
 
 
 @router.post("/triage")
+@_active_vehicle_cache_route
 async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     """
     Triage an inbound broker message.
@@ -1065,15 +1082,25 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         sess_for_resolve = dict(sess_raw)
         sac0 = str(sess_for_resolve.get("active_case_id") or "").strip()
         if sac0:
-            sc0 = get_case_for_read(sac0)
+            sc0 = get_case_triage_stub_for_read(sac0)
             if not sc0 or not is_case_open_for_binding(sc0):
                 sess_for_resolve.pop("active_case_id", None)
                 patch_session_case_binding(sid, clear_active_case=True)
             else:
                 session_active_case_row = sc0
     if not explicit_case_id and sid:
-        recent_for_bind = list_recent_cases_for_binding(limit=_case_bind_recent_limit(), offset=0)
-        resolved_case_id = resolve_active_case(sess_for_resolve, recent_for_bind, incoming_vehicle_key)
+        # Fast path: session already has active_case_id — resolve without scanning recent cases
+        if sess_for_resolve and str(sess_for_resolve.get("active_case_id") or "").strip():
+            resolved_case_id = resolve_active_case(
+                sess_for_resolve, [], incoming_vehicle_key
+            )
+        if resolved_case_id is None:
+            recent_for_bind = list_recent_cases_for_binding(
+                limit=_case_bind_recent_limit(), offset=0
+            )
+            resolved_case_id = resolve_active_case(
+                sess_for_resolve, recent_for_bind, incoming_vehicle_key
+            )
         track_event("case_binding_decision", {"resolved": resolved_case_id is not None})
     effective_case_id = explicit_case_id or resolved_case_id
     existing_case: dict[str, Any] | None = None
@@ -1087,7 +1114,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         if session_active_case_row and sac_id and sac_id == ec:
             existing_case = session_active_case_row
         else:
-            existing_case = get_case_for_read(ec)
+            existing_case = get_case_triage_stub_for_read(ec)
     if effective_case_id and existing_case is None:
         effective_case_id = None
 
@@ -1125,11 +1152,10 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     )
     triage_ms_total = _route_mark()
 
-    reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
-
     # Rerouting: when soft_route from button conflicts with inferred intent from text, acknowledge
     soft_route = (request.soft_route or "").strip().lower() or None
     if soft_route:
+        reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
         inferred = _infer_intent_from_result(text, result)
         # Compatible pairs: remove_car + renewal_premium (both policy-related)
         compatible = (soft_route == "remove_car" and inferred == "renewal_premium") or (
@@ -1335,6 +1361,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 request.session_id.strip(),
                 full_turns,
                 result,
+                pre_read_raw=sess_raw,
             )
         except Exception as exc:
             logger.warning("Failed to save in-progress session: %s", exc)

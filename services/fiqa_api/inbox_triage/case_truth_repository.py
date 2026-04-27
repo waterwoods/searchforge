@@ -264,3 +264,92 @@ def list_all_cases_for_read() -> list[dict[str, Any]]:
             len(j_cases),
         )
     return j_cases
+
+
+def _binding_row_from_full_case(c: dict[str, Any]) -> dict[str, Any]:
+    """Minimal row for ``resolve_active_case`` / ``is_case_open_for_binding`` (JSON / fallback)."""
+    cid = str(c.get("case_id") or "").strip()
+    return {
+        "case_id": cid,
+        "case_status": (c.get("case_status") or "new") or "new",
+        "workbench_archived": bool(c.get("workbench_archived")),
+        "vehicle_key": c.get("vehicle_key"),
+    }
+
+
+def get_case_triage_stub_for_read(case_id: str) -> dict[str, Any] | None:
+    """
+    Triage / inbox route hot path: truth fields for ``reply_truth_context`` without loading
+    all messages and state history on Postgres. Non-DB mode uses full JSON read (local queues).
+    """
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
+
+    if is_production_mode() and not service_record_database_url():
+        logger.warning(
+            "JSON path should not be used in production (missing database URL; case_id=%s) %s",
+            cid,
+            _OBS,
+        )
+        return None
+
+    if not db_primary_reads_enabled():
+        return get_case_for_read(case_id)
+
+    try:
+        from services.fiqa_api.db.service_record_repository import load_case_triage_stub_from_postgres
+
+        pg_case = load_case_triage_stub_from_postgres(cid)
+    except Exception:
+        logger.exception("%s signal=PG_TRIAGE_STUB_EXCEPTION case_id=%s", _OBS, cid)
+        pg_case = None
+
+    if pg_case is not None:
+        normalized = _normalize_case(pg_case)
+        _merge_workbench_flags_from_json(cid, normalized)
+        return normalized
+
+    if not json_read_fallback_allowed():
+        if postgres_case_persistence_primary():
+            logger.warning(
+                "%s signal=PG_TRIAGE_STUB_MISSING_STRICT_NO_JSON_FALLBACK case_id=%s",
+                _OBS,
+                cid,
+            )
+        return None
+    logger.warning("%s signal=JSON_READ_FALLBACK_TRIAGE_STUB case_id=%s", _OBS, cid)
+    return json_get_case_by_id(cid)
+
+
+def list_recent_cases_for_binding(limit: int = 30, offset: int = 0) -> list[dict[str, Any]]:
+    """Recent cases for session/case binding: stub rows only (no per-row full hydration on PG)."""
+    if is_production_mode() and not service_record_database_url():
+        logger.warning("JSON path should not be used in production (missing database URL) %s", _OBS)
+        return []
+
+    safe_limit = max(1, min(int(limit or 8), 50))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+
+    if not db_primary_reads_enabled():
+        raw = json_list_recent_cases(limit=safe_limit, offset=safe_offset)
+        return [
+            _binding_row_from_full_case(c)
+            for c in raw
+            if isinstance(c, dict) and str(c.get("case_id") or "").strip()
+        ]
+
+    try:
+        from services.fiqa_api.db.service_record_repository import list_binding_stub_rows_recent
+
+        return list_binding_stub_rows_recent(safe_limit, safe_offset)
+    except Exception:
+        logger.exception("%s signal=PG_BINDING_STUB_LIST_EXCEPTION", _OBS)
+    if json_read_fallback_allowed():
+        logger.warning("%s signal=JSON_READ_FALLBACK_BINDING_LIST", _OBS)
+        return [
+            _binding_row_from_full_case(c)
+            for c in json_list_recent_cases(limit=safe_limit, offset=safe_offset)
+            if isinstance(c, dict) and str(c.get("case_id") or "").strip()
+        ]
+    return []

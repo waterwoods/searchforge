@@ -3301,6 +3301,9 @@ def _primary_vehicle_summary_from_entity_payload(pl: dict[str, Any]) -> str | No
     make = str(pl.get("make") or "").strip()
     model_raw = str(pl.get("model") or "").strip()
     model_disp = model_raw.replace("_", " ") if model_raw else ""
+    # Model field sometimes already includes the year after correction merges; avoid "2021 2021 …".
+    if year and model_disp and model_disp.lower().startswith(f"{year.lower()} "):
+        model_disp = model_disp[len(year) :].lstrip()
     if year and model_disp:
         if make and make.lower() not in f"{year} {model_disp}".lower():
             return f"{year} {make} {model_disp}".strip()
@@ -5492,11 +5495,24 @@ def triage_conversation(
 
     merged_for_add_car_extraction = merged_text_for_ocr
     add_car_llm_slot_meta: dict[str, Any] = {"called": False, "skip_reason": "not_add_car_lane"}
+    _pg_add_car_fastlane = False
+    _entity_pl_live: dict[str, Any] = {}
     if is_add_car:
+        _sid_ent = str((reply_truth_context or {}).get("session_id") or "").strip()
+        _row_e = get_active_vehicle(_sid_ent) if _sid_ent else None
+        _raw_pl0 = _row_e.get("payload") if _row_e else None
+        _entity_pl_live = dict(_raw_pl0) if isinstance(_raw_pl0, dict) else {}
+        if _entity_payload_has_vehicle_identity(_entity_pl_live) and not text_suggests_vehicle_scope_ambiguity(
+            last_customer_raw
+        ) and not append_turn_signals_extra_vehicle_intent(last_customer_raw):
+            _pg_add_car_fastlane = True
         _rf_slot = _extract_add_car_fields_truth_safe(merged_text_for_ocr)
         _invoke_slot_llm, _skip_slot = _add_car_llm_slot_should_invoke(
             _rf_slot, merged_text_for_ocr, last_customer_raw
         )
+        if _pg_add_car_fastlane:
+            _invoke_slot_llm = False
+            _skip_slot = "pg_active_identity_no_slot_llm"
         merged_for_add_car_extraction, add_car_llm_slot_meta = maybe_augment_merged_text_for_add_car_slots(
             merged_text_for_ocr,
             last_customer_raw,
@@ -5527,10 +5543,6 @@ def triage_conversation(
     _add_car_effective_pvc: str | None = None
     _add_car_effective_vk: str | None = None
     if is_add_car:
-        _sid_ent = str((reply_truth_context or {}).get("session_id") or "").strip()
-        _row_e = get_active_vehicle(_sid_ent) if _sid_ent else None
-        _raw_pl = _row_e.get("payload") if _row_e else None
-        _entity_pl_live: dict[str, Any] = dict(_raw_pl) if isinstance(_raw_pl, dict) else {}
         _heu_pvc = (
             _extract_primary_add_car_vehicle_concrete(merged_for_add_car_extraction) or ""
         ).strip() or None
@@ -5550,9 +5562,9 @@ def triage_conversation(
     _lang_v4_pre = "zh" if _contains_chinese(last_customer_raw) else "en"
 
     # Selective LLM routing: simple turns use fast path (SIMULATION_ASSISTANT_SPEED_LAYER_BLUEPRINT)
-    use_fast_path = (
-        _is_llm_enabled()
-        and _is_fast_path_candidate(merged_text, customer_count + 1)
+    # PG single-vehicle scope + no multi-vehicle ambiguity → rule path (triage_conversation is only heavy if LLM+slot)
+    use_fast_path = _is_llm_enabled() and (
+        _is_fast_path_candidate(merged_text, customer_count + 1) or _pg_add_car_fastlane
     )
     if _is_llm_enabled() and use_fast_path:
         base_result = _rule_based_triage(merged_text, resolved_client_id)

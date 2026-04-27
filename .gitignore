@@ -38,6 +38,10 @@ archives/*.tar.gz
 
 # Node / Python deps and models
 node_modules/
+# Local HuggingFace / cross-encoder mirrors (large; not versioned; keep after git clean)
+models/
+hub/
+xet/
 
 # Reports (keep explicit keep-file)
 reports/
