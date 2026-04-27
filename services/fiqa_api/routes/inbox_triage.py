@@ -10,9 +10,14 @@ Returns: aggregated scenario inventory for founder/broker review.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
+import threading
+import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +44,7 @@ from services.fiqa_api.inbox_triage.case_binding import is_case_open_for_binding
 from services.fiqa_api.inbox_triage.case_truth_repository import (
     count_cases_for_read,
     get_case_for_read,
+    list_recent_cases_for_binding,
     list_recent_cases_for_read,
 )
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
@@ -75,7 +81,12 @@ from services.fiqa_api.inbox_triage.role_c_simulation_service import (
     RoleCMaxTurnsReached,
     next_role_c_customer_line,
 )
-from services.fiqa_api.inbox_triage.assist_layer import build_assist_layer
+from services.fiqa_api.inbox_triage.assist_layer import (
+    DEFAULT_ASSIST,
+    _assist_layer_enabled,
+    build_assist_layer,
+)
+from services.fiqa_api.inbox_triage.entity_repository import get_active_vehicle
 from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
 from services.fiqa_api.analytics.minimal_events import track_event
 from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
@@ -90,6 +101,7 @@ from services.fiqa_api.inbox_triage.v6_attachment_sidecar import (
 )
 from services.fiqa_api.inbox_triage.triage_handoff_reply_composer import (
     apply_client_reply_finalize_to_result,
+    sync_add_car_client_reply_vehicle_to_primary_summary,
 )
 from services.fiqa_api.inbox_triage.add_car_vehicle_signals import (
     text_has_vehicle_make_model_signal,
@@ -105,11 +117,68 @@ from services.fiqa_api.inbox_triage.triage import (
     _is_premium_review_request,
     _is_claim_intake_request,
     _is_remove_vehicle_request,
+    _primary_vehicle_summary_from_entity_payload,
+    _vehicle_key_from_entity_payload,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox-triage"])
+
+
+def _expose_route_perf_metrics() -> bool:
+    return (os.environ.get("TRIAGE_RETURN_PERF_METRICS") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _case_bind_recent_limit() -> int:
+    raw = (os.environ.get("CASE_BIND_RECENT_LIMIT") or "").strip()
+    try:
+        n = int(raw) if raw else 30
+    except ValueError:
+        n = 30
+    return max(5, min(n, 50))
+
+
+def _schedule_route_analytics(
+    result: dict[str, Any],
+    turns: list[ConversationTurn],
+    *,
+    session_id: str | None,
+    text: str,
+) -> None:
+    """Best-effort analytics: do not block response on funnel buffer / track_event."""
+
+    def _sync_emit() -> None:
+        try:
+            _emit_route_analytics_for_triage_result(
+                result, turns, session_id=session_id, text=text
+            )
+        except Exception:
+            logger.exception("route_analytics_background_failed")
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _sync_emit()
+        return
+    loop.create_task(asyncio.to_thread(_sync_emit))
+
+
+def _attach_route_perf_ms(result: dict[str, Any], perf: dict[str, float]) -> None:
+    if not _expose_route_perf_metrics():
+        return
+    out = {k: round(float(v), 2) for k, v in perf.items()}
+    triage_m = result.get("triage_turn_metrics")
+    if isinstance(triage_m, dict):
+        http_proxy = float(out.get("route_total_ms") or 0.0)
+        core = float(triage_m.get("latency_ms") or 0.0)
+        out["route_overhead_ms"] = round(max(0.0, http_proxy - core), 2)
+    result["route_perf"] = out
 
 
 def _emit_route_analytics_for_triage_result(
@@ -285,12 +354,41 @@ def _attach_assist_layer(
     latest_message: str,
     reply_truth_context: dict[str, Any] | None,
 ) -> None:
-    """Add non-mutating assist suggestions to the triage API result (additive only)."""
-    result["assist"] = build_assist_layer(
-        latest_message,
-        result,
-        reply_truth_context=reply_truth_context,
-    )
+    """Add assist suggestions (additive only). Never blocks HTTP on LLM work."""
+    result["assist"] = deepcopy(DEFAULT_ASSIST)
+    if not _assist_layer_enabled():
+        return
+    snap = deepcopy(result)
+    msg = latest_message
+    ctx = deepcopy(reply_truth_context) if reply_truth_context else None
+
+    def _run() -> None:
+        try:
+            build_assist_layer(msg, snap, reply_truth_ctx=ctx)
+        except Exception:
+            logger.debug("assist_layer_background_failed", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _apply_pg_active_vehicle_identity_last(
+    result: dict[str, Any],
+    session_id: str | None,
+) -> None:
+    """When Postgres has an active vehicle entity, force API vehicle fields to match it (source of truth)."""
+    sid = (session_id or "").strip()
+    if not sid:
+        return
+    row = get_active_vehicle(sid)
+    if not row:
+        return
+    pld = row.get("payload")
+    if not isinstance(pld, dict):
+        pld = {}
+    result["primary_vehicle_summary"] = _primary_vehicle_summary_from_entity_payload(pld)
+    result["vehicle_key"] = _vehicle_key_from_entity_payload(pld)
+    sync_add_car_client_reply_vehicle_to_primary_summary(result)
+    apply_client_reply_finalize_to_result(result, None)
 
 
 def _attach_case_lifecycle(
@@ -826,6 +924,16 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             detail="text is required unless inline_image_base64 provides OCR text",
         )
 
+    route_t0 = time.perf_counter()
+    _tp = route_t0
+
+    def _route_mark() -> float:
+        nonlocal _tp
+        now = time.perf_counter()
+        ms = (now - _tp) * 1000.0
+        _tp = now
+        return ms
+
     emit_session_milestones(
         session_id=request.session_id,
         text=text,
@@ -859,6 +967,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         _attach_assist_layer(result, text, None)
         _attach_case_lifecycle(result)
         _finalize_triage_api_result(result)
+        _apply_pg_active_vehicle_identity_last(result, request.session_id)
         ta_turns = request.conversation_turns or []
         if request.persist_case:
             try:
@@ -867,6 +976,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 saved["assist"] = result.get("assist")
                 _attach_case_lifecycle(saved)
                 _finalize_triage_api_result(saved)
+                _apply_pg_active_vehicle_identity_last(saved, request.session_id)
                 cid = str(saved.get("case_id") or "")
                 emit_case_created_milestone(
                     saved,
@@ -876,26 +986,51 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     case_id=cid,
                 )
                 track_event("case_created", {"case_id": cid, "session_id": request.session_id})
-                _emit_route_analytics_for_triage_result(
+                _schedule_route_analytics(
                     saved,
                     ta_turns,
                     session_id=request.session_id,
                     text=text,
                 )
+                _attach_route_perf_ms(
+                    saved,
+                    {
+                        "route_total_ms": (time.perf_counter() - route_t0) * 1000.0,
+                        "triage_ms": 0.0,
+                        "session_ms": 0.0,
+                        "case_ms": 0.0,
+                        "assist_ms": 0.0,
+                        "conversion_ms": 0.0,
+                        "postprocess_ms": 0.0,
+                    },
+                )
                 return saved
             except Exception as exc:
                 logger.exception("Failed to persist Talk-to-Agent case: %s", exc)
                 result["case_persisted"] = False
-        _emit_route_analytics_for_triage_result(
+        _schedule_route_analytics(
             result,
             ta_turns,
             session_id=request.session_id,
             text=text,
         )
+        _attach_route_perf_ms(
+            result,
+            {
+                "route_total_ms": (time.perf_counter() - route_t0) * 1000.0,
+                "triage_ms": 0.0,
+                "session_ms": 0.0,
+                "case_ms": 0.0,
+                "assist_ms": 0.0,
+                "conversion_ms": 0.0,
+                "postprocess_ms": 0.0,
+            },
+        )
         return result
 
     # MULTI_TURN_CONTINUITY_GUARDRAIL: First message must go through triage_conversation,
     # not triage_message + forced handoff_ready. Use triage_conversation(text, []) for first turn.
+    _tp = time.perf_counter()
     turns = request.conversation_turns or []
     soft_route_pre = (request.soft_route or "").strip().lower() or None
     thread_lower_pre = _full_thread_lower(text, turns)
@@ -919,11 +1054,13 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     )
                     track_event("user_response_after_quote_ready", {})
                 break
+    session_ms_seg1 = _route_mark()
     labeled_for_vk = _conversation_labeled_for_add_car_extract(text, request.conversation_turns)
     incoming_vehicle_key = _derive_vehicle_key_from_add_car_text(labeled_for_vk)
     explicit_case_id = (request.case_id or "").strip() or None
     resolved_case_id: str | None = None
     sess_for_resolve: dict[str, Any] | None = None
+    session_active_case_row: dict[str, Any] | None = None
     if sid and sess_raw:
         sess_for_resolve = dict(sess_raw)
         sac0 = str(sess_for_resolve.get("active_case_id") or "").strip()
@@ -932,14 +1069,25 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             if not sc0 or not is_case_open_for_binding(sc0):
                 sess_for_resolve.pop("active_case_id", None)
                 patch_session_case_binding(sid, clear_active_case=True)
+            else:
+                session_active_case_row = sc0
     if not explicit_case_id and sid:
-        recent_for_bind = list_recent_cases_for_read(limit=30, offset=0)
+        recent_for_bind = list_recent_cases_for_binding(limit=_case_bind_recent_limit(), offset=0)
         resolved_case_id = resolve_active_case(sess_for_resolve, recent_for_bind, incoming_vehicle_key)
         track_event("case_binding_decision", {"resolved": resolved_case_id is not None})
     effective_case_id = explicit_case_id or resolved_case_id
     existing_case: dict[str, Any] | None = None
     if effective_case_id:
-        existing_case = get_case_for_read(effective_case_id)
+        ec = (effective_case_id or "").strip()
+        sac_id = (
+            str(session_active_case_row.get("case_id") or "").strip()
+            if isinstance(session_active_case_row, dict)
+            else ""
+        )
+        if session_active_case_row and sac_id and sac_id == ec:
+            existing_case = session_active_case_row
+        else:
+            existing_case = get_case_for_read(ec)
     if effective_case_id and existing_case is None:
         effective_case_id = None
 
@@ -965,6 +1113,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             engine=eng,
             attachment_id="inline_image",
         )
+    case_ms_total = _route_mark()
     result = triage_conversation(
         text,
         [{"role": t.role, "text": t.text} for t in turns],
@@ -974,6 +1123,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         v6_ocr_signals=_v6_ocr,
         soft_route=soft_route_pre,
     )
+    triage_ms_total = _route_mark()
 
     reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
 
@@ -1034,10 +1184,13 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["sale_date", "vehicle_info", "transfer_status"]
 
+    conversion_ms_total = _route_mark()
+
     if existing_case and existing_case.get("case_id") and not result.get("case_id"):
         result["case_id"] = existing_case.get("case_id")
 
     _attach_assist_layer(result, text, reply_truth_ctx)
+    assist_ms_total = _route_mark()
 
     if sid:
         boundary_clear = result.get("append_allowed") is False and str(
@@ -1064,6 +1217,9 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             if patch_kw:
                 patch_session_case_binding(sid, **patch_kw)
 
+    session_ms_seg2 = _route_mark()
+    case_persist_ms_total = 0.0
+
     if request.persist_case:
         # MULTI_TURN_CONTINUITY_GUARDRAIL: Only persist when handoff_ready to avoid
         # premature cases and duplicate cases across turns.
@@ -1081,6 +1237,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             should_persist = handoff_ready
         if should_persist:
             try:
+                _t_p0 = time.perf_counter()
                 if turns:
                     conv_parts = []
                     for t in turns:
@@ -1093,6 +1250,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 identity_patch = _merge_identity_with_session(request)
                 if identity_patch:
                     result.update(identity_patch)
+                _apply_pg_active_vehicle_identity_last(result, request.session_id)
                 saved = save_case(
                     source_for_case or text,
                     result,
@@ -1107,6 +1265,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                         str(saved.get("case_id") or ""),
                         vk_save,
                     )
+                case_persist_ms_total = (time.perf_counter() - _t_p0) * 1000.0
                 logger.info(
                     "new_case_created case_id=%s client_id=%s",
                     saved.get("case_id"),
@@ -1124,11 +1283,24 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 saved["assist"] = result.get("assist")
                 _attach_case_lifecycle(saved)
                 _finalize_triage_api_result(saved)
-                _emit_route_analytics_for_triage_result(
+                _apply_pg_active_vehicle_identity_last(saved, request.session_id)
+                _schedule_route_analytics(
                     saved,
                     turns,
                     session_id=request.session_id,
                     text=text,
+                )
+                _attach_route_perf_ms(
+                    saved,
+                    {
+                        "route_total_ms": (time.perf_counter() - route_t0) * 1000.0,
+                        "triage_ms": triage_ms_total,
+                        "session_ms": session_ms_seg1 + session_ms_seg2,
+                        "case_ms": case_ms_total + case_persist_ms_total,
+                        "assist_ms": assist_ms_total,
+                        "conversion_ms": conversion_ms_total,
+                        "postprocess_ms": 0.0,
+                    },
                 )
                 return saved
             except Exception as exc:
@@ -1139,7 +1311,9 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
 
     _attach_case_lifecycle(result, persisted_case=existing_case)
     _finalize_triage_api_result(result)
-    _emit_route_analytics_for_triage_result(
+    _apply_pg_active_vehicle_identity_last(result, request.session_id)
+    postprocess_ms_total = _route_mark()
+    _schedule_route_analytics(
         result,
         turns,
         session_id=request.session_id,
@@ -1165,6 +1339,19 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         except Exception as exc:
             logger.warning("Failed to save in-progress session: %s", exc)
         result["conversation_id"] = request.session_id.strip()
+    postprocess_ms_total += _route_mark()
+    _attach_route_perf_ms(
+        result,
+        {
+            "route_total_ms": (time.perf_counter() - route_t0) * 1000.0,
+            "triage_ms": triage_ms_total,
+            "session_ms": session_ms_seg1 + session_ms_seg2,
+            "case_ms": case_ms_total + case_persist_ms_total,
+            "assist_ms": assist_ms_total,
+            "conversion_ms": conversion_ms_total,
+            "postprocess_ms": postprocess_ms_total,
+        },
+    )
     return result
 
 
@@ -1372,6 +1559,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
             _attach_assist_layer(blocked, new_msg, _reply_truth_context_from_case(case))
             _attach_case_lifecycle(blocked, persisted_case=case)
             _finalize_triage_api_result(blocked)
+            _apply_pg_active_vehicle_identity_last(blocked, request.session_id)
             ap_sid = (request.session_id or "").strip() or None
             append_session_analytics_event(
                 "append_blocked",
@@ -1393,6 +1581,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
             _attach_assist_layer(blocked, new_msg, _reply_truth_context_from_case(case))
             _attach_case_lifecycle(blocked, persisted_case=case)
             _finalize_triage_api_result(blocked)
+            _apply_pg_active_vehicle_identity_last(blocked, request.session_id)
             ap_sid = (request.session_id or "").strip() or None
             append_session_analytics_event(
                 "append_blocked",
@@ -1425,6 +1614,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
     _attach_assist_layer(updated, new_msg, _reply_truth_context_from_case(updated))
     _attach_case_lifecycle(updated)
     _finalize_triage_api_result(updated)
+    _apply_pg_active_vehicle_identity_last(updated, request.session_id)
     ap_sid = (request.session_id or "").strip() or None
     emit_funnel_from_triage_result(
         updated,
