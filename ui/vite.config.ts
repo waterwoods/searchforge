@@ -1,7 +1,11 @@
 // [vitals-lan] inspected - Vite dev server configuration for LAN access
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import react from '@vitejs/plugin-react';
 
 /** Vercel hosts the UI on HTTPS; API must be an absolute HTTPS origin or browsers block requests (axios "Network Error"). */
@@ -53,6 +57,11 @@ export default defineConfig(({ mode }) => {
     assertVercelProductionApiBase(mode);
 
     return {
+    resolve: {
+        alias: {
+            '@': path.resolve(__dirname, 'src'),
+        },
+    },
     plugins: [react()],
     define: {
         __APP_VERSION__: JSON.stringify(getAppVersion()),
