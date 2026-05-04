@@ -107,6 +107,15 @@ export interface TriageResult {
     case_creation_suggested?: boolean;
     /** Speed routing: "fast" | "llm" | "rule" — for debugging */
     triage_path?: string;
+    /**
+     * Post-triage assist layer payload (additive). Never required for core UI.
+     * See `triageResultContract.ts` for CORE vs OPTIONAL classification.
+     */
+    assist?: Record<string, unknown> | null;
+    /** When TRIAGE_RETURN_PERF_METRICS is enabled on the server */
+    route_perf?: Record<string, number> | null;
+    /** Latency / metrics snapshot from triage turn (shape varies by backend version) */
+    triage_turn_metrics?: Record<string, unknown> | null;
     /** Greenfield triage vs append-follow-up; disambiguates handoff_ready (Add-Car pilot contract). */
     triage_mode?: 'greenfield' | 'append';
     /** Stage-1 service lane when set (e.g. add_car) */
