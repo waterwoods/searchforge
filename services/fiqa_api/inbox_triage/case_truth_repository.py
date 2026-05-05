@@ -147,20 +147,25 @@ def list_recent_cases_for_read(limit: int = 8, offset: int = 0) -> list[dict[str
     try:
         from services.fiqa_api.db.service_record_repository import (
             list_record_ids_recent,
-            load_full_case_from_postgres,
+            load_workbench_queue_cases_from_postgres,
         )
 
         ids = list_record_ids_recent(safe_limit, safe_offset)
+        raw_rows = load_workbench_queue_cases_from_postgres(ids)
         out: list[dict[str, Any]] = []
         missing_hydration: list[str] = []
-        for rid in ids:
-            raw = load_full_case_from_postgres(rid)
-            if not raw:
-                missing_hydration.append(rid)
+        seen: set[str] = set()
+        for norm in raw_rows:
+            rid = str(norm.get("case_id") or "").strip()
+            if not rid:
                 continue
-            norm = _normalize_case(raw)
+            seen.add(rid)
+            norm = _normalize_case(norm)
             _merge_workbench_flags_from_json(rid, norm)
             out.append(norm)
+        for rid in ids:
+            if rid not in seen:
+                missing_hydration.append(rid)
         if missing_hydration:
             sample = ",".join(missing_hydration[:12])
             logger.warning(

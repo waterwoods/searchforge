@@ -1410,6 +1410,18 @@ async def get_recent_cases(
     }
 
 
+@router.get("/cases/{case_id}")
+async def get_saved_case(case_id: str) -> dict[str, Any]:
+    """Return one persisted case with full stored fields (messages/activity when available)."""
+    cid = (case_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="case_id required")
+    case = get_case_for_read(cid)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    return case
+
+
 @router.delete("/cases/{case_id}")
 async def delete_saved_case_test_only(case_id: str) -> dict[str, Any]:
     """

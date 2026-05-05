@@ -14,13 +14,12 @@ logger = logging.getLogger(__name__)
 from services.fiqa_api.db.service_record_settings import service_record_database_url
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
 from services.fiqa_api.inbox_triage.service_record_consistency import compare_snapshot_with_pg
-from services.fiqa_api.inbox_triage.service_record_read import ServiceRecordReadRepository, _is_add_car_lane
+from services.fiqa_api.inbox_triage.service_record_read import _is_add_car_lane, _to_snapshot
 
 
 def enrich_cases_for_workbench(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not cases:
         return []
-    repo = ServiceRecordReadRepository()
     ids = [str(c.get("case_id") or "").strip() for c in cases if c.get("case_id")]
     pg_map: dict[str, dict[str, Any]] = {}
     db_url = service_record_database_url()
@@ -51,9 +50,9 @@ def enrich_cases_for_workbench(cases: list[dict[str, Any]]) -> list[dict[str, An
             row["pg_mirror_state"] = "unknown"
         else:
             cid = str(c.get("case_id") or "").strip()
-            snap = repo.get_by_case_id(cid) if cid else None
+            snap = _to_snapshot(c) if cid else None
             pg_row = pg_map.get(cid) if cid else None
-            if snap is None:
+            if snap is None or not snap.case_id:
                 row["pg_mirror_state"] = "unknown"
             else:
                 mismatches = compare_snapshot_with_pg(snap, pg_row)

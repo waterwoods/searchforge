@@ -405,6 +405,12 @@ export interface ListRecentCasesResponse {
     has_more: boolean;
 }
 
+/** GET /api/inbox/cases/{case_id} — full persisted case (use after opening from queue). */
+export async function getSavedCase(caseId: string): Promise<SavedCase> {
+    const response = await request.get<SavedCase>(`/api/inbox/cases/${encodeURIComponent(caseId)}`);
+    return response.data;
+}
+
 export async function listRecentCasesPage(params: {
     limit?: number;
     offset?: number;

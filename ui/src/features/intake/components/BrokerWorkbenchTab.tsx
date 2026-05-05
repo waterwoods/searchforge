@@ -36,6 +36,7 @@ import {
     appendFollowUpMessage,
     deleteTestCase,
     getAttachmentDownloadUrl,
+    getSavedCase,
     listRecentCasesPage,
     patchCaseWorkbench,
     triageMessage,
@@ -257,13 +258,24 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     useEffect(() => {
         if (!initialCaseId || recentCases.length === 0 || currentCase?.case_id === initialCaseId) return;
         const match = recentCases.find((c) => c.case_id === initialCaseId);
-        if (match) {
-            setInput('');
-            setCaseView('reopened');
-            setCurrentCase(match);
-            setNoteDraft('');
-            setError(null);
-        }
+        if (!match) return;
+        void (async () => {
+            try {
+                const full = await getSavedCase(initialCaseId);
+                setInput('');
+                setCaseView('reopened');
+                setCurrentCase(full);
+                setNoteDraft('');
+                setError(null);
+            } catch (e: unknown) {
+                const msg =
+                    (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+                    ?? (e as { message?: string })?.message
+                    ?? 'Could not load case.';
+                setError(String(msg));
+                message.error(String(msg));
+            }
+        })();
     }, [initialCaseId, recentCases, currentCase?.case_id]);
 
     const handleSubmit = async () => {
@@ -314,10 +326,22 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     const handleOpenRecent = (savedCase: SavedCase) => {
         setInput('');
         setCaseView('reopened');
-        setCurrentCase(savedCase);
         setNoteDraft('');
         setAppendMessageDraft('');
         setError(null);
+        void (async () => {
+            try {
+                const full = await getSavedCase(savedCase.case_id);
+                setCurrentCase(full);
+            } catch (e: unknown) {
+                const msg =
+                    (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+                    ?? (e as { message?: string })?.message
+                    ?? 'Could not load case.';
+                message.error(String(msg));
+                setCurrentCase(savedCase);
+            }
+        })();
     };
 
     const handlePatchWorkbench = async (caseId: string, patch: { is_test?: boolean; archived?: boolean }) => {
@@ -477,7 +501,12 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 setCaseView('reopened');
                 setInput('');
             } else if (strongestExistingCase) {
-                setCurrentCase(strongestExistingCase);
+                try {
+                    const full = await getSavedCase(strongestExistingCase.case_id);
+                    setCurrentCase(full);
+                } catch {
+                    setCurrentCase(strongestExistingCase);
+                }
                 setCaseView('reopened');
                 setInput('');
             }

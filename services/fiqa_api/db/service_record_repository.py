@@ -704,51 +704,8 @@ def list_binding_stub_rows_recent(limit: int, offset: int = 0) -> list[dict[str,
     return out
 
 
-def load_case_triage_stub_from_postgres(record_id: str) -> dict[str, Any] | None:
-    """
-    Triage hot path: same truth fields as :func:`load_full_case_from_postgres` for reply/routing
-    without second round-trips to record_messages or state_history (no case_activity, no
-    case_messages, empty source_text).
-    """
-    from psycopg.rows import dict_row
-
-    rid = _str(record_id)
-    if not rid:
-        return None
-    with service_record_connection() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                SELECT
-                    sr.record_id,
-                    sr.client_id,
-                    sr.issue_category,
-                    sr.title_summary,
-                    sr.case_status,
-                    sr.lifecycle_status,
-                    sr.waiting_on,
-                    sr.next_contact_by,
-                    sr.current_next_action,
-                    sr.customer_name,
-                    sr.customer_phone,
-                    sr.customer_email,
-                    sr.policy_number,
-                    sr.contact_note,
-                    sr.origin_session_id,
-                    sr.created_at,
-                    sr.updated_at,
-                    sr.extra,
-                    srd.structured_payload,
-                    srd.quote_readiness
-                FROM service_records sr
-                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
-                WHERE sr.record_id = %s
-                """,
-                (rid,),
-            )
-            row = cur.fetchone()
-    if not row:
-        return None
+def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Build pilot case dict from one ``dict_row`` join of service_records + structured_record_data."""
     extra = row["extra"] if isinstance(row.get("extra"), dict) else {}
     structured = row["structured_payload"] if isinstance(row.get("structured_payload"), dict) else {}
     q_readiness_col = _str(row.get("quote_readiness") or "")
@@ -799,6 +756,101 @@ def load_case_triage_stub_from_postgres(record_id: str) -> dict[str, Any] | None
 
     case["case_messages"] = []
     case["case_activity"] = []
+    return case
+
+
+_PG_LIST_SELECT = """
+                SELECT
+                    sr.record_id,
+                    sr.client_id,
+                    sr.issue_category,
+                    sr.title_summary,
+                    sr.case_status,
+                    sr.lifecycle_status,
+                    sr.waiting_on,
+                    sr.next_contact_by,
+                    sr.current_next_action,
+                    sr.customer_name,
+                    sr.customer_phone,
+                    sr.customer_email,
+                    sr.policy_number,
+                    sr.contact_note,
+                    sr.origin_session_id,
+                    sr.created_at,
+                    sr.updated_at,
+                    sr.extra,
+                    srd.structured_payload,
+                    srd.quote_readiness
+                FROM service_records sr
+                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+"""
+
+
+def load_workbench_queue_cases_from_postgres(record_ids: list[str]) -> list[dict[str, Any]]:
+    """
+    One round-trip hydration for GET /api/inbox/cases list rows: no record_messages or state_history.
+
+    ``source_text`` is a queue skim line (summary / draft / category), not full conversation replay.
+    """
+    ids = [str(x).strip() for x in (record_ids or []) if str(x).strip()]
+    if not ids:
+        return []
+
+    from psycopg.rows import dict_row
+
+    with service_record_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                _PG_LIST_SELECT + " WHERE sr.record_id = ANY(%s)",
+                (ids,),
+            )
+            rows = list(cur.fetchall())
+    by_id = {str(r["record_id"]): r for r in rows}
+    out: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for rid in ids:
+        r = by_id.get(rid)
+        if not r:
+            missing.append(rid)
+            continue
+        case = _case_dict_from_pg_join_dict_row(r)
+        src = _str(case.get("conversation_summary"))
+        if not src:
+            src = _str(case.get("client_reply_draft"))[:512]
+        if not src:
+            src = _str(case.get("issue_category"))
+        case["source_text"] = src
+        out.append(case)
+    if missing:
+        logger.warning(
+            "load_workbench_queue_cases_from_postgres missing_rows=%s sample=%s",
+            len(missing),
+            ",".join(missing[:12]),
+        )
+    return out
+
+
+def load_case_triage_stub_from_postgres(record_id: str) -> dict[str, Any] | None:
+    """
+    Triage hot path: same truth fields as :func:`load_full_case_from_postgres` for reply/routing
+    without second round-trips to record_messages or state_history (no case_activity, no
+    case_messages, empty source_text).
+    """
+    from psycopg.rows import dict_row
+
+    rid = _str(record_id)
+    if not rid:
+        return None
+    with service_record_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                _PG_LIST_SELECT + " WHERE sr.record_id = %s",
+                (rid,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    case = _case_dict_from_pg_join_dict_row(row)
     case["source_text"] = ""
     return case
 
