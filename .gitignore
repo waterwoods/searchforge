@@ -39,7 +39,8 @@ archives/*.tar.gz
 # Node / Python deps and models
 node_modules/
 # Local HuggingFace / cross-encoder mirrors (large; not versioned; keep after git clean)
-models/
+# Root only — bare `models/` matches every **/models/ (breaks Cloud Build + fiqa_api.models package).
+/models/
 hub/
 xet/
 

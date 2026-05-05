@@ -48,7 +48,7 @@ import {
     type TriageResult,
     type WaitingOn,
 } from '@/api/inboxTriage';
-import { pickTriageResultCore } from '@/api/triageResultContract';
+import { hasDebugSignals, pickTriageResultCore } from '@/api/triageResultContract';
 import { copyToClipboard } from '@/utils/demoCopy';
 import { useClientConfig } from '@/context/ClientConfigContext';
 import { API_BASE_URL } from '@/api/config';
@@ -735,6 +735,11 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         <Tag color={attention.color}>{attention.label}</Tag>
                         {dueTag && <Tag color={dueTag.color}>{dueTag.label}</Tag>}
                         <UrgencyTag urgency={savedCase.urgency} />
+                        {hasDebugSignals(savedCase) && (
+                            <Tag style={{ fontSize: 10 }} color="default">
+                                路由/指标
+                            </Tag>
+                        )}
                         <span
                             style={
                                 !isActive

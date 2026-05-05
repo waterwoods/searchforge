@@ -65,9 +65,9 @@ COPY configs/ /app/configs/
 ENV PYTHONPATH=/app:${PYTHONPATH}
 
 # Smoke test: verify critical imports work before deployment
-# Note: This test runs after all files are copied and PYTHONPATH is set
-RUN python -c "import sys; sys.path.insert(0, '/app'); import services.fiqa_api.models; print('✅ Import smoke test passed')" || \
-    (echo "❌ Import smoke test failed - check package structure" && \
+# Intentionally import fiqa_api.models — must not be excluded from Cloud Build context (see .gitignore /models/).
+RUN python -c "import sys; sys.path.insert(0, '/app'); import services.fiqa_api.models.experiment_models; print('✅ Import smoke test passed')" || \
+    (echo "❌ Import smoke test failed - check package structure / build context" && \
      echo "Debug: Checking structure..." && \
      ls -la /app/services/ && \
      ls -la /app/services/fiqa_api/ && \

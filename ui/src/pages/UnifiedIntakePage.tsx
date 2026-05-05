@@ -17,10 +17,10 @@ import {
     UnorderedListOutlined,
 } from '@ant-design/icons';
 import { ScenarioReplayTab } from '../components/simulation/ScenarioReplayTab';
-import { UserCaseListProgressPanel } from '../components/intake/UserCaseListProgressPanel';
 import { useClientConfig } from '../context/ClientConfigContext';
 import { CustomerEntryTab } from '@/features/intake/components/CustomerEntryTab';
 import { BrokerWorkbenchTab } from '@/features/intake/components/BrokerWorkbenchTab';
+import { MyRequestsTab } from '@/features/intake/components/MyRequestsTab';
 
 const { Text } = Typography;
 
@@ -216,7 +216,7 @@ export default function UnifiedIntakePage() {
                             </span>
                         ),
                         children: (
-                            <UserCaseListProgressPanel onContinueInCustomerPortal={() => setActiveTab('customer')} />
+                            <MyRequestsTab onContinueInCustomerPortal={() => setActiveTab('customer')} />
                         ),
                     },
                     {
