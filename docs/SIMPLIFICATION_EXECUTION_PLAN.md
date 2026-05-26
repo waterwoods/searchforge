@@ -44,10 +44,10 @@ git checkout checkpoint/pre-reduction-safe-restore-point-20260526-0346
 | 0 | Branch + baseline doc | `docs/SIMPLIFICATION_EXECUTION_PLAN.md` | Low | Traceable restore point | `git log -1`, tag list | Switch to checkpoint tag | **done** |
 | 1 | Master plan + execution table | `docs/SIMPLIFICATION_EXECUTION_PLAN.md` | Low | One control doc for all batches | `git diff --stat` (docs only) | Revert doc commit | **done** |
 | 2 | Archive sprint doc noise | `docs/sprints/archive/**`, `docs/sprints/README.md`, moved sprint paths | Low | Less agent/founder confusion from stale sprints | `git status`, grep broken refs | `git mv` back from archive | **done** |
-| 3 | Node 22 / UI build gate | `.nvmrc`, `ui/.nvmrc`, `scripts/check_ui_node_version.sh`, `docs/*` | Low | Stop Vite/Node recurring failures | `node --version`, `check_ui_node_version.sh`, `npm run build`, madge | Revert nvmrc + script | pending |
-| 4 | Deploy script naming convergence | `scripts/deploy_cloud_run_core.sh`, `scripts/deploy_rag_demo.sh` (wrapper), wrappers, tests, deploy docs | Low–Med | Obvious paid-pilot entry; core impl named honestly | `trial_readiness_check`, `trial_launch_check`, `validate_pilot_deploy_env`, `bash -n` | Revert rename + wrapper | pending |
-| 5 | UI product-only surface | `ui/src/components/layout/AppSider.tsx`, `UnifiedIntakePage.tsx`, `productSurface.ts`, docs | Low | Broker UI = one product, not lab | `npm run build`, madge, grep `productSurface` | Revert UI gate commits | pending |
-| 6 | JSON/PG prod posture tightening | `scripts/validate_pilot_deploy_env.py`, tests, `configs/demo.env.example`, docs | Low | Wrong persistence path fails before deploy | `pytest tests/test_validate_pilot_deploy_env.py`, guardrail, regression | Revert validator/docs | pending |
+| 3 | Node 22 / UI build gate | `.nvmrc`, `ui/.nvmrc`, `scripts/check_ui_node_version.sh`, `docs/*` | Low | Stop Vite/Node recurring failures | `node --version`, `check_ui_node_version.sh`, `npm run build`, madge | Revert nvmrc + script | **done** |
+| 4 | Deploy script naming convergence | `scripts/deploy_cloud_run_core.sh`, `scripts/deploy_rag_demo.sh` (wrapper), wrappers, tests, deploy docs | Low–Med | Obvious paid-pilot entry; core impl named honestly | `trial_readiness_check`, `trial_launch_check`, `validate_pilot_deploy_env`, `bash -n` | Revert rename + wrapper | **done** |
+| 5 | UI product-only surface | `ui/src/components/layout/AppSider.tsx`, `UnifiedIntakePage.tsx`, `productSurface.ts`, docs | Low | Broker UI = one product, not lab | `npm run build`, madge, grep `productSurface` | Revert UI gate commits | **done** |
+| 6 | JSON/PG prod posture tightening | `scripts/validate_pilot_deploy_env.py`, tests, `configs/demo.env.example`, docs | Low | Wrong persistence path fails before deploy | `pytest tests/test_validate_pilot_deploy_env.py`, guardrail, regression | Revert validator/docs | **done** |
 
 ---
 

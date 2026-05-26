@@ -42,6 +42,7 @@ These are **required** for any paid broker pilot or `ENV=prod` Cloud Run deploy.
 | No JSON case writes | `UNIFIED_INTAKE_JSON_CASE_WRITES=0` | Filesystem cases forbidden in prod |
 | No JSON read fallback | `UNIFIED_INTAKE_JSON_READ_FALLBACK=0` | No silent JSON authority |
 | No dual-write | `UNIFIED_INTAKE_PG_DUAL_WRITE=0` | One write path |
+| No in-memory sessions with DB | `UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS` off when DB URL set | Multi-instance session truth |
 | Intake perimeter | `UNIFIED_INTAKE_INTAKE_API_KEY` (24+ chars) | Broker-facing API gate |
 | Support perimeter | `UNIFIED_INTAKE_SUPPORT_API_KEY` (24+ chars, ≠ intake key) | Support export gate |
 | **No demo mode** | `DEMO_MODE` unset or `0` | Readiness must reflect real deps |
@@ -94,9 +95,24 @@ Set `PILOT_DEPLOY_STRICT=1` in `.env.cloudrun` to force paid-pilot validation ev
 | Pilot env validate | `python3 scripts/validate_pilot_deploy_env.py` |
 | **Paid pilot Cloud Run** | `bash scripts/deploy_paid_pilot.sh` |
 | Demo cloud smoke only | `bash scripts/deploy_demo_cloud_smoke.sh` |
-| Shared deploy impl | `scripts/deploy_rag_demo.sh` (called by wrappers — not the operator entry) |
+| Shared deploy impl | `scripts/deploy_cloud_run_core.sh` (called by wrappers — not the operator entry) |
+| Legacy name | `scripts/deploy_rag_demo.sh` prints deprecation warning → core impl |
 | Release ops | `docs/runbooks/DEPLOYMENT_PLAYBOOK.md` |
 | Runtime ports | `docs/runbooks/RUNTIME_PATH_STANDARD.md` |
+
+---
+
+## UI build (Node 22 required)
+
+Vite 7 requires **Node 22.x**. Repo pins `.nvmrc` → `22.22.0` (root and `ui/.nvmrc`).
+
+```bash
+nvm use                    # or: nvm install 22.22.0
+bash scripts/check_ui_node_version.sh
+cd ui && npm run build
+```
+
+Default shell Node 20 will fail the UI build — run the check script before Vercel/local builds.
 
 ---
 
