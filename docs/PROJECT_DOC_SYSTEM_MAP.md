@@ -36,7 +36,6 @@ Then use this map to find specific docs.
 | `docs/sprints/MATURE_SKELETON_COMMERCIAL_INTAKE_BACKBONE/03_PAGE_FLOW_STATE_HANDOFF_BACKBONE_SPEC.md` | **Mature backbone** — page, flow, state, handoff structure; borrow from Stripe/Amazon/Intercom/Zendesk; future-sprint reference |
 | `docs/LIGHTWEIGHT_STATE_MACHINE_BLUEPRINT.md` | Lightweight state machine, field progress, follow-up type strategy |
 | `docs/KNOWLEDGE_ARCHITECTURE_AND_CONFIG_LAYER.md` | Architecture layers: rules, knowledge, client, state, tests |
-| `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | **Supporting / investor framing only** — not pilot runtime truth; see `SIMPLIFICATION_MASTER_PLAN.md` |
 | `docs/CHEN_KUI_TRIAL_PACK.md` | Chen Kui trial pack: scenarios, order, value validation questions, pilot offer |
 | `docs/trial/INDEX.md` | **Real Broker Trial Package** — 1-week pilot: blueprint, scope, scenario pack, metrics, workflow, founder notes |
 | `docs/trial/TRIAL_EXECUTION_BLUEPRINT.md` | **Trial execution readiness** — last-mile hardening, runbook, handoff spec |
@@ -48,6 +47,23 @@ Then use this map to find specific docs.
 | `docs/DEPLOYMENT_READINESS.md` | Vercel + Cloud Run deployment checklist, env vars, cost notes |
 | `docs/runbooks/DEPLOYMENT_PLAYBOOK.md` | Release operations: pre/deploy/post, gotchas |
 | `docs/runbooks/RELEASE_CHECKLIST.md` | Every-release checklist (use before claiming success) |
+
+---
+
+## Future exploration — NOT runtime truth
+
+**Do not implement from these.** Useful for investor framing, historical architecture thinking, or post-revenue exploration. When any of these conflict with `docs/CURRENT_PRODUCT_SHAPE.md`, **CURRENT_PRODUCT_SHAPE wins**.
+
+| Doc | Class | Use |
+|-----|-------|-----|
+| `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | Investor / platform fantasy | Fundraising narrative — dangerous as a build list |
+| `docs/sprints/archive/FUTURE_SAAS_OPERATING_SYSTEM_SPRINT.md` | Historical architecture | Multi-tenant OS speculation — archived |
+| `docs/sprints/archive/FUTURE_SAAS_OPERATING_SYSTEM_FINAL_REPORT.md` | Historical report | Same — not shipped |
+| `docs/sprints/archive/LONG_HORIZON_SAAS_OPERATING_SYSTEM_SPRINT.md` | Historical architecture | Long-horizon convergence — not current deploy |
+| `docs/sprints/archive/PAID_SAAS_OPERATING_MODEL_ARCHITECTURE_CONVERGENCE_SPRINT.md` | Historical convergence | Superseded by `CURRENT_PRODUCT_SHAPE.md` |
+| `docs/sprints/MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md` | Reduction sprint record | Context only — active reduction is `SIMPLIFICATION_*` docs |
+
+**Still operational (not platform fantasy):** `docs/MULTI_AGENT_OPERATING_MODEL_V1.md` — how agents/founders work together today.
 
 ---
 

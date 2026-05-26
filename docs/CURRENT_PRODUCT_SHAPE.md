@@ -150,3 +150,5 @@ See also: `docs/sprints/README.md`.
 | `docs/runbooks/DEPLOYMENT_PLAYBOOK.md` | Release procedure |
 | `docs/DEPRECATED_PATHS.md` | Removed flags and dead paths |
 | `docs/SIMPLIFICATION_MASTER_PLAN.md` | Reduction roadmap (hide/archive/delete — not runtime truth) |
+
+**Not runtime truth (future exploration / investor framing):** `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md`, archived `FUTURE_SAAS_*` and `LONG_HORIZON_SAAS_*` sprint docs — see `docs/PROJECT_DOC_SYSTEM_MAP.md` § Future exploration.

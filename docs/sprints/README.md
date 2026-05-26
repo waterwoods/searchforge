@@ -11,7 +11,7 @@ Sprint documents capture discovery, execution notes, and acceptance criteria fro
 | **Runtime truth** | [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) |
 | **Active reduction** | [`docs/SIMPLIFICATION_MASTER_PLAN.md`](../SIMPLIFICATION_MASTER_PLAN.md), [`docs/SIMPLIFICATION_EXECUTION_PLAN.md`](../SIMPLIFICATION_EXECUTION_PLAN.md) |
 | **Historical** | [`docs/sprints/archive/`](./archive/README.md) |
-| **Speculative** | Archived platform-future / multi-tenant narratives — not build lists |
+| **Speculative** | Archived `FUTURE_SAAS_*`, `LONG_HORIZON_SAAS_*`, `TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT` — investor/historical only |
 | **Deprecated** | Old deploy reports — do not copy env tuples |
 
 ## How to use sprint docs
