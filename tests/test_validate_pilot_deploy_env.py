@@ -70,6 +70,36 @@ def test_validate_pilot_env_accepts_secret_manager_for_db():
     assert validate_pilot_env(env) == []
 
 
+def test_validate_pilot_env_fails_dual_write_enabled():
+    errs = validate_pilot_env(_minimal_pilot_env(UNIFIED_INTAKE_PG_DUAL_WRITE="1"))
+    assert any("UNIFIED_INTAKE_PG_DUAL_WRITE" in e for e in errs)
+
+
+def test_validate_pilot_env_fails_inmemory_sessions_with_db():
+    errs = validate_pilot_env(
+        _minimal_pilot_env(UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS="1")
+    )
+    assert any("UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS" in e for e in errs)
+
+
+def test_validate_pilot_env_fails_matching_intake_support_keys():
+    key = "same-secret-minimum-length-ok-123456789"
+    errs = validate_pilot_env(
+        _minimal_pilot_env(
+            UNIFIED_INTAKE_INTAKE_API_KEY=key,
+            UNIFIED_INTAKE_SUPPORT_API_KEY=key,
+        )
+    )
+    assert any("must differ" in e for e in errs)
+
+
+def test_validate_pilot_env_fails_unset_json_case_writes():
+    env = _minimal_pilot_env()
+    del env["UNIFIED_INTAKE_JSON_CASE_WRITES"]
+    errs = validate_pilot_env(env)
+    assert any("UNIFIED_INTAKE_JSON_CASE_WRITES" in e for e in errs)
+
+
 def test_load_dotenv_skips_comments(tmp_path: Path):
     p = tmp_path / "x.env"
     p.write_text(

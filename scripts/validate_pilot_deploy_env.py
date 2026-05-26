@@ -70,11 +70,19 @@ def validate_pilot_env(env: dict[str, str]) -> list[str]:
     if not _truthy(get("UNIFIED_INTAKE_DB_PRIMARY_READS")):
         errors.append("UNIFIED_INTAKE_DB_PRIMARY_READS must be 1")
 
-    if get("UNIFIED_INTAKE_JSON_CASE_WRITES") and not _falsy(get("UNIFIED_INTAKE_JSON_CASE_WRITES")):
-        errors.append("UNIFIED_INTAKE_JSON_CASE_WRITES must be 0 or unset in prod-like pilot")
+    if not _falsy(get("UNIFIED_INTAKE_JSON_CASE_WRITES")):
+        errors.append("UNIFIED_INTAKE_JSON_CASE_WRITES must be 0 (JSON case path is dev-only)")
 
-    if get("UNIFIED_INTAKE_JSON_READ_FALLBACK") and not _falsy(get("UNIFIED_INTAKE_JSON_READ_FALLBACK")):
-        errors.append("UNIFIED_INTAKE_JSON_READ_FALLBACK must be 0 or unset in prod-like pilot")
+    if not _falsy(get("UNIFIED_INTAKE_JSON_READ_FALLBACK")):
+        errors.append("UNIFIED_INTAKE_JSON_READ_FALLBACK must be 0 (no silent JSON authority in prod-like pilot)")
+
+    if not _falsy(get("UNIFIED_INTAKE_PG_DUAL_WRITE")):
+        errors.append("UNIFIED_INTAKE_PG_DUAL_WRITE must be 0 (single write path required)")
+
+    if has_db and _truthy(get("UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS")):
+        errors.append(
+            "UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS must be off when SERVICE_RECORD_DATABASE_URL is set"
+        )
 
     if not get("UNIFIED_INTAKE_INTAKE_API_KEY"):
         errors.append("UNIFIED_INTAKE_INTAKE_API_KEY must be set (24+ char random)")
@@ -86,9 +94,6 @@ def validate_pilot_env(env: dict[str, str]) -> list[str]:
     if get("UNIFIED_INTAKE_INTAKE_API_KEY") and get("UNIFIED_INTAKE_SUPPORT_API_KEY"):
         if get("UNIFIED_INTAKE_INTAKE_API_KEY") == get("UNIFIED_INTAKE_SUPPORT_API_KEY"):
             errors.append("UNIFIED_INTAKE_INTAKE_API_KEY must differ from UNIFIED_INTAKE_SUPPORT_API_KEY")
-
-    if _truthy(get("UNIFIED_INTAKE_PG_DUAL_WRITE")):
-        errors.append("UNIFIED_INTAKE_PG_DUAL_WRITE should be off for strict PG-primary pilot")
 
     env_label = get("ENV").lower()
     paid_pilot_signals = (
