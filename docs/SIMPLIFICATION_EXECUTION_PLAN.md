@@ -81,12 +81,13 @@ cd ui && npx --yes madge --circular --extensions ts,tsx src
 | Batch | Commit | Notes |
 |-------|--------|-------|
 | 0 | — | Branch `reduction/safe-batch-loops` from checkpoint |
-| 1 | pending | Docs-only execution table |
-| 2 | pending | ~90 root `.md` + 16 dirs → `docs/sprints/archive/` |
-| 3 | pending | |
-| 4 | pending | |
-| 5 | pending | |
-| 6 | pending | |
+| 1 | `9dabd01` | Execution control doc |
+| 2 | `6677e85` | ~90 root `.md` + 16 dirs → `docs/sprints/archive/` |
+| 3 | `9aa1436` | Node 22 gate (+ core rename landed here) |
+| 4 | `a31bf28` | Deploy naming wrapper + docs |
+| 5 | `2f3f575` | Product-only sidebar |
+| 6 | `a9ecf93` | Validator tightening |
+| fix | `dd9540b` | Test fixture PG_DUAL_WRITE |
 
 ---
 
