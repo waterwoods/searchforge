@@ -80,7 +80,7 @@ Set `PILOT_DEPLOY_STRICT=1` in `.env.cloudrun` to force paid-pilot validation ev
 | Purpose | Show product, iterate fast | Real broker, real cases |
 | API surface | May use `platform_full` locally | **`UNIFIED_INTAKE_PRODUCT_ONLY=1` required** |
 | Persistence | JSON-only OK on laptop | **Postgres-only** |
-| Readiness | `DEMO_MODE` may relax `/readyz` | Full dependency honesty |
+| Readiness | `DEMO_MODE` relaxes `/readyz` (local/demo cloud) | `UNIFIED_INTAKE_INTAKE_CORE_READINESS=1` + `PRODUCT_ONLY` — Qdrant optional on `/readyz`; triage never required vectors |
 | Deploy script | `deploy_demo_cloud_smoke.sh` (DEMO_MODE) | `deploy_paid_pilot.sh` only |
 | Docs | `docs/ANDY_QUICK_START.md` | This file + `configs/demo.env.example` PILOT ONE PATH |
 
@@ -104,13 +104,27 @@ Set `PILOT_DEPLOY_STRICT=1` in `.env.cloudrun` to force paid-pilot validation ev
 
 ## UI build (Node 22 required)
 
-Vite 7 requires **Node 22.x**. Repo pins `.nvmrc` → `22.22.0` (root and `ui/.nvmrc`).
+Vite 7 requires **Node 22.x**. Canonical setup: [`docs/runbooks/NODE_22_SETUP.md`](runbooks/NODE_22_SETUP.md).
 
 ```bash
-nvm use                    # or: nvm install 22.22.0
+source scripts/with_node22_path.sh
 bash scripts/check_ui_node_version.sh
 cd ui && npm run build
 ```
+
+## Readiness modes (intake SaaS vs RAG lab)
+
+| Mode | Env | `/readyz` | Intake triage |
+|------|-----|-----------|---------------|
+| **intake_core** | `DEMO_MODE=1` (local/demo cloud) or `UNIFIED_INTAKE_INTAKE_CORE_READINESS=1` + `UNIFIED_INTAKE_PRODUCT_ONLY=1` | Qdrant/embedding optional; `intake_path_ready: true` | Works without Qdrant |
+| **full_stack** | Default platform/RAG | Qdrant + embedding required | N/A for vectors |
+
+```bash
+bash scripts/summarize_readiness_posture.sh
+bash scripts/summarize_readiness_posture.sh --probe http://127.0.0.1:8001
+```
+
+**Paid pilot:** do not use `DEMO_MODE` on `ENV=prod`. Use **intake-core readiness** when vectors are down but Postgres + API keys are healthy. Cloud Run deploy still passes `QDRANT_URL` (deploy script); triage does not depend on it.
 
 Default shell Node 20 will fail the UI build — run the check script before Vercel/local builds.
 

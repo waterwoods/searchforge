@@ -38,6 +38,7 @@ CURRENT_MAJOR="${CURRENT%%.*}"
 if [[ "$CURRENT_MAJOR" != "$REQUIRED_MAJOR" ]]; then
     echo "❌ Node ${CURRENT} on PATH — UI build requires Node ${REQUIRED_MAJOR}.x (see .nvmrc → ${REQUIRED})" >&2
     echo "   Hint: nvm install ${REQUIRED} && nvm use" >&2
+    echo "   Or:  source scripts/with_node22_path.sh  (see docs/runbooks/NODE_22_SETUP.md)" >&2
     exit 1
 fi
 

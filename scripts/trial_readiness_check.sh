@@ -12,15 +12,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
-# Vite 7 often fails on Cursor's bundled Node 20; prefer nvm Node 22 when present.
+# Vite 7 requires Node 22 — see docs/runbooks/NODE_22_SETUP.md
 if [ -z "${SKIP_NVM_NODE22_FOR_UI:-}" ]; then
-  for _nv in "$HOME/.nvm/versions/node/v22.22.0/bin" \
-             "$HOME/.nvm/versions/node/v22.14.0/bin"; do
-    if [ -x "$_nv/node" ]; then
-      export PATH="$_nv:$PATH"
-      break
-    fi
-  done
+  # shellcheck disable=SC1090
+  source "$SCRIPT_DIR/with_node22_path.sh"
 fi
 
 echo "=== Real Broker Trial Package — Readiness Check ==="
@@ -87,7 +82,11 @@ if ! bash "$SCRIPT_DIR/guardrail_inbox_triage.sh" 2>/dev/null; then
 fi
 echo "  OK"
 
-echo "[6] UI build..."
+echo "[6] UI Node gate + build..."
+if ! bash "$SCRIPT_DIR/check_ui_node_version.sh" --quiet 2>/dev/null; then
+  echo "  FAIL: Node version (need 22.x — source scripts/with_node22_path.sh)"
+  exit 1
+fi
 if ! (cd ui && npm run build >/dev/null 2>&1); then
   echo "  FAIL: UI build failed"
   exit 1
@@ -122,6 +121,18 @@ if [ -f "$_PILOT_ENV_FILE" ]; then
   fi
 else
   echo "  SKIP (no .env.cloudrun — local demo path)"
+fi
+
+echo "[9] Intake-core vs full-stack readiness (posture)..."
+if ! bash "$SCRIPT_DIR/summarize_readiness_posture.sh" 2>&1 | head -20; then
+  echo "  FAIL: readiness posture summary"
+  exit 1
+fi
+if curl -sf --max-time 3 "http://127.0.0.1:8001/readyz" >/dev/null 2>&1; then
+  bash "$SCRIPT_DIR/summarize_readiness_posture.sh" --probe "http://127.0.0.1:8001" 2>&1 | tail -8 || true
+  echo "  OK (local API probed)"
+else
+  echo "  OK (env summary only — start run_demo_local.sh to probe /readyz)"
 fi
 
 echo ""
