@@ -220,7 +220,7 @@ Sprint dirs/files that are pure execution reports superseded by CURRENT_PRODUCT_
 
 - `docs/sprints/KILL_LEGACY_DEFAULT_PATHS_SPRINT.md` (superseded by this sprint)  
 - `docs/sprints/PILOT_TO_REAL_SAAS_TRANSITION_SPRINT.md`  
-- `docs/sprints/PRODUCT_ONLY_SAAS_SKELETON_SPRINT.md` (keep grep refs, mark historical)  
+- `docs/sprints/archive/PRODUCT_ONLY_SAAS_SKELETON_SPRINT.md` (archived — grep refs only)  
 - `docs/sprints/LONG_HORIZON_SAAS_OPERATING_SYSTEM_SPRINT.md`  
 - `docs/sprints/backend_redeploy_*` (all execution-only report dirs)  
 - `docs/sprints/ROLE_C_BACKEND_DEPLOY_SMOKE_CHECK_SPRINT/`  

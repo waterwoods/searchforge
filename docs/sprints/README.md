@@ -4,14 +4,15 @@
 
 Sprint documents capture discovery, execution notes, and acceptance criteria from focused work sessions. Product shape, deployment posture, and env requirements evolve; many sprint files were accurate **at write time** but are now superseded.
 
-## Current truth (read these instead)
+## Classification
 
-| Doc | Purpose |
-|-----|---------|
-| [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) | **Current** product, deployment, paid-pilot requirements |
-| [`docs/SIMPLIFICATION_MASTER_PLAN.md`](../SIMPLIFICATION_MASTER_PLAN.md) | **Reduction roadmap** — hide/archive/delete priorities |
-| [`docs/PROJECT_DOC_SYSTEM_MAP.md`](../PROJECT_DOC_SYSTEM_MAP.md) | Full doc index |
-| [`docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md`](../UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md) | Macro north star |
+| Class | Read this |
+|-------|-----------|
+| **Runtime truth** | [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) |
+| **Active reduction** | [`docs/SIMPLIFICATION_MASTER_PLAN.md`](../SIMPLIFICATION_MASTER_PLAN.md), [`docs/SIMPLIFICATION_EXECUTION_PLAN.md`](../SIMPLIFICATION_EXECUTION_PLAN.md) |
+| **Historical** | [`docs/sprints/archive/`](./archive/README.md) |
+| **Speculative** | Archived platform-future / multi-tenant narratives — not build lists |
+| **Deprecated** | Old deploy reports — do not copy env tuples |
 
 ## How to use sprint docs
 
@@ -22,14 +23,18 @@ When implementing changes, update `docs/CURRENT_PRODUCT_SHAPE.md` and runbooks �
 
 ## Archive (`docs/sprints/archive/`)
 
-**Batch 2 (2026-05-26):** ~90 root sprint docs + 16 historical directories moved to [`archive/`](./archive/README.md) — platform-future narratives, completed redeploy reports, superseded backbone specs. **Not deleted**; see [`archive/README.md`](./archive/README.md).
+**Batch 2 (2026-05-26):** ~90 root sprint docs + 16 historical directories → [`archive/`](./archive/README.md).
 
-Still at repo root (active / recent):
+**P0 batch 2 (2026-05-26):** Turn-1 / focus-mode / stress-test packages + `workbench_handoff_readiness/` → archive. **Not deleted.**
 
-- [`COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md`](./COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md) — convergence authority
+## Active at repo root (recent / convergence)
+
+- [`COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md`](./COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md)
 - [`PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md`](./PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md)
 - [`SAFE_REDUCTION_BASELINE_CHECKPOINT.md`](./SAFE_REDUCTION_BASELINE_CHECKPOINT.md)
 - [`MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md`](./MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md)
 - [`PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md`](./PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md)
+- [`STRICT_PRODUCT_ONLY_WIRE_CLOSURE_SUPPORT_EXPORT_SPRINT.md`](./STRICT_PRODUCT_ONLY_WIRE_CLOSURE_SUPPORT_EXPORT_SPRINT.md)
+- [`FOUNDER_TRIAL_CHECKLIST.md`](./FOUNDER_TRIAL_CHECKLIST.md)
 
 Continue batch-archiving stale sprints per [`docs/SIMPLIFICATION_EXECUTION_PLAN.md`](../SIMPLIFICATION_EXECUTION_PLAN.md).
