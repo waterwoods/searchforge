@@ -12,9 +12,10 @@
 | Branch | `checkpoint/before-simplification-execution-20260526-0346` |
 | Tag | `checkpoint/pre-reduction-safe-restore-point-20260526-0346` |
 | Commit | `307585770b388430db0a672fc91c3d1aa4a1eb9b` |
-| Working branch | `reduction/p0-hardening-loops` (from `reduction/safe-batch-loops`) |
+| Working branch | `reduction/p1-simplification-loops` (from `reduction/p0-hardening-loops`) |
 | Started | 2026-05-26 |
 | P0 hardening | 2026-05-26 — batches 1–4 below |
+| P1 simplification | 2026-05-26 — batches 1–4 below |
 
 **Rollback (full restore):**
 
@@ -53,6 +54,10 @@ git checkout checkpoint/pre-reduction-safe-restore-point-20260526-0346
 | P0-2 | Archive sprint noise (wave 2) | `docs/sprints/archive/**`, README | Low | 8 active root sprint docs remain | grep broken refs | `git mv` back | **done** |
 | P0-3 | Node 22 PATH hardening | `with_node22_path.sh`, `NODE_22_SETUP.md`, trial scripts | Low | Trial UI build reliable on WSL/Cursor | `check_ui_node_version`, `npm run build`, madge | Revert scripts | **done** |
 | P0-4 | Intake-core readiness | `deployment_profile.py`, `health/ready.py`, `summarize_readiness_posture.sh` | Low–Med | Qdrant optional for paid pilot `/readyz` | `trial_readiness_check` [9], pytest deployment_profile | Revert env flag + ready.py | **done** |
+| P1-1 | Optional Qdrant deploy preflight | `deploy_cloud_run_core.sh`, `deploy_paid_pilot.sh`, `demo.env.example`, deploy docs | Low | Intake SaaS deploy without vectors | `trial_readiness_check`, `validate_pilot_deploy_env`, `bash -n` | Revert deploy scripts | **done** |
+| P1-2 | Demote platform blueprints | `PROJECT_DOC_SYSTEM_MAP.md`, `CURRENT_PRODUCT_SHAPE.md`, `sprints/README.md` | Low | Less platform-fantasy authority | grep refs, self-review | Revert doc commit | **done** |
+| P1-3 | Archive Add-Car sprint wave | `docs/sprints/archive/add_car_sprints/**`, convergence reports | Low | ~41 dirs archived; 6 active root sprints | grep broken refs, script paths | `git mv` back | **done** |
+| P1-4 | Deploy/runtime messaging | `deploy_cloud_run_core.sh`, `DEPLOYMENT_READINESS.md`, trial scripts | Low | Operator story matches runtime | `trial_readiness_check`, `trial_launch_check`, `summarize_readiness_posture` | Revert messaging commits | **done** |
 
 ---
 
@@ -97,19 +102,25 @@ cd ui && npx --yes madge --circular --extensions ts,tsx src
 | P0-2 | `1e9c322` | 26 sprint md + workbench_handoff_readiness → archive |
 | P0-3 | `c723c5b` | `with_node22_path.sh`, NODE_22_SETUP, trial Node gate |
 | P0-4 | `8485629` | `UNIFIED_INTAKE_INTAKE_CORE_READINESS`, `/readyz` intake_core |
+| P1-1 | `cb02a91` | `SKIP_QDRANT`/intake-core deploy preflight; QDRANT optional in paid pilot |
+| P1-2 | `43a7d15` | Platform blueprints → Future exploration section |
+| P1-3 | `07f5d0c` | ~41 Add-Car dirs + 6 convergence reports → archive |
+| P1-4 | `02111cd` | Deploy summary + DEPLOYMENT_READINESS intake-only clarity |
 
 **Final validation (P0 sprint end):** compileall OK, pytest OK, guardrail OK, full_regression OK, trial_readiness OK, trial_launch OK, UI build OK, madge OK.
 
+**Final validation (P1 sprint end):** compileall OK, pytest OK, guardrail OK, full_regression OK, trial_readiness OK, trial_launch OK, UI build OK, madge OK.
+
 ---
 
-## Remaining simplification backlog (after P0 hardening)
+## Remaining simplification backlog (after P1 simplification)
 
 | Priority | Item | Class |
 |----------|------|-------|
-| Next | Demote platform blueprints in `PROJECT_DOC_SYSTEM_MAP` | Low |
-| Next | Continue sprint archive (800+ ADD_CAR dirs remain) | Low |
-| Next | Optional: relax `deploy_cloud_run_core` QDRANT preflight for intake-only deploy | Med |
+| Next | Continue sprint archive (remaining non-ADD_CAR sprint dirs) | Low |
+| Next | Demote `UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE` when it reads like platform SSOT | Low |
 | Deferred | Wire or delete `active_vehicle_resolver.py` | Medium |
+| Deferred | `/ready` (app_main) still requires EMBED+Qdrant — intake uses `/readyz` only | Low |
 | AFTER_REVENUE | Split `triage.py`, lazy-load lab routes, delete JSON path | High |
 
 ---
@@ -160,7 +171,55 @@ cd ui && npx --yes madge --circular --extensions ts,tsx src
 | Easier to explain? | Yes — “Can I run intake if Qdrant is down?” → yes with flag |
 | Founder load ↓? | Yes — `summarize_readiness_posture.sh` + trial step [9] |
 
-**Not fixed now (documented):** `/ready` (app_main) still requires EMBED+Qdrant; deploy script still requires `QDRANT_URL`. Safest future path: optional preflight flag on deploy wrapper only.
+**Not fixed now (documented):** `/ready` (app_main) still requires EMBED+Qdrant; intake operators should use `/readyz` + support manifest. Deploy preflight fixed in P1-1.
+
+---
+
+## P1 self-critique (per batch)
+
+### P1-1 — optional Qdrant deploy preflight
+
+| Q | Answer |
+|---|--------|
+| Complexity ↓? | Yes — one deploy truth: intake SaaS ≠ vector mandatory |
+| Added complexity? | Small `_skip_qdrant_deploy_preflight` helper (documented) |
+| Risky runtime? | No — triage untouched; RAG path unchanged when QDRANT_URL set |
+| Rollback? | Single revert; unset flag |
+| Easier to explain? | Yes — “Can I deploy intake without Qdrant?” → yes via `deploy_paid_pilot.sh` |
+| Founder load ↓? | Yes |
+
+### P1-2 — demote platform blueprints
+
+| Q | Answer |
+|---|--------|
+| Complexity ↓? | Yes — PRIMARY table no longer lists investor theater |
+| Added complexity? | No — reclassification section only |
+| Risky runtime? | No |
+| Rollback? | Revert doc commit |
+| Easier to explain? | Yes — Future exploration ≠ build list |
+| Founder load ↓? | Yes |
+
+### P1-3 — archive Add-Car wave
+
+| Q | Answer |
+|---|--------|
+| Complexity ↓? | Yes — 6 active root sprint docs; ~41 Add-Car dirs archived |
+| Added complexity? | Script path updates only (7 files) |
+| Risky runtime? | No — scenario JSON preserved for regression |
+| Rollback? | `git mv` from archive |
+| Easier to explain? | Yes — product = STANDARD_SCENARIO_PACKAGE + code |
+| Founder load ↓? | Yes — less fear in `docs/sprints/` |
+
+### P1-4 — deploy/runtime messaging
+
+| Q | Answer |
+|---|--------|
+| Complexity ↓? | Yes — deploy summary shows intake vs full-stack |
+| Added complexity? | No — messaging only |
+| Risky runtime? | No |
+| Rollback? | Revert 4 files |
+| Easier to explain? | Yes — DEPLOYMENT_READINESS matches CURRENT_PRODUCT_SHAPE |
+| Founder load ↓? | Yes — no more ETF query as default post-deploy hint |
 
 ---
 
