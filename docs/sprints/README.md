@@ -20,15 +20,16 @@ Sprint documents capture discovery, execution notes, and acceptance criteria fro
 
 When implementing changes, update `docs/CURRENT_PRODUCT_SHAPE.md` and runbooks — not a new sprint doc unless explicitly requested.
 
-## Archive candidates (historical — do not delete blindly)
+## Archive (`docs/sprints/archive/`)
 
-Move to `docs/sprints/archive/` when convenient (see `COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md` § Phase 2D):
+**Batch 2 (2026-05-26):** ~90 root sprint docs + 16 historical directories moved to [`archive/`](./archive/README.md) — platform-future narratives, completed redeploy reports, superseded backbone specs. **Not deleted**; see [`archive/README.md`](./archive/README.md).
 
-- `KILL_LEGACY_DEFAULT_PATHS_SPRINT.md`
-- `PILOT_TO_REAL_SAAS_TRANSITION_SPRINT.md`
-- `LONG_HORIZON_SAAS_OPERATING_SYSTEM_SPRINT.md`
-- `backend_redeploy_*` execution report directories
-- `ROLE_C_BACKEND_DEPLOY_SMOKE_CHECK_SPRINT/`
-- `REMOTE_DEMO_ENV_REBASELINE_PRECHECK_SPRINT/`
+Still at repo root (active / recent):
 
-Active convergence sprint: [`COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md`](./COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md).
+- [`COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md`](./COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md) — convergence authority
+- [`PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md`](./PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md)
+- [`SAFE_REDUCTION_BASELINE_CHECKPOINT.md`](./SAFE_REDUCTION_BASELINE_CHECKPOINT.md)
+- [`MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md`](./MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md)
+- [`PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md`](./PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md)
+
+Continue batch-archiving stale sprints per [`docs/SIMPLIFICATION_EXECUTION_PLAN.md`](../SIMPLIFICATION_EXECUTION_PLAN.md).
