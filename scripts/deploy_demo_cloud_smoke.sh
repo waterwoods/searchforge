@@ -31,4 +31,4 @@ echo "For paid pilot: bash scripts/deploy_paid_pilot.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-exec bash "$SCRIPT_DIR/deploy_rag_demo.sh" "$@"
+exec bash "$SCRIPT_DIR/deploy_cloud_run_core.sh" "$@"

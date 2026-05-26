@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# scripts/deploy_rag_demo.sh - Shared Cloud Run deploy implementation for fiqa-api
+# scripts/deploy_cloud_run_core.sh - Shared Cloud Run deploy implementation for fiqa-api
 #
-# **Operators:** use an entry script — do not rely on posture auto-detection alone.
+# **Operators:** use an entry script — do not invoke this file directly unless you know posture.
 #   Paid broker pilot:  bash scripts/deploy_paid_pilot.sh
 #   Demo cloud smoke:   bash scripts/deploy_demo_cloud_smoke.sh
 #

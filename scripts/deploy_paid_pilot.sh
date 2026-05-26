@@ -32,4 +32,4 @@ echo "Authority: docs/CURRENT_PRODUCT_SHAPE.md"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-exec bash "$SCRIPT_DIR/deploy_rag_demo.sh" "$@"
+exec bash "$SCRIPT_DIR/deploy_cloud_run_core.sh" "$@"

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
-_DEPLOY = _REPO / "scripts" / "deploy_rag_demo.sh"
+_DEPLOY = _REPO / "scripts" / "deploy_cloud_run_core.sh"
 
 
 def _deploy_source() -> str:
@@ -50,5 +50,5 @@ def test_deploy_script_passes_intake_and_support_keys_when_set():
 
 def test_paid_pilot_wrapper_exists_and_defers_to_core():
     paid = (_REPO / "scripts" / "deploy_paid_pilot.sh").read_text(encoding="utf-8")
-    assert "deploy_rag_demo.sh" in paid
+    assert "deploy_cloud_run_core.sh" in paid
     assert "UNIFIED_INTAKE_PRODUCT_ONLY=1" in paid

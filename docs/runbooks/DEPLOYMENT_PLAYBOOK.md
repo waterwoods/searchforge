@@ -35,7 +35,7 @@
 
 ### Cloud Run runtime parity (anti-regression)
 
-Live `fiqa-api` is tuned for Unified Intake stability: **memory 1Gi**, **concurrency 30**, **max 2** instances. **Min instances** defaults to **0** in the shared deploy implementation (`scripts/deploy_rag_demo.sh`, invoked by the wrappers — cost-safe); during pilot/demo you may set **min 1** so one instance stays warm (reduces first-request cold start). Overrides go in `.env.cloudrun` (`CLOUD_RUN_MEMORY`, `CLOUD_RUN_CONCURRENCY`, `CLOUD_RUN_MIN_INSTANCES`, etc.).
+Live `fiqa-api` is tuned for Unified Intake stability: **memory 1Gi**, **concurrency 30**, **max 2** instances. **Min instances** defaults to **0** in the shared deploy implementation (`scripts/deploy_cloud_run_core.sh`, invoked by the wrappers — cost-safe); during pilot/demo you may set **min 1** so one instance stays warm (reduces first-request cold start). Overrides go in `.env.cloudrun` (`CLOUD_RUN_MEMORY`, `CLOUD_RUN_CONCURRENCY`, `CLOUD_RUN_MIN_INSTANCES`, etc.).
 
 **Pilot warm instance (reversible):** apply without redeploying the image:
 
@@ -182,7 +182,7 @@ See [KNOWN_DEPLOYMENT_GOTCHAS.md](./KNOWN_DEPLOYMENT_GOTCHAS.md) for full list. 
 - Vercel production alias may be stale
 - ALLOWED_ORIGINS must match real Vercel URL
 - **Multi-origin CORS:** Browsers send the **page origin** (e.g. a per-deploy `https://ui-<hash>-….vercel.app` link from the Vercel dashboard), not only the production alias. Put the alias **and** any deployment/preview origins you actually open in one comma-separated `ALLOWED_ORIGINS` value. After a frontend deploy, confirm the latest production deployment URL with `cd ui && vercel ls` and add it if the team uses that link.
-- **Deploy drift:** `bash scripts/deploy_rag_demo.sh` sends `--set-env-vars` as a fixed bundle from `.env.cloudrun`. If `ALLOWED_ORIGINS` is set there, it **replaces** the live value on the next full deploy—keep the list complete, or re-apply a patch with `gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472305-e2 --update-env-vars '^@^ALLOWED_ORIGINS=…'`. If `ALLOWED_ORIGINS` is omitted from that bundle, Cloud Run drops the variable and the app falls back to permissive demo CORS (`app_main.py`).
+- **Deploy drift:** `bash scripts/deploy_paid_pilot.sh` (→ `deploy_cloud_run_core.sh`) sends `--set-env-vars` as a fixed bundle from `.env.cloudrun`. If `ALLOWED_ORIGINS` is set there, it **replaces** the live value on the next full deploy—keep the list complete, or re-apply a patch with `gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472305-e2 --update-env-vars '^@^ALLOWED_ORIGINS=…'`. If `ALLOWED_ORIGINS` is omitted from that bundle, Cloud Run drops the variable and the app falls back to permissive demo CORS (`app_main.py`).
 - Local success ≠ production success
 - Browser/manual verification required for user-visible changes
 
