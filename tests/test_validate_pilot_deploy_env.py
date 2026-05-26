@@ -13,6 +13,7 @@ def _minimal_pilot_env(**overrides):
         "UNIFIED_INTAKE_DB_PRIMARY_READS": "1",
         "UNIFIED_INTAKE_JSON_CASE_WRITES": "0",
         "UNIFIED_INTAKE_JSON_READ_FALLBACK": "0",
+        "UNIFIED_INTAKE_PG_DUAL_WRITE": "0",
         "UNIFIED_INTAKE_INTAKE_API_KEY": "intake-secret-minimum-length-ok-12345",
         "UNIFIED_INTAKE_SUPPORT_API_KEY": "support-secret-minimum-length-ok-1234",
     }
