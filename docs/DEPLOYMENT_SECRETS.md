@@ -80,9 +80,11 @@ cp configs/demo.env.example .env.cloudrun
 # Edit .env.cloudrun with your values
 ```
 
-### Error: "QDRANT_URL environment variable is required"
+### Error: "QDRANT_URL is required for full-stack deploy"
 
-**Solution**: Ensure `.env.cloudrun` contains `QDRANT_URL=...` and is properly formatted (no spaces around `=`).
+**Intake SaaS (paid pilot):** Qdrant is optional. Use `bash scripts/deploy_paid_pilot.sh` (sets `UNIFIED_INTAKE_INTAKE_CORE_READINESS=1`) or export `SKIP_QDRANT_DEPLOY_PREFLIGHT=1`.
+
+**RAG / notice retrieval:** Ensure `.env.cloudrun` contains `QDRANT_URL=...` and is properly formatted (no spaces around `=`).
 
 ### Secrets Not Loading
 

@@ -586,7 +586,12 @@ if curl -sf --max-time 10 "${SERVICE_URL}/readyz" > /dev/null 2>&1; then
     READYZ_OK=true
     echo "✅ /readyz: OK"
 else
-    echo "⚠️  /readyz: FAILED (may be normal if Qdrant not ready yet)"
+    if _skip_qdrant_deploy_preflight; then
+        echo "⚠️  /readyz: FAILED — check Postgres + API keys (Qdrant optional in intake_core mode)"
+        echo "     bash scripts/summarize_readiness_posture.sh --probe '$SERVICE_URL'"
+    else
+        echo "⚠️  /readyz: FAILED (may be normal if Qdrant/embedding not ready yet)"
+    fi
 fi
 
 if [ "$LIVE_OK" = false ]; then
@@ -610,16 +615,29 @@ echo ""
 echo "📍 Service URL:"
 echo "   $SERVICE_URL"
 echo ""
+if _skip_qdrant_deploy_preflight; then
+    echo "📦 Deploy posture: intake SaaS (Postgres + API keys; Qdrant optional)"
+    echo "   Readiness: curl $SERVICE_URL/readyz  → expect intake_core when Postgres healthy"
+else
+    echo "📦 Deploy posture: full-stack (Qdrant + embedding expected for /readyz)"
+fi
+echo ""
 echo "🧪 Test Commands:"
 echo ""
 echo "   # Liveness (use on Cloud Run — /healthz may 404 at Google edge)"
 echo "   curl $SERVICE_URL/health/live"
 echo "   curl $SERVICE_URL/readyz"
+echo "   bash scripts/summarize_readiness_posture.sh --probe '$SERVICE_URL'"
 echo ""
-echo "   # Query API (example)"
-echo "   curl -X POST $SERVICE_URL/api/query \\"
-echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"question\": \"What is an ETF?\", \"top_k\": 5, \"rerank\": false}'"
+if _is_paid_pilot_posture; then
+    echo "   # Unified Intake support manifest (operator truth)"
+    echo "   curl -H 'X-Unified-Intake-Support-Key: <support-key>' $SERVICE_URL/api/inbox/support/deployment-manifest"
+else
+    echo "   # Legacy RAG query (lab path — not paid pilot product)"
+    echo "   curl -X POST $SERVICE_URL/api/query \\"
+    echo "     -H 'Content-Type: application/json' \\"
+    echo "     -d '{\"question\": \"What is an ETF?\", \"top_k\": 5, \"rerank\": false}'"
+fi
 echo ""
 echo "📊 Service Info:"
 echo "   Project: $PROJECT_ID"

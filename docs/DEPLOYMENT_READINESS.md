@@ -14,7 +14,7 @@
 |-----------|------|-------|
 | Frontend | Vercel | SPA (Vite), `ui/` directory |
 | Backend | GCP Cloud Run | fiqa_api, port 8080 |
-| Vector DB | Qdrant Cloud or local | Required for retrieval-assisted flows |
+| Vector DB | Qdrant Cloud or local | Optional for **intake SaaS** paid pilot; required for RAG/notice retrieval flows |
 
 ---
 
@@ -34,11 +34,13 @@
 
 | Variable | Required | Secret | Notes |
 |----------|----------|--------|-------|
-| `QDRANT_URL` | Yes | No | Qdrant Cloud or self-hosted URL |
-| `QDRANT_API_KEY` | Yes (Cloud) | Yes | For Qdrant Cloud; empty for self-hosted |
-| `QDRANT_COLLECTION` | Yes | No | Use `auto_insurance_demo_core` for Unified Intake |
-| `OPENAI_API_KEY` | Yes (LLM) | Yes | For inbox triage LLM; omit for rule-only |
-| `ALLOWED_ORIGINS` | Vercel | No | Comma-separated Vercel URL(s); unset = allow-all |
+| `SERVICE_RECORD_DATABASE_URL` | **Yes (paid pilot)** | Yes | Postgres case/session truth |
+| `UNIFIED_INTAKE_*` keys | **Yes (paid pilot)** | Partial | See `CURRENT_PRODUCT_SHAPE.md` — use `deploy_paid_pilot.sh` |
+| `QDRANT_URL` | No (intake SaaS) / Yes (RAG) | No | Optional when `UNIFIED_INTAKE_INTAKE_CORE_READINESS=1` (set by `deploy_paid_pilot.sh`) |
+| `QDRANT_API_KEY` | If Qdrant Cloud URL set | Yes | Omit when running intake-only without vectors |
+| `QDRANT_COLLECTION` | If QDRANT_URL set | No | Use `auto_insurance_demo_core` for notice/knowledge wedge |
+| `OPENAI_API_KEY` | Yes (LLM triage) | Yes | For inbox triage LLM; omit for rule-only local tests |
+| `ALLOWED_ORIGINS` | Vercel | No | Comma-separated Vercel URL(s); unset = allow-all (demo only) |
 
 ### Frontend (Vercel env)
 
@@ -53,7 +55,8 @@
 ```bash
 # Backend
 cp configs/demo.env.example .env.cloudrun
-# Edit .env.cloudrun: QDRANT_URL, QDRANT_API_KEY, OPENAI_API_KEY, ALLOWED_ORIGINS
+# Edit .env.cloudrun: Postgres URL, API keys, OPENAI_API_KEY, ALLOWED_ORIGINS
+# QDRANT_* optional for intake-only SaaS (deploy_paid_pilot sets intake-core readiness)
 bash scripts/deploy_paid_pilot.sh
 
 # Frontend (Vercel)

@@ -100,7 +100,11 @@ for _pf in scripts/deploy_paid_pilot.sh docs/CURRENT_PRODUCT_SHAPE.md; do
     exit 1
   fi
 done
-echo "  OK (deploy_paid_pilot.sh + CURRENT_PRODUCT_SHAPE.md)"
+if ! grep -q "INTAKE_CORE_READINESS" scripts/deploy_paid_pilot.sh 2>/dev/null; then
+  echo "  FAIL: deploy_paid_pilot.sh should set intake-core readiness (Qdrant optional)"
+  exit 1
+fi
+echo "  OK (deploy_paid_pilot.sh + CURRENT_PRODUCT_SHAPE.md; intake-core default)"
 
 echo "[8] Pilot deploy env (when .env.cloudrun is production-like)..."
 _PILOT_ENV_FILE="$REPO_DIR/.env.cloudrun"
