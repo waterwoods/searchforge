@@ -29,10 +29,9 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "   Please create .env.cloudrun from the template:"
     echo "     cp configs/demo.env.example .env.cloudrun"
     echo ""
-    echo "   Then edit .env.cloudrun and fill in your real secrets:"
-    echo "     - QDRANT_URL"
-    echo "     - QDRANT_API_KEY (if using Qdrant Cloud)"
-    echo "     - QDRANT_COLLECTION"
+    echo "   Then edit .env.cloudrun and fill in your real secrets (see PILOT ONE PATH in template):"
+    echo "     - SERVICE_RECORD_DATABASE_URL, API keys, OPENAI_API_KEY"
+    echo "     - QDRANT_* optional for intake-only deploy (intake-core readiness)"
     echo ""
     echo "   Note: .env.cloudrun is git-ignored and will not be committed."
     exit 1
@@ -57,6 +56,7 @@ _apply_deploy_entry_posture() {
             export UNIFIED_INTAKE_JSON_CASE_WRITES=0
             export UNIFIED_INTAKE_JSON_READ_FALLBACK=0
             export UNIFIED_INTAKE_PG_DUAL_WRITE=0
+            export UNIFIED_INTAKE_INTAKE_CORE_READINESS=1
             unset DEMO_MODE
             ;;
         demo_smoke)
@@ -81,6 +81,18 @@ _is_paid_pilot_posture() {
         1|true|TRUE|yes|YES|on|ON) return 0 ;;
     esac
     case "${UNIFIED_INTAKE_PRODUCT_ONLY:-0}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    esac
+    return 1
+}
+
+# Intake SaaS deploy: Qdrant preflight optional when intake-core readiness is on.
+# Override: SKIP_QDRANT_DEPLOY_PREFLIGHT=1 (same effect, explicit operator escape hatch).
+_skip_qdrant_deploy_preflight() {
+    case "${SKIP_QDRANT_DEPLOY_PREFLIGHT:-0}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    esac
+    case "${UNIFIED_INTAKE_INTAKE_CORE_READINESS:-0}" in
         1|true|TRUE|yes|YES|on|ON) return 0 ;;
     esac
     return 1
@@ -160,36 +172,32 @@ echo "✅ gcloud authenticated as: $ACTIVE_ACCOUNT"
 echo "✅ Project: $PROJECT_ID"
 echo "✅ Region: $REGION"
 
-# Check QDRANT_URL (required)
-if [ -z "${QDRANT_URL:-}" ]; then
-    echo "❌ Error: QDRANT_URL environment variable is required"
-    echo ""
-    echo "   QDRANT_URL should be set in .env.cloudrun"
-    echo "   Please edit .env.cloudrun and set:"
-    echo "     QDRANT_URL=https://your-qdrant-instance.com:6333"
-    echo ""
-    echo "   Examples:"
-    echo "     - Qdrant Cloud: https://xxx.us-east4-0.gcp.cloud.qdrant.io"
-    echo "     - Self-hosted: http://1.2.3.4:6333"
-    echo "     - Local dev: http://localhost:6333"
-    echo ""
-    echo "   See configs/demo.env.example for all required variables"
-    exit 1
-fi
+# Qdrant — required for full-stack/RAG deploy; optional for intake-core SaaS
+QDRANT_API_KEY="${QDRANT_API_KEY:-}"
+QDRANT_COLLECTION="${QDRANT_COLLECTION:-auto_insurance_demo_core}"
 
-# Validate QDRANT_URL format
-if [[ ! "$QDRANT_URL" =~ ^https?:// ]]; then
+if [ -z "${QDRANT_URL:-}" ]; then
+    if _skip_qdrant_deploy_preflight; then
+        echo "ℹ️  Intake-only deploy: QDRANT_URL not set — skipping Qdrant preflight"
+        echo "   Triage + workbench run on Postgres; notice/knowledge retrieval disabled until Qdrant is wired."
+        echo "   /readyz uses intake_core posture (UNIFIED_INTAKE_INTAKE_CORE_READINESS=1)."
+    else
+        echo "❌ Error: QDRANT_URL is required for full-stack deploy"
+        echo ""
+        echo "   For intake SaaS without vectors, set in .env.cloudrun:"
+        echo "     UNIFIED_INTAKE_INTAKE_CORE_READINESS=1"
+        echo "   Or export SKIP_QDRANT_DEPLOY_PREFLIGHT=1"
+        echo ""
+        echo "   For RAG/notice flows, set QDRANT_URL in .env.cloudrun (see configs/demo.env.example)."
+        exit 1
+    fi
+elif [[ ! "$QDRANT_URL" =~ ^https?:// ]]; then
     echo "❌ Error: QDRANT_URL must start with http:// or https://"
     exit 1
 fi
 
-# Optional Qdrant vars
-QDRANT_API_KEY="${QDRANT_API_KEY:-}"
-# Default to Unified Intake collection; override in .env.cloudrun if needed
-QDRANT_COLLECTION="${QDRANT_COLLECTION:-auto_insurance_demo_core}"
-
-# Validate Qdrant Cloud connection (if using cloud)
-if [[ "$QDRANT_URL" =~ \.cloud\.qdrant\.io ]] || [[ "$QDRANT_URL" =~ \.qdrant\.io ]]; then
+# Validate Qdrant Cloud connection (when URL is set)
+if [ -n "${QDRANT_URL:-}" ] && { [[ "$QDRANT_URL" =~ \.cloud\.qdrant\.io ]] || [[ "$QDRANT_URL" =~ \.qdrant\.io ]]; }; then
     echo "🔍 Detected Qdrant Cloud URL, validating connection..."
     
     if [ -z "$QDRANT_API_KEY" ]; then
@@ -274,12 +282,15 @@ echo ""
 echo "🚀 Deploying $SERVICE_NAME to Cloud Run..."
 echo "   Project: $PROJECT_ID"
 echo "   Region: $REGION"
-# Mask Qdrant URL (cluster ID) in output
-QDRANT_DISPLAY="${QDRANT_URL:-}"
-if [[ "$QDRANT_DISPLAY" =~ \.cloud\.qdrant\.io ]]; then
-    QDRANT_DISPLAY="https://***.cloud.qdrant.io (masked)"
+if [ -n "${QDRANT_URL:-}" ]; then
+    QDRANT_DISPLAY="${QDRANT_URL}"
+    if [[ "$QDRANT_DISPLAY" =~ \.cloud\.qdrant\.io ]]; then
+        QDRANT_DISPLAY="https://***.cloud.qdrant.io (masked)"
+    fi
+    echo "   Qdrant: ${QDRANT_DISPLAY}"
+else
+    echo "   Qdrant: (none — intake-only deploy)"
 fi
-echo "   Qdrant: ${QDRANT_DISPLAY}"
 echo ""
 
 # Build image using Cloud Build
@@ -323,8 +334,6 @@ DEBUG_TRUTH_GUARDRAILS="${DEBUG_TRUTH_GUARDRAILS:-0}"
 ADD_CAR_CONTRACT_STRICT="${ADD_CAR_CONTRACT_STRICT:-0}"
 
 ENV_VARS=(
-    "QDRANT_URL=$QDRANT_URL"
-    "QDRANT_COLLECTION=$QDRANT_COLLECTION"
     "TRANSLATION_ENABLED=1"
     "TRANSLATION_PROVIDER=argos"
     "GIT_SHA=$GIT_SHA_DEPLOY"
@@ -333,6 +342,13 @@ ENV_VARS=(
     "DEBUG_TRUTH_GUARDRAILS=$DEBUG_TRUTH_GUARDRAILS"
     "ADD_CAR_CONTRACT_STRICT=$ADD_CAR_CONTRACT_STRICT"
 )
+
+if [ -n "${QDRANT_URL:-}" ]; then
+    ENV_VARS+=(
+        "QDRANT_URL=$QDRANT_URL"
+        "QDRANT_COLLECTION=$QDRANT_COLLECTION"
+    )
+fi
 
 # Paid pilot: product-only + PG-primary defaults; DEMO_MODE forbidden (validator enforces).
 # Legacy demo cloud deploy: relaxed readiness via DEMO_MODE=true.
@@ -353,6 +369,11 @@ if _is_paid_pilot_posture; then
         "UNIFIED_INTAKE_JSON_READ_FALLBACK=$UNIFIED_INTAKE_JSON_READ_FALLBACK"
         "UNIFIED_INTAKE_PG_DUAL_WRITE=$UNIFIED_INTAKE_PG_DUAL_WRITE"
     )
+    if _skip_qdrant_deploy_preflight; then
+        ENV_VARS+=("UNIFIED_INTAKE_INTAKE_CORE_READINESS=1")
+    elif [ -n "${UNIFIED_INTAKE_INTAKE_CORE_READINESS:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_INTAKE_CORE_READINESS=$UNIFIED_INTAKE_INTAKE_CORE_READINESS")
+    fi
 else
     ENV_VARS+=("DEMO_MODE=${DEMO_MODE:-true}")
 fi

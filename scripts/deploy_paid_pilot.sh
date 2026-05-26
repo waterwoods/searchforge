@@ -23,11 +23,13 @@ export UNIFIED_INTAKE_DB_PRIMARY_WRITES=1
 export UNIFIED_INTAKE_JSON_CASE_WRITES=0
 export UNIFIED_INTAKE_JSON_READ_FALLBACK=0
 export UNIFIED_INTAKE_PG_DUAL_WRITE=0
+export UNIFIED_INTAKE_INTAKE_CORE_READINESS=1
 unset DEMO_MODE
 export DEPLOY_ENTRY=paid_pilot
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Paid-pilot Cloud Run deploy (product_only + Postgres-primary, no DEMO_MODE)"
+echo "Intake-core readiness ON — Qdrant optional (triage does not require vectors)"
 echo "Authority: docs/CURRENT_PRODUCT_SHAPE.md"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

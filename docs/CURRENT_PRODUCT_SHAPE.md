@@ -124,7 +124,7 @@ bash scripts/summarize_readiness_posture.sh
 bash scripts/summarize_readiness_posture.sh --probe http://127.0.0.1:8001
 ```
 
-**Paid pilot:** do not use `DEMO_MODE` on `ENV=prod`. Use **intake-core readiness** when vectors are down but Postgres + API keys are healthy. Cloud Run deploy still passes `QDRANT_URL` (deploy script); triage does not depend on it.
+**Paid pilot:** do not use `DEMO_MODE` on `ENV=prod`. Use **intake-core readiness** when vectors are down but Postgres + API keys are healthy. `deploy_paid_pilot.sh` sets `UNIFIED_INTAKE_INTAKE_CORE_READINESS=1` — **Qdrant is optional** for deploy and `/readyz`; add `QDRANT_*` only when notice/knowledge retrieval is needed.
 
 Default shell Node 20 will fail the UI build — run the check script before Vercel/local builds.
 

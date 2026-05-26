@@ -167,6 +167,10 @@ def main() -> int:
     print(f"OK pilot deploy env ({label})")
     if _truthy(env.get("UNIFIED_INTAKE_PRODUCT_ONLY")):
         print("  product_only=1")
+    if _truthy(env.get("UNIFIED_INTAKE_INTAKE_CORE_READINESS")) or _truthy(
+        os.environ.get("UNIFIED_INTAKE_INTAKE_CORE_READINESS")
+    ):
+        print("  intake_core_readiness=1 (Qdrant optional for deploy + /readyz)")
     return 0
 
 
