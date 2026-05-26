@@ -203,6 +203,49 @@ def deployment_identity_truth() -> dict[str, Any]:
     }
 
 
+_INTAKE_CORE_READINESS_KEY: Final = "UNIFIED_INTAKE_INTAKE_CORE_READINESS"
+
+
+def intake_core_readiness_enabled() -> bool:
+    """
+    Paid-pilot intake SaaS: /readyz may treat Qdrant/embedding as optional when set.
+
+    Requires UNIFIED_INTAKE_PRODUCT_ONLY=1 so platform_full lab stacks stay strict.
+    Not a substitute for DEMO_MODE on demo-cloud smoke deploys.
+    """
+
+    raw = (os.environ.get(_INTAKE_CORE_READINESS_KEY) or "").strip().lower()
+    if raw not in _DEMO_MODE_KEYS:
+        return False
+    return is_unified_intake_product_only()
+
+
+def intake_readiness_posture_dict() -> dict[str, Any]:
+    """Operator summary: intake-core vs full-stack readiness (no secrets)."""
+
+    demo_on = (os.environ.get("DEMO_MODE") or "").strip().lower() in _DEMO_MODE_KEYS
+    intake_core = intake_core_readiness_enabled()
+    vectors_optional = demo_on or intake_core
+    if vectors_optional:
+        mode = "intake_core"
+    else:
+        mode = "full_stack"
+    return {
+        "readiness_mode": mode,
+        "demo_mode": demo_on,
+        "intake_core_readiness": intake_core,
+        "product_only": is_unified_intake_product_only(),
+        "qdrant_blocks_readyz": not vectors_optional,
+        "embedding_blocks_readyz": not vectors_optional,
+        "intake_triage_needs_qdrant": False,
+        "operator_note": (
+            "Inbox triage is LLM/rule-based; Qdrant is for notice/knowledge wedge only."
+            if vectors_optional
+            else "/readyz requires Qdrant + embedding unless DEMO_MODE or intake_core_readiness."
+        ),
+    }
+
+
 def operator_runtime_hints() -> dict[str, Any]:
     """Non-secret env flags for deployment-manifest / health (drift detection, not security).
 
@@ -231,6 +274,8 @@ def operator_runtime_hints() -> dict[str, Any]:
         "env_equals_prod": env_raw == "prod",
         "fast_startup": fast_raw in _DEMO_MODE_KEYS,
         "unified_intake_product_only": is_unified_intake_product_only(),
+        "intake_core_readiness": intake_core_readiness_enabled(),
+        "intake_readiness_posture": intake_readiness_posture_dict(),
         "unified_intake_allow_inmemory_sessions_for_tests": inmem_allowed,
         "operator_warnings": deployment_operator_warnings(),
         "deployment_identity": deployment_identity_truth(),

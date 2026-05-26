@@ -150,3 +150,23 @@ def test_pilot_safe_default_profile_v1_keys():
     assert p["UNIFIED_INTAKE_DB_PRIMARY_WRITES"] == "1"
     assert p["UNIFIED_INTAKE_JSON_CASE_WRITES"] == "0"
     assert p["DEMO_MODE"] == "0"
+
+
+def test_intake_core_readiness_requires_product_only(monkeypatch):
+    from services.fiqa_api.deployment_profile import (
+        intake_core_readiness_enabled,
+        intake_readiness_posture_dict,
+    )
+
+    monkeypatch.delenv("UNIFIED_INTAKE_PRODUCT_ONLY", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_INTAKE_CORE_READINESS", raising=False)
+    assert intake_core_readiness_enabled() is False
+
+    monkeypatch.setenv("UNIFIED_INTAKE_INTAKE_CORE_READINESS", "1")
+    assert intake_core_readiness_enabled() is False
+
+    monkeypatch.setenv("UNIFIED_INTAKE_PRODUCT_ONLY", "1")
+    assert intake_core_readiness_enabled() is True
+    posture = intake_readiness_posture_dict()
+    assert posture["readiness_mode"] == "intake_core"
+    assert posture["qdrant_blocks_readyz"] is False

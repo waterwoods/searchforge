@@ -17,7 +17,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from services.fiqa_api.deployment_profile import pilot_safe_default_profile_v1  # noqa: E402
+from services.fiqa_api.deployment_profile import (  # noqa: E402
+    intake_readiness_posture_dict,
+    pilot_safe_default_profile_v1,
+)
 
 
 def _truthy(raw: str | None) -> bool:
@@ -133,6 +136,10 @@ def main() -> int:
     if args.show_profile:
         for k, v in pilot_safe_default_profile_v1().items():
             print(f"{k}={v}")
+        print("")
+        print("# intake_readiness_posture (Qdrant optional when intake_core_readiness + product_only)")
+        for k, v in intake_readiness_posture_dict().items():
+            print(f"# {k}={v!r}")
         return 0
 
     if args.env_file.exists():

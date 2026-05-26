@@ -18,6 +18,19 @@ logger = logging.getLogger(__name__)
 # Demo mode flag - makes embedding_model optional for retrieval-only mode
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
 
+
+def _vectors_optional_for_intake() -> bool:
+    """Qdrant/embedding optional when demo cloud or paid-pilot intake-core readiness."""
+
+    if DEMO_MODE:
+        return True
+    try:
+        from services.fiqa_api.deployment_profile import intake_core_readiness_enabled
+
+        return intake_core_readiness_enabled()
+    except Exception:
+        return False
+
 # ========================================
 # Router Setup
 # ========================================
@@ -108,24 +121,22 @@ async def readiness_check():
         clients_status["gpu_client_connected"] = False
         gpu_client_connected = False
     
+    vectors_optional = _vectors_optional_for_intake()
+
     # Define core dependencies (required for readiness)
     core_keys = []
-    # Qdrant: required for RAG/search; optional in DEMO_MODE (inbox triage is rule-based/LLM, no Qdrant)
-    if not DEMO_MODE:
+    # Qdrant: required for RAG/search; optional for intake-core (triage is rule-based/LLM)
+    if not vectors_optional:
         core_keys.append("qdrant_connected")
     elif not qdrant_ok:
-        logger.info("[READYZ] Demo mode: qdrant not connected (inbox triage does not require Qdrant)")
+        logger.info("[READYZ] Intake-core: qdrant not connected (inbox triage does not require Qdrant)")
 
-    # Embedding model is required unless DEMO_MODE is enabled (retrieval-only mode)
-    if not DEMO_MODE:
+    if not vectors_optional:
         core_keys.append("embedding_model")
-    else:
-        # In demo mode, embedding_model is optional (retrieval-only)
-        if not clients_status.get("embedding_model", False):
-            logger.info("[READYZ] Demo mode: embedding_model not ready (retrieval-only mode)")
+    elif not clients_status.get("embedding_model", False):
+        logger.info("[READYZ] Intake-core: embedding_model not ready (retrieval optional)")
     
-    # Add GPU client to core if configured (not None). In DEMO_MODE, intake path does not need GPU.
-    if not DEMO_MODE and clients_status.get("gpu_client_connected") is not None:
+    if not vectors_optional and clients_status.get("gpu_client_connected") is not None:
         core_keys.append("gpu_client_connected")
     
     # Compute core readiness based on core dependencies only
@@ -133,8 +144,7 @@ async def readiness_check():
     
     # Log warnings for optional dependency failures (non-blocking)
     optional_keys = ["redis_connected", "openai"]
-    if DEMO_MODE:
-        # In demo mode, embedding_model is also optional
+    if vectors_optional:
         optional_keys.append("embedding_model")
     
     for k in optional_keys:
@@ -146,11 +156,8 @@ async def readiness_check():
     ok = core_ready
     status = "ready" if core_ready else "not_ready"
 
-    # DEMO_MODE (intake-only): intake path does not require Qdrant/embedding.
-    # When DEMO_MODE=true and no core deps block, intake is ready.
-    intake_path_ready = DEMO_MODE and (len(core_keys) == 0 or core_ready)
-    if DEMO_MODE and not ok and len(core_keys) == 0:
-        # Bulletproof: DEMO_MODE + no core deps => intake ready
+    intake_path_ready = vectors_optional and (len(core_keys) == 0 or core_ready)
+    if vectors_optional and not ok and len(core_keys) == 0:
         ok = True
         clients_ready = True
         status = "ready"
@@ -164,9 +171,20 @@ async def readiness_check():
         "service": "app_main",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    if DEMO_MODE:
-        payload["demo_mode"] = True
+    if vectors_optional:
+        if DEMO_MODE:
+            payload["demo_mode"] = True
+        try:
+            from services.fiqa_api.deployment_profile import intake_core_readiness_enabled
+
+            if intake_core_readiness_enabled():
+                payload["intake_core_readiness"] = True
+        except Exception:
+            pass
+        payload["readiness_mode"] = "intake_core"
         payload["intake_path_ready"] = intake_path_ready
+    else:
+        payload["readiness_mode"] = "full_stack"
     return payload
 
 
