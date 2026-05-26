@@ -14,6 +14,50 @@ from services.fiqa_api.db.service_record_settings import service_record_database
 
 logger = logging.getLogger(__name__)
 
+# First-connection DDL: promoted office ownership column (nullable, indexed).
+_OFFICE_OWNER_SCHEMA_READY = False
+
+
+def _ensure_office_owner_org_schema(cur: Any) -> None:
+    """Add ``office_owner_org_id`` + index when missing; backfill from ``extra.asserted_org_id``."""
+
+    global _OFFICE_OWNER_SCHEMA_READY
+    if _OFFICE_OWNER_SCHEMA_READY:
+        return
+    cur.execute(
+        """
+        ALTER TABLE service_records
+        ADD COLUMN IF NOT EXISTS office_owner_org_id TEXT
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_service_records_office_owner_updated
+        ON service_records (office_owner_org_id, updated_at DESC)
+        """
+    )
+    cur.execute(
+        """
+        UPDATE service_records sr
+        SET office_owner_org_id = TRIM(sr.extra->>'asserted_org_id')
+        WHERE (office_owner_org_id IS NULL OR TRIM(office_owner_org_id) = '')
+          AND sr.extra ? 'asserted_org_id'
+          AND TRIM(sr.extra->>'asserted_org_id') <> ''
+        """
+    )
+    _OFFICE_OWNER_SCHEMA_READY = True
+    logger.info(
+        "service_records office_owner_org_id schema verified (IFF adds column; backfill from extra)"
+    )
+
+
+def _office_owner_org_id_from_case(case: dict[str, Any]) -> str | None:
+    raw = case.get("asserted_org_id")
+    if raw is None:
+        return None
+    s = str(raw).strip()[:256]
+    return s or None
+
 
 @contextmanager
 def service_record_connection() -> Generator[Any, None, None]:
@@ -33,6 +77,21 @@ def _str(v: Any, default: str = "") -> str:
     if v is None:
         return default
     return str(v).strip()
+
+
+def _hydrate_case_asserted_org_id(
+    case: dict[str, Any],
+    office_owner_col: Any,
+    extra: dict[str, Any],
+) -> None:
+    """Prefer promoted ``office_owner_org_id`` column; fall back to legacy ``extra.asserted_org_id``."""
+
+    col = _str(office_owner_col)
+    if col:
+        case["asserted_org_id"] = col[:256]
+        return
+    if extra.get("asserted_org_id"):
+        case["asserted_org_id"] = str(extra["asserted_org_id"]).strip()[:256]
 
 
 def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
@@ -88,6 +147,7 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "formal_submitted_at",
         "workbench_test",
         "workbench_archived",
+        "asserted_org_id",
     )
     return {k: case[k] for k in keys if k in case}
 
@@ -125,9 +185,12 @@ def persist_new_case(case: dict[str, Any]) -> None:
     now_created = _str(case.get("created_at"))
     now_updated = _str(case.get("updated_at")) or now_created
 
+    oid_col = _office_owner_org_id_from_case(case)
+
     with service_record_connection() as conn:
         with conn.transaction():
             with conn.cursor() as cur:
+                _ensure_office_owner_org_schema(cur)
                 cur.execute(
                     """
                     INSERT INTO service_records (
@@ -135,13 +198,15 @@ def persist_new_case(case: dict[str, Any]) -> None:
                         case_status, lifecycle_status, waiting_on, next_contact_by,
                         current_owner, current_next_action,
                         customer_name, customer_phone, customer_email, policy_number, contact_note,
-                        origin_session_id, created_at, updated_at, closed_at, extra
+                        origin_session_id, created_at, updated_at, closed_at,
+                        office_owner_org_id, extra
                     ) VALUES (
                         %(record_id)s, %(client_id)s, %(intake_channel)s, %(issue_category)s, %(title_summary)s,
                         %(case_status)s, %(lifecycle_status)s, %(waiting_on)s, %(next_contact_by)s,
                         %(current_owner)s, %(current_next_action)s,
                         %(customer_name)s, %(customer_phone)s, %(customer_email)s, %(policy_number)s, %(contact_note)s,
-                        %(origin_session_id)s, %(created_at)s, %(updated_at)s, %(closed_at)s, %(extra)s
+                        %(origin_session_id)s, %(created_at)s, %(updated_at)s, %(closed_at)s,
+                        %(office_owner_org_id)s, %(extra)s
                     )
                     """,
                     {
@@ -165,6 +230,7 @@ def persist_new_case(case: dict[str, Any]) -> None:
                         "created_at": now_created,
                         "updated_at": now_updated,
                         "closed_at": None,
+                        "office_owner_org_id": oid_col,
                         "extra": Json(extra),
                     },
                 )
@@ -253,9 +319,12 @@ def persist_case_append(case: dict[str, Any]) -> None:
     now_updated = _str(case.get("updated_at"))
     now_created = _str(case.get("created_at")) or now_updated
 
+    oid_incoming = _office_owner_org_id_from_case(case) or ""
+
     with service_record_connection() as conn:
         with conn.transaction():
             with conn.cursor() as cur:
+                _ensure_office_owner_org_schema(cur)
                 cur.execute(
                     """
                     UPDATE service_records SET
@@ -273,6 +342,10 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         policy_number = %(policy_number)s,
                         contact_note = %(contact_note)s,
                         updated_at = %(updated_at)s,
+                        office_owner_org_id = COALESCE(
+                            NULLIF(TRIM(%(office_owner_patch)s), ''),
+                            office_owner_org_id
+                        ),
                         extra = %(extra)s
                     WHERE record_id = %(record_id)s
                     """,
@@ -292,6 +365,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         "policy_number": _str(case.get("policy_number")),
                         "contact_note": _str(case.get("contact_note")),
                         "updated_at": now_updated,
+                        "office_owner_patch": oid_incoming,
                         "extra": Json(extra),
                     },
                 )
@@ -498,6 +572,7 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
 
     with service_record_connection() as conn:
         with conn.cursor() as cur:
+            _ensure_office_owner_org_schema(cur)
             cur.execute(
                 """
                 SELECT
@@ -518,6 +593,7 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
                     sr.origin_session_id,
                     sr.created_at,
                     sr.updated_at,
+                    sr.office_owner_org_id,
                     sr.extra,
                     srd.structured_payload,
                     srd.quote_readiness
@@ -554,9 +630,10 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
             )
             state_rows = cur.fetchall()
 
-    extra = row[17] if isinstance(row[17], dict) else {}
-    structured = row[18] if isinstance(row[18], dict) else {}
-    q_readiness_col = _str(row[19])
+    office_owner_col = row[17]
+    extra = row[18] if isinstance(row[18], dict) else {}
+    structured = row[19] if isinstance(row[19], dict) else {}
+    q_readiness_col = _str(row[20])
 
     case: dict[str, Any] = {}
     for k, v in structured.items():
@@ -596,6 +673,7 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
         case["workbench_test"] = bool(extra.get("workbench_test"))
     if "workbench_archived" in extra:
         case["workbench_archived"] = bool(extra.get("workbench_archived"))
+    _hydrate_case_asserted_org_id(case, office_owner_col, extra)
 
     if q_readiness_col:
         case["quote_ready_status"] = q_readiness_col
@@ -658,10 +736,73 @@ def list_record_ids_recent(limit: int, offset: int = 0) -> list[str]:
             return [str(r[0]) for r in cur.fetchall()]
 
 
+_PG_OFFICE_LIST_FILTER = """
+(
+  (
+    NULLIF(TRIM(COALESCE(sr.office_owner_org_id, sr.extra->>'asserted_org_id')), '') IS NULL
+    AND NOT %(strict)s
+  )
+  OR NULLIF(TRIM(COALESCE(sr.office_owner_org_id, sr.extra->>'asserted_org_id')), '') = %(req_org)s
+)
+"""
+
+
+def count_service_records_office_scoped(req_org: str, strict_exclude_unstamped: bool) -> int:
+    """Row count for GET /cases under office enforcement (matches :func:`case_visible_in_office_list`)."""
+
+    org = (req_org or "").strip()[:256]
+    if not org:
+        return 0
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_office_owner_org_schema(cur)
+            cur.execute(
+                f"SELECT COUNT(*) FROM service_records sr WHERE {_PG_OFFICE_LIST_FILTER}",
+                {"strict": strict_exclude_unstamped, "req_org": org},
+            )
+            row = cur.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+def list_record_ids_office_scoped(
+    req_org: str,
+    strict_exclude_unstamped: bool,
+    limit: int,
+    offset: int,
+) -> list[str]:
+    """Indexed-path record ids for office-scoped workbench lists (newest first)."""
+
+    org = (req_org or "").strip()[:256]
+    if not org:
+        return []
+    safe = max(1, min(int(limit or 8), 500))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_office_owner_org_schema(cur)
+            cur.execute(
+                f"""
+                SELECT sr.record_id FROM service_records sr
+                WHERE {_PG_OFFICE_LIST_FILTER}
+                ORDER BY sr.updated_at DESC
+                LIMIT %(lim)s OFFSET %(off)s
+                """,
+                {
+                    "strict": strict_exclude_unstamped,
+                    "req_org": org,
+                    "lim": safe,
+                    "off": safe_offset,
+                },
+            )
+            return [str(r[0]) for r in cur.fetchall()]
+
+
 def list_binding_stub_rows_recent(limit: int, offset: int = 0) -> list[dict[str, Any]]:
     """
-    One round-trip: rows shaped for :func:`resolve_active_case` / :func:`is_case_open_for_binding`
-    without loading messages, state history, or full structured hydration per row.
+    One round-trip: rows shaped for :func:`resolve_active_case` / :func:`is_case_open_for_binding`,
+    with the same **triage stub** payload as :func:`load_case_triage_stub_from_postgres` (join +
+    structured fields, **no** ``record_messages`` / ``state_history``). Enables the inbox route to
+    reuse one row as ``existing_case`` and skip a duplicate stub read for the same ``case_id``.
     """
     from psycopg.rows import dict_row
 
@@ -670,37 +811,65 @@ def list_binding_stub_rows_recent(limit: int, offset: int = 0) -> list[dict[str,
     out: list[dict[str, Any]] = []
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
+            _ensure_office_owner_org_schema(cur)
             cur.execute(
-                """
-                SELECT
-                    sr.record_id,
-                    sr.case_status,
-                    sr.extra,
-                    srd.structured_payload
-                FROM service_records sr
-                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+                _PG_LIST_SELECT
+                + """
                 ORDER BY sr.updated_at DESC
                 LIMIT %s OFFSET %s
                 """,
                 (safe, safe_offset),
             )
-            for r in cur.fetchall():
-                rid = _str(r.get("record_id"))
-                if not rid:
-                    continue
-                extra = r.get("extra") if isinstance(r.get("extra"), dict) else {}
-                sp = r.get("structured_payload") if isinstance(r.get("structured_payload"), dict) else {}
-                vk = sp.get("vehicle_key")
-                if vk is None and isinstance(extra, dict):
-                    vk = extra.get("vehicle_key")
-                out.append(
-                    {
-                        "case_id": rid,
-                        "case_status": _str(r.get("case_status") or "new") or "new",
-                        "workbench_archived": bool(extra.get("workbench_archived")),
-                        "vehicle_key": vk,
-                    }
-                )
+            for row in cur.fetchall():
+                case = _case_dict_from_pg_join_dict_row(row)
+                case["source_text"] = ""
+                rid = str(case.get("case_id") or "").strip()
+                if rid:
+                    out.append(case)
+    return out
+
+
+def list_binding_stub_rows_office_scoped(
+    req_org: str,
+    strict_exclude_unstamped: bool,
+    limit: int,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """
+    Same stub shape as :func:`list_binding_stub_rows_recent`, filtered by office ownership hint
+    (matches :func:`case_visible_in_office_list` / GET /cases enforcement semantics).
+    """
+    from psycopg.rows import dict_row
+
+    org = (req_org or "").strip()[:256]
+    if not org:
+        return []
+    safe = max(1, min(int(limit or 8), 500))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+    out: list[dict[str, Any]] = []
+    with service_record_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            _ensure_office_owner_org_schema(cur)
+            cur.execute(
+                _PG_LIST_SELECT
+                + f"""
+                WHERE {_PG_OFFICE_LIST_FILTER}
+                ORDER BY sr.updated_at DESC
+                LIMIT %(lim)s OFFSET %(off)s
+                """,
+                {
+                    "strict": strict_exclude_unstamped,
+                    "req_org": org,
+                    "lim": safe,
+                    "off": safe_offset,
+                },
+            )
+            for row in cur.fetchall():
+                case = _case_dict_from_pg_join_dict_row(row)
+                case["source_text"] = ""
+                rid = str(case.get("case_id") or "").strip()
+                if rid:
+                    out.append(case)
     return out
 
 
@@ -748,6 +917,7 @@ def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
         case["workbench_test"] = bool(extra.get("workbench_test"))
     if "workbench_archived" in extra:
         case["workbench_archived"] = bool(extra.get("workbench_archived"))
+    _hydrate_case_asserted_org_id(case, row.get("office_owner_org_id"), extra)
 
     if q_readiness_col:
         case["quote_ready_status"] = q_readiness_col
@@ -778,6 +948,7 @@ _PG_LIST_SELECT = """
                     sr.origin_session_id,
                     sr.created_at,
                     sr.updated_at,
+                    sr.office_owner_org_id,
                     sr.extra,
                     srd.structured_payload,
                     srd.quote_readiness
@@ -800,6 +971,7 @@ def load_workbench_queue_cases_from_postgres(record_ids: list[str]) -> list[dict
 
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
+            _ensure_office_owner_org_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT + " WHERE sr.record_id = ANY(%s)",
                 (ids,),
@@ -843,6 +1015,7 @@ def load_case_triage_stub_from_postgres(record_id: str) -> dict[str, Any] | None
         return None
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
+            _ensure_office_owner_org_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT + " WHERE sr.record_id = %s",
                 (rid,),

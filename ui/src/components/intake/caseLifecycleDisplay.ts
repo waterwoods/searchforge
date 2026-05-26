@@ -1,8 +1,9 @@
 /**
- * Primary user-facing progress axis: API `case_lifecycle` (see services/fiqa_api/inbox_triage/case_lifecycle.py).
- * Falls back to client-side derivation when `case_lifecycle` is absent (older payloads).
+ * Primary user-facing progress axis: API `case_lifecycle` (see `services/fiqa_api/inbox_triage/case_lifecycle.py`
+ * and `routes/inbox_triage._attach_case_lifecycle`, which may overlay `formal_submitted_at` from persisted case).
+ * Falls back to client-side derivation when `case_lifecycle` is absent or non-canonical (older payloads).
  */
-import type { TriageResult } from '../../api/inboxTriage';
+import type { TriageResultCore } from '../../api/triageResultContract';
 
 export type CaseLifecycle = 'collecting' | 'almost_ready' | 'ready_for_handoff' | 'submitted';
 
@@ -14,7 +15,13 @@ function str(x: unknown): string {
 
 /** Mirrors backend `_derive_case_lifecycle` for offline / legacy responses. */
 export function resolveCaseLifecycle(
-    t: Pick<TriageResult, 'case_lifecycle' | 'formal_submitted_at' | 'triage_mode' | 'handoff_ready' | 'quote_ready_status'> | null | undefined,
+    t:
+        | Pick<
+              TriageResultCore,
+              'case_lifecycle' | 'formal_submitted_at' | 'triage_mode' | 'handoff_ready' | 'quote_ready_status'
+          >
+        | null
+        | undefined,
 ): CaseLifecycle {
     if (!t) return 'collecting';
     const direct = str(t.case_lifecycle);
@@ -58,7 +65,7 @@ export function caseLifecycleTagColor(cl: CaseLifecycle): string {
 }
 
 /** Formal submit CTA: derived axis + legacy `lifecycle_status` for older servers. */
-export function isAddCarReadyForFormalSubmit(t: TriageResult | undefined | null): boolean {
+export function isAddCarReadyForFormalSubmit(t: TriageResultCore | undefined | null): boolean {
     if (!t) return false;
     if (resolveCaseLifecycle(t) === 'ready_for_handoff') return true;
     return t.lifecycle_status === 'handoff_pending';

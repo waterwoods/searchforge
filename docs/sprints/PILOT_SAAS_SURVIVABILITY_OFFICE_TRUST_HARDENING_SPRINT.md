@@ -12,8 +12,9 @@
 | Item | Value |
 |------|--------|
 | Branch | `sprint/pilot-saas-survivability-office-trust-hardening` |
-| Working tree | **Dirty** — prior sprint WIP on inbox/session/UI may coexist; **sprint-owned commits** should isolate only survivability doc + deployment hints + tests/smoke listed under Implementation |
-| Stashes | Multiple historical stashes present (`git stash list`) — do not pop blindly |
+| Snapshot date | **2026-05-10** |
+| Working tree | **Dirty** — tracked edits across intake routes, session/case repos, UI contracts, `configs/demo.env.example`, `trial_readiness_check.sh`, plus **many untracked** docs/scripts under `docs/sprints/`, `results/`, `services/fiqa_api/security/`, etc. **Treat as pre-existing WIP**; this sprint’s **authority** is this SSOT + explicit survivability commits called out in Phase 4. |
+| Stashes | Multiple historical stashes (`git stash list`) — do not pop blindly |
 
 Operators must not assume a clean tree without checking `git status`.
 
@@ -27,7 +28,7 @@ Operators must not assume a clean tree without checking `git status`.
 - **Support export gate:** `UNIFIED_INTAKE_SUPPORT_API_KEY` optional; when set, support routes require header or Bearer (`security/support_export_gate.py`).
 - **Tenant header:** `X-Org-Id` captured as **client assertion** only (`security/request_identity.py`); no server-issued tenant authority.
 - **Persistence:** Cases/sessions may be JSON files, Postgres, or mixed per `service_record_settings.py` flags; production-like mode disables JSON case reads as fallback when rules apply.
-- **Health:** `GET /health` returns phase, `unified_intake_case_persistence` report, `deployment_profile` (product-only flag, schema epoch, auth posture, tenant truth, operator hints).
+- **Health:** `GET /health` returns phase, `unified_intake_case_persistence` report, `deployment_profile` (product-only flag, schema epoch, auth posture, intake perimeter, **office ownership posture**, tenant truth, operator hints including **deployment_identity** labels).
 - **Readiness:** `/health/ready`, `/ready` tie to artifacts + route probes + embed/Qdrant where applicable.
 - **Analytics:** best-effort events (`minimal_events`, funnel helpers); not a billing or audit system.
 
@@ -40,7 +41,8 @@ Operators must not assume a clean tree without checking `git status`.
 - **Product-only:** `UNIFIED_INTAKE_PRODUCT_ONLY=1` shrinks mounted routers; inline platform routes documented as not registered in that profile (`deployment_profile.py`).
 - **CORS:** Wrong `ALLOWED_ORIGINS` → browser “network error” with no obvious API 500 — deployment truth lives in Cloud Run env + Vercel build-time `VITE_API_BASE_URL`.
 - **Node/Vite:** UI `package.json` requires **Node ≥20.19 or ≥22.12** (Vite 7). Default PATH Node **20.18.x fails** build — use e.g. `PATH=$HOME/.nvm/versions/node/v22.22.0/bin:$PATH` before `npm run build`.
-- **Operator hints (NEW this sprint):** `operator_runtime_hints()` exposes raw `ENV`/`DEMO_MODE` labels, in-memory session test flag, and **`operator_warnings`** codes for contradictory posture (`deployment_profile.py`).
+- **Operator hints:** `operator_runtime_hints()` exposes raw `ENV`/`DEMO_MODE` labels, in-memory session test flag, **`operator_warnings`** codes for contradictory posture, and **`deployment_identity`** — best-effort `K_SERVICE` / `K_REVISION` / `K_CONFIGURATION` (Cloud Run) plus optional `GIT_SHA`/`COMMIT_SHA`/`SOURCE_VERSION`/`VERCEL_GIT_COMMIT_SHA` (**not tamper-evident provenance**; semantics string on payload).
+- **`GET /health` office block:** `deployment_profile.office_ownership` duplicates `office_ownership_posture_dict()` so operators need not hit support routes for enforcement semantics.
 
 ---
 
@@ -110,6 +112,7 @@ Operators must not assume a clean tree without checking `git status`.
 | Manual Cloud Run env not in `demo.env.example` | Mystery flags after redeploy | Diff describe vs template |
 | `ENV=prod` + `DEMO_MODE` truthy | Confusing metrics / operator narrative | **`operator_warnings`** `env_prod_with_demo_mode_truthy_v1` |
 | Prod-like without DB URL | Cases/sessions unusable or wrong store | **`production_like_missing_service_record_database_url_v1`** |
+| Office enforcement + prod-like + no DB URL | Office rules imply shared persistent truth but runtime has no Postgres — multi-instance / continuity hazard | **`office_enforcement_on_without_service_record_database_url_multi_instance_unsafe_v1`** |
 | In-memory session flag + DB URL | Accidental test posture in shared env | `inmemory_sessions_flag_on_while_db_url_configured_v1` |
 | Vercel API URL ≠ Cloud Run URL | Silent frontend failures | `/health/live` compare |
 | Missing support key in prod-like | Open reconnaissance on support routes | `production_support_export_risk` |
@@ -362,30 +365,36 @@ Operators must not assume a clean tree without checking `git status`.
 | Change | Rollback | Purpose |
 |--------|----------|---------|
 | `deployment_operator_warnings()` + extended `operator_runtime_hints()` | revert `deployment_profile.py` | Surface ENV/DEMO contradictions, prod-like missing DB URL, in-memory session flag hazards — deployment truth & drift detection |
-| `tests/test_deployment_profile.py` | revert | Lock hints + warnings shape |
+| `deployment_identity_truth()` nested under `operator_runtime_hints["deployment_identity"]` | revert `deployment_profile.py` | Faster “which revision?” answers on tickets (Cloud Run / optional CI env vars); explicit non-provenance semantics |
+| `office_enforcement_on_without_service_record_database_url_multi_instance_unsafe_v1` warning | revert `deployment_profile.py` | Continuity honesty when enforcement expects durable shared case store |
+| `GET /health` → `deployment_profile.office_ownership` | revert `app_main.py` | Support-survivable glance at enforcement posture without authenticated manifest |
+| `configs/demo.env.example` pointer to this SSOT under office section | revert line | Single doc anchor for operators |
+| `tests/test_deployment_profile.py` | revert | Lock hints, warnings, deployment_identity, office_ownership on `/health` |
 | `tests/test_support_export_gate.py` — assert `operator_warnings` list on manifest | revert | Manifest contract smoke via pytest |
-| `scripts/support_deployment_manifest_smoke.py` — require `operator_warnings` list | revert | Operator script parity with `/health` |
+| `scripts/support_deployment_manifest_smoke.py` — require `operator_warnings`, `deployment_identity`, `/health` `office_ownership` | revert | Operator script parity |
 
 **Explicitly NOT shipped:** RBAC/SSO/RLS/billing/event bus/microservices.
 
 ---
 
-## PHASE 5 — VALIDATION RECORD (2026-05-09 run)
+## PHASE 5 — VALIDATION RECORD
+
+Last automated pass (**2026-05-10**, branch `sprint/pilot-saas-survivability-office-trust-hardening`).
 
 | Check | Result |
 |-------|--------|
-| `python -m compileall` (touched modules) | PASS |
-| Targeted pytest (`deployment_profile`, `support_export_gate`, `case_office_access`, `intake_api_gate`) | PASS |
-| Full `pytest` | PASS (1 skipped; DeprecationWarning swig noise) |
-| `bash scripts/guardrail_inbox_triage.sh` | PASS |
-| `PYTHONPATH=. python3 scripts/run_full_regression.py` | PASS (`http_p95_ms` ~4511 &lt; 6000; wrong_vehicle_related 0) |
-| Support/export | Covered by `tests/test_support_export_gate.py` + `test_case_office_access.py` (manifest routes); live `support_deployment_manifest_smoke.py` needs server |
-| Office continuity / wrong-office | `tests/test_case_office_access.py` |
-| Replay lineage | `test_support_export_gate` replay semantics |
-| Deployment manifest | pytest + smoke script |
-| Health endpoint | `test_deployment_profile` |
-| Madge `cd ui && npx --yes madge --circular --extensions ts,tsx src` | PASS (no cycles) |
-| `npm run build` | **FAIL** on default Node **v20.18.2** (below engines); **PASS** with Node **v22.22.0** on PATH |
+| `python3 -m compileall -q services/fiqa_api tests` | **PASS** |
+| Targeted pytest (`deployment_profile`, `support_export_gate`, `case_office_access`, `intake_api_gate`) | **PASS** (24 tests) |
+| Full `pytest` | **PASS** (1 skipped; SWIG `DeprecationWarning` noise) |
+| `bash scripts/guardrail_inbox_triage.sh` | **PASS** |
+| `PYTHONPATH=. python3 scripts/run_full_regression.py` | **PASS** (`http_p95_ms` ≈ **4214** &lt; 6000; `wrong_vehicle_related` **0**; `pg_mismatch_turns` **0**) |
+| Support/export smoke | `scripts/support_deployment_manifest_smoke.py` — requires running API (+ optional support key); asserts `deployment_identity` + `office_ownership` on `/health` |
+| Office continuity / wrong-office | `tests/test_case_office_access.py` **PASS** (via full pytest) |
+| Replay lineage | `tests/test_support_export_gate.py` **PASS** |
+| Deployment manifest | pytest **PASS** |
+| Health endpoint | `tests/test_deployment_profile.py` **PASS** |
+| Madge `cd ui && npx --yes madge --circular --extensions ts,tsx src` | **PASS** (no cycles) |
+| `npm run build` | **FAIL** with default PATH Node **v20.18.2** (below `engines` / Vite 7); **PASS** with `PATH=/home/andy/.nvm/versions/node/v22.22.0/bin:$PATH` → **v22.22.0** |
 
 ---
 
@@ -401,6 +410,7 @@ Operators must not assume a clean tree without checking `git status`.
 8. **Founder dependency:** DB + Vercel + GCP triple remains concentrated; warnings don’t delegate authority.  
 9. **Env complexity:** Persistence matrix (`service_record_settings`) still requires senior engineer to explain — hints help, don’t eliminate training debt.  
 10. **Scaling illusions:** `operator_warnings` does not increase capacity — it increases honesty at the margin only.
+11. **deployment_identity theater:** If CI/CD never injects `K_*` or commit SHA env vars, the block is honestly empty — **do not** pretend it replaces release auditing or binary provenance.
 
 ---
 
@@ -423,9 +433,37 @@ Operators must not assume a clean tree without checking `git status`.
 
 - `docs/sprints/PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md` (this SSOT)  
 - `services/fiqa_api/deployment_profile.py`  
+- `services/fiqa_api/app_main.py` (`/health` office posture)  
+- `configs/demo.env.example` (SSOT pointer)  
 - `tests/test_deployment_profile.py`  
 - `tests/test_support_export_gate.py`  
 - `scripts/support_deployment_manifest_smoke.py`
+
+---
+
+## PHASE 8 — FINAL REQUIRED OUTPUT (operator digest)
+
+1. **Branch:** `sprint/pilot-saas-survivability-office-trust-hardening`
+2. **Sprint-owned files:** Listed above (plus validation transcripts in shell history / CI).
+3. **Implemented (this iteration):** Deployment identity truth on `operator_runtime_hints`; prod office-enforcement-without-DB warning; `/health` exposes `office_ownership`; smoke script hardened; demo.env SSOT pointer; tests extended.
+4. **More real:** `/health` and manifest-adjacent paths expose enforcement + deploy labels with explicit non-IAM / non-provenance semantics.
+5. **Still fake:** Enterprise IAM, RLS, SSO, WORM/compliance, header-as-tenant-authority, “manifest = audit export”.
+6. **Biggest support truths:** Shared-secret gates are optional; replay lineage string denies legal hold; `tenant_truth` is client assertion; persistence mode drives “where is my case”.
+7. **Biggest deployment truths:** Full redeploy replaces Cloud Run env bundle from template; CORS + Vite API URL are drift magnets; Node version gates UI build.
+8. **Biggest replay truths:** Schema epoch + manifest version matter; PG/JSON authority periods invalidate naive replay diff.
+9. **Biggest office continuity truths:** Enforcement is string match on `asserted_org_id`; legacy unstamped rows are a product hazard; sessions need Postgres for durable multi-instance continuity.
+10. **Biggest auth truths:** No `tenant_id_authoritative`; intake vs support keys are separate coarse perimeters.
+11. **Biggest operational truths:** `operator_warnings` codes are diagnostic, not controls; founder still owns GCP/Vercel/DB interpretation.
+12. **Biggest remaining risks:** Anonymous support surface if key unset; wrong-office human error; secret leakage; dual-track persistence confusion during migration.
+13. **Biggest founder dependencies:** Env parity, Secret Manager discipline, dispute queries, office ID issuance convention.
+14. **30 offices:** Org ID chaos, legacy row visibility cliffs, support manifest misreads, clipboard leakage.
+15. **100 offices:** + key rotation, CORS/origin sprawl, cost opacity, on-call unsustainable without delegation.
+16. **Enterprise sales:** Current honesty layer ≠ procurement security claims — ship narrative discipline or decline scope.
+17. **Best next 10× leverage:** Automated manifest diff between staging/prod + synthetic probe for support-route auth regression.
+18. **Best next sprint:** Structured support ticket template (persistence snapshot + warnings + case-head) wired into Notion/Linear.
+19. **Best 3-month roadmap:** Real broker IAM **or** stop selling multi-tenant isolation; either way, reconciliation tooling for PG vs operational expectations.
+20. **What NOT to build yet:** SSO platform, billing, tenant admin UI, event bus rewrite, “RLS” theater without Postgres policies + app identity model.
+21. **FINAL_ONE_LINE:** Honest pilot survivability means smaller lies in `/health`, not a bigger platform fantasy.
 
 ---
 

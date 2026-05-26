@@ -12,6 +12,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
+# Vite 7 often fails on Cursor's bundled Node 20; prefer nvm Node 22 when present.
+if [ -z "${SKIP_NVM_NODE22_FOR_UI:-}" ]; then
+  for _nv in "$HOME/.nvm/versions/node/v22.22.0/bin" \
+             "$HOME/.nvm/versions/node/v22.14.0/bin"; do
+    if [ -x "$_nv/node" ]; then
+      export PATH="$_nv:$PATH"
+      break
+    fi
+  done
+fi
+
 echo "=== Real Broker Trial Package — Readiness Check ==="
 echo ""
 
@@ -42,7 +53,21 @@ if ! grep -q "Broker Standard Package" "docs/STANDARD_SCENARIO_PACKAGE.md" 2>/de
 fi
 echo "  OK"
 
-echo "[3] Core trial scenarios (SIM1–SIM5) in config..."
+echo "[3] Pilot client pack layout (chen_kui)..."
+if ! PYTHONPATH=. python3 -c "
+from services.fiqa_api.inbox_triage.pack_validation import validate_client_pack_layout
+import sys
+issues = validate_client_pack_layout('chen_kui')
+for line in issues:
+    print('  FAIL:', line)
+sys.exit(1 if issues else 0)
+" 2>&1; then
+  echo "  FAIL: configs/clients/chen_kui missing required onboarding files"
+  exit 1
+fi
+echo "  OK"
+
+echo "[4] Core trial scenarios (SIM1–SIM5) in config..."
 if [ ! -f "configs/simulation_assistant_scenarios.json" ]; then
   echo "  FAIL: simulation_assistant_scenarios.json not found"
   exit 1
@@ -55,19 +80,49 @@ for id in SIM1 SIM2 SIM3 SIM5 SIM6; do
 done
 echo "  OK (SIM1, SIM2, SIM3, SIM5, SIM6)"
 
-echo "[4] Guardrail (scenario pack, multi-turn, simulation assistant)..."
+echo "[5] Guardrail (scenario pack, multi-turn, simulation assistant)..."
 if ! bash "$SCRIPT_DIR/guardrail_inbox_triage.sh" 2>/dev/null; then
   echo "  FAIL: Guardrail did not pass"
   exit 1
 fi
 echo "  OK"
 
-echo "[5] UI build..."
+echo "[6] UI build..."
 if ! (cd ui && npm run build >/dev/null 2>&1); then
   echo "  FAIL: UI build failed"
   exit 1
 fi
 echo "  OK"
+
+echo "[7] Paid-pilot deploy entry + SSOT..."
+for _pf in scripts/deploy_paid_pilot.sh docs/CURRENT_PRODUCT_SHAPE.md; do
+  if [ ! -f "$_pf" ]; then
+    echo "  FAIL: $_pf not found"
+    exit 1
+  fi
+done
+echo "  OK (deploy_paid_pilot.sh + CURRENT_PRODUCT_SHAPE.md)"
+
+echo "[8] Pilot deploy env (when .env.cloudrun is production-like)..."
+_PILOT_ENV_FILE="$REPO_DIR/.env.cloudrun"
+if [ -f "$_PILOT_ENV_FILE" ]; then
+  _PROD_LIKE=0
+  if grep -Eq '^[[:space:]]*(ENV=prod|PILOT_DEPLOY_STRICT=1|UNIFIED_INTAKE_DB_PRIMARY_WRITES=1)' "$_PILOT_ENV_FILE" 2>/dev/null; then
+    _PROD_LIKE=1
+  fi
+  if [ "$_PROD_LIKE" = "1" ]; then
+    if ! PYTHONPATH=. python3 "$SCRIPT_DIR/validate_pilot_deploy_env.py" --env-file "$_PILOT_ENV_FILE" 2>&1; then
+      echo "  FAIL: production-like .env.cloudrun does not meet minimum paid-pilot posture"
+      echo "  Fix: configs/demo.env.example PILOT ONE PATH block — or unset prod flags for local-only cloudrun"
+      exit 1
+    fi
+    echo "  OK (production-like .env.cloudrun validated)"
+  else
+    echo "  SKIP (.env.cloudrun present but not production-like — set PILOT_DEPLOY_STRICT=1 to require full tuple)"
+  fi
+else
+  echo "  SKIP (no .env.cloudrun — local demo path)"
+fi
 
 echo ""
 echo "=== Trial Readiness: PASS ==="

@@ -13,7 +13,10 @@ enabled — see service_record_settings.db_primary_reads_enabled).
 
 from __future__ import annotations
 
+import copy
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from services.fiqa_api.db.service_record_settings import (
@@ -33,6 +36,22 @@ from services.fiqa_api.inbox_triage.case_store import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Per HTTP request: dedupe get_case_triage_stub_for_read(case_id) (binding + reopen paths).
+_TRIAGE_STUB_REQ_CACHE: ContextVar[dict[str, dict[str, Any] | None] | None] = ContextVar(
+    "_TRIAGE_STUB_REQ_CACHE", default=None
+)
+
+
+@contextmanager
+def triage_stub_read_cache_scope():
+    """Use around POST /api/inbox/triage hot path when multiple stub reads may repeat the same case_id."""
+    tok = _TRIAGE_STUB_REQ_CACHE.set({})
+    try:
+        yield
+    finally:
+        _TRIAGE_STUB_REQ_CACHE.reset(tok)
+
 
 # Match case_store.MAX_STORED_CASES for list-all parity
 _MAX_LIST_ALL = 200
@@ -205,6 +224,91 @@ def list_recent_cases_for_read(limit: int = 8, offset: int = 0) -> list[dict[str
     return j_cases
 
 
+def list_cases_for_office_enforcement_read(
+    req_org: str,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Office-scoped slice for ``GET /api/inbox/cases`` when
+    ``UNIFIED_INTAKE_ENFORCE_CASE_OFFICE_OWNERSHIP`` is enabled.
+
+    Postgres path uses indexed filters + stub hydration (no full-case N× load).
+    JSON path filters the bounded in-file queue (same semantics as
+    :func:`case_visible_in_office_list`).
+    """
+    from services.fiqa_api.security.case_office_access import (
+        case_visible_in_office_list,
+        office_list_strict_exclude_legacy_no_org,
+    )
+
+    safe_limit = max(1, min(int(limit or 8), 50))
+    safe_offset = max(0, min(int(offset or 0), 5000))
+    ro = (req_org or "").strip()[:256]
+    if not ro:
+        return [], 0
+
+    strict = office_list_strict_exclude_legacy_no_org()
+
+    if is_production_mode() and not service_record_database_url():
+        logger.warning(
+            "JSON path should not be used in production (missing database URL) %s",
+            _OBS,
+        )
+        return [], 0
+
+    if not db_primary_reads_enabled():
+        scoped: list[dict[str, Any]] = []
+        for c in json_list_all_cases():
+            if not isinstance(c, dict):
+                continue
+            norm = _normalize_case(dict(c))
+            if case_visible_in_office_list(norm, ro):
+                scoped.append(norm)
+        total = len(scoped)
+        return scoped[safe_offset : safe_offset + safe_limit], total
+
+    try:
+        from services.fiqa_api.db.service_record_repository import (
+            count_service_records_office_scoped,
+            list_record_ids_office_scoped,
+            load_workbench_queue_cases_from_postgres,
+        )
+
+        total = count_service_records_office_scoped(ro, strict)
+        ids = list_record_ids_office_scoped(ro, strict, safe_limit, safe_offset)
+        raw_rows = load_workbench_queue_cases_from_postgres(ids)
+        out: list[dict[str, Any]] = []
+        for norm in raw_rows:
+            rid = str(norm.get("case_id") or "").strip()
+            if not rid:
+                continue
+            norm = _normalize_case(dict(norm))
+            _merge_workbench_flags_from_json(rid, norm)
+            out.append(norm)
+        return out, total
+    except Exception:
+        logger.exception("%s signal=PG_OFFICE_LIST_EXCEPTION path=list_cases_office", _OBS)
+        if not json_read_fallback_allowed():
+            return [], 0
+        scoped_fb: list[dict[str, Any]] = []
+        for c in json_list_all_cases():
+            if not isinstance(c, dict):
+                continue
+            norm = _normalize_case(dict(c))
+            if case_visible_in_office_list(norm, ro):
+                scoped_fb.append(norm)
+        total_fb = len(scoped_fb)
+        slice_fb = scoped_fb[safe_offset : safe_offset + safe_limit]
+        logger.warning(
+            "%s signal=JSON_READ_FALLBACK_LIST_AFTER_PG_OFFICE_ERROR path=list_cases_office json_case_count=%s",
+            _OBS,
+            len(slice_fb),
+        )
+        return slice_fb, total_fb
+
+
 def list_all_cases_for_read() -> list[dict[str, Any]]:
     """All persisted cases (bounded), newest-first — used by service_record_read and similar."""
     if is_production_mode() and not service_record_database_url():
@@ -271,22 +375,8 @@ def list_all_cases_for_read() -> list[dict[str, Any]]:
     return j_cases
 
 
-def _binding_row_from_full_case(c: dict[str, Any]) -> dict[str, Any]:
-    """Minimal row for ``resolve_active_case`` / ``is_case_open_for_binding`` (JSON / fallback)."""
-    cid = str(c.get("case_id") or "").strip()
-    return {
-        "case_id": cid,
-        "case_status": (c.get("case_status") or "new") or "new",
-        "workbench_archived": bool(c.get("workbench_archived")),
-        "vehicle_key": c.get("vehicle_key"),
-    }
-
-
-def get_case_triage_stub_for_read(case_id: str) -> dict[str, Any] | None:
-    """
-    Triage / inbox route hot path: truth fields for ``reply_truth_context`` without loading
-    all messages and state history on Postgres. Non-DB mode uses full JSON read (local queues).
-    """
+def _get_case_triage_stub_for_read_uncached(case_id: str) -> dict[str, Any] | None:
+    """Resolve triage stub without request-level memoization."""
     cid = (case_id or "").strip()
     if not cid:
         return None
@@ -300,7 +390,7 @@ def get_case_triage_stub_for_read(case_id: str) -> dict[str, Any] | None:
         return None
 
     if not db_primary_reads_enabled():
-        return get_case_for_read(case_id)
+        return get_case_for_read(cid)
 
     try:
         from services.fiqa_api.db.service_record_repository import load_case_triage_stub_from_postgres
@@ -327,34 +417,123 @@ def get_case_triage_stub_for_read(case_id: str) -> dict[str, Any] | None:
     return json_get_case_by_id(cid)
 
 
-def list_recent_cases_for_binding(limit: int = 30, offset: int = 0) -> list[dict[str, Any]]:
-    """Recent cases for session/case binding: stub rows only (no per-row full hydration on PG)."""
+def get_case_triage_stub_for_read(case_id: str) -> dict[str, Any] | None:
+    """
+    Triage / inbox route hot path: truth fields for ``reply_truth_context`` without loading
+    all messages and state history on Postgres. Non-DB mode uses full JSON read (local queues).
+    """
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
+
+    bucket = _TRIAGE_STUB_REQ_CACHE.get()
+    if bucket is not None:
+        if cid in bucket:
+            hit = bucket[cid]
+            return copy.deepcopy(hit) if hit is not None else None
+
+    resolved = _get_case_triage_stub_for_read_uncached(cid)
+    if bucket is not None:
+        bucket[cid] = copy.deepcopy(resolved) if resolved is not None else None
+    return resolved
+
+
+def list_recent_cases_for_binding(
+    limit: int = 30,
+    offset: int = 0,
+    *,
+    client_asserted_org_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Recent cases for session/case binding: **triage stub** shape (truth fields for routing, no PG
+    messages/history). Same list can be reused as ``existing_case`` on the inbox route to avoid a
+    second ``get_case_triage_stub_for_read`` for the resolved ``case_id``.
+
+    When ``client_asserted_org_id`` is set (``X-Org-Id`` client assertion), candidates use the
+    same visibility rule as workbench list filtering (:func:`case_visible_in_office_list`), reducing
+    cross-office vehicle/single-case auto-bind accidents without claiming cryptographic tenancy.
+    """
+    from services.fiqa_api.security.case_office_access import (
+        case_visible_in_office_list,
+        office_list_strict_exclude_legacy_no_org,
+    )
+
     if is_production_mode() and not service_record_database_url():
         logger.warning("JSON path should not be used in production (missing database URL) %s", _OBS)
         return []
 
     safe_limit = max(1, min(int(limit or 8), 50))
     safe_offset = max(0, min(int(offset or 0), 10_000))
+    req_org = (client_asserted_org_id or "").strip()[:256] or None
+    strict_legacy = office_list_strict_exclude_legacy_no_org()
+
+    def _normalize_binding_candidate(c: dict[str, Any]) -> dict[str, Any] | None:
+        cid = str(c.get("case_id") or "").strip()
+        if not cid:
+            return None
+        norm = _normalize_case(dict(c))
+        _merge_workbench_flags_from_json(cid, norm)
+        return norm
+
+    def _filter_org_slice(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not req_org:
+            return rows
+        out_f: list[dict[str, Any]] = []
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            norm = _normalize_binding_candidate(item)
+            if norm is None:
+                continue
+            if case_visible_in_office_list(norm, req_org):
+                out_f.append(norm)
+        return out_f
 
     if not db_primary_reads_enabled():
         raw = json_list_recent_cases(limit=safe_limit, offset=safe_offset)
-        return [
-            _binding_row_from_full_case(c)
-            for c in raw
-            if isinstance(c, dict) and str(c.get("case_id") or "").strip()
-        ]
+        bound = _filter_org_slice([c for c in raw if isinstance(c, dict)])
+        return bound if req_org else [x for x in (_normalize_binding_candidate(c) for c in raw) if x]
 
     try:
-        from services.fiqa_api.db.service_record_repository import list_binding_stub_rows_recent
+        from services.fiqa_api.db.service_record_repository import (
+            list_binding_stub_rows_office_scoped,
+            list_binding_stub_rows_recent,
+        )
 
-        return list_binding_stub_rows_recent(safe_limit, safe_offset)
+        if req_org:
+            raw_rows = list_binding_stub_rows_office_scoped(
+                req_org, strict_legacy, safe_limit, safe_offset
+            )
+        else:
+            raw_rows = list_binding_stub_rows_recent(safe_limit, safe_offset)
     except Exception:
         logger.exception("%s signal=PG_BINDING_STUB_LIST_EXCEPTION", _OBS)
+        raw_rows = []
+
+    if raw_rows:
+        out_pg: list[dict[str, Any]] = []
+        for c in raw_rows:
+            if not isinstance(c, dict):
+                continue
+            cid = str(c.get("case_id") or "").strip()
+            if not cid:
+                continue
+            norm = _normalize_case(dict(c))
+            _merge_workbench_flags_from_json(cid, norm)
+            out_pg.append(norm)
+        return out_pg
+
     if json_read_fallback_allowed():
         logger.warning("%s signal=JSON_READ_FALLBACK_BINDING_LIST", _OBS)
-        return [
-            _binding_row_from_full_case(c)
-            for c in json_list_recent_cases(limit=safe_limit, offset=safe_offset)
-            if isinstance(c, dict) and str(c.get("case_id") or "").strip()
-        ]
+        raw_fb = json_list_recent_cases(limit=safe_limit, offset=safe_offset)
+        if req_org:
+            return _filter_org_slice([c for c in raw_fb if isinstance(c, dict)])
+        out_fb: list[dict[str, Any]] = []
+        for c in raw_fb:
+            if not isinstance(c, dict):
+                continue
+            norm = _normalize_binding_candidate(c)
+            if norm is not None:
+                out_fb.append(norm)
+        return out_fb
     return []

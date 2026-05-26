@@ -1,6 +1,14 @@
 """
 Derived primary progress axis for API responses (additive; non-authoritative over gates).
 
+Authoritative emission: ``routes/inbox_triage._attach_case_lifecycle`` runs after triage
+and may overlay ``formal_submitted_at`` from the persisted case; always prefer the API
+``case_lifecycle`` field on the client when present.
+
+Legacy client fallback (must stay in lockstep with ``_derive_case_lifecycle``):
+``ui/src/components/intake/caseLifecycleDisplay.ts`` — same predicate order; use strict
+``handoff_ready is True`` and ``triage_mode == greenfield`` for ready_for_handoff.
+
 See docs/CASE_CONTRACT_V1.md — does not replace quote_ready_status, handoff_ready, or lifecycle_status.
 """
 

@@ -1,5 +1,6 @@
 import type { UiCopy } from '../../../api/clientConfig';
 import type { SavedCase, SoftRouteIntent, TriageResult, WaitingOn } from '../../../api/inboxTriage';
+import type { TriageResultCore } from '../../../api/triageResultContract';
 import {
     caseLifecycleTagColor,
     caseLifecycleUserLabel,
@@ -105,7 +106,7 @@ export function getOfficeLifecycleTag(lifecycleStatus: string | undefined): { la
 
 /** Ordered chips for Add-Car status strip — primary axis: `case_lifecycle` (not lifecycle_status / collection_stage). */
 export function buildAddCarStatusStripChips(
-    triage: TriageResult | null | undefined,
+    triage: TriageResultCore | null | undefined,
     phase: 'intake' | 'submitted',
 ): Array<{ label: string; color: string }> {
     const out: Array<{ label: string; color: string }> = [{ label: '加车报价', color: 'blue' }];
@@ -126,7 +127,7 @@ export function buildAddCarStatusStripChips(
     });
     return out;
 }
-export function buildGenericIntakeStatusChips(triage: TriageResult): Array<{ label: string; color: string }> {
+export function buildGenericIntakeStatusChips(triage: TriageResultCore): Array<{ label: string; color: string }> {
     const out: Array<{ label: string; color: string }> = [{ label: '客户报送', color: 'blue' }];
     if (triage.issue_category) {
         out.push({ label: humanizeCategory(triage.issue_category, triage.source_text), color: 'cyan' });

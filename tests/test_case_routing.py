@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.fiqa_api.inbox_triage.routing_guard import detect_vehicle_conflict
 from services.fiqa_api.inbox_triage.triage import triage_for_append
 from services.fiqa_api.routes import inbox_triage
+from tests.route_request_stub import minimal_route_request
 
 
 def test_detect_vehicle_conflict_matrix():
@@ -179,6 +180,7 @@ def test_append_api_blocked_when_append_allowed_false(monkeypatch):
         inbox_triage.append_case_message(
             "case_amb",
             inbox_triage.AppendMessageRequest(new_message="same as my other car"),
+            minimal_route_request(),
         )
     )
     assert body.get("append_blocked") is True

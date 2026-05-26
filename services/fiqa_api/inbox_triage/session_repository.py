@@ -215,15 +215,24 @@ def _evict_oldest_in_memory() -> None:
             _MEMORY_CREATED.pop(sid, None)
 
 
-def upsert_session(session_id: str, payload: dict[str, Any]) -> bool:
+def upsert_session(
+    session_id: str,
+    payload: dict[str, Any],
+    *,
+    copy_payload: bool = True,
+) -> bool:
     """
     Replace document for session_id. `payload` should include session_id and updated_at
     and all fields the client layer expects. Returns False on total persistence failure.
+
+    When copy_payload is False, the payload is stored without a defensive deep-copy.
+    Callers must supply a freshly cloned document (e.g. after copy.deepcopy) or
+    otherwise guarantee the tree is not mutated after this call.
     """
     sid = (session_id or "").strip()
     if not sid:
         return False
-    doc = _copy_row(payload) if payload else {}
+    doc = (_copy_row(payload) if copy_payload else payload) if payload else {}
     if doc.get("session_id") != sid:
         doc["session_id"] = sid
     if _intake_session_use_memory():

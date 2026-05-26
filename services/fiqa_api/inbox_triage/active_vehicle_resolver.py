@@ -9,6 +9,12 @@ Contract (priority):
 
 If multiple segments remain plausible and the message does not disambiguate: AMBIGUOUS
 (do not switch active vehicle; caller surfaces clarify).
+
+Runtime wiring (authority): ``triage.py`` does **not** import this module on the current
+mainline — behavior is covered by ``tests/test_active_vehicle_resolver.py`` only.
+Production vehicle lines are produced by triage heuristics + entity payload merge, then the
+HTTP route overwrites from Postgres when ``_finalize_response_with_pg_truth`` applies.
+See ``docs/DEPRECATED_PATHS.md`` (explicit ``active_vehicle_resolver`` section).
 """
 
 from __future__ import annotations

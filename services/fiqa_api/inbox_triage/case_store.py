@@ -307,6 +307,12 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
     if "client_id" in normalized and normalized.get("client_id"):
         normalized["client_id"] = str(normalized["client_id"]).strip()
 
+    # Org hint persistence: X-Org-Id client assertion at case creation (not tenant authority)
+    if "asserted_org_id" in normalized and normalized.get("asserted_org_id"):
+        normalized["asserted_org_id"] = str(normalized["asserted_org_id"]).strip()[:256]
+    elif "asserted_org_id" in normalized:
+        normalized.pop("asserted_org_id", None)
+
     # Phase 2: lifecycle_status — preserve stored value; derive only when missing (legacy migration)
     # Minimal Production Backbone: stored value is source of truth; avoid overwriting on every read
     existing_lc = (normalized.get("lifecycle_status") or "").strip()
@@ -648,6 +654,7 @@ def save_case(
     *,
     origin_session_id: str | None = None,
     client_id: str | None = None,
+    asserted_org_id: str | None = None,
     service_lane: str | None = None,
 ) -> dict[str, Any]:
     normalized_status = _validate_status(status)
@@ -731,6 +738,8 @@ def save_case(
     # Client Identity Persistence: store client_id for append/reopen lifecycle
     if client_id and (cid := str(client_id or "").strip()):
         case["client_id"] = cid
+    if asserted_org_id and (oid := str(asserted_org_id).strip()[:256]):
+        case["asserted_org_id"] = oid
     # Explicit Stage-1 lane (Add-Car-first); set only when caller supplies (e.g. formal Add-Car persist path)
     if service_lane and (sl := str(service_lane).strip()):
         case["service_lane"] = sl

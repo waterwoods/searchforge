@@ -28,11 +28,15 @@ CREATE TABLE IF NOT EXISTS service_records (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     closed_at TIMESTAMPTZ,
+    office_owner_org_id TEXT,
     extra JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_records_client_updated
     ON service_records (client_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_service_records_office_owner_updated
+    ON service_records (office_owner_org_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS record_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -20,6 +20,7 @@ def test_support_manifest_anonymous_when_secret_unset(monkeypatch):
     assert rl.get("support_export_manifest_version")
     assert rl.get("intake_schema_epoch")
     assert rl.get("semantics") == "support_replay_handoff_metadata_v1_not_legal_hold"
+    assert isinstance(rl.get("minimal_broker_token_posture"), dict)
     tt = body.get("tenant_truth") or {}
     assert tt.get("tenant_id_authoritative") is None
     assert tt.get("semantics") == "client_asserted_org_id_not_tenant_authority_v1"

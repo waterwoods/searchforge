@@ -21,6 +21,8 @@ Then use this map to find specific docs.
 | Doc | Purpose |
 |-----|---------|
 | `AGENTS.md` | Single entry point for agents |
+| `docs/CURRENT_PRODUCT_SHAPE.md` | **Current** product, deployment, paid-pilot env requirements |
+| `docs/SIMPLIFICATION_MASTER_PLAN.md` | **Reduction roadmap** — what to hide/archive/delete; brutally honest inventory |
 | `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Macro blueprint (north star)** — Unified Intake product direction, business framing, state-driven flow, client-pack strategy, technical evolution; align major sprints |
 | `docs/goals/insurance_paid_pilot_goal.md` | Master goal, scope, deliverables |
 | `docs/STANDARD_SCENARIO_PACKAGE.md` | Sellable package: 7 scenarios, broker value, demo path |
@@ -34,7 +36,7 @@ Then use this map to find specific docs.
 | `docs/sprints/MATURE_SKELETON_COMMERCIAL_INTAKE_BACKBONE/03_PAGE_FLOW_STATE_HANDOFF_BACKBONE_SPEC.md` | **Mature backbone** — page, flow, state, handoff structure; borrow from Stripe/Amazon/Intercom/Zendesk; future-sprint reference |
 | `docs/LIGHTWEIGHT_STATE_MACHINE_BLUEPRINT.md` | Lightweight state machine, field progress, follow-up type strategy |
 | `docs/KNOWLEDGE_ARCHITECTURE_AND_CONFIG_LAYER.md` | Architecture layers: rules, knowledge, client, state, tests |
-| `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | Platform blueprint: product definition, 3-layer architecture, trust boundaries, monetization |
+| `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | **Supporting / investor framing only** — not pilot runtime truth; see `SIMPLIFICATION_MASTER_PLAN.md` |
 | `docs/CHEN_KUI_TRIAL_PACK.md` | Chen Kui trial pack: scenarios, order, value validation questions, pilot offer |
 | `docs/trial/INDEX.md` | **Real Broker Trial Package** — 1-week pilot: blueprint, scope, scenario pack, metrics, workflow, founder notes |
 | `docs/trial/TRIAL_EXECUTION_BLUEPRINT.md` | **Trial execution readiness** — last-mile hardening, runbook, handoff spec |

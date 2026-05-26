@@ -1,6 +1,7 @@
 # Deployment Playbook — Chen Kui Insurance Unified Entry
 
 **Purpose:** Repeatable release operations for backend (Cloud Run) and frontend (Vercel).  
+**Current product shape:** [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) — paid-pilot env requirements and demo vs prod boundaries.  
 **Use:** Reference doc. **Operational gate (5–15 min, demo/pilot-safe):** [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) — pre-deploy alignment, post-deploy runtime, browser path, one workflow smoke. **Quick automated slice:** `bash scripts/unified_intake_release_gate.sh '<Cloud Run URL>' '<frontend origin>'`.
 
 **Default habit (every meaningful change, same path):** local develop → `guardrail_inbox_triage.sh` (+ local API/UI checks) → deploy → `guardrail_cloudrun_runtime.sh` (optional but recommended) → `unified_intake_release_gate.sh` → manual browser verification on the **official** URL → only then customer/broker demo. The numbered sequence is spelled out at the top of [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md).
@@ -11,7 +12,8 @@
 
 | Component | Host | Deploy Command |
 |-----------|------|----------------|
-| Backend | GCP Cloud Run | `bash scripts/deploy_rag_demo.sh` |
+| Backend (paid pilot) | GCP Cloud Run | `bash scripts/deploy_paid_pilot.sh` |
+| Backend (demo smoke) | GCP Cloud Run | `bash scripts/deploy_demo_cloud_smoke.sh` |
 | Frontend | Vercel | `cd ui && vercel --prod` |
 | Config | Baked into backend image | `configs/` copied in Dockerfile |
 
@@ -33,7 +35,7 @@
 
 ### Cloud Run runtime parity (anti-regression)
 
-Live `fiqa-api` is tuned for Unified Intake stability: **memory 1Gi**, **concurrency 30**, **max 2** instances. **Min instances** defaults to **0** in `scripts/deploy_rag_demo.sh` (cost-safe); during pilot/demo you may set **min 1** so one instance stays warm (reduces first-request cold start). Overrides go in `.env.cloudrun` (`CLOUD_RUN_MEMORY`, `CLOUD_RUN_CONCURRENCY`, `CLOUD_RUN_MIN_INSTANCES`, etc.).
+Live `fiqa-api` is tuned for Unified Intake stability: **memory 1Gi**, **concurrency 30**, **max 2** instances. **Min instances** defaults to **0** in the shared deploy implementation (`scripts/deploy_rag_demo.sh`, invoked by the wrappers — cost-safe); during pilot/demo you may set **min 1** so one instance stays warm (reduces first-request cold start). Overrides go in `.env.cloudrun` (`CLOUD_RUN_MEMORY`, `CLOUD_RUN_CONCURRENCY`, `CLOUD_RUN_MIN_INSTANCES`, etc.).
 
 **Pilot warm instance (reversible):** apply without redeploying the image:
 
@@ -45,7 +47,7 @@ gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472
 gcloud run services update fiqa-api --region us-west1 --project optimal-disk-472305-e2 --min-instances 0
 ```
 
-Or set `CLOUD_RUN_MIN_INSTANCES=1` in `.env.cloudrun` before `bash scripts/deploy_rag_demo.sh` so the next full deploy keeps the same policy.
+Or set `CLOUD_RUN_MIN_INSTANCES=1` in `.env.cloudrun` before `bash scripts/deploy_paid_pilot.sh` so the next full deploy keeps the same policy.
 
 After any deploy or if something feels “reverted,” run (read-only; does not print DB URLs or API keys):
 
@@ -66,8 +68,11 @@ Strict DB-primary pilot flags (when Postgres is wired) should match: DB-primary 
 cp configs/demo.env.example .env.cloudrun   # if first time
 # Edit .env.cloudrun: QDRANT_URL, QDRANT_API_KEY, OPENAI_API_KEY, ALLOWED_ORIGINS
 
-# 2. Deploy
-bash scripts/deploy_rag_demo.sh
+# 2. Validate paid-pilot env (required)
+PYTHONPATH=. python3 scripts/validate_pilot_deploy_env.py --env-file .env.cloudrun
+
+# 3. Deploy (paid pilot — never sets DEMO_MODE)
+bash scripts/deploy_paid_pilot.sh
 ```
 
 ### What success looks like
@@ -222,7 +227,7 @@ Before claiming success:
 
 | Task | Command |
 |------|---------|
-| Backend deploy | `bash scripts/deploy_rag_demo.sh` |
+| Backend deploy (paid pilot) | `bash scripts/deploy_paid_pilot.sh` |
 | Frontend deploy | `cd ui && vercel --prod` |
 | Triage API test | `python3 scripts/test_inbox_triage_api.py --url <URL>` |
 | Local guardrail | `bash scripts/guardrail_inbox_triage.sh` |

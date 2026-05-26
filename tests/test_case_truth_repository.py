@@ -260,8 +260,8 @@ def test_list_recent_returns_empty_not_stale_json_when_pg_ids_fail_hydration(mon
         lambda _lim, _off=0: ["case_bad"],
     )
     monkeypatch.setattr(
-        "services.fiqa_api.db.service_record_repository.load_full_case_from_postgres",
-        lambda _rid: None,
+        "services.fiqa_api.db.service_record_repository.load_workbench_queue_cases_from_postgres",
+        lambda _ids: [],
     )
 
     rows = ctr.list_recent_cases_for_read(limit=8)
@@ -299,3 +299,76 @@ def test_json_path_count_and_pagination_offset(monkeypatch, tmp_path):
     assert p0[0]["case_id"] == "case_4"
     p2 = ctr.list_recent_cases_for_read(limit=2, offset=2)
     assert [c["case_id"] for c in p2] == ["case_2", "case_1"]
+
+
+def _stub_case(cid: str, updated: str, *, org: str | None = None) -> dict:
+    row = {
+        "case_id": cid,
+        "case_status": "new",
+        "issue_category": "x",
+        "urgency": "low",
+        "broker_next_step": "b",
+        "client_prep": "c",
+        "client_reply_draft": "d",
+        "manual_followup_needed": False,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": updated,
+    }
+    if org is not None:
+        row["asserted_org_id"] = org
+    return row
+
+
+def test_binding_list_filters_by_client_asserted_org_json(monkeypatch, tmp_path):
+    """Recent binding candidates respect X-Org-Id visibility (JSON path)."""
+    store = tmp_path / "cases.json"
+    store.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    _stub_case("case_other_office", "2026-01-03T00:00:00Z", org="org-b"),
+                    _stub_case("case_my_office", "2026-01-02T00:00:00Z", org="org-a"),
+                    _stub_case("case_legacy", "2026-01-01T00:00:00Z", org=""),
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("UNIFIED_INTAKE_CASES_PATH", str(store))
+    monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_OFFICE_LIST_STRICT_NO_LEGACY", raising=False)
+
+    all_bind = ctr.list_recent_cases_for_binding(limit=10, offset=0)
+    assert {c["case_id"] for c in all_bind} == {"case_other_office", "case_my_office", "case_legacy"}
+
+    scoped = ctr.list_recent_cases_for_binding(
+        limit=10, offset=0, client_asserted_org_id="org-a"
+    )
+    assert [c["case_id"] for c in scoped] == ["case_my_office", "case_legacy"]
+
+
+def test_binding_list_strict_legacy_excludes_unstamped(monkeypatch, tmp_path):
+    store = tmp_path / "cases.json"
+    store.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    _stub_case("case_org_a", "2026-01-02T00:00:00Z", org="org-a"),
+                    _stub_case("case_legacy", "2026-01-01T00:00:00Z", org=""),
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("UNIFIED_INTAKE_CASES_PATH", str(store))
+    monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_READS", raising=False)
+    monkeypatch.setenv("UNIFIED_INTAKE_OFFICE_LIST_STRICT_NO_LEGACY", "1")
+
+    scoped = ctr.list_recent_cases_for_binding(
+        limit=10, offset=0, client_asserted_org_id="org-a"
+    )
+    assert [c["case_id"] for c in scoped] == ["case_org_a"]

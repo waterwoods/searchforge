@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# scripts/deploy_rag_demo.sh - One-command Cloud Run deployment for fiqa-api
+# scripts/deploy_rag_demo.sh - Shared Cloud Run deploy implementation for fiqa-api
 #
-# Deploys the fiqa_api backend to Google Cloud Run with cost-safe defaults.
+# **Operators:** use an entry script — do not rely on posture auto-detection alone.
+#   Paid broker pilot:  bash scripts/deploy_paid_pilot.sh
+#   Demo cloud smoke:   bash scripts/deploy_demo_cloud_smoke.sh
+#
+# This file loads .env.cloudrun and deploys. Posture (DEMO_MODE vs product_only+PG)
+# follows ENV / PILOT_DEPLOY_STRICT / flags in the environment when invoked.
+#
 # Requires: gcloud CLI, authenticated account, .env.cloudrun file
 #
-# Usage:
-#   # 1. Create .env.cloudrun from template (if not exists)
+# Usage (prefer wrappers above):
 #   cp configs/demo.env.example .env.cloudrun
-#   # 2. Edit .env.cloudrun with your real values
-#   # 3. Run deployment (automatically loads .env.cloudrun)
-#   bash scripts/deploy_rag_demo.sh
+#   bash scripts/deploy_paid_pilot.sh
 
 set -euo pipefail
 
@@ -41,6 +44,55 @@ set -a
 source "$ENV_FILE"
 set +a
 echo "✅ Environment variables loaded"
+
+# Entry wrappers set DEPLOY_ENTRY so posture wins over stale .env.cloudrun keys (see deploy_paid_pilot.sh).
+_apply_deploy_entry_posture() {
+    case "${DEPLOY_ENTRY:-}" in
+        paid_pilot)
+            export ENV=prod
+            export PILOT_DEPLOY_STRICT=1
+            export UNIFIED_INTAKE_PRODUCT_ONLY=1
+            export UNIFIED_INTAKE_DB_PRIMARY_READS=1
+            export UNIFIED_INTAKE_DB_PRIMARY_WRITES=1
+            export UNIFIED_INTAKE_JSON_CASE_WRITES=0
+            export UNIFIED_INTAKE_JSON_READ_FALLBACK=0
+            export UNIFIED_INTAKE_PG_DUAL_WRITE=0
+            unset DEMO_MODE
+            ;;
+        demo_smoke)
+            unset PILOT_DEPLOY_STRICT
+            unset UNIFIED_INTAKE_PRODUCT_ONLY
+            unset UNIFIED_INTAKE_DB_PRIMARY_WRITES
+            export DEMO_MODE=true
+            ;;
+    esac
+}
+_apply_deploy_entry_posture
+
+# Paid-pilot / production-like deploy posture (see docs/CURRENT_PRODUCT_SHAPE.md)
+_is_paid_pilot_posture() {
+    case "${ENV:-}" in
+        [Pp][Rr][Oo][Dd]) return 0 ;;
+    esac
+    case "${PILOT_DEPLOY_STRICT:-0}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    esac
+    case "${UNIFIED_INTAKE_DB_PRIMARY_WRITES:-0}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    esac
+    case "${UNIFIED_INTAKE_PRODUCT_ONLY:-0}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    esac
+    return 1
+}
+
+if _is_paid_pilot_posture; then
+    echo "🔒 Paid-pilot deploy posture — validating .env.cloudrun minimum tuple (required)..."
+    if ! PYTHONPATH=. python3 "$SCRIPT_DIR/validate_pilot_deploy_env.py" --env-file "$ENV_FILE"; then
+        echo "❌ Pilot deploy env validation failed. Fix .env.cloudrun (see docs/CURRENT_PRODUCT_SHAPE.md)."
+        exit 1
+    fi
+fi
 
 # CORS / deploy drift: full deploy uses --set-env-vars with the bundle built below. That replaces the
 # service env for keys we pass; keep ALLOWED_ORIGINS complete in .env.cloudrun or the next deploy can
@@ -273,7 +325,6 @@ ADD_CAR_CONTRACT_STRICT="${ADD_CAR_CONTRACT_STRICT:-0}"
 ENV_VARS=(
     "QDRANT_URL=$QDRANT_URL"
     "QDRANT_COLLECTION=$QDRANT_COLLECTION"
-    "DEMO_MODE=true"
     "TRANSLATION_ENABLED=1"
     "TRANSLATION_PROVIDER=argos"
     "GIT_SHA=$GIT_SHA_DEPLOY"
@@ -282,6 +333,29 @@ ENV_VARS=(
     "DEBUG_TRUTH_GUARDRAILS=$DEBUG_TRUTH_GUARDRAILS"
     "ADD_CAR_CONTRACT_STRICT=$ADD_CAR_CONTRACT_STRICT"
 )
+
+# Paid pilot: product-only + PG-primary defaults; DEMO_MODE forbidden (validator enforces).
+# Legacy demo cloud deploy: relaxed readiness via DEMO_MODE=true.
+if _is_paid_pilot_posture; then
+    UNIFIED_INTAKE_PRODUCT_ONLY="${UNIFIED_INTAKE_PRODUCT_ONLY:-1}"
+    ENV="${ENV:-prod}"
+    UNIFIED_INTAKE_DB_PRIMARY_READS="${UNIFIED_INTAKE_DB_PRIMARY_READS:-1}"
+    UNIFIED_INTAKE_DB_PRIMARY_WRITES="${UNIFIED_INTAKE_DB_PRIMARY_WRITES:-1}"
+    UNIFIED_INTAKE_JSON_CASE_WRITES="${UNIFIED_INTAKE_JSON_CASE_WRITES:-0}"
+    UNIFIED_INTAKE_JSON_READ_FALLBACK="${UNIFIED_INTAKE_JSON_READ_FALLBACK:-0}"
+    UNIFIED_INTAKE_PG_DUAL_WRITE="${UNIFIED_INTAKE_PG_DUAL_WRITE:-0}"
+    ENV_VARS+=(
+        "ENV=$ENV"
+        "UNIFIED_INTAKE_PRODUCT_ONLY=$UNIFIED_INTAKE_PRODUCT_ONLY"
+        "UNIFIED_INTAKE_DB_PRIMARY_READS=$UNIFIED_INTAKE_DB_PRIMARY_READS"
+        "UNIFIED_INTAKE_DB_PRIMARY_WRITES=$UNIFIED_INTAKE_DB_PRIMARY_WRITES"
+        "UNIFIED_INTAKE_JSON_CASE_WRITES=$UNIFIED_INTAKE_JSON_CASE_WRITES"
+        "UNIFIED_INTAKE_JSON_READ_FALLBACK=$UNIFIED_INTAKE_JSON_READ_FALLBACK"
+        "UNIFIED_INTAKE_PG_DUAL_WRITE=$UNIFIED_INTAKE_PG_DUAL_WRITE"
+    )
+else
+    ENV_VARS+=("DEMO_MODE=${DEMO_MODE:-true}")
+fi
 
 if [ "$CLOUD_RUN_USE_SECRET_MANAGER" != "1" ] && [ -n "$QDRANT_API_KEY" ]; then
     ENV_VARS+=("QDRANT_API_KEY=$QDRANT_API_KEY")
@@ -307,22 +381,37 @@ fi
 if [ "$CLOUD_RUN_USE_SECRET_MANAGER" != "1" ] && [ -n "${SERVICE_RECORD_DATABASE_URL:-}" ]; then
     ENV_VARS+=("SERVICE_RECORD_DATABASE_URL=$SERVICE_RECORD_DATABASE_URL")
 fi
-if [ -n "${UNIFIED_INTAKE_PG_DUAL_WRITE:-}" ]; then
-    ENV_VARS+=("UNIFIED_INTAKE_PG_DUAL_WRITE=$UNIFIED_INTAKE_PG_DUAL_WRITE")
+# Optional persistence flags — legacy demo cloud path only (paid pilot sets defaults above)
+if ! _is_paid_pilot_posture; then
+    if [ -n "${UNIFIED_INTAKE_PG_DUAL_WRITE:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_PG_DUAL_WRITE=$UNIFIED_INTAKE_PG_DUAL_WRITE")
+    fi
+    if [ -n "${UNIFIED_INTAKE_DB_PRIMARY_READS:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_DB_PRIMARY_READS=$UNIFIED_INTAKE_DB_PRIMARY_READS")
+    fi
+    if [ -n "${UNIFIED_INTAKE_JSON_READ_FALLBACK:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_JSON_READ_FALLBACK=$UNIFIED_INTAKE_JSON_READ_FALLBACK")
+    fi
+    if [ -n "${UNIFIED_INTAKE_DB_PRIMARY_WRITES:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_DB_PRIMARY_WRITES=$UNIFIED_INTAKE_DB_PRIMARY_WRITES")
+    fi
+    if [ -n "${UNIFIED_INTAKE_JSON_CASE_WRITES:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_JSON_CASE_WRITES=$UNIFIED_INTAKE_JSON_CASE_WRITES")
+    fi
+    if [ -n "${UNIFIED_INTAKE_PRODUCT_ONLY:-}" ]; then
+        ENV_VARS+=("UNIFIED_INTAKE_PRODUCT_ONLY=$UNIFIED_INTAKE_PRODUCT_ONLY")
+    fi
+    if [ -n "${ENV:-}" ]; then
+        ENV_VARS+=("ENV=$ENV")
+    fi
 fi
-# Optional: serve case reads from Postgres (multi-instance safe) when URL + flag are set
-if [ -n "${UNIFIED_INTAKE_DB_PRIMARY_READS:-}" ]; then
-    ENV_VARS+=("UNIFIED_INTAKE_DB_PRIMARY_READS=$UNIFIED_INTAKE_DB_PRIMARY_READS")
+
+# Pilot SaaS security perimeter (required for paid pilot — validator enforces)
+if [ -n "${UNIFIED_INTAKE_INTAKE_API_KEY:-}" ]; then
+    ENV_VARS+=("UNIFIED_INTAKE_INTAKE_API_KEY=$UNIFIED_INTAKE_INTAKE_API_KEY")
 fi
-if [ -n "${UNIFIED_INTAKE_JSON_READ_FALLBACK:-}" ]; then
-    ENV_VARS+=("UNIFIED_INTAKE_JSON_READ_FALLBACK=$UNIFIED_INTAKE_JSON_READ_FALLBACK")
-fi
-# Optional: Postgres-primary case writes + JSON file writes off (pilot cutover)
-if [ -n "${UNIFIED_INTAKE_DB_PRIMARY_WRITES:-}" ]; then
-    ENV_VARS+=("UNIFIED_INTAKE_DB_PRIMARY_WRITES=$UNIFIED_INTAKE_DB_PRIMARY_WRITES")
-fi
-if [ -n "${UNIFIED_INTAKE_JSON_CASE_WRITES:-}" ]; then
-    ENV_VARS+=("UNIFIED_INTAKE_JSON_CASE_WRITES=$UNIFIED_INTAKE_JSON_CASE_WRITES")
+if [ -n "${UNIFIED_INTAKE_SUPPORT_API_KEY:-}" ]; then
+    ENV_VARS+=("UNIFIED_INTAKE_SUPPORT_API_KEY=$UNIFIED_INTAKE_SUPPORT_API_KEY")
 fi
 
 # Optional: default client pack (GET /api/inbox/client-config without ?client= uses this)
@@ -370,7 +459,11 @@ for kv in "${ENV_VARS[@]}"; do
     esac
 done
 if [ "$UNIFIED_BUNDLE_PRINTED" -eq 0 ]; then
-    echo "   (none — Cloud Run JSON-primary unless set in .env.cloudrun)"
+    if _is_paid_pilot_posture; then
+        echo "   (unexpected — paid-pilot bundle should include UNIFIED_INTAKE_* keys above)"
+    else
+        echo "   (none — legacy demo cloud path; JSON-primary unless set in .env.cloudrun)"
+    fi
 fi
 if [ -n "${SERVICE_RECORD_DATABASE_URL:-}" ] || [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
     echo "   SERVICE_RECORD_DATABASE_URL=(set — value not printed)"

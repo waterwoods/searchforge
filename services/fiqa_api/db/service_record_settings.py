@@ -2,6 +2,12 @@
 Environment wiring for Stage 1 service-record Postgres.
 
 Dual-write is opt-in so local demo and Cloud Run without DB are unchanged.
+
+**Paid pilot:** Postgres is the only supported persistence truth (see
+``docs/CURRENT_PRODUCT_SHAPE.md``). JSON case file paths below are
+**legacy/dev compatibility** — not for ``ENV=prod`` or PG-primary pilots.
+
+**Local dev:** JSON-only cases are OK when no ``SERVICE_RECORD_DATABASE_URL``.
 """
 
 from __future__ import annotations
@@ -148,10 +154,14 @@ def db_primary_writes_enabled() -> bool:
 
 def json_case_writes_enabled() -> bool:
     """
-    When False, case_store skips writing unified_intake_cases.json for pilot DB-primary mode.
+    Legacy/dev compatibility: JSON case file writes (``unified_intake_cases.json``).
+
+    When False, case_store skips writing the JSON file for pilot DB-primary mode.
 
     Default: True (JSON writes on). Set UNIFIED_INTAKE_JSON_CASE_WRITES=0|false|no|off
     to disable JSON case writes (requires DB primary writes for online pilot).
+
+    Paid pilot: must be off — ``is_production_mode()`` forces False when ENV=prod.
 
     Rollback: UNIFIED_INTAKE_JSON_CASE_WRITES=1 or unset.
     """

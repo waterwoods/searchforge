@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.fiqa_api.routes import inbox_triage
+from tests.route_request_stub import minimal_route_request
 
 
 def test_append_message_blocks_mutation_on_new_issue(monkeypatch):
@@ -48,6 +49,7 @@ def test_append_message_blocks_mutation_on_new_issue(monkeypatch):
         inbox_triage.append_case_message(
             "case_1",
             inbox_triage.AppendMessageRequest(new_message="我还有一个理赔新问题"),
+            minimal_route_request(),
         )
     )
     assert body["append_blocked_new_issue"] is True
@@ -93,6 +95,7 @@ def test_append_message_borderline_still_updates(monkeypatch):
         inbox_triage.append_case_message(
             "case_bl",
             inbox_triage.AppendMessageRequest(new_message="顺便问下办公室收到没？"),
+            minimal_route_request(),
         )
     )
     assert body.get("append_blocked_new_issue") is None
@@ -124,6 +127,7 @@ def test_append_message_same_case_still_updates(monkeypatch):
         inbox_triage.append_case_message(
             "case_2",
             inbox_triage.AppendMessageRequest(new_message="我补充了ZIP 90210"),
+            minimal_route_request(),
         )
     )
     assert body["case_id"] == "case_2"

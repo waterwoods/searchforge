@@ -22,6 +22,9 @@ from services.fiqa_api.inbox_triage import session_repository as repo
 
 logger = logging.getLogger(__name__)
 
+# When patch_session_case_binding omits reuse_session_row, behavior matches historical repo.get_session read.
+_PATCH_SESSION_ROW_UNSPECIFIED = object()
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -117,21 +120,61 @@ def _in_progress_session_payload_unchanged(
     try:
         prev_t = raw.get("turns") or []
         prev_w = raw.get("workflow_state") or {}
-        if json.dumps(
+        # Hot path: new turns are appended every triage step — avoid serializing
+        # large nested triageResult blobs when lengths already differ.
+        if len(prev_t) != len(normalized_turns):
+            return False
+        if prev_w != workflow_state:
+            return False
+        if prev_t == normalized_turns:
+            return True
+        return json.dumps(
             prev_t, sort_keys=True, default=str, ensure_ascii=False
-        ) != json.dumps(
+        ) == json.dumps(
             normalized_turns, sort_keys=True, default=str, ensure_ascii=False
-        ):
-            return False
-        if json.dumps(
-            prev_w, sort_keys=True, default=str, ensure_ascii=False
-        ) != json.dumps(
-            workflow_state, sort_keys=True, default=str, ensure_ascii=False
-        ):
-            return False
-        return True
+        )
     except (TypeError, ValueError):
         return False
+
+
+def in_progress_session_view(repo_row: dict[str, Any] | None) -> dict[str, Any] | None:
+    """
+    Shape a persisted intake session document into the API / route view (turns, workflow_state, hints).
+    Caller should obtain repo_row via session_repository.get_session once per request when avoiding duplicate reads.
+    """
+    if not repo_row:
+        return None
+    s = repo_row
+    turns = s.get("turns") or []
+    workflow_state = s.get("workflow_state") or {}
+    out: dict[str, Any] = {
+        "turns": turns,
+        "workflow_state": workflow_state,
+        "updated_at": s.get("updated_at", ""),
+    }
+    li = _normalize_light_identity_binding(s.get("light_identity_binding"))
+    if li:
+        out["light_identity_binding"] = li
+    ac = str(s.get("active_case_id") or "").strip()
+    if ac:
+        out["active_case_id"] = ac
+    lv = str(s.get("last_vehicle_key") or "").strip()
+    if lv:
+        out["last_vehicle_key"] = lv
+    uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
+    if uh:
+        out["user_identity_hint"] = uh
+    ao = str(s.get("asserted_org_id") or "").strip()
+    if ao:
+        out["asserted_org_id"] = ao[:256]
+    return out
+
+
+def light_identity_binding_from_in_progress_view(view: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Normalized Stage-1 identity stub from an in-progress session view (no extra DB read)."""
+    if not view:
+        return None
+    return _normalize_light_identity_binding(view.get("light_identity_binding"))
 
 
 def save_in_progress_session(
@@ -140,6 +183,8 @@ def save_in_progress_session(
     triage_result: dict[str, Any],
     *,
     pre_read_raw: dict[str, Any] | None = None,
+    assume_fresh_co_read: bool = False,
+    asserted_org_id: str | None = None,
 ) -> None:
     """
     Save or update an in-progress session with turns and workflow_state.
@@ -147,6 +192,8 @@ def save_in_progress_session(
     Preserves optional WeChat/light_identity_binding across saves.
     pre_read_raw: if the caller already loaded this session in the same request, pass it to avoid
     a second read; merged fields still apply.
+    assume_fresh_co_read: when True and pre_read_raw is None, do not call get_session — the caller
+    already determined the row is missing in the same request (avoids a duplicate DB read on cold session).
     """
     if is_production_mode() and not service_record_database_url():
         logger.warning("Postgres is required for intake session persistence in production")
@@ -167,7 +214,7 @@ def save_in_progress_session(
     existing_lv: str | None = None
     existing_uh: dict[str, str] | None = None
     raw: dict[str, Any] | None = pre_read_raw
-    if raw is None:
+    if raw is None and not assume_fresh_co_read:
         raw = repo.get_session(sid)
     if raw:
         raw_li = raw.get("light_identity_binding")
@@ -192,8 +239,18 @@ def save_in_progress_session(
         row["last_vehicle_key"] = existing_lv
     if existing_uh:
         row["user_identity_hint"] = existing_uh
+    oid = (asserted_org_id or "").strip()[:256]
+    if oid:
+        row["asserted_org_id"] = oid
+    elif raw:
+        prev_o = str(raw.get("asserted_org_id") or "").strip()[:256]
+        if prev_o:
+            row["asserted_org_id"] = prev_o
     if raw and _in_progress_session_payload_unchanged(raw, normalized_turns, workflow_state):
-        return
+        prev_org = str(raw.get("asserted_org_id") or "").strip()[:256]
+        next_org = str(row.get("asserted_org_id") or "").strip()[:256]
+        if prev_org == next_org:
+            return
     if not repo.upsert_session(sid, row):
         return
 
@@ -206,29 +263,7 @@ def get_in_progress_session(session_id: str) -> dict[str, Any] | None:
     sid = (session_id or "").strip()
     if not sid:
         return None
-    s = repo.get_session(sid)
-    if s is None:
-        return None
-    turns = s.get("turns") or []
-    workflow_state = s.get("workflow_state") or {}
-    out: dict[str, Any] = {
-        "turns": turns,
-        "workflow_state": workflow_state,
-        "updated_at": s.get("updated_at", ""),
-    }
-    li = _normalize_light_identity_binding(s.get("light_identity_binding"))
-    if li:
-        out["light_identity_binding"] = li
-    ac = str(s.get("active_case_id") or "").strip()
-    if ac:
-        out["active_case_id"] = ac
-    lv = str(s.get("last_vehicle_key") or "").strip()
-    if lv:
-        out["last_vehicle_key"] = lv
-    uh = _normalize_user_identity_hint(s.get("user_identity_hint"))
-    if uh:
-        out["user_identity_hint"] = uh
-    return out
+    return in_progress_session_view(repo.get_session(sid))
 
 
 def get_session_light_identity_binding(session_id: str) -> dict[str, Any] | None:
@@ -271,6 +306,16 @@ def delete_in_progress_session(session_id: str) -> bool:
     return repo.delete_session(sid)
 
 
+def _fresh_empty_session_row(session_id: str, updated_at: str) -> dict[str, Any]:
+    """Mutable empty session shell (no deepcopy — only scalars and fresh list/dict instances)."""
+    return {
+        "session_id": session_id,
+        "turns": [],
+        "workflow_state": {},
+        "updated_at": updated_at,
+    }
+
+
 def patch_session_case_binding(
     session_id: str,
     *,
@@ -278,60 +323,91 @@ def patch_session_case_binding(
     last_vehicle_key: str | None = None,
     user_identity_hint: dict[str, Any] | None = None,
     clear_active_case: bool = False,
-) -> None:
+    reuse_session_row: Any = _PATCH_SESSION_ROW_UNSPECIFIED,
+) -> dict[str, Any] | None:
     """
     Update case binding / identity hints on an existing session row (creates row if missing).
+
+    reuse_session_row: when this request already loaded the session document (e.g. route co-read),
+    pass that dict to skip a duplicate repo.get_session. Pass None when the session row does not
+    exist yet (same as DB miss — uses empty template without an extra read). When omitted, fetch from repo.
+
+    Returns the merged session document written on success (caller may refresh co-read buffers).
     """
     sid = (session_id or "").strip()
     if not sid:
-        return
+        return None
     updated_at = _utc_now_iso()
     hint = _normalize_user_identity_hint(user_identity_hint) if user_identity_hint else None
 
-    raw = repo.get_session(sid) or {
-        "session_id": sid,
-        "turns": [],
-        "workflow_state": {},
-        "updated_at": updated_at,
-    }
+    base_from_repo: dict[str, Any] | None = None
+    had_existing_row = False
+    if reuse_session_row is _PATCH_SESSION_ROW_UNSPECIFIED:
+        base_from_repo = repo.get_session(sid)
+        if base_from_repo is None:
+            new_row = _fresh_empty_session_row(sid, updated_at)
+        else:
+            had_existing_row = True
+            new_row = copy.deepcopy(base_from_repo)
+    elif reuse_session_row is None:
+        new_row = _fresh_empty_session_row(sid, updated_at)
+    else:
+        had_existing_row = True
+        new_row = copy.deepcopy(reuse_session_row)
 
-    def _apply_to_row(row: dict[str, Any]) -> dict[str, Any]:
-        out = copy.deepcopy(row)
-        out["session_id"] = sid
-        out["updated_at"] = updated_at
-        if clear_active_case:
-            out.pop("active_case_id", None)
-        elif active_case_id is not None:
-            ac = str(active_case_id).strip()
-            if ac:
-                out["active_case_id"] = ac
-        if last_vehicle_key is not None:
-            lv = str(last_vehicle_key).strip()
-            if lv:
-                out["last_vehicle_key"] = lv
-            else:
-                out.pop("last_vehicle_key", None)
-        if hint:
-            prev = _normalize_user_identity_hint(out.get("user_identity_hint")) or {}
-            out["user_identity_hint"] = {**prev, **hint}
-        return out
+    pre_semantic = {k: v for k, v in new_row.items() if k != "updated_at"}
 
-    new_row = _apply_to_row(raw)
-    if not repo.upsert_session(sid, new_row):
-        return
+    new_row["session_id"] = sid
+    new_row["updated_at"] = updated_at
+    if clear_active_case:
+        new_row.pop("active_case_id", None)
+    elif active_case_id is not None:
+        ac = str(active_case_id).strip()
+        if ac:
+            new_row["active_case_id"] = ac
+    if last_vehicle_key is not None:
+        lv = str(last_vehicle_key).strip()
+        if lv:
+            new_row["last_vehicle_key"] = lv
+        else:
+            new_row.pop("last_vehicle_key", None)
+    if hint:
+        prev = _normalize_user_identity_hint(new_row.get("user_identity_hint")) or {}
+        new_row["user_identity_hint"] = {**prev, **hint}
+
+    post_semantic = {k: v for k, v in new_row.items() if k != "updated_at"}
+    if had_existing_row and post_semantic == pre_semantic:
+        if reuse_session_row is not _PATCH_SESSION_ROW_UNSPECIFIED and isinstance(reuse_session_row, dict):
+            return reuse_session_row
+        if base_from_repo is not None:
+            return base_from_repo
+        return new_row
+
+    if not repo.upsert_session(sid, new_row, copy_payload=False):
+        return None
+    return new_row
 
 
 def save_session_binding_after_case_created(
     session_id: str,
     case_id: str,
     vehicle_key: str | None = None,
+    *,
+    reuse_session_row: dict[str, Any] | None = None,
+    asserted_org_id: str | None = None,
 ) -> None:
-    """After persist_case: retain active_case_id + optional vehicle key; trim bulky turns."""
+    """After persist_case: retain active_case_id + optional vehicle key; trim bulky turns.
+
+    reuse_session_row: when the route already holds the repo-shaped session document for this
+    request (post-binding patches), pass it to skip an extra get_session read.
+
+    asserted_org_id: office hint to preserve on the trimmed row (case create org or prior session).
+    """
     sid = (session_id or "").strip()
     cid = (case_id or "").strip()
     if not sid or not cid:
         return
-    existing = repo.get_session(sid) or {}
+    existing = reuse_session_row if reuse_session_row is not None else (repo.get_session(sid) or {})
     updated_at = _utc_now_iso()
     vk = str(vehicle_key or "").strip() or None
     prev_li = _normalize_light_identity_binding(existing.get("light_identity_binding"))
@@ -349,5 +425,16 @@ def save_session_binding_after_case_created(
         row["light_identity_binding"] = prev_li
     if uh:
         row["user_identity_hint"] = uh
-    if not repo.upsert_session(sid, row):
+    oid = (asserted_org_id or "").strip()[:256]
+    if oid:
+        row["asserted_org_id"] = oid
+    else:
+        prev_o = str(existing.get("asserted_org_id") or "").strip()[:256]
+        if prev_o:
+            row["asserted_org_id"] = prev_o
+    ex_sem = {k: v for k, v in existing.items() if k != "updated_at"}
+    row_sem = {k: v for k, v in row.items() if k != "updated_at"}
+    if ex_sem == row_sem:
+        return
+    if not repo.upsert_session(sid, row, copy_payload=False):
         return

@@ -86,6 +86,31 @@ if p.get("is_production_mode") and p.get("json_case_writes"):
     print("❌ unsafe: is_production_mode and json_case_writes both true")
     raise SystemExit(1)
 print("✅ /health snapshot self-consistent for minimum safety")
+
+dp = d.get("deployment_profile") or {}
+if not dp.get("unified_intake_product_only"):
+    print("❌ unsafe: unified_intake_product_only is false on live /health")
+    raise SystemExit(1)
+auth = dp.get("auth_posture") or {}
+intake = dp.get("intake_perimeter") or {}
+if auth.get("support_export_surface") != "api_key_required":
+    print("❌ unsafe: support_export_surface is not api_key_required")
+    raise SystemExit(1)
+if intake.get("intake_http_surface") != "api_key_required":
+    print("❌ unsafe: intake_http_surface is not api_key_required")
+    raise SystemExit(1)
+hints = dp.get("operator_runtime_hints") or {}
+ow = hints.get("operator_warnings") or []
+for code in (
+    "production_like_runtime_without_intake_api_key_v1",
+    "production_like_runtime_without_support_api_key_v1",
+    "platform_full_api_surface_in_production_like_mode_v1",
+    "production_like_without_db_primary_writes_v1",
+):
+    if code in ow:
+        print(f"❌ unsafe operator warning present: {code}")
+        raise SystemExit(1)
+print("✅ deployment_profile product_only + keyed perimeters OK")
 PY
 
 SERVICE_NAME="${SERVICE_NAME:-fiqa-api}"
@@ -101,7 +126,8 @@ if command -v gcloud &>/dev/null && [ -n "$PROJECT_ID" ]; then
 d = json.load(sys.stdin)
 env = d.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [{}])[0].get("env") or []
 keys = (
-    "ENV", "DEMO_MODE", "UNIFIED_INTAKE_PG_DUAL_WRITE", "UNIFIED_INTAKE_DB_PRIMARY_WRITES",
+    "ENV", "DEMO_MODE", "UNIFIED_INTAKE_PRODUCT_ONLY",
+    "UNIFIED_INTAKE_PG_DUAL_WRITE", "UNIFIED_INTAKE_DB_PRIMARY_WRITES",
     "UNIFIED_INTAKE_DB_PRIMARY_READS", "UNIFIED_INTAKE_JSON_CASE_WRITES",
     "UNIFIED_INTAKE_JSON_READ_FALLBACK", "GIT_SHA", "SOURCE_REV",
 )
@@ -120,6 +146,11 @@ for e in env:
             print("  SERVICE_RECORD_DATABASE_URL=(set, value not shown)")
     if n == "DATABASE_URL" and (e.get("value") or e.get("valueFrom")):
         print("  DATABASE_URL=(set, value not shown)")
+    if n in ("UNIFIED_INTAKE_INTAKE_API_KEY", "UNIFIED_INTAKE_SUPPORT_API_KEY"):
+        if e.get("valueFrom", {}).get("secretKeyRef", {}).get("name"):
+            print("  %s=secretRef:%s" % (n, e["valueFrom"]["secretKeyRef"]["name"]))
+        elif e.get("value"):
+            print("  %s=(set, value not shown)" % n)
 '
   else
     echo "  (could not describe service — check gcloud auth/project)"

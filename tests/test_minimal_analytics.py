@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from services.fiqa_api.analytics.funnel_events import iter_funnel_events, reset_funnel_store
 from services.fiqa_api.analytics.triage_funnel import emit_funnel_from_triage_result
 from services.fiqa_api.routes import inbox_triage
+from tests.route_request_stub import minimal_route_request
 
 
 @dataclass
@@ -91,10 +92,34 @@ def test_append_blocked_event_on_new_vehicle_path(monkeypatch, capture_events):
         inbox_triage.append_case_message(
             "case_1",
             inbox_triage.AppendMessageRequest(new_message="我还有一个理赔新问题"),
+            minimal_route_request(),
         )
     )
     blocked = [p for n, p in capture_events if n == "append_blocked"]
     assert blocked and blocked[0].get("reason") == "requires_new_case"
+
+
+def test_funnel_metadata_carries_client_asserted_org_id():
+    """Canonical funnel rows include office hint when triage passes org (not IAM)."""
+    result = {
+        "quote_ready_status": "need_more",
+        "handoff_ready": True,
+        "case_usable": True,
+        "issue_category": "customer_question",
+        "collected_fields": ["year"],
+        "still_needed_fields": ["vin"],
+        "append_allowed": True,
+    }
+    emit_funnel_from_triage_result(
+        result,
+        turns=[_Turn("customer", "2020 Camry")],
+        text="2020 Camry",
+        session_id="s-org",
+        case_id="c-org",
+        client_asserted_org_id="broker-office-99",
+    )
+    hs = next(e for e in iter_funnel_events() if e.get("event") == "handoff_started")
+    assert hs.get("metadata", {}).get("client_asserted_org_id") == "broker-office-99"
 
 
 def test_handoff_started_emits_when_handoff_ready_without_quote_ready():

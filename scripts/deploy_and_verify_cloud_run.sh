@@ -41,9 +41,8 @@ if ! bash "$SCRIPT_DIR/check_env_vars.sh"; then
     exit 1
 fi
 
-# Set DEMO_MODE
-export DEMO_MODE=true
-echo "✅ DEMO_MODE=true (for retrieval-only mode)"
+# Demo cloud smoke path (NOT paid pilot — see docs/CURRENT_PRODUCT_SHAPE.md)
+echo "Using deploy_demo_cloud_smoke.sh (DEMO_MODE — not for broker pilots)"
 echo ""
 
 # Step 2: Preflight check
@@ -62,7 +61,7 @@ echo ""
 
 # Step 3: Deploy
 echo "Step 3: Deploying to Cloud Run..."
-if ! bash "$SCRIPT_DIR/deploy_rag_demo.sh"; then
+if ! bash "$SCRIPT_DIR/deploy_demo_cloud_smoke.sh"; then
     echo ""
     echo -e "${RED}❌ Deployment failed${NC}"
     exit 1

@@ -22,7 +22,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -46,13 +46,17 @@ from services.fiqa_api.inbox_triage.case_truth_repository import (
     count_cases_for_read,
     get_case_for_read,
     get_case_triage_stub_for_read,
+    list_cases_for_office_enforcement_read,
     list_recent_cases_for_binding,
     list_recent_cases_for_read,
+    triage_stub_read_cache_scope,
 )
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
+from services.fiqa_api.inbox_triage import session_repository as intake_session_repository
 from services.fiqa_api.inbox_triage.session_store import (
     get_in_progress_session,
-    get_session_light_identity_binding,
+    in_progress_session_view,
+    light_identity_binding_from_in_progress_view,
     patch_session_case_binding,
     patch_session_light_identity_binding,
     save_in_progress_session,
@@ -112,6 +116,23 @@ from services.fiqa_api.inbox_triage.add_car_vehicle_signals import (
     text_has_vehicle_make_model_signal,
     text_has_vehicle_year_signal,
 )
+from services.fiqa_api.security.request_identity import http_request_lineage, intake_tenant_truth
+from services.fiqa_api.security.support_export_gate import (
+    assert_support_export_authorized,
+    support_export_auth_posture_dict,
+)
+from services.fiqa_api.security.case_office_access import (
+    assert_case_office_access_allowed,
+    case_office_enforcement_enabled,
+    client_asserted_office_id,
+    office_ownership_posture_dict,
+)
+from services.fiqa_api.security.intake_api_gate import intake_api_auth_posture_dict
+from services.fiqa_api.security.minimal_signed_broker_token import (
+    minimal_broker_token_posture_dict,
+    minimal_broker_token_request_truth,
+)
+from services.fiqa_api.security.token_scope_posture import token_scope_registry_dict
 from services.fiqa_api.inbox_triage.triage import (
     triage_conversation,
     triage_for_append,
@@ -128,7 +149,28 @@ from services.fiqa_api.inbox_triage.triage import (
 
 logger = logging.getLogger(__name__)
 
+# Support export / replay handoff — bump when manifest keys change materially.
+SUPPORT_EXPORT_MANIFEST_VERSION = "support_export_v4"
+
 router = APIRouter(prefix="/api/inbox", tags=["inbox-triage"])
+
+
+def _support_replay_lineage_dict() -> dict[str, Any]:
+    """Stable replay-handoff tuple for tickets (not a legal hold or WORM export)."""
+
+    from services.fiqa_api.deployment_profile import intake_schema_epoch
+
+    return {
+        "support_export_manifest_version": SUPPORT_EXPORT_MANIFEST_VERSION,
+        "intake_schema_epoch": intake_schema_epoch(),
+        "triage_wire_contract_label": "triage_result_fe_grouping_v1",
+        "semantics": "support_replay_handoff_metadata_v1_not_legal_hold",
+        "office_ownership": office_ownership_posture_dict(),
+        "token_scope_registry": token_scope_registry_dict(),
+        "minimal_broker_token_posture": minimal_broker_token_posture_dict(),
+    }
+
+
 
 
 def _active_vehicle_cache_route(fn: Any) -> Any:
@@ -137,6 +179,17 @@ def _active_vehicle_cache_route(fn: Any) -> Any:
     @functools.wraps(fn)
     async def _wrapped(*args: Any, **kwargs: Any) -> Any:
         with active_vehicle_request_cache_scope():
+            return await fn(*args, **kwargs)
+
+    return _wrapped
+
+
+def _inbox_triage_request_cache_route(fn: Any) -> Any:
+    """POST /api/inbox/triage: vehicle entity + triage stub reads deduped per request."""
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with active_vehicle_request_cache_scope(), triage_stub_read_cache_scope():
             return await fn(*args, **kwargs)
 
     return _wrapped
@@ -166,13 +219,14 @@ def _schedule_route_analytics(
     *,
     session_id: str | None,
     text: str,
+    org_id: str | None = None,
 ) -> None:
     """Best-effort analytics: do not block response on funnel buffer / track_event."""
 
     def _sync_emit() -> None:
         try:
             _emit_route_analytics_for_triage_result(
-                result, turns, session_id=session_id, text=text
+                result, turns, session_id=session_id, text=text, org_id=org_id
             )
         except Exception:
             logger.exception("route_analytics_background_failed")
@@ -186,6 +240,8 @@ def _schedule_route_analytics(
 
 
 def _attach_route_perf_ms(result: dict[str, Any], perf: dict[str, float]) -> None:
+    """Attach optional perf breakdown when TRIAGE_RETURN_PERF_METRICS=1. All *_ms are wall milliseconds."""
+
     if not _expose_route_perf_metrics():
         return
     out = {k: round(float(v), 2) for k, v in perf.items()}
@@ -203,18 +259,27 @@ def _emit_route_analytics_for_triage_result(
     *,
     session_id: str | None = None,
     text: str = "",
+    org_id: str | None = None,
 ) -> None:
     """Structured analytics: funnel milestones (deduped) + lightweight signals in the event buffer."""
     sid = (session_id or "").strip() or None
     cid = str(result.get("case_id") or "").strip() or None
+
+    def _org_meta(meta: dict[str, Any]) -> dict[str, Any]:
+        if not org_id:
+            return meta
+        m = dict(meta)
+        m["org_id"] = org_id
+        return m
+
     if result.get("append_allowed") is False:
         append_session_analytics_event(
             "append_blocked",
             session_id=sid,
             case_id=cid,
-            metadata={"reason": result.get("case_boundary_action")},
+            metadata=_org_meta({"reason": result.get("case_boundary_action")}),
         )
-        track_event("append_blocked", {"reason": result.get("case_boundary_action")})
+        track_event("append_blocked", _org_meta({"reason": result.get("case_boundary_action")}))
     coll = result.get("collected_fields")
     miss = result.get("still_needed_fields")
     if not isinstance(coll, list):
@@ -226,18 +291,19 @@ def _emit_route_analytics_for_triage_result(
         "missing_count": len(miss),
         "quote_ready_status": result.get("quote_ready_status"),
     }
-    append_session_analytics_event("field_progress", session_id=sid, case_id=cid, metadata=fp_meta)
-    track_event("field_progress", fp_meta)
+    append_session_analytics_event("field_progress", session_id=sid, case_id=cid, metadata=_org_meta(fp_meta))
+    track_event("field_progress", _org_meta(fp_meta))
     emit_funnel_from_triage_result(
         result,
         turns=turns,
         text=text,
         session_id=sid,
         case_id=cid,
+        client_asserted_org_id=org_id,
     )
     if len(turns) + 1 <= 2:
-        append_session_analytics_event("early_dropoff_signal", session_id=sid, case_id=cid, metadata={})
-        track_event("early_dropoff", {})
+        append_session_analytics_event("early_dropoff_signal", session_id=sid, case_id=cid, metadata=_org_meta({}))
+        track_event("early_dropoff", _org_meta({}))
 
 
 def _normalize_input(text: str) -> str:
@@ -303,8 +369,17 @@ def _add_car_customer_lane(soft_route: str | None, thread_lower: str) -> bool:
     return _is_add_vehicle_request(thread_lower)
 
 
-def _add_car_structurally_complete_for_persist(text: str, turns: list[ConversationTurn] | None) -> bool:
-    labeled = _conversation_labeled_for_add_car_extract(text, turns)
+def _add_car_structurally_complete_for_persist(
+    text: str,
+    turns: list[ConversationTurn] | None,
+    *,
+    labeled_conversation: str | None = None,
+) -> bool:
+    labeled = (
+        labeled_conversation
+        if labeled_conversation is not None
+        else _conversation_labeled_for_add_car_extract(text, turns)
+    )
     fields = _extract_add_car_fields_truth_safe(labeled)
     return _add_car_enough_for_handoff(fields)
 
@@ -436,6 +511,18 @@ def _finalize_triage_api_result(result: dict[str, Any]) -> None:
     apply_client_reply_finalize_to_result(result, None)
 
 
+def _finalize_triage_http_contract(
+    result: dict[str, Any],
+    session_id: str | None,
+    *,
+    persisted_case: dict[str, Any] | None = None,
+) -> None:
+    """Attach case_lifecycle, apply API contract defaults, then PG active-vehicle overlay."""
+    _attach_case_lifecycle(result, persisted_case=persisted_case)
+    _finalize_triage_api_result(result)
+    _apply_pg_active_vehicle_identity_last(result, session_id)
+
+
 def _user_identity_hint_from_triage(result: dict[str, Any]) -> dict[str, str] | None:
     hint: dict[str, str] = {}
     phone = str(result.get("extracted_contact_phone") or "").strip()
@@ -530,13 +617,19 @@ class TriageRequest(BaseModel):
     )
 
 
-def _merge_identity_with_session(request: TriageRequest) -> dict[str, Any]:
+def _merge_identity_with_session(
+    request: TriageRequest,
+    *,
+    session_co_read_view: dict[str, Any] | None,
+) -> dict[str, Any]:
     """Merge optional identity from in-progress session (e.g. WeChat callback) with request fields."""
     pending: dict[str, Any] = {}
     if request.session_id:
-        raw = get_session_light_identity_binding(request.session_id.strip())
-        if raw:
-            pending = dict(raw)
+        pending_li = None
+        if session_co_read_view is not None:
+            pending_li = light_identity_binding_from_in_progress_view(session_co_read_view)
+        if pending_li:
+            pending = dict(pending_li)
     out = merge_light_identity_from_client_payload(
         identity_binding_state=(
             request.identity_binding_state
@@ -909,9 +1002,11 @@ async def publish_add_car_rules(request: AddCarRulesPublishRequest) -> dict[str,
     return {"ok": True, "message": "Rules published."}
 
 
-@router.post("/triage")
-@_active_vehicle_cache_route
-async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
+async def triage_inbox(
+    request: TriageRequest,
+    org_id: str | None = None,
+    http_request: Request | None = None,
+) -> dict[str, Any]:
     """
     Triage an inbound broker message.
 
@@ -924,6 +1019,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     - client_prep: what client should prepare
     - client_reply_draft: draft reply broker can send (editable)
     """
+    org_id = (org_id or "").strip()[:256] or None
     inline_ocr: tuple[str, dict[str, Any], str] | None = None
     if (request.inline_image_base64 or "").strip():
         inline_ocr = extract_ocr_from_inline_base64(
@@ -955,6 +1051,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         session_id=request.session_id,
         text=text,
         turns=request.conversation_turns or [],
+        client_asserted_org_id=org_id,
     )
 
     soft_route = (request.soft_route or "").strip().lower() or None
@@ -982,18 +1079,19 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             "triage_mode": "greenfield",
         }
         _attach_assist_layer(result, text, None)
-        _attach_case_lifecycle(result)
-        _finalize_triage_api_result(result)
-        _apply_pg_active_vehicle_identity_last(result, request.session_id)
+        _finalize_triage_http_contract(result, request.session_id)
         ta_turns = request.conversation_turns or []
         if request.persist_case:
             try:
                 source = f"[客户] {text}"
-                saved = save_case(source, result, client_id=client_id)
+                saved = save_case(
+                    source,
+                    result,
+                    client_id=client_id,
+                    asserted_org_id=org_id,
+                )
                 saved["assist"] = result.get("assist")
-                _attach_case_lifecycle(saved)
-                _finalize_triage_api_result(saved)
-                _apply_pg_active_vehicle_identity_last(saved, request.session_id)
+                _finalize_triage_http_contract(saved, request.session_id)
                 cid = str(saved.get("case_id") or "")
                 emit_case_created_milestone(
                     saved,
@@ -1001,13 +1099,19 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     text=text,
                     session_id=request.session_id,
                     case_id=cid,
+                    client_asserted_org_id=org_id,
                 )
-                track_event("case_created", {"case_id": cid, "session_id": request.session_id})
+                track_event(
+                    "case_created",
+                    {"case_id": cid, "session_id": request.session_id}
+                    | ({"org_id": org_id} if org_id else {}),
+                )
                 _schedule_route_analytics(
                     saved,
                     ta_turns,
                     session_id=request.session_id,
                     text=text,
+                    org_id=org_id,
                 )
                 _attach_route_perf_ms(
                     saved,
@@ -1019,6 +1123,8 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                         "assist_ms": 0.0,
                         "conversion_ms": 0.0,
                         "postprocess_ms": 0.0,
+                        "postprocess_finalize_ms": 0.0,
+                        "postprocess_after_finalize_ms": 0.0,
                     },
                 )
                 return saved
@@ -1030,6 +1136,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             ta_turns,
             session_id=request.session_id,
             text=text,
+            org_id=org_id,
         )
         _attach_route_perf_ms(
             result,
@@ -1041,6 +1148,8 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 "assist_ms": 0.0,
                 "conversion_ms": 0.0,
                 "postprocess_ms": 0.0,
+                "postprocess_finalize_ms": 0.0,
+                "postprocess_after_finalize_ms": 0.0,
             },
         )
         return result
@@ -1049,12 +1158,30 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
     # not triage_message + forced handoff_ready. Use triage_conversation(text, []) for first turn.
     _tp = time.perf_counter()
     turns = request.conversation_turns or []
-    soft_route_pre = (request.soft_route or "").strip().lower() or None
-    thread_lower_pre = _full_thread_lower(text, turns)
-    add_car_lane_pre = _add_car_customer_lane(soft_route_pre, thread_lower_pre)
+    soft_route_hint = (request.soft_route or "").strip().lower() or None
+    thread_lower = _full_thread_lower(text, turns)
+    add_car_lane_pre = _add_car_customer_lane(soft_route_hint, thread_lower)
 
     sid = (request.session_id or "").strip()
-    sess_raw = get_in_progress_session(sid) if sid else None
+    session_full_row = intake_session_repository.get_session(sid) if sid else None
+    sess_raw = in_progress_session_view(session_full_row)
+    # Session office assertion changed mid-flight — drop sticky case binding (honest multi-office UX).
+    if sid and sess_raw and org_id:
+        prev_sess_org = str(sess_raw.get("asserted_org_id") or "").strip()
+        ro = str(org_id).strip()
+        if prev_sess_org and ro and prev_sess_org != ro:
+            cleared_so = patch_session_case_binding(
+                sid, clear_active_case=True, reuse_session_row=session_full_row
+            )
+            if cleared_so is not None:
+                session_full_row = cleared_so
+                sess_raw = in_progress_session_view(session_full_row)
+            logger.info(
+                "session_office_assertion_shift_cleared_active_case session_id=%s prev_org=%s request_org=%s",
+                sid,
+                prev_sess_org,
+                ro,
+            )
     if sess_raw:
         prev_turns = sess_raw.get("turns") or []
         if isinstance(prev_turns, list):
@@ -1072,20 +1199,40 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     track_event("user_response_after_quote_ready", {})
                 break
     session_ms_seg1 = _route_mark()
-    labeled_for_vk = _conversation_labeled_for_add_car_extract(text, request.conversation_turns)
+    labeled_for_vk = _conversation_labeled_for_add_car_extract(text, turns)
     incoming_vehicle_key = _derive_vehicle_key_from_add_car_text(labeled_for_vk)
     explicit_case_id = (request.case_id or "").strip() or None
     resolved_case_id: str | None = None
     sess_for_resolve: dict[str, Any] | None = None
     session_active_case_row: dict[str, Any] | None = None
+    recent_for_bind: list[dict[str, Any]] | None = None
     if sid and sess_raw:
         sess_for_resolve = dict(sess_raw)
         sac0 = str(sess_for_resolve.get("active_case_id") or "").strip()
         if sac0:
             sc0 = get_case_triage_stub_for_read(sac0)
-            if not sc0 or not is_case_open_for_binding(sc0):
+            stale_office_bind = False
+            if sc0 and org_id:
+                co = str(sc0.get("asserted_org_id") or "").strip()
+                ro = str(org_id).strip()
+                if ro and co and co != ro:
+                    stale_office_bind = True
+            if not sc0 or not is_case_open_for_binding(sc0) or stale_office_bind:
+                if stale_office_bind:
+                    logger.info(
+                        "active_case_cleared_wrong_office_hint session_id=%s case_id=%s case_org=%s request_org=%s",
+                        sid,
+                        sac0,
+                        str((sc0 or {}).get("asserted_org_id") or ""),
+                        str(org_id or ""),
+                    )
                 sess_for_resolve.pop("active_case_id", None)
-                patch_session_case_binding(sid, clear_active_case=True)
+                cleared = patch_session_case_binding(
+                    sid, clear_active_case=True, reuse_session_row=session_full_row
+                )
+                if cleared is not None:
+                    session_full_row = cleared
+                    sess_raw = in_progress_session_view(session_full_row)
             else:
                 session_active_case_row = sc0
     if not explicit_case_id and sid:
@@ -1096,7 +1243,9 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             )
         if resolved_case_id is None:
             recent_for_bind = list_recent_cases_for_binding(
-                limit=_case_bind_recent_limit(), offset=0
+                limit=_case_bind_recent_limit(),
+                offset=0,
+                client_asserted_org_id=org_id,
             )
             resolved_case_id = resolve_active_case(
                 sess_for_resolve, recent_for_bind, incoming_vehicle_key
@@ -1114,16 +1263,29 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         if session_active_case_row and sac_id and sac_id == ec:
             existing_case = session_active_case_row
         else:
-            existing_case = get_case_triage_stub_for_read(ec)
+            picked: dict[str, Any] | None = None
+            if recent_for_bind:
+                for c in recent_for_bind:
+                    if str(c.get("case_id") or "").strip() == ec:
+                        picked = c
+                        break
+            if picked is not None:
+                # Shallow copy: route + reply_truth only read case fields; v6 merge returns new dicts.
+                existing_case = dict(picked)
+            else:
+                existing_case = get_case_triage_stub_for_read(ec)
     if effective_case_id and existing_case is None:
         effective_case_id = None
+
+    if existing_case is not None and http_request is not None:
+        assert_case_office_access_allowed(http_request, existing_case)
 
     reply_truth_ctx = _reply_truth_context_for_triage(
         case=existing_case,
         formal_submit=bool(request.formal_submit),
         add_car_lane=add_car_lane_pre,
         session_id=sid,
-        case_id=effective_case_id,
+        case_id=effective_case_id or None,
     )
     prior_ws: dict[str, Any] | None = None
     if sess_raw and isinstance(sess_raw.get("workflow_state"), dict):
@@ -1148,25 +1310,24 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         reply_truth_context=reply_truth_ctx,
         prior_workflow_state=prior_ws,
         v6_ocr_signals=_v6_ocr,
-        soft_route=soft_route_pre,
+        soft_route=soft_route_hint,
     )
     triage_ms_total = _route_mark()
 
     # Rerouting: when soft_route from button conflicts with inferred intent from text, acknowledge
-    soft_route = (request.soft_route or "").strip().lower() or None
-    if soft_route:
+    if soft_route_hint:
         reroute_messages, soft_route_starter_replies = get_soft_route_inbox_copy()
         inferred = _infer_intent_from_result(text, result)
         # Compatible pairs: remove_car + renewal_premium (both policy-related)
-        compatible = (soft_route == "remove_car" and inferred == "renewal_premium") or (
-            soft_route == "renewal_premium" and inferred == "remove_car"
+        compatible = (soft_route_hint == "remove_car" and inferred == "renewal_premium") or (
+            soft_route_hint == "renewal_premium" and inferred == "remove_car"
         )
-        if inferred and inferred != soft_route and not compatible:
+        if inferred and inferred != soft_route_hint and not compatible:
             result["reroute_occurred"] = True
             result["reroute_message"] = reroute_messages.get(
                 inferred, "看起来这是不同的问题，我先帮您处理这个。"
             )
-            result["previous_soft_route"] = soft_route
+            result["previous_soft_route"] = soft_route_hint
             result["new_intent"] = inferred
         else:
             result["reroute_occurred"] = False
@@ -1179,34 +1340,35 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             or "请提供更多信息" in draft
             or "Could you please provide more" in draft
         )
-        if is_generic and soft_route in soft_route_starter_replies:
-            thread_lower_sr = _full_thread_lower(text, turns)
-            skip_add_car_starter = soft_route == "add_car" and (
-                text_has_vehicle_make_model_signal(thread_lower_sr)
-                or text_has_vehicle_year_signal(thread_lower_sr)
+        if is_generic and soft_route_hint in soft_route_starter_replies:
+            skip_add_car_starter = soft_route_hint == "add_car" and (
+                text_has_vehicle_make_model_signal(thread_lower)
+                or text_has_vehicle_year_signal(thread_lower)
             )
             if skip_add_car_starter:
                 pass
             else:
-                result["client_reply_draft"] = soft_route_starter_replies[soft_route]
+                result["client_reply_draft"] = soft_route_starter_replies[soft_route_hint]
                 result["issue_category"] = (
-                    "payment_lapse_expiration" if soft_route == "cancellation_warning" else "customer_question"
+                    "payment_lapse_expiration"
+                    if soft_route_hint == "cancellation_warning"
+                    else "customer_question"
                 )
-            if soft_route == "add_car" and not skip_add_car_starter:
+            if soft_route_hint == "add_car" and not skip_add_car_starter:
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["year", "make_model", "zip"]
-            elif soft_route == "add_car" and skip_add_car_starter:
+            elif soft_route_hint == "add_car" and skip_add_car_starter:
                 pass
-            elif soft_route == "claim_intake":
+            elif soft_route_hint == "claim_intake":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["accident_time", "accident_location", "photos"]
-            elif soft_route == "cancellation_warning":
+            elif soft_route_hint == "cancellation_warning":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["payment_notice_or_screenshot"]
-            elif soft_route == "missing_document":
+            elif soft_route_hint == "missing_document":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["full_notice", "requested_documents"]
-            elif soft_route == "remove_car":
+            elif soft_route_hint == "remove_car":
                 result["collected_fields"] = []
                 result["still_needed_fields"] = ["sale_date", "vehicle_info", "transfer_status"]
 
@@ -1229,7 +1391,10 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 (result.get("boundary_reason") or "")[:500],
                 sid,
             )
-            patch_session_case_binding(sid, clear_active_case=True)
+            cleared = patch_session_case_binding(sid, clear_active_case=True, reuse_session_row=session_full_row)
+            if cleared is not None:
+                session_full_row = cleared
+                sess_raw = in_progress_session_view(session_full_row)
         else:
             patch_kw: dict[str, Any] = {}
             if effective_case_id:
@@ -1241,7 +1406,10 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             if uh:
                 patch_kw["user_identity_hint"] = uh
             if patch_kw:
-                patch_session_case_binding(sid, **patch_kw)
+                patched = patch_session_case_binding(sid, reuse_session_row=session_full_row, **patch_kw)
+                if patched is not None:
+                    session_full_row = patched
+                    sess_raw = in_progress_session_view(session_full_row)
 
     session_ms_seg2 = _route_mark()
     case_persist_ms_total = 0.0
@@ -1252,11 +1420,12 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         # PERSIST_FORMAL_SUBMIT_ALIGNMENT: Add-Car lane requires formal_submit before save_case.
         # Last turn may be boilerplate-only; triage can drop handoff_ready — still persist when
         # formal_submit + rule-complete thread (same structured bar as handoff).
-        thread_lower = _full_thread_lower(text, request.conversation_turns)
-        add_car_lane = _add_car_customer_lane(soft_route, thread_lower)
+        add_car_lane = add_car_lane_pre
         handoff_ready = bool(result.get("handoff_ready"))
         formal = bool(request.formal_submit)
-        struct_ok = _add_car_structurally_complete_for_persist(text, request.conversation_turns)
+        struct_ok = _add_car_structurally_complete_for_persist(
+            text, turns, labeled_conversation=labeled_for_vk
+        )
         if add_car_lane:
             should_persist = formal and (struct_ok or handoff_ready)
         else:
@@ -1273,7 +1442,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     source_for_case = "\n\n".join(p for p in conv_parts if p)
                 else:
                     source_for_case = text
-                identity_patch = _merge_identity_with_session(request)
+                identity_patch = _merge_identity_with_session(request, session_co_read_view=sess_raw)
                 if identity_patch:
                     result.update(identity_patch)
                 _apply_pg_active_vehicle_identity_last(result, request.session_id)
@@ -1282,6 +1451,7 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     result,
                     origin_session_id=request.session_id.strip() if request.session_id else None,
                     client_id=client_id,
+                    asserted_org_id=org_id,
                     service_lane=SERVICE_LANE_ADD_CAR if add_car_lane else None,
                 )
                 if request.session_id:
@@ -1290,6 +1460,9 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                         request.session_id.strip(),
                         str(saved.get("case_id") or ""),
                         vk_save,
+                        reuse_session_row=session_full_row,
+                        asserted_org_id=str(saved.get("asserted_org_id") or "").strip()[:256]
+                        or (org_id.strip() if org_id else None),
                     )
                 case_persist_ms_total = (time.perf_counter() - _t_p0) * 1000.0
                 logger.info(
@@ -1304,17 +1477,21 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                     text=text,
                     session_id=request.session_id,
                     case_id=cid,
+                    client_asserted_org_id=org_id,
                 )
-                track_event("case_created", {"case_id": cid, "session_id": request.session_id})
+                track_event(
+                    "case_created",
+                    {"case_id": cid, "session_id": request.session_id}
+                    | ({"org_id": org_id} if org_id else {}),
+                )
                 saved["assist"] = result.get("assist")
-                _attach_case_lifecycle(saved)
-                _finalize_triage_api_result(saved)
-                _apply_pg_active_vehicle_identity_last(saved, request.session_id)
+                _finalize_triage_http_contract(saved, request.session_id)
                 _schedule_route_analytics(
                     saved,
                     turns,
                     session_id=request.session_id,
                     text=text,
+                    org_id=org_id,
                 )
                 _attach_route_perf_ms(
                     saved,
@@ -1326,6 +1503,8 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                         "assist_ms": assist_ms_total,
                         "conversion_ms": conversion_ms_total,
                         "postprocess_ms": 0.0,
+                        "postprocess_finalize_ms": 0.0,
+                        "postprocess_after_finalize_ms": 0.0,
                     },
                 )
                 return saved
@@ -1335,15 +1514,14 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
         else:
             result["case_persisted"] = False
 
-    _attach_case_lifecycle(result, persisted_case=existing_case)
-    _finalize_triage_api_result(result)
-    _apply_pg_active_vehicle_identity_last(result, request.session_id)
-    postprocess_ms_total = _route_mark()
+    _finalize_triage_http_contract(result, request.session_id, persisted_case=existing_case)
+    postprocess_finalize_ms = _route_mark()
     _schedule_route_analytics(
         result,
         turns,
         session_id=request.session_id,
         text=text,
+        org_id=org_id,
     )
 
     # In-progress persistence: save turns + workflow_state when session_id and no case
@@ -1361,12 +1539,16 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
                 request.session_id.strip(),
                 full_turns,
                 result,
-                pre_read_raw=sess_raw,
+                # Repo-shaped co-read only (not API view); None on cold session => assume_fresh_co_read.
+                pre_read_raw=session_full_row,
+                assume_fresh_co_read=True,
+                asserted_org_id=org_id,
             )
         except Exception as exc:
             logger.warning("Failed to save in-progress session: %s", exc)
         result["conversation_id"] = request.session_id.strip()
-    postprocess_ms_total += _route_mark()
+    postprocess_after_finalize_ms = _route_mark()
+    postprocess_ms_total = postprocess_finalize_ms + postprocess_after_finalize_ms
     _attach_route_perf_ms(
         result,
         {
@@ -1377,13 +1559,29 @@ async def triage_inbox(request: TriageRequest) -> dict[str, Any]:
             "assist_ms": assist_ms_total,
             "conversion_ms": conversion_ms_total,
             "postprocess_ms": postprocess_ms_total,
+            "postprocess_finalize_ms": postprocess_finalize_ms,
+            "postprocess_after_finalize_ms": postprocess_after_finalize_ms,
         },
     )
     return result
 
 
+@router.post("/triage")
+@_inbox_triage_request_cache_route
+async def triage_inbox_http(
+    body: TriageRequest,
+    http_request: Request,
+    x_org_id: str | None = Header(default=None, alias="X-Org-Id"),
+) -> dict[str, Any]:
+    oid = getattr(http_request.state, "client_asserted_org_id", None)
+    if oid is None:
+        oid = (x_org_id or "").strip()[:256] or None
+    return await triage_inbox(body, oid, http_request)
+
+
 @router.get("/cases")
 async def get_recent_cases(
+    http_request: Request,
     limit: int = Query(default=50, ge=1, le=50),
     offset: int = Query(default=0, ge=0, le=5000),
 ) -> dict[str, Any]:
@@ -1392,8 +1590,21 @@ async def get_recent_cases(
 
     total_count is the full persisted queue size; limit/offset describe this response slice only.
     """
-    total = count_cases_for_read()
-    raw = list_recent_cases_for_read(limit=limit, offset=offset)
+    if case_office_enforcement_enabled():
+        req_org = client_asserted_office_id(http_request)
+        if not req_org:
+            raise HTTPException(
+                status_code=403,
+                detail="office_assertion_required_for_case_list_v1",
+            )
+        raw, total = list_cases_for_office_enforcement_read(
+            req_org,
+            limit=limit,
+            offset=offset,
+        )
+    else:
+        total = count_cases_for_read()
+        raw = list_recent_cases_for_read(limit=limit, offset=offset)
     try:
         from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
 
@@ -1411,7 +1622,7 @@ async def get_recent_cases(
 
 
 @router.get("/cases/{case_id}")
-async def get_saved_case(case_id: str) -> dict[str, Any]:
+async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     """Return one persisted case with full stored fields (messages/activity when available)."""
     cid = (case_id or "").strip()
     if not cid:
@@ -1419,11 +1630,12 @@ async def get_saved_case(case_id: str) -> dict[str, Any]:
     case = get_case_for_read(cid)
     if case is None:
         raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(http_request, case)
     return case
 
 
 @router.delete("/cases/{case_id}")
-async def delete_saved_case_test_only(case_id: str) -> dict[str, Any]:
+async def delete_saved_case_test_only(case_id: str, http_request: Request) -> dict[str, Any]:
     """
     Remove a persisted case from storage (JSON and/or Postgres when enabled).
 
@@ -1435,6 +1647,7 @@ async def delete_saved_case_test_only(case_id: str) -> dict[str, Any]:
     existing = get_case_for_read(cid)
     if existing is None:
         raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(http_request, existing)
     if not bool(existing.get("workbench_test")):
         raise HTTPException(
             status_code=403,
@@ -1458,8 +1671,14 @@ async def get_session(session_id: str) -> dict[str, Any]:
 
 
 @router.patch("/cases/{case_id}/status")
-async def patch_case_status(case_id: str, request: CaseStatusRequest) -> dict[str, Any]:
+async def patch_case_status(
+    case_id: str, request: CaseStatusRequest, http_request: Request
+) -> dict[str, Any]:
     """Update the lightweight broker workflow status for a saved case."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
     try:
         updated = update_case_status(case_id=case_id, status=request.status)
     except ValueError as exc:
@@ -1470,8 +1689,14 @@ async def patch_case_status(case_id: str, request: CaseStatusRequest) -> dict[st
 
 
 @router.post("/cases/{case_id}/notes")
-async def create_case_note(case_id: str, request: CaseNoteRequest) -> dict[str, Any]:
+async def create_case_note(
+    case_id: str, request: CaseNoteRequest, http_request: Request
+) -> dict[str, Any]:
     """Add one lightweight broker note to a saved case."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
     try:
         updated = add_case_note(case_id=case_id, note_text=request.note)
     except ValueError as exc:
@@ -1482,8 +1707,14 @@ async def create_case_note(case_id: str, request: CaseNoteRequest) -> dict[str, 
 
 
 @router.patch("/cases/{case_id}/follow-up")
-async def patch_case_follow_up(case_id: str, request: CaseFollowUpRequest) -> dict[str, Any]:
+async def patch_case_follow_up(
+    case_id: str, request: CaseFollowUpRequest, http_request: Request
+) -> dict[str, Any]:
     """Update lightweight follow-up target + timing for a saved case."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
     try:
         updated = update_case_follow_up(
             case_id=case_id,
@@ -1498,8 +1729,14 @@ async def patch_case_follow_up(case_id: str, request: CaseFollowUpRequest) -> di
 
 
 @router.patch("/cases/{case_id}/customer")
-async def patch_case_customer(case_id: str, request: CaseCustomerRequest) -> dict[str, Any]:
+async def patch_case_customer(
+    case_id: str, request: CaseCustomerRequest, http_request: Request
+) -> dict[str, Any]:
     """Update lightweight customer linkage fields on a saved case."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
     updated = update_case_customer(
         case_id=case_id,
         customer_name=request.customer_name,
@@ -1514,8 +1751,14 @@ async def patch_case_customer(case_id: str, request: CaseCustomerRequest) -> dic
 
 
 @router.patch("/cases/{case_id}/workbench")
-async def patch_case_workbench(case_id: str, request: CaseWorkbenchRequest) -> dict[str, Any]:
+async def patch_case_workbench(
+    case_id: str, request: CaseWorkbenchRequest, http_request: Request
+) -> dict[str, Any]:
     """Update workbench test/archive flags (soft-hide). With DB-primary writes, Postgres extra wins."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
     updated = update_case_workbench_flags(
         case_id=case_id,
         is_test=request.is_test,
@@ -1533,7 +1776,9 @@ async def patch_case_workbench(case_id: str, request: CaseWorkbenchRequest) -> d
 
 
 @router.post("/cases/{case_id}/attachments")
-async def upload_case_attachment(case_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_case_attachment(
+    case_id: str, http_request: Request, file: UploadFile = File(...)
+) -> dict[str, Any]:
     """
     Upload an attachment to a case. ADD_CAR_ATTACHMENT_READY_LITE.
     Accepts: image/*, application/pdf. Max 10 MB.
@@ -1541,6 +1786,7 @@ async def upload_case_attachment(case_id: str, file: UploadFile = File(...)) -> 
     case = get_case_for_read(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, case)
     content = await file.read()
     filename = file.filename or "attachment"
     content_type = file.content_type or ""
@@ -1559,8 +1805,14 @@ async def upload_case_attachment(case_id: str, file: UploadFile = File(...)) -> 
 
 
 @router.get("/cases/{case_id}/attachments/{attachment_id}")
-async def download_case_attachment(case_id: str, attachment_id: str):
+async def download_case_attachment(
+    case_id: str, attachment_id: str, http_request: Request
+):
     """Download an attachment file. ADD_CAR_ATTACHMENT_READY_LITE."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(http_request, row)
     path = get_attachment_file_path(case_id, attachment_id)
     if path is None:
         raise HTTPException(status_code=404, detail="attachment not found")
@@ -1568,7 +1820,12 @@ async def download_case_attachment(case_id: str, attachment_id: str):
 
 
 @router.post("/cases/{case_id}/append-message")
-async def append_case_message(case_id: str, request: AppendMessageRequest) -> dict[str, Any]:
+@_active_vehicle_cache_route
+async def append_case_message(
+    case_id: str,
+    request: AppendMessageRequest,
+    http_request: Request,
+) -> dict[str, Any]:
     """
     Paste a new customer follow-up message into an existing case.
     Re-triages with case context, updates case fields (next step, collected, etc.),
@@ -1583,6 +1840,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
     case = get_case_for_read(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, case)
     try:
         case_client_id = (case.get("client_id") or "").strip() or (request.client_id or "").strip() or None
         _v6_append = case.get("v6_ocr_signals")
@@ -1596,9 +1854,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
         if str(triage_result.get("case_boundary") or "").strip() == "new_issue":
             blocked = _build_new_issue_append_blocked_response(case=case, triage_result=triage_result)
             _attach_assist_layer(blocked, new_msg, _reply_truth_context_from_case(case))
-            _attach_case_lifecycle(blocked, persisted_case=case)
-            _finalize_triage_api_result(blocked)
-            _apply_pg_active_vehicle_identity_last(blocked, request.session_id)
+            _finalize_triage_http_contract(blocked, request.session_id, persisted_case=case)
             ap_sid = (request.session_id or "").strip() or None
             append_session_analytics_event(
                 "append_blocked",
@@ -1618,9 +1874,7 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
         if triage_result.get("append_allowed") is False:
             blocked = _build_append_blocked_no_mutation_response(case=case, triage_result=triage_result)
             _attach_assist_layer(blocked, new_msg, _reply_truth_context_from_case(case))
-            _attach_case_lifecycle(blocked, persisted_case=case)
-            _finalize_triage_api_result(blocked)
-            _apply_pg_active_vehicle_identity_last(blocked, request.session_id)
+            _finalize_triage_http_contract(blocked, request.session_id, persisted_case=case)
             ap_sid = (request.session_id or "").strip() or None
             append_session_analytics_event(
                 "append_blocked",
@@ -1651,18 +1905,122 @@ async def append_case_message(case_id: str, request: AppendMessageRequest) -> di
     if updated is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     _attach_assist_layer(updated, new_msg, _reply_truth_context_from_case(updated))
-    _attach_case_lifecycle(updated)
-    _finalize_triage_api_result(updated)
-    _apply_pg_active_vehicle_identity_last(updated, request.session_id)
+    _finalize_triage_http_contract(updated, request.session_id)
     ap_sid = (request.session_id or "").strip() or None
+    append_org = client_asserted_office_id(http_request)
     emit_funnel_from_triage_result(
         updated,
         turns=[],
         text=new_msg,
         session_id=ap_sid,
         case_id=case_id,
+        client_asserted_org_id=append_org,
     )
     return updated
+
+
+@router.get("/support/deployment-manifest")
+async def support_deployment_manifest(request: Request) -> dict[str, Any]:
+    """
+    Operator/support manifest: build SHA, deployment profile, persistence posture.
+    No customer PII. Intended for tickets and rollout provenance.
+    """
+    assert_support_export_authorized(request)
+    from services.fiqa_api.db.service_record_settings import unified_intake_case_persistence_report
+    from services.fiqa_api.deployment_profile import (
+        intake_schema_epoch,
+        is_unified_intake_product_only,
+        operator_runtime_hints,
+    )
+    from services.fiqa_api.utils.gitinfo import get_git_sha
+
+    sha, source = get_git_sha()
+    persist = unified_intake_case_persistence_report()
+    lineage = http_request_lineage(request)
+    return {
+        "ok": True,
+        "support_export_manifest_version": SUPPORT_EXPORT_MANIFEST_VERSION,
+        "triage_wire_contract_label": "triage_result_fe_grouping_v1",
+        "intake_schema_epoch": intake_schema_epoch(),
+        "replay_lineage": _support_replay_lineage_dict(),
+        "git": {"commit": sha, "source": source},
+        "unified_intake_product_only": is_unified_intake_product_only(),
+        "case_persistence": persist,
+        "auth_posture": support_export_auth_posture_dict(),
+        "intake_perimeter": intake_api_auth_posture_dict(),
+        "request_lineage": {"request_trace_id": lineage.request_trace_id},
+        "tenant_truth": intake_tenant_truth(request).as_dict(),
+        "minimal_broker_token_posture": minimal_broker_token_posture_dict(),
+        "minimal_broker_token_request": minimal_broker_token_request_truth(request),
+        "operator_runtime_hints": operator_runtime_hints(),
+        "office_ownership": office_ownership_posture_dict(),
+        "token_scope_registry": token_scope_registry_dict(),
+    }
+
+
+@router.get("/support/case-head/{case_id}")
+async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
+    """
+    Minimal persisted case metadata for L2 replay handoff (no message bodies / attachments).
+    """
+    assert_support_export_authorized(request)
+    from services.fiqa_api.deployment_profile import (
+        intake_schema_epoch,
+        is_unified_intake_product_only,
+        operator_runtime_hints,
+    )
+    from services.fiqa_api.utils.gitinfo import get_git_sha
+
+    cid = (case_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="case_id required")
+    case = get_case_for_read(cid)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    sha, source = get_git_sha()
+    lineage = http_request_lineage(request)
+    req_org = client_asserted_office_id(request)
+    case_org = str(case.get("asserted_org_id") or "").strip() or None
+    office_hint: dict[str, Any] | None = None
+    if req_org and case_org and req_org != case_org:
+        office_hint = {
+            "code": "support_case_head_x_org_id_mismatch_case_asserted_org_v1",
+            "semantics": "client_asserted_header_differs_from_persisted_case_hint_not_enforcement_v1",
+            "request_client_asserted_org_id": req_org,
+            "case_asserted_org_id": case_org,
+        }
+
+    out: dict[str, Any] = {
+        "ok": True,
+        "support_export_manifest_version": SUPPORT_EXPORT_MANIFEST_VERSION,
+        "intake_schema_epoch": intake_schema_epoch(),
+        "replay_lineage": _support_replay_lineage_dict(),
+        "git": {"commit": sha, "source": source},
+        "unified_intake_product_only": is_unified_intake_product_only(),
+        "auth_posture": support_export_auth_posture_dict(),
+        "intake_perimeter": intake_api_auth_posture_dict(),
+        "request_lineage": {"request_trace_id": lineage.request_trace_id},
+        "tenant_truth": intake_tenant_truth(request).as_dict(),
+        "minimal_broker_token_posture": minimal_broker_token_posture_dict(),
+        "minimal_broker_token_request": minimal_broker_token_request_truth(request),
+        "operator_runtime_hints": operator_runtime_hints(),
+        "office_ownership": office_ownership_posture_dict(),
+        "case": {
+            "case_id": case.get("case_id") or cid,
+            "status": case.get("status"),
+            "created_at": case.get("created_at"),
+            "updated_at": case.get("updated_at"),
+            "workflow_state": case.get("workflow_state"),
+            "service_lane": case.get("service_lane"),
+            "case_lifecycle": case.get("case_lifecycle"),
+            "workbench_test": case.get("workbench_test"),
+            "asserted_org_id": case.get("asserted_org_id"),
+            "client_id": case.get("client_id"),
+        },
+    }
+    if office_hint:
+        out["support_office_hint_check"] = office_hint
+    return out
 
 
 @router.get("/wechat/binding/start")

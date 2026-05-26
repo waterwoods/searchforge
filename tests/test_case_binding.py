@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.fiqa_api.inbox_triage.case_binding import is_case_open_for_binding, resolve_active_case
 from services.fiqa_api.inbox_triage.triage import triage_conversation, triage_for_append
 from services.fiqa_api.routes import inbox_triage
+from tests.route_request_stub import minimal_route_request
 
 
 def _open_case(case_id: str, **kwargs) -> dict:
@@ -85,6 +86,7 @@ def test_conflict_clears_binding_via_append_api(monkeypatch, tmp_path):
                 new_message="new car VIN 1HGBH41JXMN109186",
                 session_id=sid,
             ),
+            minimal_route_request(),
         )
 
     body = asyncio.run(_run())

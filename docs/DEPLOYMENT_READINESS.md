@@ -2,6 +2,8 @@
 
 **Purpose:** Lightweight shareable demo. Frontend on Vercel, backend on Cloud Run.
 
+**Current product shape:** [`docs/CURRENT_PRODUCT_SHAPE.md`](./CURRENT_PRODUCT_SHAPE.md) — what is required for paid pilot vs local demo.
+
 **Release system:** Use `docs/runbooks/RELEASE_CHECKLIST.md` every release. Reference `docs/runbooks/DEPLOYMENT_PLAYBOOK.md` for full procedure.
 
 ---
@@ -19,7 +21,7 @@
 ## 2. What Is Ready
 
 - **Frontend:** `npm run build` works; `VITE_API_BASE_URL` configurable for production
-- **Backend:** `Dockerfile.cloudrun` exists; deploy script `deploy_rag_demo.sh` works
+- **Backend:** `Dockerfile.cloudrun` exists; `deploy_paid_pilot.sh` (paid) / `deploy_demo_cloud_smoke.sh` (demo only)
 - **CORS:** Backend supports `ALLOWED_ORIGINS` for Vercel (unset = allow-all for demo)
 - **Health:** `/healthz`, `/readyz` endpoints
 - **Vercel:** `vercel.json` has SPA rewrites for `/workbench/*`
@@ -52,7 +54,7 @@
 # Backend
 cp configs/demo.env.example .env.cloudrun
 # Edit .env.cloudrun: QDRANT_URL, QDRANT_API_KEY, OPENAI_API_KEY, ALLOWED_ORIGINS
-bash scripts/deploy_rag_demo.sh
+bash scripts/deploy_paid_pilot.sh
 
 # Frontend (Vercel)
 # In Vercel dashboard: set VITE_API_BASE_URL = <Cloud Run URL>
@@ -84,7 +86,7 @@ vercel --prod
 
 ## 7. First Deploy Smoke Checklist
 
-1. **Backend deploy:** `bash scripts/deploy_rag_demo.sh` → note Cloud Run URL
+1. **Backend deploy:** `bash scripts/deploy_paid_pilot.sh` → note Cloud Run URL
 2. **Frontend deploy:** Connect repo to Vercel, set `VITE_API_BASE_URL` = Cloud Run URL, deploy
 3. **First page load:** Open `https://<vercel>.vercel.app/workbench/unified-intake`
 4. **Customer-entry test:** Paste "Notice: Policy will be cancelled in 7 days" → Start case → verify triage

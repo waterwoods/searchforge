@@ -21,6 +21,7 @@ import { useClientConfig } from '../context/ClientConfigContext';
 import { CustomerEntryTab } from '@/features/intake/components/CustomerEntryTab';
 import { BrokerWorkbenchTab } from '@/features/intake/components/BrokerWorkbenchTab';
 import { MyRequestsTab } from '@/features/intake/components/MyRequestsTab';
+import { isUnifiedIntakeProductOnlyUi } from '../config/productSurface';
 
 const { Text } = Typography;
 
@@ -59,6 +60,13 @@ export default function UnifiedIntakePage() {
     const [brokerInitialCaseId, setBrokerInitialCaseId] = useState<string | undefined>();
     const [pilotIntroCollapsed, setPilotIntroCollapsed] = useState(false);
     const [headerAvatarBroken, setHeaderAvatarBroken] = useState(false);
+    const showSimulationTab = !isUnifiedIntakeProductOnlyUi();
+
+    useEffect(() => {
+        if (!showSimulationTab && activeTab === 'simulation') {
+            setActiveTab('customer');
+        }
+    }, [showSimulationTab, activeTab]);
 
     const portalHeroTitle = uiCopy.portal_hero_title ?? '加车报价 · 客户统一报送';
     const officeWorkbenchDocumentTitle = uiCopy.office_workbench_document_title ?? '加车报价试点 · 办公室工作台';
@@ -199,7 +207,9 @@ export default function UnifiedIntakePage() {
                         children: (
                             <CustomerEntryTab
                                 onSwitchToBroker={handleSwitchToBroker}
-                                onOpenScenarioSimulation={() => setActiveTab('simulation')}
+                                onOpenScenarioSimulation={
+                                    showSimulationTab ? () => setActiveTab('simulation') : undefined
+                                }
                                 onOpenMyRequests={() => setActiveTab('my_requests')}
                             />
                         ),
@@ -233,18 +243,25 @@ export default function UnifiedIntakePage() {
                         ),
                         children: <BrokerWorkbenchTab initialCaseId={brokerInitialCaseId} clientId={clientId} />,
                     },
-                    {
-                        key: 'simulation',
-                        label: (
-                            <span>
-                                <PlayCircleOutlined /> {portalTabSimulation}
-                                <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                                    — {portalTabSimulationSuffix}
-                                </Text>
-                            </span>
-                        ),
-                        children: <ScenarioReplayTab />,
-                    },
+                    ...(showSimulationTab
+                        ? [
+                              {
+                                  key: 'simulation',
+                                  label: (
+                                      <span>
+                                          <PlayCircleOutlined /> {portalTabSimulation}
+                                          <Text
+                                              type="secondary"
+                                              style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}
+                                          >
+                                              — {portalTabSimulationSuffix}
+                                          </Text>
+                                      </span>
+                                  ),
+                                  children: <ScenarioReplayTab />,
+                              },
+                          ]
+                        : []),
                 ]}
             />
             </div>

@@ -392,6 +392,7 @@ export async function triageMessage(
             payload.inline_image_content_type = inlineImage.contentType.trim();
         }
     }
+    // Server may include route_perf when TRIAGE_RETURN_PERF_METRICS=1 (staging / profiling).
     const response = await request.post<TriageResult>('/api/inbox/triage', payload);
     return response.data;
 }

@@ -9,6 +9,7 @@
 | Order | Doc | Purpose |
 |-------|-----|---------|
 | 1 | `docs/PROJECT_DOC_SYSTEM_MAP.md` | Full doc map: goals, standards, runbooks, guardrails |
+| 1b | `docs/SIMPLIFICATION_MASTER_PLAN.md` | Reduction roadmap when simplifying/hiding/deleting (not feature work) |
 | 2 | `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Macro blueprint (north star):** Unified Intake product direction, state-driven flow, client-pack strategy, technical evolution |
 | 3 | `docs/goals/insurance_paid_pilot_goal.md` | Master goal, scope, what’s in/out |
 | 4 | `docs/ANDY_QUICK_START.md` | How to run demo, ports, recovery |

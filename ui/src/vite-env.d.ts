@@ -9,6 +9,8 @@ interface ImportMetaEnv {
     readonly VITE_API_BASE_URL?: string;
     /** production | preview | local — set in Vercel per env */
     readonly VITE_APP_ENV?: string;
+    /** When 1/true: hide lab sidebar + simulation tab (paid-pilot Vercel UI). */
+    readonly VITE_UNIFIED_INTAKE_PRODUCT_ONLY?: string;
 }
 
 interface ImportMeta {

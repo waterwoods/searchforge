@@ -18,9 +18,10 @@ import {
 } from '@ant-design/icons';
 import { Menu } from 'antd';
 import { Link, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { isUnifiedIntakeProductOnlyUi } from '../../config/productSurface';
 
-const menuItems = [
+const FULL_MENU_ITEMS = [
     {
         key: '/',
         icon: <RocketOutlined />,
@@ -137,9 +138,35 @@ const menuItems = [
     },
 ];
 
+/** Paid-pilot Vercel builds: sidebar shows intake + demo entry only (lab routes still exist if URL typed). */
+const PRODUCT_ONLY_MENU_ITEMS = [
+    {
+        key: '/',
+        icon: <RocketOutlined />,
+        label: <Link to="/">Showtime</Link>,
+    },
+    {
+        key: '/workbench-sub',
+        icon: <InboxOutlined />,
+        label: 'Unified Intake',
+        children: [
+            {
+                key: '/workbench/unified-intake',
+                icon: <InboxOutlined />,
+                label: <Link to="/workbench/unified-intake">客户统一受理</Link>,
+            },
+        ],
+    },
+];
+
 export const AppSider = () => {
     const location = useLocation();
     const [selectedKeys, setSelectedKeys] = useState([location.pathname]);
+    const productOnlyUi = isUnifiedIntakeProductOnlyUi();
+    const menuItems = useMemo(
+        () => (productOnlyUi ? PRODUCT_ONLY_MENU_ITEMS : FULL_MENU_ITEMS),
+        [productOnlyUi],
+    );
 
     useEffect(() => {
         setSelectedKeys([location.pathname]);
@@ -149,7 +176,7 @@ export const AppSider = () => {
         <Menu
             mode="inline"
             selectedKeys={selectedKeys}
-            defaultOpenKeys={['/workbench-sub', '/rag-lab-sub']}
+            defaultOpenKeys={productOnlyUi ? ['/workbench-sub'] : ['/workbench-sub', '/rag-lab-sub']}
             style={{ height: '100%', borderRight: 0 }}
             items={menuItems}
         />

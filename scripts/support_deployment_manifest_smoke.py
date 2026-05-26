@@ -62,6 +62,16 @@ def main() -> int:
     if not isinstance(hints.get("operator_warnings"), list):
         print("FAIL operator_warnings missing or not a list on /health", file=sys.stderr)
         return 1
+    di = hints.get("deployment_identity")
+    if not isinstance(di, dict) or not di.get("semantics"):
+        print("FAIL deployment_identity missing or invalid on /health", file=sys.stderr)
+        return 1
+    if not isinstance(dp.get("office_ownership"), dict):
+        print("FAIL office_ownership missing or not a dict on /health", file=sys.stderr)
+        return 1
+    if not isinstance(dp.get("token_scope_registry"), dict):
+        print("FAIL token_scope_registry missing or not a dict on /health", file=sys.stderr)
+        return 1
     persist = health.get("unified_intake_case_persistence")
     if not isinstance(persist, dict):
         print("WARN unified_intake_case_persistence missing (non-fatal)", file=sys.stderr)
@@ -82,12 +92,19 @@ def main() -> int:
     if not manifest.get("ok"):
         print("FAIL deployment-manifest ok=false", file=sys.stderr)
         return 1
+    if not isinstance(manifest.get("token_scope_registry"), dict):
+        print("FAIL token_scope_registry missing or not a dict on manifest", file=sys.stderr)
+        return 1
     mh = manifest.get("operator_runtime_hints")
     if not isinstance(mh, dict):
         print("FAIL operator_runtime_hints missing on manifest", file=sys.stderr)
         return 1
     if not isinstance(mh.get("operator_warnings"), list):
         print("FAIL operator_warnings missing or not a list on manifest", file=sys.stderr)
+        return 1
+    mdi = mh.get("deployment_identity")
+    if not isinstance(mdi, dict) or not mdi.get("semantics"):
+        print("FAIL deployment_identity missing or invalid on manifest", file=sys.stderr)
         return 1
 
     print("OK support_deployment_manifest_smoke")

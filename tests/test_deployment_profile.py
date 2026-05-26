@@ -56,6 +56,18 @@ def test_health_exposes_deployment_profile_operational_truth():
     assert "unified_intake_allow_inmemory_sessions_for_tests" in hints
     ow = hints.get("operator_warnings")
     assert isinstance(ow, list)
+    ident = hints.get("deployment_identity")
+    assert isinstance(ident, dict)
+    assert ident.get("semantics") == "best_effort_deploy_labels_not_tamper_evident_v1"
+    office = dp.get("office_ownership")
+    assert isinstance(office, dict)
+    assert office.get("case_office_enforcement") in ("enabled", "disabled")
+    tsr = dp.get("token_scope_registry")
+    assert isinstance(tsr, dict)
+    assert tsr.get("registry_version")
+    mb = dp.get("minimal_broker_token")
+    assert isinstance(mb, dict)
+    assert mb.get("model_version")
 
 
 def test_operator_runtime_hints_follows_env(monkeypatch):
@@ -83,6 +95,19 @@ def test_deployment_operator_warnings_prod_demo_contradiction(monkeypatch):
     assert "env_prod_with_demo_mode_truthy_v1" in w
 
 
+def test_deployment_operator_warnings_office_enforcement_without_db(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.setenv("UNIFIED_INTAKE_ENFORCE_CASE_OFFICE_OWNERSHIP", "1")
+    monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", raising=False)
+    w = deployment_operator_warnings()
+    assert "production_like_missing_service_record_database_url_v1" in w
+    assert (
+        "office_enforcement_on_without_service_record_database_url_multi_instance_unsafe_v1" in w
+    )
+
+
 def test_health_tenant_truth_reflects_x_org_id(monkeypatch):
     monkeypatch.delenv("UNIFIED_INTAKE_SUPPORT_API_KEY", raising=False)
     c = TestClient(app)
@@ -90,3 +115,38 @@ def test_health_tenant_truth_reflects_x_org_id(monkeypatch):
     assert r.status_code == 200
     tt = (r.json().get("deployment_profile") or {}).get("tenant_truth") or {}
     assert tt.get("client_asserted_org_id") == "office-alpha"
+
+
+def test_deployment_operator_warnings_duplicate_intake_support_keys(monkeypatch):
+    monkeypatch.setenv("UNIFIED_INTAKE_INTAKE_API_KEY", "same-secret-not-recommended-123456789012")
+    monkeypatch.setenv("UNIFIED_INTAKE_SUPPORT_API_KEY", "same-secret-not-recommended-123456789012")
+    w = deployment_operator_warnings()
+    assert "intake_api_key_equals_support_api_key_reduces_perimeter_separation_v1" in w
+
+
+def test_deployment_operator_warnings_platform_full_in_prod_like(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.delenv("UNIFIED_INTAKE_PRODUCT_ONLY", raising=False)
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    w = deployment_operator_warnings()
+    assert "platform_full_api_surface_in_production_like_mode_v1" in w
+
+
+def test_deployment_operator_warnings_missing_keys_in_prod_like(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.delenv("UNIFIED_INTAKE_INTAKE_API_KEY", raising=False)
+    monkeypatch.delenv("UNIFIED_INTAKE_SUPPORT_API_KEY", raising=False)
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    w = deployment_operator_warnings()
+    assert "production_like_runtime_without_intake_api_key_v1" in w
+    assert "production_like_runtime_without_support_api_key_v1" in w
+
+
+def test_pilot_safe_default_profile_v1_keys():
+    from services.fiqa_api.deployment_profile import pilot_safe_default_profile_v1
+
+    p = pilot_safe_default_profile_v1()
+    assert p["UNIFIED_INTAKE_PRODUCT_ONLY"] == "1"
+    assert p["UNIFIED_INTAKE_DB_PRIMARY_WRITES"] == "1"
+    assert p["UNIFIED_INTAKE_JSON_CASE_WRITES"] == "0"
+    assert p["DEMO_MODE"] == "0"

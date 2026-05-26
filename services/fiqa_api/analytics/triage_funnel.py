@@ -8,6 +8,22 @@ from typing import Any, Protocol
 from services.fiqa_api.analytics.funnel_events import emit_funnel_event
 
 
+def _clip_org_hint(raw: str | None) -> str | None:
+    s = (raw or "").strip()[:256]
+    return s or None
+
+
+def _with_office_hint(metadata: dict[str, Any], client_asserted_org_id: str | None) -> dict[str, Any]:
+    """Attach honest office scope label (X-Org-Id assertion at emit time; not IAM)."""
+
+    oid = _clip_org_hint(client_asserted_org_id)
+    if not oid:
+        return metadata
+    out = dict(metadata)
+    out["client_asserted_org_id"] = oid
+    return out
+
+
 class _TurnLike(Protocol):
     role: str
     text: str
@@ -90,19 +106,25 @@ def emit_session_milestones(
     session_id: str | None,
     text: str,
     turns: list[_TurnLike],
+    client_asserted_org_id: str | None = None,
 ) -> None:
     sid = (session_id or "").strip() or None
     if not sid:
         return
 
-    emit_funnel_event("session_started", session_id=sid, case_id=None, metadata={})
+    emit_funnel_event(
+        "session_started",
+        session_id=sid,
+        case_id=None,
+        metadata=_with_office_hint({}, client_asserted_org_id),
+    )
     ct = customer_turn_index(turns)
     if is_meaningful_customer_text(text):
         emit_funnel_event(
             "first_meaningful_input",
             session_id=sid,
             case_id=None,
-            metadata={"customer_turn_index": ct},
+            metadata=_with_office_hint({"customer_turn_index": ct}, client_asserted_org_id),
         )
 
 
@@ -113,6 +135,7 @@ def emit_case_created_milestone(
     text: str,
     session_id: str | None,
     case_id: str,
+    client_asserted_org_id: str | None = None,
 ) -> None:
     """Call only when a case row is newly persisted this request."""
     sid = (session_id or "").strip() or None
@@ -125,7 +148,10 @@ def emit_case_created_milestone(
         "case_created",
         session_id=sid,
         case_id=cid,
-        metadata={"case_snapshot": snap, "customer_turn_index": ct},
+        metadata=_with_office_hint(
+            {"case_snapshot": snap, "customer_turn_index": ct},
+            client_asserted_org_id,
+        ),
     )
 
 
@@ -136,6 +162,7 @@ def emit_funnel_from_triage_result(
     text: str,
     session_id: str | None,
     case_id: str | None = None,
+    client_asserted_org_id: str | None = None,
 ) -> None:
     """Emit quote_ready / handoff funnel milestones (deduped; append-safe)."""
     sid = (session_id or "").strip() or None
@@ -143,7 +170,10 @@ def emit_funnel_from_triage_result(
     cid = cid or None
     ct = customer_turn_index(turns)
     snap = case_snapshot_for_analytics(result, customer_turn_index=ct, text=text)
-    base_meta: dict[str, Any] = {"case_snapshot": snap, "customer_turn_index": ct}
+    base_meta: dict[str, Any] = _with_office_hint(
+        {"case_snapshot": snap, "customer_turn_index": ct},
+        client_asserted_org_id,
+    )
 
     if str(result.get("quote_ready_status") or "").strip() == "quote_ready":
         emit_funnel_event(

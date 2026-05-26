@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, Request
 
 from services.fiqa_api.analytics.funnel_events import CANONICAL_FUNNEL_EVENTS, iter_funnel_events
 from services.fiqa_api.analytics.funnel_metrics import (
@@ -17,6 +17,40 @@ from services.fiqa_api.analytics.funnel_metrics import (
 from services.fiqa_api.analytics.north_star_score import compute_north_star_score
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+
+def _org_filter_value(request: Request, x_org_id: str | None) -> str | None:
+    """Prefer middleware-normalized state; allow explicit header for tests and curl."""
+
+    st = getattr(request.state, "client_asserted_org_id", None)
+    if isinstance(st, str) and st.strip():
+        return st.strip()[:256]
+    if x_org_id and str(x_org_id).strip():
+        return str(x_org_id).strip()[:256]
+    return None
+
+
+def _event_matches_office_filter(ev: dict[str, Any], office: str) -> bool:
+    """Match buffered rows where org was recorded under client_asserted_org_id or legacy org_id."""
+
+    want = (office or "").strip()
+    if not want:
+        return True
+    meta = ev.get("metadata")
+    if not isinstance(meta, dict):
+        return False
+    a = str(meta.get("client_asserted_org_id") or "").strip()
+    b = str(meta.get("org_id") or "").strip()
+    return a == want or b == want
+
+
+def _filter_events_for_office(events: list[dict[str, Any]], office: str | None) -> list[dict[str, Any]]:
+    if not office:
+        return events
+    o = office.strip()
+    if not o:
+        return events
+    return [e for e in events if _event_matches_office_filter(e, o)]
 
 
 def _session_has_canonical(evs: list[dict[str, Any]]) -> bool:
@@ -45,8 +79,13 @@ def _aggregate_north_star(events: list[dict[str, Any]]) -> tuple[float | None, d
 
 
 @router.get("/dashboard")
-async def analytics_dashboard() -> dict[str, Any]:
-    events = iter_funnel_events()
+async def analytics_dashboard(
+    request: Request,
+    x_org_id: str | None = Header(default=None, alias="X-Org-Id"),
+) -> dict[str, Any]:
+    raw_all = iter_funnel_events()
+    office = _org_filter_value(request, x_org_id)
+    events = _filter_events_for_office(raw_all, office)
     funnel = compute_funnel(events)
     dropoff_points = compute_dropoff_points(events)
     dropoff_summary = compute_dropoff_summary(events)
@@ -61,4 +100,10 @@ async def analytics_dashboard() -> dict[str, Any]:
         "dropoff_summary": dropoff_summary,
         "top_issues": issues,
         "sessions_in_buffer": len(group_events_by_session(events)),
+        "dashboard_scope": {
+            "semantics": "in_memory_buffer_filtered_by_client_asserted_org_not_iam_v1",
+            "client_asserted_org_id_filter": office,
+            "events_included": len(events),
+            "events_total_unfiltered": len(raw_all),
+        },
     }

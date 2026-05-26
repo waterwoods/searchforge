@@ -19,6 +19,7 @@ torch_cache/
 __pycache__/
 
 # Generated artifacts, data, and logs
+results/
 .runs/
 .runs/api.log
 .runs/api.pid
