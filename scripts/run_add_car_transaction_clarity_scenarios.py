@@ -20,7 +20,7 @@ if str(REPO) not in sys.path:
 
 from services.fiqa_api.inbox_triage.triage import triage_conversation  # noqa: E402
 
-PACK = REPO / "docs/sprints/ADD_CAR_TRANSACTION_CLARITY_SPRINT/founder_scenario_pack.json"
+PACK = REPO / "docs/sprints/archive/add_car_sprints/ADD_CAR_TRANSACTION_CLARITY_SPRINT/founder_scenario_pack.json"
 
 
 def _contains_any_zh(text: str, needles: list[str]) -> bool:

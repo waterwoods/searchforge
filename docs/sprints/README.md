@@ -27,12 +27,13 @@ When implementing changes, update `docs/CURRENT_PRODUCT_SHAPE.md` and runbooks �
 
 **P0 batch 2 (2026-05-26):** Turn-1 / focus-mode / stress-test packages + `workbench_handoff_readiness/` → archive. **Not deleted.**
 
+**P1 batch 3 (2026-05-26):** ~41 `ADD_CAR_*` / `add_car_*` sprint dirs → `archive/add_car_sprints/`; stale deploy reports; convergence docs → `docs/archive/convergence_reports/`. **Not deleted.**
+
 ## Active at repo root (recent / convergence)
 
 - [`COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md`](./COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md)
 - [`PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md`](./PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md)
 - [`SAFE_REDUCTION_BASELINE_CHECKPOINT.md`](./SAFE_REDUCTION_BASELINE_CHECKPOINT.md)
-- [`MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md`](./MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md)
 - [`PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md`](./PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md)
 - [`STRICT_PRODUCT_ONLY_WIRE_CLOSURE_SUPPORT_EXPORT_SPRINT.md`](./STRICT_PRODUCT_ONLY_WIRE_CLOSURE_SUPPORT_EXPORT_SPRINT.md)
 - [`FOUNDER_TRIAL_CHECKLIST.md`](./FOUNDER_TRIAL_CHECKLIST.md)

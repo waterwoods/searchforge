@@ -29,15 +29,26 @@ Files here were moved from `docs/sprints/` during reduction batches. They remain
 - Platform-future narratives (multi-tenant, hundred-offices, future SaaS OS)
 - Turn-1 / focus-mode / stress-test sprint packages superseded by code + CURRENT_PRODUCT_SHAPE
 - Workbench handoff readiness specs merged into product shape
+- **P1 batch 3:** Add-Car sprint packages (`add_car_sprints/`) — product behavior lives in code + `STANDARD_SCENARIO_PACKAGE.md`; scenario JSON kept for regression scripts
+- **P1 batch 3:** Stale deploy/redeploy reports (`stale_deploy_reports/`)
+- **P1 batch 3:** Convergence/deploy audit reports → `docs/archive/convergence_reports/`
+- **P1 batch 3:** `MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md` — superseded by `SIMPLIFICATION_*` docs
 
 ## Active at `docs/sprints/` (not archived)
 
 - [`COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md`](../COLLAPSE_LEGACY_RUNTIME_PATHS_SPRINT.md) — convergence authority
 - [`PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md`](../PRODUCT_SIMPLIFICATION_SAAS_REDUCTION_SPRINT.md)
 - [`SAFE_REDUCTION_BASELINE_CHECKPOINT.md`](../SAFE_REDUCTION_BASELINE_CHECKPOINT.md)
-- [`MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md`](../MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md)
 - [`PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md`](../PILOT_SAAS_SURVIVABILITY_OFFICE_TRUST_HARDENING_SPRINT.md)
 - [`STRICT_PRODUCT_ONLY_WIRE_CLOSURE_SUPPORT_EXPORT_SPRINT.md`](../STRICT_PRODUCT_ONLY_WIRE_CLOSURE_SUPPORT_EXPORT_SPRINT.md)
+- [`FOUNDER_TRIAL_CHECKLIST.md`](../FOUNDER_TRIAL_CHECKLIST.md)
+
+## Subdirectories
+
+| Path | Contents |
+|------|----------|
+| `add_car_sprints/` | Historical Add-Car sprint dirs; scenario JSON used by `scripts/run_add_car_*.py` |
+| `stale_deploy_reports/` | One-off redeploy / UX bugfix reports |
 
 ## Batch log
 
@@ -45,3 +56,4 @@ Files here were moved from `docs/sprints/` during reduction batches. They remain
 |-------|------|----------------|
 | safe-batch-loops | 2026-05-26 | ~90 root `.md` + 16 dirs |
 | p0-hardening-loops | 2026-05-26 | 26 root `.md` + `workbench_handoff_readiness/` |
+| p1-simplification-loops | 2026-05-26 | ~41 Add-Car dirs + 6 root convergence reports + MINIMAL_PAID sprint |

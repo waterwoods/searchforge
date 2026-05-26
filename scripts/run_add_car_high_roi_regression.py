@@ -22,7 +22,7 @@ from services.fiqa_api.inbox_triage.triage import (  # noqa: E402
     triage_conversation,
 )
 
-PACK = ROOT / "docs" / "sprints" / "ADD_CAR_HIGH_ROI_EXTRACTION_GUARD_FIX" / "regression_scenarios.json"
+PACK = ROOT / "docs" / "sprints" / "archive" / "add_car_sprints" / "ADD_CAR_HIGH_ROI_EXTRACTION_GUARD_FIX" / "regression_scenarios.json"
 
 
 def main() -> int:

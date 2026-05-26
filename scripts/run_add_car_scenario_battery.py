@@ -26,7 +26,7 @@ os.environ.setdefault("LLM_GENERATION_ENABLED", "false")
 from services.fiqa_api.inbox_triage.triage import triage_conversation  # noqa: E402
 
 
-BATTERY_PATH = ROOT / "docs" / "sprints" / "ADD_CAR_SCENARIO_BATTERY_EVALUATION" / "scenario_battery.json"
+BATTERY_PATH = ROOT / "docs" / "sprints" / "archive" / "add_car_sprints" / "ADD_CAR_SCENARIO_BATTERY_EVALUATION" / "scenario_battery.json"
 
 
 def load_battery() -> dict:

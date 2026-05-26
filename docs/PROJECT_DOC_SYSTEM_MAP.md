@@ -61,7 +61,7 @@ Then use this map to find specific docs.
 | `docs/sprints/archive/FUTURE_SAAS_OPERATING_SYSTEM_FINAL_REPORT.md` | Historical report | Same — not shipped |
 | `docs/sprints/archive/LONG_HORIZON_SAAS_OPERATING_SYSTEM_SPRINT.md` | Historical architecture | Long-horizon convergence — not current deploy |
 | `docs/sprints/archive/PAID_SAAS_OPERATING_MODEL_ARCHITECTURE_CONVERGENCE_SPRINT.md` | Historical convergence | Superseded by `CURRENT_PRODUCT_SHAPE.md` |
-| `docs/sprints/MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md` | Reduction sprint record | Context only — active reduction is `SIMPLIFICATION_*` docs |
+| `docs/sprints/archive/MINIMAL_PAID_SAAS_SURVIVABILITY_SPRINT.md` | Reduction sprint record | Context only — active reduction is `SIMPLIFICATION_*` docs |
 
 **Still operational (not platform fantasy):** `docs/MULTI_AGENT_OPERATING_MODEL_V1.md` — how agents/founders work together today.
 

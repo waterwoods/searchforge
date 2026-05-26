@@ -24,7 +24,7 @@ os.environ.setdefault("LLM_GENERATION_ENABLED", "false")
 
 from services.fiqa_api.inbox_triage.triage import triage_conversation  # noqa: E402
 
-PACK_PATH = ROOT / "docs" / "sprints" / "ADD_CAR_BATTERY_RERUN_MUTATION_STRESS" / "mutation_scenario_pack.json"
+PACK_PATH = ROOT / "docs" / "sprints" / "archive" / "add_car_sprints" / "ADD_CAR_BATTERY_RERUN_MUTATION_STRESS" / "mutation_scenario_pack.json"
 
 
 def load_pack() -> dict:

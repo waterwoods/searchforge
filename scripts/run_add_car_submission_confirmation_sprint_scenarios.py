@@ -19,7 +19,7 @@ if str(REPO) not in sys.path:
 
 from services.fiqa_api.inbox_triage.triage import triage_conversation  # noqa: E402
 
-PACK = REPO / "docs/sprints/ADD_CAR_CLEAR_SUBMISSION_CONFIRMATION_HANDOFF/founder_scenario_pack.json"
+PACK = REPO / "docs/sprints/archive/add_car_sprints/ADD_CAR_CLEAR_SUBMISSION_CONFIRMATION_HANDOFF/founder_scenario_pack.json"
 
 
 def _run_one(sc: dict, verbose: bool) -> tuple[bool, str | None]:
