@@ -138,13 +138,8 @@ const FULL_MENU_ITEMS = [
     },
 ];
 
-/** Paid-pilot Vercel builds: sidebar shows intake + demo entry only (lab routes still exist if URL typed). */
+/** Paid-pilot Vercel builds: sidebar shows intake only (lab routes still exist if URL typed). */
 const PRODUCT_ONLY_MENU_ITEMS = [
-    {
-        key: '/',
-        icon: <RocketOutlined />,
-        label: <Link to="/">Showtime</Link>,
-    },
     {
         key: '/workbench-sub',
         icon: <InboxOutlined />,
