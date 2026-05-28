@@ -1,3 +1,11 @@
+# =============================================================================
+# SEARCHFORGE LAB STACK — docker compose on port 8000 (rag-api)
+#
+# Unified Intake local dev (default): bash scripts/run_demo_local.sh → :8001
+# Lab index: docs/archive/platform/README_LAB_INFRA.md
+# Product-only paid pilot: bash scripts/deploy_paid_pilot.sh (Cloud Run)
+# =============================================================================
+
 services:
   base:
     build:

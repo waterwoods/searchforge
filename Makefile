@@ -1,3 +1,12 @@
+# =============================================================================
+# SEARCHFORGE LAB / R&D ONLY — not Unified Intake paid pilot
+#
+# Product operators: bash scripts/run_demo_local.sh  (port 8001)
+# Paid pilot deploy: bash scripts/deploy_paid_pilot.sh
+# Lab infra index:   docs/archive/platform/README_LAB_INFRA.md
+# Operator surface:  docs/runbooks/OPERATOR_SURFACE.md
+# =============================================================================
+
 PROJECT ?= searchforge
 SERVICE ?= rag-api
 ENV_FILE ?= .env.current
