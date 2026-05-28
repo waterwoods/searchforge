@@ -1,4 +1,9 @@
 #!/bin/bash
+# =============================================================================
+# LAB ONLY — legacy SearchForge multi-service launcher (backend 8011)
+# Product path: bash scripts/run_demo_local.sh  (port 8001, Unified Intake)
+# See: scripts/README_OPERATOR.md
+# =============================================================================
 set -euo pipefail
 
 # Load environment variables

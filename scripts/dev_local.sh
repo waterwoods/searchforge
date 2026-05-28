@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/dev_local.sh - Start backend and frontend for local development
 # =============================================================================
-# Runtime path: This script uses 8000 (Docker-style). For broker demo use
-# run_demo_local.sh → 8001. See docs/runbooks/RUNTIME_PATH_STANDARD.md.
+# LAB ONLY — SearchForge local dev (default port 8000)
+# Product path: bash scripts/run_demo_local.sh → 8001 (Unified Intake workbench)
+# See: scripts/README_OPERATOR.md, docs/archive/platform/README_LAB_INFRA.md
 # =============================================================================
 set -euo pipefail
 
