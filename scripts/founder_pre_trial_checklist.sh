@@ -1,7 +1,8 @@
 #!/bin/bash
-# Founder Pre-Trial Checklist — One Command Before Broker Meeting
+# Founder Pre-Trial Checklist — Execution Rehearsal (depth path)
 # ==============================================================
-# Runs trial readiness check + prints founder pre-trial steps.
+# For FIRST BROKER TRIAL LAUNCH prefer: bash scripts/trial_launch_check.sh
+# This script runs trial readiness + prints pre-trial execution steps.
 # Usage: bash scripts/founder_pre_trial_checklist.sh
 #
 # After this: Open http://localhost:5173/workbench/unified-intake
@@ -13,7 +14,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
-echo "=== Founder Pre-Trial Checklist ==="
+echo "=== Founder Pre-Trial Checklist (execution rehearsal) ==="
+echo ""
+echo "  Tip: For first broker trial LAUNCH, use: bash scripts/trial_launch_check.sh"
+echo "       Then read docs/trial/FOUNDER_LAUNCH_NOTES.md"
 echo ""
 
 # Run full trial readiness check
@@ -27,6 +31,7 @@ echo ""
 echo "=== Pre-Trial Steps (Manual) ==="
 echo ""
 echo "  1. Run: bash scripts/run_demo_local.sh"
+echo "     (default: product-only + intake-core readiness; lab: RUN_DEMO_LAB=1)"
 echo "  2. Open: http://localhost:5173/workbench/unified-intake"
 echo "  3. Click: Load founder demo queue (13 cases; cancellation opens first)"
 echo "  4. Run SIM1, SIM2, SIM3 in Simulation Assistant"

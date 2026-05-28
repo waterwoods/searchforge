@@ -1,81 +1,88 @@
-# Real Broker Trial Package — Document Index
+# Real Broker Trial — Start Here
 
-**Sprint:** Real Broker Trial Package Sprint  
-**Created:** 2026-03-18
+**Product:** Unified Intake broker-office pilot (1 week)  
+**Single launch command:** `bash scripts/trial_launch_check.sh`
 
 ---
 
-## Document Set
+## Do this (founder launch path)
+
+| Step | What |
+|------|------|
+| 1 | Run `bash scripts/trial_launch_check.sh` — must PASS |
+| 2 | Read [`FOUNDER_LAUNCH_NOTES.md`](FOUNDER_LAUNCH_NOTES.md) — say, inspect, collect |
+| 3 | Bring [`BROKER_TRIAL_ONE_PAGER.md`](BROKER_TRIAL_ONE_PAGER.md) for broker |
+| 4 | Copy [`TRIAL_OBSERVATION_LOG_TEMPLATE.md`](TRIAL_OBSERVATION_LOG_TEMPLATE.md) |
+| 5 | Post-trial: [`FIX_NOW_QUEUE_TEMPLATE.md`](FIX_NOW_QUEUE_TEMPLATE.md) → `results/trial_logs/` |
+
+**Support escalation:** [`docs/runbooks/SUPPORT_TRUTH_MAP.md`](../runbooks/SUPPORT_TRUTH_MAP.md) + `bash scripts/summarize_support_posture.sh <URL>`
+
+---
+
+## Alternate entry (execution depth)
+
+`bash scripts/founder_pre_trial_checklist.sh` — runs readiness + prints pre-trial steps.  
+Use when rehearsing **before** launch; for **first broker trial**, prefer `trial_launch_check.sh` above.
+
+Deep execution notes: [`FOUNDER_FINAL_TRIAL_NOTES.md`](FOUNDER_FINAL_TRIAL_NOTES.md)
+
+---
+
+## Core specs (verified by `trial_readiness_check.sh`)
+
+These 12 docs must exist — reference when scoping or hardening; **not** day-one reading:
 
 | Doc | Purpose |
 |-----|---------|
-| [REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md](REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md) | Why trial package matters; what sprint strengthens |
-| [TRIAL_EXECUTION_BLUEPRINT.md](TRIAL_EXECUTION_BLUEPRINT.md) | **Last-mile hardening:** why trial execution readiness now |
-| [LAST_MILE_RISK_SPEC.md](LAST_MILE_RISK_SPEC.md) | Top real trial risks; trust-breaking moments |
-| [FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md](FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md) | Founder pre-trial; what to say; broker daily; record friction |
-| [HANDOFF_OFFICE_NEXT_ACTION_SPEC.md](HANDOFF_OFFICE_NEXT_ACTION_SPEC.md) | What office needs; next action; correction/context visibility |
-| [TRIAL_OBSERVATION_TO_ITERATION_SPEC.md](TRIAL_OBSERVATION_TO_ITERATION_SPEC.md) | Capture; categorize; fix now/next/defer; map to product |
-| [TRIAL_SCOPE_DEFINITION_SPEC.md](TRIAL_SCOPE_DEFINITION_SPEC.md) | Target broker, duration, included/excluded |
-| [TRIAL_SCENARIO_PACK_SPEC.md](TRIAL_SCENARIO_PACK_SPEC.md) | 5 core + 2 extended scenarios; success criteria |
-| [TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md](TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md) | Metrics to track; value validation questions |
-| [BROKER_TRIAL_WORKFLOW_SPEC.md](BROKER_TRIAL_WORKFLOW_SPEC.md) | Daily workflow; review handoff; Day 1 checklist |
-| [EXECUTION_OUTLINE.md](EXECUTION_OUTLINE.md) | Workstreams; implementation order; test plan |
-| [EXECUTION_OUTLINE_LAST_MILE.md](EXECUTION_OUTLINE_LAST_MILE.md) | **Last-mile sprint:** loop plan; test plan |
-| [ACCEPTANCE_TRIAL_READINESS_CRITERIA.md](ACCEPTANCE_TRIAL_READINESS_CRITERIA.md) | Pass criteria for trial readiness |
-| [ACCEPTANCE_TRIAL_EXECUTION_CRITERIA.md](ACCEPTANCE_TRIAL_EXECUTION_CRITERIA.md) | **Trial execution:** ease, broker clarity, handoff, observation |
-| [FOUNDER_TRIAL_NOTES.md](FOUNDER_TRIAL_NOTES.md) | What to inspect; how to pitch; what to demo |
-| [FOUNDER_FINAL_TRIAL_NOTES.md](FOUNDER_FINAL_TRIAL_NOTES.md) | **Last-mile:** inspect; run; say; watch for |
-| [TRIAL_PACKAGE_10_20_BREAKDOWN.md](TRIAL_PACKAGE_10_20_BREAKDOWN.md) | 18-point concrete breakdown |
-| [BASELINE_AUDIT.md](BASELINE_AUDIT.md) | Baseline trial readiness audit |
-| [TRIAL_OBSERVATION_LOG_TEMPLATE.md](TRIAL_OBSERVATION_LOG_TEMPLATE.md) | Day-by-day log + post-trial questions |
-| [FOUNDER_TRIAL_SCRIPT_ONE_PAGER.md](FOUNDER_TRIAL_SCRIPT_ONE_PAGER.md) | Founder pitch script (one page) |
-| [BROKER_TRIAL_ONE_PAGER.md](BROKER_TRIAL_ONE_PAGER.md) | Broker-facing 一页说明 |
+| [REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md](REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md) | Package rationale |
+| [TRIAL_SCOPE_DEFINITION_SPEC.md](TRIAL_SCOPE_DEFINITION_SPEC.md) | Duration, in/out |
+| [TRIAL_SCENARIO_PACK_SPEC.md](TRIAL_SCENARIO_PACK_SPEC.md) | 5 core + 2 extended scenarios |
+| [TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md](TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md) | Metrics + value questions |
+| [BROKER_TRIAL_WORKFLOW_SPEC.md](BROKER_TRIAL_WORKFLOW_SPEC.md) | Broker daily workflow |
+| [FOUNDER_TRIAL_NOTES.md](FOUNDER_TRIAL_NOTES.md) | Inspect, pitch, demo |
+| [TRIAL_EXECUTION_BLUEPRINT.md](TRIAL_EXECUTION_BLUEPRINT.md) | Last-mile hardening |
+| [LAST_MILE_RISK_SPEC.md](LAST_MILE_RISK_SPEC.md) | Trust-breaking risks |
+| [FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md](FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md) | Founder runbook spec |
+| [HANDOFF_OFFICE_NEXT_ACTION_SPEC.md](HANDOFF_OFFICE_NEXT_ACTION_SPEC.md) | Office handoff |
+| [TRIAL_OBSERVATION_TO_ITERATION_SPEC.md](TRIAL_OBSERVATION_TO_ITERATION_SPEC.md) | Observation → fix queue |
+| [FOUNDER_FINAL_TRIAL_NOTES.md](FOUNDER_FINAL_TRIAL_NOTES.md) | Inspect, run, say, watch |
 
-### Trial Launch + Fix-Now Queue (This Sprint)
+---
+
+## Launch specs (verified by `trial_launch_check.sh`)
 
 | Doc | Purpose |
 |-----|---------|
-| [TRIAL_LAUNCH_BLUEPRINT.md](TRIAL_LAUNCH_BLUEPRINT.md) | Why launch-readiness now; what this sprint strengthens |
-| [TRIAL_LAUNCH_CHECKLIST_SPEC.md](TRIAL_LAUNCH_CHECKLIST_SPEC.md) | Founder/broker checklist; ready to launch; blockers |
-| [TRIAL_EVIDENCE_PACK_SPEC.md](TRIAL_EVIDENCE_PACK_SPEC.md) | Evidence types; metrics; screenshots; useful packet |
-| [FIX_NOW_QUEUE_SPEC.md](FIX_NOW_QUEUE_SPEC.md) | Fix now/next/defer; group by layer; post-trial sprint |
-| [FIX_NOW_QUEUE_TEMPLATE.md](FIX_NOW_QUEUE_TEMPLATE.md) | Post-trial queue template — copy and fill |
-| [SMALL_FRICTION_REDUCTION_SPEC.md](SMALL_FRICTION_REDUCTION_SPEC.md) | 1–2 small product improvements |
-| [TRIAL_LAUNCH_EXECUTION_OUTLINE.md](TRIAL_LAUNCH_EXECUTION_OUTLINE.md) | Workstreams; loop plan |
-| [ACCEPTANCE_LAUNCH_CRITERIA.md](ACCEPTANCE_LAUNCH_CRITERIA.md) | Launch criteria; acceptable to defer |
-| [FOUNDER_LAUNCH_NOTES.md](FOUNDER_LAUNCH_NOTES.md) | **Single entry:** what to do, say, inspect, collect |
+| [TRIAL_LAUNCH_BLUEPRINT.md](TRIAL_LAUNCH_BLUEPRINT.md) | Launch-readiness rationale |
+| [TRIAL_LAUNCH_CHECKLIST_SPEC.md](TRIAL_LAUNCH_CHECKLIST_SPEC.md) | Checklist spec |
+| [FOUNDER_LAUNCH_NOTES.md](FOUNDER_LAUNCH_NOTES.md) | **Single founder launch entry** |
+| [FIX_NOW_QUEUE_TEMPLATE.md](FIX_NOW_QUEUE_TEMPLATE.md) | Post-trial queue template |
+| [BROKER_TRIAL_ONE_PAGER.md](BROKER_TRIAL_ONE_PAGER.md) | Broker-facing one-pager |
+| [TRIAL_OBSERVATION_LOG_TEMPLATE.md](TRIAL_OBSERVATION_LOG_TEMPLATE.md) | Day-by-day log |
 
-**Single command:** `bash scripts/trial_launch_check.sh`
-
-### Broker Trial Kickoff (This Sprint)
-
-| Doc | Purpose |
-|-----|---------|
-| [kickoff/BROKER_TRIAL_KICKOFF_BLUEPRINT.md](kickoff/BROKER_TRIAL_KICKOFF_BLUEPRINT.md) | Why kickoff readiness now; what sprint strengthens |
-| [kickoff/TRIAL_LAUNCH_FLOW_SPEC.md](kickoff/TRIAL_LAUNCH_FLOW_SPEC.md) | Founder/broker/workbench flows; before/during/after |
-| [kickoff/TRIAL_EVIDENCE_ISSUE_CAPTURE_SPEC.md](kickoff/TRIAL_EVIDENCE_ISSUE_CAPTURE_SPEC.md) | What to capture; issue classification; fix now/next/defer |
-| [kickoff/TRIAL_KICKOFF_DEMO_CHECKLIST_SPEC.md](kickoff/TRIAL_KICKOFF_DEMO_CHECKLIST_SPEC.md) | First 5–10 min demo; minimal flows; blockers |
-| [kickoff/EXECUTION_OUTLINE.md](kickoff/EXECUTION_OUTLINE.md) | Workstreams; loop plan |
-| [kickoff/ACCEPTANCE_TRIAL_KICKOFF_CRITERIA.md](kickoff/ACCEPTANCE_TRIAL_KICKOFF_CRITERIA.md) | Launch/evidence/issue criteria |
-| [kickoff/FOUNDER_FINAL_KICKOFF_NOTES.md](kickoff/FOUNDER_FINAL_KICKOFF_NOTES.md) | Inspect; say; do after first 3–5 conversations |
+Also: [FIX_NOW_QUEUE_SPEC.md](FIX_NOW_QUEUE_SPEC.md) — fix now/next/defer rules
 
 ---
 
-## Sprint Reports
+## Optional kickoff deep-dive
 
-- **Founder / Broker Trial Execution Sprint (2026-03-20):** [../sprints/FOUNDER_BROKER_TRIAL_EXECUTION_SPRINT/README.md](../sprints/FOUNDER_BROKER_TRIAL_EXECUTION_SPRINT/README.md)
-- **Trial Launch + Fix-Now Queue:** [../TRIAL_LAUNCH_FIX_NOW_QUEUE_SPRINT_REPORT.md](../TRIAL_LAUNCH_FIX_NOW_QUEUE_SPRINT_REPORT.md)
-- **Trial Execution Readiness + Last-Mile Hardening:** [../TRIAL_EXECUTION_READINESS_LAST_MILE_SPRINT_REPORT.md](../TRIAL_EXECUTION_READINESS_LAST_MILE_SPRINT_REPORT.md)
-- **Real Broker Trial Package:** [../REAL_BROKER_TRIAL_PACKAGE_SPRINT_REPORT.md](../REAL_BROKER_TRIAL_PACKAGE_SPRINT_REPORT.md)
+[`kickoff/`](kickoff/) — kickoff flow, evidence capture, demo checklist (optional after launch path above).
 
 ---
 
-## Quick Links
+## Archived specs (historical — ignore unless linked from a sprint)
 
-- **Standard Scenario Package:** `docs/STANDARD_SCENARIO_PACKAGE.md`
-- **Chen Kui Trial Pack:** `docs/CHEN_KUI_TRIAL_PACK.md`
-- **Andy Quick Start:** `docs/ANDY_QUICK_START.md`
+[`archive/specs/`](archive/specs/) — execution outlines, acceptance criteria duplicates, evidence pack templates, baseline audit.
 
 ---
 
-*End of Index*
+## Related
+
+- [`docs/STANDARD_SCENARIO_PACKAGE.md`](../STANDARD_SCENARIO_PACKAGE.md)
+- [`docs/CHEN_KUI_TRIAL_PACK.md`](../CHEN_KUI_TRIAL_PACK.md)
+- [`docs/ANDY_QUICK_START.md`](../ANDY_QUICK_START.md)
+- [`docs/runbooks/OPERATOR_SURFACE.md`](../runbooks/OPERATOR_SURFACE.md)
+
+---
+
+*End of trial index*
