@@ -58,6 +58,21 @@ git checkout checkpoint/pre-reduction-safe-restore-point-20260526-0346
 | P1-2 | Demote platform blueprints | `PROJECT_DOC_SYSTEM_MAP.md`, `CURRENT_PRODUCT_SHAPE.md`, `sprints/README.md` | Low | Less platform-fantasy authority | grep refs, self-review | Revert doc commit | **done** |
 | P1-3 | Archive Add-Car sprint wave | `docs/sprints/archive/add_car_sprints/**`, convergence reports | Low | ~41 dirs archived; 6 active root sprints | grep broken refs, script paths | `git mv` back | **done** |
 | P1-4 | Deploy/runtime messaging | `deploy_cloud_run_core.sh`, `DEPLOYMENT_READINESS.md`, trial scripts | Low | Operator story matches runtime | `trial_readiness_check`, `trial_launch_check`, `summarize_readiness_posture` | Revert messaging commits | **done** |
+| P2-1 | Operator cheat sheet + truth maps | `docs/runbooks/OPERATOR_CHEAT_SHEET.md`, `DEPLOY_TRUTH_MAP.md`, `SUPPORT_TRUTH_MAP.md`, AGENTS, DOC_MAP | Low | 2am path in one page | grep refs, read lints | Revert doc commit | **done** |
+| P2-2 | Health/readiness doc clarity | `DEPLOYMENT_READINESS.md`, `summarize_readiness_posture.sh` | Low | `/health/live` vs `/healthz` trap gone | `summarize_readiness_posture.sh`, trial checks | Revert docs/script | **done** |
+| P2-3 | Lab UI isolation | `App.tsx`, `labPages.tsx`, `LabDevBanner.tsx`, `AppSider.tsx`, `AppLayout.tsx` | Low–Med | Lab not in product-only bundle/routes | `npm run build`, madge | Revert UI commits | **done** |
+| P2-4 | Sprint archive wave 4 | `docs/sprints/archive/p2_*`, README, battery script paths | Low | ~50 fewer active sprint dirs | grep broken refs, guardrail | `git mv` back | **done** |
+| P2-fix | Archive script path updates | `run_append_boundary_ab_scenarios.py`, `run_residual_copy_ab_scenarios.py`, `trial_readiness_check.sh` | Low | Guardrail/trial pass after archive | guardrail, trial_launch | Revert paths | **done** |
+| P3-1 | Operator warning humanization | `deployment_profile.py`, `summarize_readiness_posture.sh`, `validate_pilot_deploy_env.py`, tests | Low | Scary `_v1` codes → plain English | pytest deployment_profile, trial_readiness | Revert deployment_profile | **done** |
+| P3-2 | Support posture script + docs | `summarize_support_posture.sh`, OPERATOR_CHEAT_SHEET, SUPPORT_TRUTH_MAP, DEPLOYMENT_PLAYBOOK | Low | Support without decoding manifest JSON | bash summarize_support_posture | Revert script | **done** |
+| P3-3 | Health naming + prod check wording | `app_main.py` healthz, `check_unified_intake_prod_posture.sh` | Low | Product-only says Unified Intake API | pytest health | Revert app_main | **done** |
+| P4-1 | README collapse + legacy archive | `README.md`, `docs/archive/README_LEGACY_SEARCHFORGE_LAB.md`, archive INDEX | Low | Founder/README no longer SearchForge lab | `test_operator_surface_collapse.py`, line count | Restore README from archive | **done** |
+| P4-2 | Operator surface SSOT | `docs/runbooks/OPERATOR_SURFACE.md` | Low | One page: 10 scripts, 10 docs, 5 endpoints | test + grep refs | Delete file | **done** |
+| P4-3 | Entry doc wiring | `AGENTS.md`, `PROJECT_DOC_SYSTEM_MAP.md`, cheat sheet, ignore list | Low | 15-min paths discoverable | grep refs | Revert doc commit | **done** |
+| P4-4 | Guard tests | `tests/test_operator_surface_collapse.py` | Low | Prevent README re-bloat | pytest | Revert test | **done** |
+| P5-1 | Lab physical separation | Makefile/docker-compose banners, `Makefile.lab`, `docker-compose.lab.yml`, `docs/archive/platform/`, root archaeology → archive | Low | Lab feels opt-in at repo root | pytest operator_surface, trial checks | Revert + git mv back | **done** |
+| P5-2 | Onboarding script convergence | `scripts/README.md`, `README_OPERATOR.md`, `LAB_ONLY_SCRIPTS.md`, start_all/dev_local banners | Low | One script story | pytest operator_surface | Revert scripts docs | **done** |
+| P5-3 | Trial doc collapse | `docs/trial/INDEX.md`, `docs/trial/archive/specs/`, founder_pre_trial pointer | Low | One launch path | trial_readiness, trial_launch | git mv back | **done** |
 
 ---
 
@@ -113,15 +128,15 @@ cd ui && npx --yes madge --circular --extensions ts,tsx src
 
 ---
 
-## Remaining simplification backlog (after P1 simplification)
+## Remaining simplification backlog (after P2 simplification)
 
 | Priority | Item | Class |
 |----------|------|-------|
-| Next | Continue sprint archive (remaining non-ADD_CAR sprint dirs) | Low |
+| Next | Continue sprint archive (~38 remaining non-archived sprint dirs) | Low |
 | Next | Demote `UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE` when it reads like platform SSOT | Low |
 | Deferred | Wire or delete `active_vehicle_resolver.py` | Medium |
 | Deferred | `/ready` (app_main) still requires EMBED+Qdrant — intake uses `/readyz` only | Low |
-| AFTER_REVENUE | Split `triage.py`, lazy-load lab routes, delete JSON path | High |
+| AFTER_REVENUE | Split `triage.py`, delete JSON path | High |
 
 ---
 
