@@ -49,7 +49,14 @@ export type CustomerEntryTabProps = {
     onOpenMyRequests?: () => void;
 };
 
-export type WorkbenchListFilter = 'all' | 'formal' | 'test' | 'legacy' | 'mirror_bad' | 'recent24h';
+export type WorkbenchListFilter =
+    | 'all'
+    | 'formal'
+    | 'test'
+    | 'legacy'
+    | 'mirror_bad'
+    | 'recent24h'
+    | 'action_today';
 
 export type OfficeGlanceLines = {
     contactLine: string;

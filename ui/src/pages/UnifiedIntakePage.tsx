@@ -6,9 +6,9 @@
  * Tab C: Broker Workbench — office tool for triage, case sheet, follow-up, and drafts
  * Tab D: Scenario replay (simulation)
  *
- * Customer Entry is the default visible tab.
+ * Default tab: broker workbench in product_only trial; customer entry in dev/full UI.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Space, Tabs, Tag, Typography } from 'antd';
 import {
     CustomerServiceOutlined,
@@ -16,6 +16,7 @@ import {
     PlayCircleOutlined,
     UnorderedListOutlined,
 } from '@ant-design/icons';
+import { useSearchParams } from 'react-router-dom';
 import { ScenarioReplayTab } from '../components/simulation/ScenarioReplayTab';
 import { useClientConfig } from '../context/ClientConfigContext';
 import { CustomerEntryTab } from '@/features/intake/components/CustomerEntryTab';
@@ -27,6 +28,21 @@ const { Text } = Typography;
 
 /** Shared chrome width for unified intake (light island inside dark app shell). */
 const UNIFIED_INTAKE_SHELL_MAX = 1280;
+
+const VALID_TABS = new Set(['customer', 'my_requests', 'broker', 'simulation']);
+
+function resolveInitialTab(productOnlyUi: boolean, tabParam: string | null): string {
+    if (tabParam && VALID_TABS.has(tabParam)) {
+        if (tabParam === 'simulation' && productOnlyUi) {
+            return 'broker';
+        }
+        if (tabParam === 'my_requests' && productOnlyUi) {
+            return 'broker';
+        }
+        return tabParam;
+    }
+    return productOnlyUi ? 'broker' : 'customer';
+}
 
 // =============================================================================
 // MAIN PAGE
@@ -43,8 +59,20 @@ const PILOT_INTRO = {
         '演示建议：客户报送 → 点「办理加车报价」或填写「加车报价 · 结构化报送」→ 办公室工作台查看同一服务记录。',
 };
 
+/** Trial/product_only intro: cancellation-first wedge per Constitution V1. */
+const TRIAL_PILOT_INTRO = {
+    value:
+        '试用重点：紧急客户消息整理——取消/付款风险、缺材料跟进、加车报价均可粘贴原文。系统整理服务记录、下一步与可编辑草稿；您确认后再发给客户。',
+    trust: '不自动对外发送；由办公室确认后再联系客户。',
+    does: '粘贴微信/通知原文 → 整理 urgency、下一步、草稿；演示队列可快速体验取消风险案例',
+    doesNot: '不自动同步微信；不替代承保系统；不是完整 CRM',
+    demoPath: '建议路径：本页粘贴客户消息，或点「加载演示队列」查看取消风险案例。',
+};
+
 export default function UnifiedIntakePage() {
     const { uiCopy, clientId } = useClientConfig();
+    const [searchParams] = useSearchParams();
+    const productOnlyUi = isUnifiedIntakeProductOnlyUi();
     const officeWorkbench = uiCopy.office_workbench ?? '办公室工作台';
     const portalBrandTagline = uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程';
     const portalTabCustomer = uiCopy.portal_tab_customer_label ?? '客户报送';
@@ -56,17 +84,28 @@ export default function UnifiedIntakePage() {
     const portalTabMyRequestsSuffix =
         uiCopy.portal_tab_my_requests_suffix ?? '进行中的请求与待补充项';
 
-    const [activeTab, setActiveTab] = useState<string>('customer');
+    const tabFromUrl = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState<string>(() => resolveInitialTab(productOnlyUi, tabFromUrl));
     const [brokerInitialCaseId, setBrokerInitialCaseId] = useState<string | undefined>();
-    const [pilotIntroCollapsed, setPilotIntroCollapsed] = useState(false);
+    const [pilotIntroCollapsed, setPilotIntroCollapsed] = useState(productOnlyUi);
     const [headerAvatarBroken, setHeaderAvatarBroken] = useState(false);
-    const showSimulationTab = !isUnifiedIntakeProductOnlyUi();
+    const showSimulationTab = !productOnlyUi;
+    const showMyRequestsTab = !productOnlyUi;
+    const pilotIntro = productOnlyUi ? TRIAL_PILOT_INTRO : PILOT_INTRO;
+
+    useEffect(() => {
+        const next = resolveInitialTab(productOnlyUi, searchParams.get('tab'));
+        setActiveTab((current) => (current === next ? current : next));
+    }, [productOnlyUi, searchParams]);
 
     useEffect(() => {
         if (!showSimulationTab && activeTab === 'simulation') {
-            setActiveTab('customer');
+            setActiveTab('broker');
         }
-    }, [showSimulationTab, activeTab]);
+        if (!showMyRequestsTab && activeTab === 'my_requests') {
+            setActiveTab('broker');
+        }
+    }, [showSimulationTab, showMyRequestsTab, activeTab]);
 
     const portalHeroTitle = uiCopy.portal_hero_title ?? '加车报价 · 客户统一报送';
     const officeWorkbenchDocumentTitle = uiCopy.office_workbench_document_title ?? '加车报价试点 · 办公室工作台';
@@ -91,6 +130,96 @@ export default function UnifiedIntakePage() {
         setBrokerInitialCaseId(caseId);
         setActiveTab('broker');
     };
+
+    const tabItems = useMemo(() => {
+        const items = [
+            {
+                key: 'customer',
+                label: (
+                    <span>
+                        <CustomerServiceOutlined /> {portalTabCustomer}
+                        <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
+                            — {portalTabCustomerSuffix}
+                        </Text>
+                    </span>
+                ),
+                children: (
+                    <CustomerEntryTab
+                        onSwitchToBroker={handleSwitchToBroker}
+                        onOpenScenarioSimulation={
+                            showSimulationTab ? () => setActiveTab('simulation') : undefined
+                        }
+                        onOpenMyRequests={() => setActiveTab('my_requests')}
+                    />
+                ),
+            },
+            ...(showMyRequestsTab
+                ? [
+                      {
+                          key: 'my_requests',
+                          forceRender: true,
+                          label: (
+                              <span>
+                                  <UnorderedListOutlined /> {portalTabMyRequests}
+                                  <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
+                                      — {portalTabMyRequestsSuffix}
+                                  </Text>
+                              </span>
+                          ),
+                          children: (
+                              <MyRequestsTab onContinueInCustomerPortal={() => setActiveTab('customer')} />
+                          ),
+                      },
+                  ]
+                : []),
+            {
+                key: 'broker',
+                forceRender: true,
+                label: (
+                    <span>
+                        <InboxOutlined /> {officeWorkbench}
+                        <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
+                            — {portalTabOfficeSuffix}
+                        </Text>
+                    </span>
+                ),
+                children: <BrokerWorkbenchTab initialCaseId={brokerInitialCaseId} clientId={clientId} />,
+            },
+            ...(showSimulationTab
+                ? [
+                      {
+                          key: 'simulation',
+                          label: (
+                              <span>
+                                  <PlayCircleOutlined /> {portalTabSimulation}
+                                  <Text
+                                      type="secondary"
+                                      style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}
+                                  >
+                                      — {portalTabSimulationSuffix}
+                                  </Text>
+                              </span>
+                          ),
+                          children: <ScenarioReplayTab />,
+                      },
+                  ]
+                : []),
+        ];
+        return items;
+    }, [
+        clientId,
+        brokerInitialCaseId,
+        officeWorkbench,
+        portalTabCustomer,
+        portalTabCustomerSuffix,
+        portalTabMyRequests,
+        portalTabMyRequestsSuffix,
+        portalTabOfficeSuffix,
+        portalTabSimulation,
+        portalTabSimulationSuffix,
+        showMyRequestsTab,
+        showSimulationTab,
+    ]);
 
     return (
         <div
@@ -165,14 +294,14 @@ export default function UnifiedIntakePage() {
                 }}
                 message={
                     <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                        <Text strong>{PILOT_INTRO.value}</Text>
+                        <Text strong>{pilotIntro.value}</Text>
                         <Space wrap size={[4, 4]}>
-                            <Tag color="green">{PILOT_INTRO.trust}</Tag>
-                            <Tag color="blue">做：{PILOT_INTRO.does}</Tag>
-                            <Tag color="default">不做：{PILOT_INTRO.doesNot}</Tag>
+                            <Tag color="green">{pilotIntro.trust}</Tag>
+                            <Tag color="blue">做：{pilotIntro.does}</Tag>
+                            <Tag color="default">不做：{pilotIntro.doesNot}</Tag>
                         </Space>
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                            {PILOT_INTRO.demoPath}
+                            {pilotIntro.demoPath}
                         </Text>
                     </Space>
                 }
@@ -193,76 +322,7 @@ export default function UnifiedIntakePage() {
                     paddingLeft: 0,
                     borderBottom: '1px solid #e8e8e8',
                 }}
-                items={[
-                    {
-                        key: 'customer',
-                        label: (
-                            <span>
-                                <CustomerServiceOutlined /> {portalTabCustomer}
-                                <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                                    — {portalTabCustomerSuffix}
-                                </Text>
-                            </span>
-                        ),
-                        children: (
-                            <CustomerEntryTab
-                                onSwitchToBroker={handleSwitchToBroker}
-                                onOpenScenarioSimulation={
-                                    showSimulationTab ? () => setActiveTab('simulation') : undefined
-                                }
-                                onOpenMyRequests={() => setActiveTab('my_requests')}
-                            />
-                        ),
-                    },
-                    {
-                        key: 'my_requests',
-                        forceRender: true,
-                        label: (
-                            <span>
-                                <UnorderedListOutlined /> {portalTabMyRequests}
-                                <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                                    — {portalTabMyRequestsSuffix}
-                                </Text>
-                            </span>
-                        ),
-                        children: (
-                            <MyRequestsTab onContinueInCustomerPortal={() => setActiveTab('customer')} />
-                        ),
-                    },
-                    {
-                        key: 'broker',
-                        /** Prefetch queue on page load: inactive tab bodies start unmounted (rc-tabs + rc-motion); without this, GET /api/inbox/cases only runs after first opening Office tab, and summary tiles briefly show 0. */
-                        forceRender: true,
-                        label: (
-                            <span>
-                                <InboxOutlined /> {officeWorkbench}
-                                <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                                    — {portalTabOfficeSuffix}
-                                </Text>
-                            </span>
-                        ),
-                        children: <BrokerWorkbenchTab initialCaseId={brokerInitialCaseId} clientId={clientId} />,
-                    },
-                    ...(showSimulationTab
-                        ? [
-                              {
-                                  key: 'simulation',
-                                  label: (
-                                      <span>
-                                          <PlayCircleOutlined /> {portalTabSimulation}
-                                          <Text
-                                              type="secondary"
-                                              style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}
-                                          >
-                                              — {portalTabSimulationSuffix}
-                                          </Text>
-                                      </span>
-                                  ),
-                                  children: <ScenarioReplayTab />,
-                              },
-                          ]
-                        : []),
-                ]}
+                items={tabItems}
             />
             </div>
         </div>

@@ -742,6 +742,8 @@ export function passesWorkbenchListFilter(c: SavedCase, f: WorkbenchListFilter):
             return pg === 'pg_missing' || pg === 'mismatch';
         case 'recent24h':
             return isWithinLast24Hours(c.updated_at);
+        case 'action_today':
+            return getCaseAttentionState(c).section === 'action';
         default:
             return true;
     }
