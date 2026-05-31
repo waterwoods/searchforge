@@ -93,8 +93,24 @@ if [ "$BACKEND_OK" = false ]; then
 fi
 echo ""
 
-# Start UI (always)
+# Start UI (always) — Vite 7 requires Node 22 (see docs/runbooks/NODE_22_SETUP.md)
 echo "[3] Starting UI dev server..."
+NODE22_HELPER="$SCRIPT_DIR/with_node22_path.sh"
+if [ -z "${SKIP_NVM_NODE22_FOR_UI:-}" ] && [ -f "$NODE22_HELPER" ]; then
+  echo "[INFO] Loading Node 22 helper…"
+  # shellcheck disable=SC1090
+  source "$NODE22_HELPER"
+  echo "[INFO] Node version: $(node -v)"
+elif [ -z "${SKIP_NVM_NODE22_FOR_UI:-}" ]; then
+  echo "[WARN] Node 22 helper not found at $NODE22_HELPER"
+  if command -v node >/dev/null 2>&1; then
+    echo "[WARN] Using PATH node: $(node -v) — Vite 7 needs Node >= 20.19 or >= 22.12"
+  else
+    echo "[WARN] node not on PATH — UI dev server may fail"
+  fi
+else
+  echo "[INFO] SKIP_NVM_NODE22_FOR_UI=1 — using PATH node: $(node -v 2>/dev/null || echo 'not found')"
+fi
 cd "$REPO_DIR/ui"
 npm run dev &
 UI_PID=$!
