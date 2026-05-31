@@ -8,7 +8,7 @@
  *
  * Default tab: broker workbench in product_only trial; customer entry in dev/full UI.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Button, Space, Tabs, Tag, Typography } from 'antd';
 import {
     CustomerServiceOutlined,
@@ -33,10 +33,7 @@ const VALID_TABS = new Set(['customer', 'my_requests', 'broker', 'simulation']);
 
 function resolveInitialTab(productOnlyUi: boolean, tabParam: string | null): string {
     if (tabParam && VALID_TABS.has(tabParam)) {
-        if (tabParam === 'simulation' && productOnlyUi) {
-            return 'broker';
-        }
-        if (tabParam === 'my_requests' && productOnlyUi) {
+        if (productOnlyUi && (tabParam === 'simulation' || tabParam === 'my_requests' || tabParam === 'customer')) {
             return 'broker';
         }
         return tabParam;
@@ -74,7 +71,9 @@ export default function UnifiedIntakePage() {
     const [searchParams] = useSearchParams();
     const productOnlyUi = isUnifiedIntakeProductOnlyUi();
     const officeWorkbench = uiCopy.office_workbench ?? '办公室工作台';
-    const portalBrandTagline = uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程';
+    const portalBrandTagline = productOnlyUi
+        ? (uiCopy.portal_brand_tagline_trial ?? '粘贴客户消息 · 整理草稿 · 您确认后发送')
+        : (uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程');
     const portalTabCustomer = uiCopy.portal_tab_customer_label ?? '客户报送';
     const portalTabCustomerSuffix = uiCopy.portal_tab_customer_suffix ?? '报送入口（加车优先）';
     const portalTabOfficeSuffix = uiCopy.portal_tab_office_suffix ?? '加车旗舰路径 · 与客户报送同一服务记录';
@@ -89,9 +88,11 @@ export default function UnifiedIntakePage() {
     const [brokerInitialCaseId, setBrokerInitialCaseId] = useState<string | undefined>();
     const [pilotIntroCollapsed, setPilotIntroCollapsed] = useState(productOnlyUi);
     const [headerAvatarBroken, setHeaderAvatarBroken] = useState(false);
+    const showCustomerTab = !productOnlyUi;
     const showSimulationTab = !productOnlyUi;
     const showMyRequestsTab = !productOnlyUi;
     const pilotIntro = productOnlyUi ? TRIAL_PILOT_INTRO : PILOT_INTRO;
+    const singleTabMode = productOnlyUi && !showCustomerTab && !showMyRequestsTab && !showSimulationTab;
 
     useEffect(() => {
         const next = resolveInitialTab(productOnlyUi, searchParams.get('tab'));
@@ -99,16 +100,21 @@ export default function UnifiedIntakePage() {
     }, [productOnlyUi, searchParams]);
 
     useEffect(() => {
+        if (!showCustomerTab && activeTab === 'customer') {
+            setActiveTab('broker');
+        }
         if (!showSimulationTab && activeTab === 'simulation') {
             setActiveTab('broker');
         }
         if (!showMyRequestsTab && activeTab === 'my_requests') {
             setActiveTab('broker');
         }
-    }, [showSimulationTab, showMyRequestsTab, activeTab]);
+    }, [showCustomerTab, showSimulationTab, showMyRequestsTab, activeTab]);
 
     const portalHeroTitle = uiCopy.portal_hero_title ?? '加车报价 · 客户统一报送';
-    const officeWorkbenchDocumentTitle = uiCopy.office_workbench_document_title ?? '加车报价试点 · 办公室工作台';
+    const officeWorkbenchDocumentTitle = productOnlyUi
+        ? (uiCopy.office_workbench_document_title_trial ?? '办公室工作台 · 客户消息整理')
+        : (uiCopy.office_workbench_document_title ?? '加车报价试点 · 办公室工作台');
     const simulationTabTitle =
         (uiCopy.portal_tab_simulation_label ?? '场景仿真') + ' · ' + (uiCopy.portal_brand_tagline ?? '车险报送入口');
     const myRequestsDocumentTitle =
@@ -131,40 +137,49 @@ export default function UnifiedIntakePage() {
         setActiveTab('broker');
     };
 
+    const renderTabLabel = (icon: ReactNode, primary: string, suffix?: string) => (
+        <span>
+            {icon} {primary}
+            {!productOnlyUi && suffix ? (
+                <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
+                    — {suffix}
+                </Text>
+            ) : null}
+        </span>
+    );
+
     const tabItems = useMemo(() => {
         const items = [
-            {
-                key: 'customer',
-                label: (
-                    <span>
-                        <CustomerServiceOutlined /> {portalTabCustomer}
-                        <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                            — {portalTabCustomerSuffix}
-                        </Text>
-                    </span>
-                ),
-                children: (
-                    <CustomerEntryTab
-                        onSwitchToBroker={handleSwitchToBroker}
-                        onOpenScenarioSimulation={
-                            showSimulationTab ? () => setActiveTab('simulation') : undefined
-                        }
-                        onOpenMyRequests={() => setActiveTab('my_requests')}
-                    />
-                ),
-            },
+            ...(showCustomerTab
+                ? [
+                      {
+                          key: 'customer',
+                          label: renderTabLabel(
+                              <CustomerServiceOutlined />,
+                              portalTabCustomer,
+                              portalTabCustomerSuffix,
+                          ),
+                          children: (
+                              <CustomerEntryTab
+                                  onSwitchToBroker={handleSwitchToBroker}
+                                  onOpenScenarioSimulation={
+                                      showSimulationTab ? () => setActiveTab('simulation') : undefined
+                                  }
+                                  onOpenMyRequests={() => setActiveTab('my_requests')}
+                              />
+                          ),
+                      },
+                  ]
+                : []),
             ...(showMyRequestsTab
                 ? [
                       {
                           key: 'my_requests',
                           forceRender: true,
-                          label: (
-                              <span>
-                                  <UnorderedListOutlined /> {portalTabMyRequests}
-                                  <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                                      — {portalTabMyRequestsSuffix}
-                                  </Text>
-                              </span>
+                          label: renderTabLabel(
+                              <UnorderedListOutlined />,
+                              portalTabMyRequests,
+                              portalTabMyRequestsSuffix,
                           ),
                           children: (
                               <MyRequestsTab onContinueInCustomerPortal={() => setActiveTab('customer')} />
@@ -175,30 +190,17 @@ export default function UnifiedIntakePage() {
             {
                 key: 'broker',
                 forceRender: true,
-                label: (
-                    <span>
-                        <InboxOutlined /> {officeWorkbench}
-                        <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
-                            — {portalTabOfficeSuffix}
-                        </Text>
-                    </span>
-                ),
+                label: renderTabLabel(<InboxOutlined />, officeWorkbench, portalTabOfficeSuffix),
                 children: <BrokerWorkbenchTab initialCaseId={brokerInitialCaseId} clientId={clientId} />,
             },
             ...(showSimulationTab
                 ? [
                       {
                           key: 'simulation',
-                          label: (
-                              <span>
-                                  <PlayCircleOutlined /> {portalTabSimulation}
-                                  <Text
-                                      type="secondary"
-                                      style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}
-                                  >
-                                      — {portalTabSimulationSuffix}
-                                  </Text>
-                              </span>
+                          label: renderTabLabel(
+                              <PlayCircleOutlined />,
+                              portalTabSimulation,
+                              portalTabSimulationSuffix,
                           ),
                           children: <ScenarioReplayTab />,
                       },
@@ -217,8 +219,10 @@ export default function UnifiedIntakePage() {
         portalTabOfficeSuffix,
         portalTabSimulation,
         portalTabSimulationSuffix,
+        showCustomerTab,
         showMyRequestsTab,
         showSimulationTab,
+        productOnlyUi,
     ]);
 
     return (
@@ -283,47 +287,58 @@ export default function UnifiedIntakePage() {
                     </div>
                 </div>
             </div>
-            <Alert
-                type="info"
-                showIcon
-                closable
-                onClose={() => setPilotIntroCollapsed(true)}
-                style={{
-                    marginBottom: 12,
-                    display: pilotIntroCollapsed ? 'none' : 'block',
-                }}
-                message={
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                        <Text strong>{pilotIntro.value}</Text>
-                        <Space wrap size={[4, 4]}>
-                            <Tag color="green">{pilotIntro.trust}</Tag>
-                            <Tag color="blue">做：{pilotIntro.does}</Tag>
-                            <Tag color="default">不做：{pilotIntro.doesNot}</Tag>
+            {!productOnlyUi && (
+                <Alert
+                    type="info"
+                    showIcon
+                    closable
+                    onClose={() => setPilotIntroCollapsed(true)}
+                    style={{
+                        marginBottom: 12,
+                        display: pilotIntroCollapsed ? 'none' : 'block',
+                    }}
+                    message={
+                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                            <Text strong>{pilotIntro.value}</Text>
+                            <Space wrap size={[4, 4]}>
+                                <Tag color="green">{pilotIntro.trust}</Tag>
+                                <Tag color="blue">做：{pilotIntro.does}</Tag>
+                                <Tag color="default">不做：{pilotIntro.doesNot}</Tag>
+                            </Space>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                {pilotIntro.demoPath}
+                            </Text>
                         </Space>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                            {pilotIntro.demoPath}
-                        </Text>
-                    </Space>
-                }
-            />
-            {pilotIntroCollapsed && (
+                    }
+                />
+            )}
+            {!productOnlyUi && pilotIntroCollapsed && (
                 <div style={{ marginBottom: 6, textAlign: 'right' }}>
                     <Button type="link" size="small" onClick={() => setPilotIntroCollapsed(false)} style={{ padding: 0, fontSize: 12 }}>
                         显示产品说明
                     </Button>
                 </div>
             )}
-            <Tabs
-                activeKey={activeTab}
-                onChange={setActiveTab}
-                size="large"
-                tabBarStyle={{
-                    marginBottom: 12,
-                    paddingLeft: 0,
-                    borderBottom: '1px solid #e8e8e8',
-                }}
-                items={tabItems}
-            />
+            {productOnlyUi && (
+                <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+                    {pilotIntro.trust}
+                </Text>
+            )}
+            {singleTabMode ? (
+                <BrokerWorkbenchTab initialCaseId={brokerInitialCaseId} clientId={clientId} />
+            ) : (
+                <Tabs
+                    activeKey={activeTab}
+                    onChange={setActiveTab}
+                    size="large"
+                    tabBarStyle={{
+                        marginBottom: 12,
+                        paddingLeft: 0,
+                        borderBottom: '1px solid #e8e8e8',
+                    }}
+                    items={tabItems}
+                />
+            )}
             </div>
         </div>
     );

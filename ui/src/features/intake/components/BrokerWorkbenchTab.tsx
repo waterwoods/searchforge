@@ -148,11 +148,17 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     const productOnlyUi = isUnifiedIntakeProductOnlyUi();
     const officeWorkbench = uiCopy.office_workbench ?? '办公室工作台';
     const officeWorkbenchSubtitle =
-        uiCopy.office_workbench_subtitle ??
-        '先从队列选案，再看结论，最后执行下一步动作。';
-    const officeRecentCardTitle = uiCopy.office_workbench_recent_card_title ?? '服务记录队列';
-    const officeRecentCardExtra = uiCopy.office_workbench_recent_card_extra ?? '与客户报送同源';
-    const officePasteCardTitle = uiCopy.office_workbench_paste_card_title ?? '从客户消息整理服务记录';
+        productOnlyUi
+            ? (uiCopy.office_workbench_subtitle_trial ??
+              '粘贴客户微信/通知原文 → 查看整理结果与草稿 → 确认后发给客户')
+            : (uiCopy.office_workbench_subtitle ?? '先从队列选案，再看结论，最后执行下一步动作。');
+    const officeRecentCardTitle = productOnlyUi
+        ? (uiCopy.office_workbench_recent_card_title_trial ?? '待处理')
+        : (uiCopy.office_workbench_recent_card_title ?? '服务记录队列');
+    const officeRecentCardExtra = productOnlyUi ? undefined : (uiCopy.office_workbench_recent_card_extra ?? '与客户报送同源');
+    const officePasteCardTitle = productOnlyUi
+        ? (uiCopy.office_workbench_paste_card_title_trial ?? '粘贴客户消息')
+        : (uiCopy.office_workbench_paste_card_title ?? '从客户消息整理服务记录');
     const officeEmptyQueueHint =
         uiCopy.office_workbench_empty_queue_hint ??
         '暂无服务记录。请先在右侧粘贴客户消息开始整理；与客户入口提交的报送进入同一队列。演示时可选用「加载演示队列」。';
@@ -728,6 +734,33 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 savedCase.still_needed_fields,
                 savedCase.issue_category,
             ) ?? inferCaseFocusFromText(savedCase.source_text ?? '');
+        if (productOnlyUi) {
+            return (
+                <Card
+                    key={savedCase.case_id}
+                    size="small"
+                    styles={{ body: { padding: 12 } }}
+                    style={{
+                        background: isActive ? '#e6f4ff' : '#ffffff',
+                        border: isActive ? '1px solid #91caff' : '1px solid #e8e8e8',
+                        borderLeft: isActive ? '3px solid #1677ff' : undefined,
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                    }}
+                    onClick={() => handleOpenRecent(savedCase)}
+                >
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        <Space wrap size={[4, 4]}>
+                            <UrgencyTag urgency={savedCase.urgency} />
+                            {isActive ? <Tag color="blue">当前</Tag> : null}
+                        </Space>
+                        <Text strong style={{ fontSize: 13, lineHeight: 1.4 }}>
+                            {getPreviewText(savedCase.source_text, 90)}
+                        </Text>
+                    </Space>
+                </Card>
+            );
+        }
         return (
             <Card
                 key={savedCase.case_id}
@@ -966,14 +999,14 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     return (
         <div style={{ width: '100%', padding: '4px 0 20px' }}>
             <Row gutter={[18, 18]} align="top">
-                <Col xs={24} xl={9}>
+                <Col xs={24} xl={productOnlyUi ? 24 : 9} order={productOnlyUi ? 2 : 1}>
                     <div
                         style={{
-                            position: 'sticky',
-                            top: 8,
-                            maxHeight: 'calc(100vh - 96px)',
-                            overflowY: 'auto',
-                            paddingRight: 2,
+                            position: productOnlyUi ? 'static' : 'sticky',
+                            top: productOnlyUi ? undefined : 8,
+                            maxHeight: productOnlyUi ? undefined : 'calc(100vh - 96px)',
+                            overflowY: productOnlyUi ? 'visible' : 'auto',
+                            paddingRight: productOnlyUi ? 0 : 2,
                         }}
                     >
                     <Space direction="vertical" size={14} style={{ width: '100%' }}>
@@ -984,7 +1017,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                     <Card size="small" title="快速体验（可选）">
                         <Space direction="vertical" size={8} style={{ width: '100%' }}>
                             <Space wrap align="center">
-                                <Button type="primary" onClick={() => void handleLoadFounderQueue()} loading={demoQueueLoading}>
+                                <Button type="default" onClick={() => void handleLoadFounderQueue()} loading={demoQueueLoading}>
                                     加载演示队列
                                 </Button>
                                 {demoQueueLoading && demoQueueProgress ? (
@@ -994,13 +1027,29 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 ) : demoQueueLoading ? (
                                     <Text type="secondary" style={{ fontSize: 13 }}>首次分析约30秒，请稍候…</Text>
                                 ) : null}
-                                <Tag color={founderQueueLoadedCount === FOUNDER_DEMO_QUEUE.length ? 'green' : 'blue'}>
-                                    {founderQueueLoadedCount}/{FOUNDER_DEMO_QUEUE.length} 条示例已就绪
-                                </Tag>
+                                {founderQueueLoadedCount > 0 && founderQueueLoadedCount < FOUNDER_DEMO_QUEUE.length ? (
+                                    <Tag color="blue">
+                                        {founderQueueLoadedCount}/{FOUNDER_DEMO_QUEUE.length} 条示例已就绪
+                                    </Tag>
+                                ) : null}
                             </Space>
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                                加载后自动打开取消/付款风险案例，查看下一步与草稿。
+                                或点选场景加载到粘贴区，再点「开始整理」。
                             </Text>
+                            <Space wrap>
+                                {BROKER_INLINE_PRACTICE_SCENARIOS.map((scenario) => {
+                                    const seed = FOUNDER_DEMO_QUEUE[scenario.seedIndex];
+                                    return (
+                                        <Button
+                                            key={scenario.label}
+                                            size="small"
+                                            onClick={() => handleQuickFill(seed.text)}
+                                        >
+                                            {scenario.label}
+                                        </Button>
+                                    );
+                                })}
+                            </Space>
                         </Space>
                     </Card>
                 ) : (
@@ -1083,7 +1132,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 <Card
                     size="small"
                     title={officeRecentCardTitle}
-                    extra={<Text type="secondary">{officeRecentCardExtra}</Text>}
+                    extra={officeRecentCardExtra ? <Text type="secondary">{officeRecentCardExtra}</Text> : undefined}
                 >
                     <div
                         style={{
@@ -1140,9 +1189,12 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         </Text>
                     ) : (
                         <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                            {!productOnlyUi && (
                             <Text type="secondary">
                                 点击打开任意服务记录，继续下一步、跟进计划或草稿审核。
                             </Text>
+                            )}
+                            {!productOnlyUi && (
                             <Segmented<WorkbenchListFilter>
                                 size="small"
                                 value={workbenchListFilter}
@@ -1150,17 +1202,18 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 options={workbenchFilterOptions}
                                 style={{ width: '100%', maxWidth: '100%' }}
                             />
-                            {workbenchListFilter !== 'all' && (
+                            )}
+                            {!productOnlyUi && workbenchListFilter !== 'all' && (
                                 <Text type="secondary" style={{ fontSize: 11 }}>
                                     显示 {workbenchFilteredCases.length} / {recentCases.length} 条（本页已加载；筛选不跨页）
                                 </Text>
                             )}
-                            {workbenchTotalCount > WORKBENCH_PAGE_SIZE ? (
+                            {!productOnlyUi && workbenchTotalCount > WORKBENCH_PAGE_SIZE ? (
                                 <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
                                     共 {workbenchTotalCount} 条持久化记录，已分页。下方筛选与分组仅作用于本页。
                                 </Text>
                             ) : null}
-                            {currentCase?.case_id ? (
+                            {!productOnlyUi && currentCase?.case_id ? (
                                 <div
                                     style={{
                                         padding: '6px 10px',
@@ -1206,7 +1259,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 ]}
                             />
                             )}
-                            {actionNowCases.length > 0 && (
+                            {!productOnlyUi && actionNowCases.length > 0 && (
                                 <>
                                     <Text strong style={{ fontSize: 12 }}>
                                         立即处理 · 本页 ({actionNowCases.length})
@@ -1214,7 +1267,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     {actionNowCases.map((savedCase) => renderRecentCaseCard(savedCase))}
                                 </>
                             )}
-                            {trackingCases.length > 0 && (
+                            {!productOnlyUi && trackingCases.length > 0 && (
                                 <>
                                     <Text strong style={{ fontSize: 12, marginTop: actionNowCases.length > 0 ? 8 : 0 }}>
                                         等待或暂存 · 本页 ({trackingCases.length})
@@ -1222,7 +1275,9 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     {trackingCases.map((savedCase) => renderRecentCaseCard(savedCase))}
                                 </>
                             )}
-                            {!recentLoading && workbenchTotalCount > 0 ? (
+                            {productOnlyUi &&
+                                workbenchFilteredCases.map((savedCase) => renderRecentCaseCard(savedCase))}
+                            {!recentLoading && workbenchTotalCount > 0 && !productOnlyUi ? (
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
                                     <Pagination
                                         simple
@@ -1242,7 +1297,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                     </Space>
                     </div>
                 </Col>
-                <Col xs={24} xl={15}>
+                <Col xs={24} xl={productOnlyUi ? 24 : 15} order={productOnlyUi ? 1 : 2}>
                     <Space direction="vertical" size={14} style={{ width: '100%' }}>
                 <div style={{ marginBottom: 10, paddingBottom: 12, borderBottom: '1px solid #e8e8e8' }}>
                     <Title level={3} style={{ margin: 0, fontWeight: 600, fontSize: 22 }}>
@@ -1268,30 +1323,6 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         description="原样粘贴微信或通知文字即可，不用整理。系统会整理 urgency、下一步与草稿，您确认后再发给客户。"
                         style={{ borderRadius: 8 }}
                     />
-                )}
-
-                {productOnlyUi && (
-                    <Card size="small" title="练习场景（无需仿真页）" style={{ borderRadius: 8 }}>
-                        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                                点选场景加载到下方粘贴区，再点「开始整理」体验完整流程。
-                            </Text>
-                            <Space wrap>
-                                {BROKER_INLINE_PRACTICE_SCENARIOS.map((scenario) => {
-                                    const seed = FOUNDER_DEMO_QUEUE[scenario.seedIndex];
-                                    return (
-                                        <Button
-                                            key={scenario.label}
-                                            size="small"
-                                            onClick={() => handleQuickFill(seed.text)}
-                                        >
-                                            {scenario.label}
-                                        </Button>
-                                    );
-                                })}
-                            </Space>
-                        </Space>
-                    </Card>
                 )}
 
                 <Card
@@ -1430,7 +1461,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         }
                         extra={
                             <Space wrap>
-                                {currentCase.case_id && (
+                                {currentCase.case_id && !productOnlyUi && (
                                     <Radio.Group
                                         size="small"
                                         optionType="button"
@@ -1441,6 +1472,23 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                         onChange={(event) => void handleStatusChange(event.target.value as CaseStatus)}
                                     />
                                 )}
+                                {currentCase.case_id && productOnlyUi && (
+                                    <Dropdown
+                                        menu={{
+                                            items: CASE_STATUS_OPTIONS.map((opt) => ({
+                                                key: opt.value,
+                                                label: opt.label,
+                                                onClick: () => void handleStatusChange(opt.value as CaseStatus),
+                                            })),
+                                        }}
+                                        trigger={['click']}
+                                    >
+                                        <Button size="small" icon={<MoreOutlined />}>
+                                            状态
+                                        </Button>
+                                    </Dropdown>
+                                )}
+                                {!productOnlyUi && (
                                 <Button
                                     icon={<CopyOutlined />}
                                     onClick={handleCopyCaseSnapshot}
@@ -1448,6 +1496,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 >
                                     复制摘要
                                 </Button>
+                                )}
                                 <Button
                                     type="primary"
                                     icon={<CopyOutlined />}
@@ -1461,7 +1510,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         style={{ borderLeft: currentCase.manual_followup_needed ? '4px solid #fa8c16' : '4px solid #52c41a' }}
                     >
                         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                            {currentCase.case_id && (
+                            {currentCase.case_id && !productOnlyUi && (
                                 <div>
                                     <Text
                                         type="secondary"
@@ -1475,11 +1524,51 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     </Text>
                                 </div>
                             )}
+                            {currentCase.case_id && productOnlyUi && (
+                                <Text
+                                    type="secondary"
+                                    style={{ fontSize: 11, fontFamily: 'monospace', display: 'block' }}
+                                    copyable={{ text: currentCase.case_id }}
+                                >
+                                    {formatQueueCaseIdShort(currentCase.case_id)}
+                                </Text>
+                            )}
                             <OfficeWorkbenchOneGlanceSummary
                                 triage={currentCase}
                                 inputFallback={(input.trim() || currentCase.source_text || '').trim()}
                                 uiCopy={uiCopy}
                             />
+                            {caseView === 'reopened' && currentCase.case_id && (
+                                <Card
+                                    size="small"
+                                    title="追加客户补充"
+                                    styles={{ body: { padding: 12 } }}
+                                    style={{ borderColor: '#91caff', borderRadius: 8 }}
+                                >
+                                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                                        客户发了新消息？粘贴到这里更新下一步与草稿。
+                                    </Text>
+                                    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                                        <TextArea
+                                            value={appendMessageDraft}
+                                            onChange={(e) => setAppendMessageDraft(e.target.value)}
+                                            placeholder="粘贴客户新消息，例如：我发了ZIP 90210，下周一提车"
+                                            rows={3}
+                                            maxLength={2000}
+                                            disabled={appendSaving}
+                                        />
+                                        <Button
+                                            type="default"
+                                            icon={<SwapOutlined />}
+                                            onClick={() => void handleAppendMessage()}
+                                            loading={appendSaving}
+                                            disabled={!appendMessageDraft.trim()}
+                                        >
+                                            追加客户补充
+                                        </Button>
+                                    </Space>
+                                </Card>
+                            )}
                             {currentCase.case_id && !productOnlyUi && (
                                 <Collapse
                                     bordered={false}
@@ -1571,7 +1660,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     ]}
                                 />
                             )}
-                            {triageResultLooksLikeAddCar(currentCase) && (
+                            {triageResultLooksLikeAddCar(currentCase) && !productOnlyUi && (
                                 <Collapse
                                     bordered={false}
                                     style={{ background: 'transparent' }}
@@ -1594,20 +1683,30 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     ]}
                                 />
                             )}
-                            <Card
-                                size="small"
-                                title={
-                                    <Space wrap size={[4, 4]}>
-                                        <Text strong>Case 整理明细</Text>
-                                        <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
-                                            — 核对标签与材料；主结论在上方「整理结果」
-                                        </Text>
-                                    </Space>
-                                }
-                                styles={{ body: { padding: 16 } }}
+                            <Collapse
+                                bordered={false}
+                                style={{ background: 'transparent' }}
+                                defaultActiveKey={productOnlyUi ? [] : ['case_detail']}
+                                items={[
+                                    {
+                                        key: 'case_detail',
+                                        label: (
+                                            <Space wrap size={[4, 4]}>
+                                                <Text strong>整理明细</Text>
+                                                {!productOnlyUi && (
+                                                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+                                                        — 核对标签与材料；主结论在上方「整理结果」
+                                                    </Text>
+                                                )}
+                                            </Space>
+                                        ),
+                                        children: (
+                            <div
                                 style={{
+                                    padding: 16,
                                     background: currentCase.manual_followup_needed ? '#fff7e6' : '#f6ffed',
-                                    borderColor: currentCase.manual_followup_needed ? '#ffd591' : '#b7eb8f',
+                                    border: `1px solid ${currentCase.manual_followup_needed ? '#ffd591' : '#b7eb8f'}`,
+                                    borderRadius: 8,
                                 }}
                             >
                                 <Space direction="vertical" size={10} style={{ width: '100%' }}>
@@ -2083,8 +2182,13 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     <Text type="secondary" style={{ fontSize: 11 }}>{getResponseWindow(currentCase.urgency)}</Text>
                                     {currentTrackingSummary && <Text type="secondary" style={{ fontSize: 11 }}>{currentTrackingSummary}</Text>}
                                 </Space>
-                            </Card>
+                            </div>
+                                        ),
+                                    },
+                                ]}
+                            />
 
+                            {!productOnlyUi && (
                             <Row gutter={[12, 12]}>
                                 <Col xs={24} md={8}>
                                     <Card size="small" title="客户可准备" styles={{ body: { padding: 12 } }}>
@@ -2137,6 +2241,46 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     />
                                 </Col>
                             </Row>
+                            )}
+                            {productOnlyUi && (
+                                <Collapse
+                                    bordered={false}
+                                    style={{ background: 'transparent' }}
+                                    defaultActiveKey={['wb_draft_full']}
+                                    items={[
+                                        {
+                                            key: 'wb_draft_full',
+                                            label: (
+                                                <Space wrap size={[6, 4]} align="center">
+                                                    <Text style={{ fontSize: 12 }}>客户草稿（确认后再发）</Text>
+                                                    <Tag
+                                                        color={currentCase.manual_followup_needed ? 'gold' : 'green'}
+                                                        style={{ marginInlineEnd: 0 }}
+                                                    >
+                                                        {getDraftReadinessLabel(currentCase)}
+                                                    </Tag>
+                                                </Space>
+                                            ),
+                                            children: (
+                                                <div style={{ paddingTop: 4 }}>
+                                                    <div
+                                                        style={{
+                                                            padding: 12,
+                                                            background: '#fafafa',
+                                                            borderRadius: 6,
+                                                            whiteSpace: 'pre-wrap',
+                                                            fontFamily: 'inherit',
+                                                            fontSize: 13,
+                                                        }}
+                                                    >
+                                                        {currentCase.client_reply_draft}
+                                                    </div>
+                                                </div>
+                                            ),
+                                        },
+                                    ]}
+                                />
+                            )}
 
                             <Collapse
                                 bordered={false}
@@ -2170,7 +2314,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 ]}
                             />
 
-                            {caseView === 'reopened' && currentCase.case_id && (
+                            {caseView === 'reopened' && currentCase.case_id && !productOnlyUi && (
                                 <Card
                                     size="small"
                                     title="粘贴客户新消息"
@@ -2201,6 +2345,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     </Space>
                                 </Card>
                             )}
+                            {!productOnlyUi && (
                                 <div>
                                 <Space wrap style={{ marginBottom: 6 }}>
                                     <Text strong style={{ fontSize: 12, color: '#262626' }}>
@@ -2353,6 +2498,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     </Col>
                                 </Row>
                             </div>
+                            )}
                         </Space>
                     </Card>
                 )}

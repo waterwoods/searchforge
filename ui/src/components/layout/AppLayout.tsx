@@ -7,7 +7,9 @@ import { RightPanelTabs } from '../panels/RightPanelTabs'; // This is for Showti
 import { WorkbenchPanel } from '../panels/WorkbenchPanel'; // <-- This is for Workbench
 import { AppSider } from './AppSider';
 import { ReleaseIdentityBar } from './ReleaseIdentityBar';
+import { LabDevBanner } from './LabDevBanner';
 import { useClientConfig } from '../../context/ClientConfigContext';
+import { isUnifiedIntakeProductOnlyUi } from '../../config/productSurface';
 
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
@@ -22,6 +24,7 @@ export const AppLayout: React.FC = () => {
     const location = useLocation();
     const isUnifiedIntake = location.pathname === UNIFIED_INTAKE_PATH;
     const { uiCopy } = useClientConfig();
+    const productOnlyUi = isUnifiedIntakeProductOnlyUi();
     const appTitle = uiCopy.app_title ?? '金盾·陈魁团队 · 客户统一受理';
 
     // --- CONTEXT-AWARE LOGIC ---
@@ -44,9 +47,11 @@ export const AppLayout: React.FC = () => {
                             <Text style={{ color: 'rgba(255,255,255,0.95)', fontSize: 16, fontWeight: 600 }}>
                                 {appTitle}
                             </Text>
+                            {!productOnlyUi && (
                             <Link to="/workbench" style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
                                 返回工作台
                             </Link>
+                            )}
                         </Space>
                     ) : (
                         <KpiBar />
@@ -61,6 +66,7 @@ export const AppLayout: React.FC = () => {
                     </Sider>
                 )}
                 <Layout style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <LabDevBanner pathname={location.pathname} />
                     <Content
                         style={{
                             flex: 1,
