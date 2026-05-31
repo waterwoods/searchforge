@@ -1,9 +1,9 @@
 # Constitution V1 Recovery Point
 
-**Status:** ⏳ **Pending execution** — run Phase 2 commands below to activate  
+**Status:** ✅ **Active** — Constitution V1 committed and tagged  
 **Pre-baseline HEAD:** `d64f7829158ebf738ca2150e1f039c264ddb278b`  
 **Branch:** `reduction/p1-simplification-loops`  
-**Date prepared:** 2026-05-31
+**Date activated:** 2026-05-31
 
 ---
 
@@ -70,7 +70,7 @@ git tag -l 'constitution*'
 
 | Field | Value |
 |-------|-------|
-| **Commit hash** | `_PENDING — run Phase 2 commands_` |
+| **Commit hash** | `66f7ed593bd307dfa4f437f582cbf4a4c88e0e2f` |
 | **Tag** | `constitution-v1` |
 | **Branch** | `reduction/p1-simplification-loops` |
 | **Parent (pre-constitution)** | `d64f7829158ebf738ca2150e1f039c264ddb278b` |
