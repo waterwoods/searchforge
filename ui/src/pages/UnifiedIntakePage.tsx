@@ -74,6 +74,7 @@ export default function UnifiedIntakePage() {
     const portalBrandTagline = productOnlyUi
         ? (uiCopy.portal_brand_tagline_trial ?? '粘贴客户消息 · 整理草稿 · 您确认后发送')
         : (uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程');
+    const portalTrustLineFallback = uiCopy.portal_trust_line ?? '我们不会自动回复；办公室确认后再联系您';
     const portalTabCustomer = uiCopy.portal_tab_customer_label ?? '客户报送';
     const portalTabCustomerSuffix = uiCopy.portal_tab_customer_suffix ?? '报送入口（加车优先）';
     const portalTabOfficeSuffix = uiCopy.portal_tab_office_suffix ?? '加车旗舰路径 · 与客户报送同一服务记录';
@@ -137,10 +138,10 @@ export default function UnifiedIntakePage() {
         setActiveTab('broker');
     };
 
-    const renderTabLabel = (icon: ReactNode, primary: string, suffix?: string) => (
+    const renderTabLabel = (icon: ReactNode, primary: string, suffix?: string, showSuffix = false) => (
         <span>
             {icon} {primary}
-            {!productOnlyUi && suffix ? (
+            {showSuffix && suffix ? (
                 <Text type="secondary" style={{ marginLeft: 6, fontSize: 12, fontWeight: 400 }}>
                     — {suffix}
                 </Text>
@@ -158,6 +159,7 @@ export default function UnifiedIntakePage() {
                               <CustomerServiceOutlined />,
                               portalTabCustomer,
                               portalTabCustomerSuffix,
+                              false,
                           ),
                           children: (
                               <CustomerEntryTab
@@ -180,6 +182,7 @@ export default function UnifiedIntakePage() {
                               <UnorderedListOutlined />,
                               portalTabMyRequests,
                               portalTabMyRequestsSuffix,
+                              false,
                           ),
                           children: (
                               <MyRequestsTab onContinueInCustomerPortal={() => setActiveTab('customer')} />
@@ -190,7 +193,7 @@ export default function UnifiedIntakePage() {
             {
                 key: 'broker',
                 forceRender: true,
-                label: renderTabLabel(<InboxOutlined />, officeWorkbench, portalTabOfficeSuffix),
+                label: renderTabLabel(<InboxOutlined />, officeWorkbench, portalTabOfficeSuffix, !productOnlyUi),
                 children: <BrokerWorkbenchTab initialCaseId={brokerInitialCaseId} clientId={clientId} />,
             },
             ...(showSimulationTab
@@ -201,6 +204,7 @@ export default function UnifiedIntakePage() {
                               <PlayCircleOutlined />,
                               portalTabSimulation,
                               portalTabSimulationSuffix,
+                              false,
                           ),
                           children: <ScenarioReplayTab />,
                       },
@@ -282,43 +286,13 @@ export default function UnifiedIntakePage() {
                             金盾保险 · 陈魁团队
                         </Text>
                         <Text style={{ display: 'block', color: '#595959', fontSize: 14, lineHeight: 1.5, marginTop: 2 }}>
-                            {portalBrandTagline}
+                            {activeTab === 'customer' || activeTab === 'my_requests'
+                                ? portalTrustLineFallback
+                                : portalBrandTagline}
                         </Text>
                     </div>
                 </div>
             </div>
-            {!productOnlyUi && (
-                <Alert
-                    type="info"
-                    showIcon
-                    closable
-                    onClose={() => setPilotIntroCollapsed(true)}
-                    style={{
-                        marginBottom: 12,
-                        display: pilotIntroCollapsed ? 'none' : 'block',
-                    }}
-                    message={
-                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                            <Text strong>{pilotIntro.value}</Text>
-                            <Space wrap size={[4, 4]}>
-                                <Tag color="green">{pilotIntro.trust}</Tag>
-                                <Tag color="blue">做：{pilotIntro.does}</Tag>
-                                <Tag color="default">不做：{pilotIntro.doesNot}</Tag>
-                            </Space>
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                                {pilotIntro.demoPath}
-                            </Text>
-                        </Space>
-                    }
-                />
-            )}
-            {!productOnlyUi && pilotIntroCollapsed && (
-                <div style={{ marginBottom: 6, textAlign: 'right' }}>
-                    <Button type="link" size="small" onClick={() => setPilotIntroCollapsed(false)} style={{ padding: 0, fontSize: 12 }}>
-                        显示产品说明
-                    </Button>
-                </div>
-            )}
             {productOnlyUi && (
                 <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
                     {pilotIntro.trust}

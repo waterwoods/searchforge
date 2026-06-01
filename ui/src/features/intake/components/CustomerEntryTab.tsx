@@ -19,15 +19,10 @@ import {
 } from 'antd';
 import {
     ClockCircleOutlined,
-    CustomerServiceOutlined,
     InboxOutlined,
-    MoreOutlined,
-    PlayCircleOutlined,
     SendOutlined,
-    SwapOutlined,
 } from '@ant-design/icons';
 import { userFacingCaseTitle } from "@/components/intake/UserCaseListProgressPanel";
-import { AddCarFlowExplanation } from "@/components/intake/AddCarFlowExplanation";
 import {
     AddCarHandoffGroupedSnapshot,
     AddCarRecordSummaryRail,
@@ -57,7 +52,6 @@ import {
 } from "@/components/intake/caseLifecycleDisplay";
 import type { ConversationTurn, CustomerEntryTabProps } from "@/features/intake/types";
 import {
-    CUSTOMER_ENTRY_EXAMPLES,
     DEFAULT_QUICK_START_BUTTONS,
     QUOTE_READY_STATUS_LABELS,
 } from "@/features/intake/constants";
@@ -157,12 +151,20 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
         uiCopy.generic_broker_next_step_heading ?? '办公室侧下一步（系统整理）';
     const portalCustomerNextSuggestedHeading =
         uiCopy.portal_customer_next_suggested_heading ?? '您这边下一步（系统建议）';
+    const portalMessageFirstHeadline = uiCopy.portal_message_first_headline ?? '请把您的需求发给我们';
+    const portalMessageFirstSubline = uiCopy.portal_message_first_subline ?? '取消通知、加车、补材料都可以';
+    const portalTrustLine = uiCopy.portal_trust_line ?? '我们不会自动回复；办公室确认后再联系您';
+    const portalSendCta = uiCopy.portal_send_cta ?? '发送给办公室';
+    const portalStructuredAddCarLink = uiCopy.portal_structured_add_car_link ?? '逐项填写加车信息';
+    const portalHumanHelpLink = uiCopy.portal_human_help_link ?? '需要人工？';
+    const portalMoreIntentsLink = uiCopy.portal_more_intents_link ?? '更多类型';
 
     const [input, setInput] = useState('');
     const [turns, setTurns] = useState<ConversationTurn[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showExamples, setShowExamples] = useState(false);
+    const [showStructuredAddCar, setShowStructuredAddCar] = useState(false);
     const [lastCaseId, setLastCaseId] = useState<string | undefined>();
     const [resumePortalHint, setResumePortalHint] = useState<{
         mode: 'none' | 'single' | 'multi';
@@ -529,7 +531,7 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
             if (data.case_id) {
                 setLastCaseId(data.case_id);
                 clearSessionId(); // Phase 2: new session for next conversation
-                message.success(addCarFlow ? addCarHandoffToast : `已整理成 case。${handoffDefault}`);
+                message.success(addCarFlow ? addCarHandoffToast : '已收到您的请求');
             } else if (data.handoff_ready) {
                 const suppressReadyToast =
                     addCarFlow && isAddCarReadyForFormalSubmit(data);
@@ -682,26 +684,28 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                 }}
             >
             <Space direction="vertical" size={24} style={{ width: '100%' }}>
-                {/* Layer 1 — Trust / Hero: full when empty; compact when session active (fewer competing surfaces) */}
+                {/* P16-O: Message-first empty state — headline, textarea, send, trust only */}
                 {turns.length === 0 ? (
-                    <Card size="small" style={{ ...cardStyle, background: '#fafafa', borderColor: '#f0f0f0' }}>
-                        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                            <Title level={2} style={{ margin: 0, fontWeight: 600, color: '#262626', fontSize: 24 }}>
-                                <CustomerServiceOutlined style={{ marginRight: 8, color: '#1677ff' }} />
-                                {portalHeroTitle}
-                            </Title>
-                            <Paragraph style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: '#595959' }}>
-                                {portalServiceTagline}
-                            </Paragraph>
+                    <Card size="small" style={cardStyle}>
+                        <Space direction="vertical" size={20} style={{ width: '100%' }}>
+                            <div>
+                                <Title level={2} style={{ margin: 0, fontWeight: 600, color: '#262626', fontSize: 24 }}>
+                                    {portalMessageFirstHeadline}
+                                </Title>
+                                <Text style={{ display: 'block', marginTop: 10, fontSize: 15, lineHeight: 1.6, color: '#595959' }}>
+                                    {portalMessageFirstSubline}
+                                </Text>
+                            </div>
                             {resumePortalHint.mode === 'single' && resumePortalHint.caseId && (
                                 <div
                                     style={{
-                                        marginTop: 10,
-                                        paddingTop: 10,
-                                        borderTop: '1px solid #f0f0f0',
+                                        padding: '10px 12px',
+                                        background: '#fafafa',
+                                        borderRadius: 8,
+                                        border: '1px solid #f0f0f0',
                                     }}
                                 >
-                                    <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.55 }}>
+                                    <Text type="secondary" style={{ fontSize: 13, display: 'block', lineHeight: 1.55 }}>
                                         继续上次的申请：{resumePortalHint.title}
                                     </Text>
                                     <Button
@@ -720,13 +724,14 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                             {resumePortalHint.mode === 'multi' && (
                                 <div
                                     style={{
-                                        marginTop: 10,
-                                        paddingTop: 10,
-                                        borderTop: '1px solid #f0f0f0',
+                                        padding: '10px 12px',
+                                        background: '#fafafa',
+                                        borderRadius: 8,
+                                        border: '1px solid #f0f0f0',
                                     }}
                                 >
-                                    <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.55 }}>
-                                        您有多条进行中的请求。到「我的办理」选择要继续的一条即可。
+                                    <Text type="secondary" style={{ fontSize: 13, display: 'block', lineHeight: 1.55 }}>
+                                        您有多条进行中的请求。
                                     </Text>
                                     {onOpenMyRequests ? (
                                         <Button
@@ -740,53 +745,142 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                     ) : null}
                                 </div>
                             )}
-                            {onOpenScenarioSimulation && (
+                            <TextArea
+                                placeholder={portalInputEmpty}
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                rows={4}
+                                disabled={loading}
+                                style={{ fontSize: 15 }}
+                                autoFocus
+                            />
+                            <Button
+                                type="primary"
+                                size="large"
+                                icon={<SendOutlined />}
+                                onClick={handleSubmit}
+                                loading={loading}
+                                block
+                            >
+                                {portalSendCta}
+                            </Button>
+                            <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55, textAlign: 'center', display: 'block' }}>
+                                {portalTrustLine}
+                            </Text>
+                            <Space wrap size={[8, 4]} style={{ justifyContent: 'center', width: '100%' }}>
                                 <Button
-                                    icon={<PlayCircleOutlined />}
-                                    onClick={() => onOpenScenarioSimulation()}
+                                    type="link"
                                     size="small"
-                                    type="text"
-                                    style={{ color: '#8c8c8c', fontSize: 12, padding: 0, height: 'auto' }}
+                                    style={{ padding: 0, height: 'auto', fontSize: 13 }}
+                                    onClick={() => setShowStructuredAddCar((v) => !v)}
                                 >
-                                    {uiCopy.portal_tab_simulation_label ?? '场景仿真'}
+                                    {portalStructuredAddCarLink}
                                 </Button>
+                                {(() => {
+                                    const more = quickStartButtons.filter(
+                                        (b) => !['add_car', 'talk_to_agent'].includes(b.id),
+                                    );
+                                    if (!more.length) return null;
+                                    return (
+                                        <Dropdown
+                                            trigger={['click']}
+                                            menu={{
+                                                items: more.map((b) => ({
+                                                    key: b.id,
+                                                    label: b.label,
+                                                    onClick: () => handleButtonStarter(b),
+                                                })),
+                                            }}
+                                        >
+                                            <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontSize: 13 }}>
+                                                {portalMoreIntentsLink}
+                                            </Button>
+                                        </Dropdown>
+                                    );
+                                })()}
+                                <Button
+                                    type="link"
+                                    size="small"
+                                    style={{ padding: 0, height: 'auto', fontSize: 13 }}
+                                    onClick={() => {
+                                        const talkBtn =
+                                            quickStartButtons.find((b) => b.id === 'talk_to_agent') ??
+                                            DEFAULT_QUICK_START_BUTTONS.find((b) => b.id === 'talk_to_agent')!;
+                                        handleButtonStarter(talkBtn);
+                                    }}
+                                >
+                                    {portalHumanHelpLink}
+                                </Button>
+                            </Space>
+                            {showStructuredAddCar && (
+                                <div style={{ paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
+                                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                        <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                                            {portalAddCarQuickHint}
+                                        </Text>
+                                        <Row gutter={[10, 10]}>
+                                            <Col xs={24} sm={12}>
+                                                <Input
+                                                    placeholder="年份，如 2024"
+                                                    value={addCarQuickFields.year}
+                                                    onChange={(e) => setAddCarQuickFields((p) => ({ ...p, year: e.target.value }))}
+                                                    disabled={loading}
+                                                />
+                                            </Col>
+                                            <Col xs={24} sm={12}>
+                                                <Input
+                                                    placeholder="车型，如 Tesla Model Y"
+                                                    value={addCarQuickFields.makeModel}
+                                                    onChange={(e) => setAddCarQuickFields((p) => ({ ...p, makeModel: e.target.value }))}
+                                                    disabled={loading}
+                                                />
+                                            </Col>
+                                            <Col xs={24} sm={12}>
+                                                <Input
+                                                    placeholder="邮编 ZIP"
+                                                    value={addCarQuickFields.zip}
+                                                    onChange={(e) => setAddCarQuickFields((p) => ({ ...p, zip: e.target.value }))}
+                                                    disabled={loading}
+                                                />
+                                            </Col>
+                                            <Col xs={24} sm={12}>
+                                                <Input
+                                                    placeholder="提车 / 预计拿车"
+                                                    value={addCarQuickFields.delivery}
+                                                    onChange={(e) => setAddCarQuickFields((p) => ({ ...p, delivery: e.target.value }))}
+                                                    disabled={loading}
+                                                />
+                                            </Col>
+                                            <Col xs={24}>
+                                                <Input
+                                                    placeholder="主要驾驶人（姓名或关系）"
+                                                    value={addCarQuickFields.driver}
+                                                    onChange={(e) => setAddCarQuickFields((p) => ({ ...p, driver: e.target.value }))}
+                                                    disabled={loading}
+                                                />
+                                            </Col>
+                                        </Row>
+                                        <Button
+                                            type="default"
+                                            onClick={handleStartWithAddCarStructured}
+                                            loading={loading}
+                                            disabled={loading}
+                                        >
+                                            {portalAddCarQuickCta}
+                                        </Button>
+                                    </Space>
+                                </div>
                             )}
                         </Space>
                     </Card>
-                ) : (
-                    <Card size="small" style={{ ...cardStyle, background: '#fafafa', borderColor: '#f0f0f0' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                            <Space align="start" size={10}>
-                                <CustomerServiceOutlined style={{ fontSize: 20, color: '#1677ff', marginTop: 2 }} />
-                                <div style={{ minWidth: 0 }}>
-                                    <Text strong style={{ fontSize: 16, color: '#262626', display: 'block' }}>
-                                        {portalHeroTitle}
-                                    </Text>
-                                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4, lineHeight: 1.5 }}>
-                                        {portalBrandTagline}
-                                    </Text>
-                                </div>
-                            </Space>
-                            {onOpenScenarioSimulation && (
-                                <Button
-                                    icon={<PlayCircleOutlined />}
-                                    onClick={() => onOpenScenarioSimulation()}
-                                    size="small"
-                                    type="text"
-                                    style={{ color: '#8c8c8c', fontSize: 12, padding: 0, height: 'auto', flexShrink: 0 }}
-                                >
-                                    {uiCopy.portal_tab_simulation_label ?? '场景仿真'}
-                                </Button>
-                            )}
-                        </div>
-                    </Card>
-                )}
+                ) : null}
 
+                {turns.length > 0 && (
                 <IntakeFlowStepTrack
                     flowStep={intakeFlowStep}
                     trackLabel={
                         selectedButtonIntent === 'add_car' ||
-                        (turns.length > 0 && customerEntryIsAddCarActive(turns, selectedButtonIntent))
+                        customerEntryIsAddCarActive(turns, selectedButtonIntent)
                             ? portalAddCarFlowTrackLabel
                             : portalFlowTrackLabel
                     }
@@ -794,200 +888,6 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                     step2={portalFlowStep2}
                     step3={portalFlowStep3}
                 />
-
-                {turns.length > 0 &&
-                    customerEntryIsAddCarActive(turns, selectedButtonIntent) && (
-                        <Card
-                            size="small"
-                            style={{
-                                ...cardStyle,
-                                background: 'linear-gradient(90deg, #e6f4ff 0%, #f0f7ff 100%)',
-                                borderColor: '#91caff',
-                            }}
-                        >
-                            <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                <Text strong style={{ fontSize: 15, color: '#0958d9' }}>
-                                    {uiCopy.add_car_transaction_title ?? '当前办理：加车报价'}
-                                </Text>
-                                <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55 }}>
-                                    {uiCopy.add_car_transaction_subtitle ??
-                                        '这是正式的加车报价请求流程：我们会按业务步骤收齐资料，并提交办公室出价与跟进。'}
-                                </Text>
-                            </Space>
-                        </Card>
-                    )}
-
-                {/* Layer 2 — Primary entry actions (when empty state) */}
-                {turns.length === 0 && (
-                    <Card size="small" style={cardStyle}>
-                        <Space direction="vertical" size={20} style={{ width: '100%' }}>
-                            <div>
-                                <Text strong style={{ fontSize: 18, display: 'block', marginBottom: 8, color: '#262626' }}>
-                                    {portalEmptyHeadline}
-                                </Text>
-                                <Text style={{ fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
-                                    {portalEmptySecondary}
-                                </Text>
-                            </div>
-                            <div>
-                                <Text style={{ fontSize: 13, display: 'block', marginBottom: 12, color: '#595959', fontWeight: 500 }}>
-                                    {portalChoosePathLabel}
-                                </Text>
-                                {(() => {
-                                    const addCarBtn =
-                                        quickStartButtons.find((b) => b.id === 'add_car') ??
-                                        DEFAULT_QUICK_START_BUTTONS.find((b) => b.id === 'add_car')!;
-                                    const talkBtn =
-                                        quickStartButtons.find((b) => b.id === 'talk_to_agent') ??
-                                        DEFAULT_QUICK_START_BUTTONS.find((b) => b.id === 'talk_to_agent')!;
-                                    const more = quickStartButtons.filter((b) => !['add_car', 'talk_to_agent'].includes(b.id));
-                                    const moreItems = more.map((b) => ({
-                                        key: b.id,
-                                        label: b.label,
-                                        onClick: () => handleButtonStarter(b),
-                                    }));
-                                    const addCarPrimary = selectedButtonIntent === 'add_car' || selectedButtonIntent === null;
-                                    const talkPrimary = selectedButtonIntent === 'talk_to_agent';
-                                    return (
-                                        <Row gutter={[12, 12]} align="middle">
-                                            <Col xs={24} sm={12} md={8}>
-                                                <Button
-                                                    type={addCarPrimary ? 'primary' : 'default'}
-                                                    onClick={() => handleButtonStarter(addCarBtn)}
-                                                    loading={loading}
-                                                    size="large"
-                                                    block
-                                                    style={
-                                                        addCarPrimary
-                                                            ? { backgroundColor: '#1677ff', borderColor: '#1677ff' }
-                                                            : { borderColor: '#d9d9d9', color: '#262626', background: '#fff' }
-                                                    }
-                                                >
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                                        {addCarBtn.label}
-                                                        {selectedButtonIntent === null ? (
-                                                            <Tag color="processing" style={{ margin: 0, fontSize: 11 }}>
-                                                                {uiCopy.portal_add_car_button_badge ?? '推荐主路径'}
-                                                            </Tag>
-                                                        ) : null}
-                                                    </span>
-                                                </Button>
-                                            </Col>
-                                            <Col xs={24} sm={12} md={8}>
-                                                <Button
-                                                    type={talkPrimary ? 'primary' : 'default'}
-                                                    onClick={() => handleButtonStarter(talkBtn)}
-                                                    loading={loading}
-                                                    size="large"
-                                                    block
-                                                    style={
-                                                        talkPrimary
-                                                            ? { backgroundColor: '#1677ff', borderColor: '#1677ff' }
-                                                            : { borderColor: '#d9d9d9', color: '#262626', background: '#fff' }
-                                                    }
-                                                >
-                                                    {talkBtn.label}
-                                                </Button>
-                                            </Col>
-                                            <Col xs={24} md={8}>
-                                                <Dropdown
-                                                    trigger={['click']}
-                                                    menu={{
-                                                        items: moreItems,
-                                                    }}
-                                                >
-                                                    <Button size="large" block icon={<MoreOutlined />}>
-                                                        其他事项（可选）
-                                                    </Button>
-                                                </Dropdown>
-                                            </Col>
-                                        </Row>
-                                    );
-                                })()}
-                            </div>
-                            {/* Hybrid add-car: structured short card + same conversational pipeline (flagship hardening) */}
-                            <div
-                                style={{
-                                    marginTop: 8,
-                                    paddingTop: 16,
-                                    borderTop: '1px solid #f0f0f0',
-                                }}
-                            >
-                                <Collapse
-                                    bordered={false}
-                                    style={{ background: 'transparent' }}
-                                    items={[
-                                        {
-                                            key: 'add_car_quick',
-                                            label: (
-                                                <Text strong style={{ fontSize: 14, color: '#262626' }}>
-                                                    {portalAddCarQuickTitle}
-                                                </Text>
-                                            ),
-                                            children: (
-                                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                                    <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                                                        {portalAddCarQuickHint}
-                                                    </Text>
-                                                    <Row gutter={[10, 10]}>
-                                                        <Col xs={24} sm={12}>
-                                                            <Input
-                                                                placeholder="年份，如 2024"
-                                                                value={addCarQuickFields.year}
-                                                                onChange={(e) => setAddCarQuickFields((p) => ({ ...p, year: e.target.value }))}
-                                                                disabled={loading}
-                                                            />
-                                                        </Col>
-                                                        <Col xs={24} sm={12}>
-                                                            <Input
-                                                                placeholder="车型，如 Tesla Model Y"
-                                                                value={addCarQuickFields.makeModel}
-                                                                onChange={(e) => setAddCarQuickFields((p) => ({ ...p, makeModel: e.target.value }))}
-                                                                disabled={loading}
-                                                            />
-                                                        </Col>
-                                                        <Col xs={24} sm={12}>
-                                                            <Input
-                                                                placeholder="邮编 ZIP"
-                                                                value={addCarQuickFields.zip}
-                                                                onChange={(e) => setAddCarQuickFields((p) => ({ ...p, zip: e.target.value }))}
-                                                                disabled={loading}
-                                                            />
-                                                        </Col>
-                                                        <Col xs={24} sm={12}>
-                                                            <Input
-                                                                placeholder="提车 / 预计拿车"
-                                                                value={addCarQuickFields.delivery}
-                                                                onChange={(e) => setAddCarQuickFields((p) => ({ ...p, delivery: e.target.value }))}
-                                                                disabled={loading}
-                                                            />
-                                                        </Col>
-                                                        <Col xs={24}>
-                                                            <Input
-                                                                placeholder="主要驾驶人（姓名或关系，如：本人 / 配偶）"
-                                                                value={addCarQuickFields.driver}
-                                                                onChange={(e) => setAddCarQuickFields((p) => ({ ...p, driver: e.target.value }))}
-                                                                disabled={loading}
-                                                            />
-                                                        </Col>
-                                                    </Row>
-                                                    <Button
-                                                        type="primary"
-                                                        style={{ marginTop: 4 }}
-                                                        onClick={handleStartWithAddCarStructured}
-                                                        loading={loading}
-                                                        disabled={loading}
-                                                    >
-                                                        {portalAddCarQuickCta}
-                                                    </Button>
-                                                </Space>
-                                            ),
-                                        },
-                                    ]}
-                                />
-                            </div>
-                        </Space>
-                    </Card>
                 )}
 
                 {turns.length > 0 && (() => {
@@ -1027,11 +927,8 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                             lineHeight: 1.45,
                                         }}
                                     >
-                                        <Text strong style={{ fontSize: 11, color: '#8c8c8c', display: 'block', marginBottom: 2 }}>
-                                            {turn.role === 'customer' ? portalCustomerBubble : portalOfficeBubble}
-                                        </Text>
                                         <Text style={{ fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{turn.content}</Text>
-                                        {turn.role === 'system' && turn.triageResult && (
+                                        {false && turn.role === 'system' && turn.triageResult && (
                                             <Space size={4} wrap style={{ marginTop: 6 }}>
                                                 {(turn.triageResult.urgency === 'critical' || turn.triageResult.urgency === 'high') && (
                                                     <Tag color="orange" icon={<ClockCircleOutlined />} style={{ fontSize: 11 }}>
@@ -1073,9 +970,6 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                             lineHeight: 1.45,
                                         }}
                                     >
-                                        <Text strong style={{ fontSize: 11, color: '#8c8c8c', display: 'block', marginBottom: 2 }}>
-                                            {portalOfficeBubble}
-                                        </Text>
                                         <Space size={8}>
                                             <Spin size="small" />
                                             <Text type="secondary" style={{ fontSize: 14 }}>{portalLoadingStatus}</Text>
@@ -1116,87 +1010,51 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                         caption={addCarStatusStripLabel}
                                     />
                                 )}
-                                {addCarActiveHere && lastCaseId && (
-                                    <Text
-                                        type="secondary"
-                                        style={{ fontSize: 12, display: 'block', fontFamily: 'monospace' }}
-                                        copyable={{ text: lastCaseId }}
-                                    >
-                                        {addCarCaseRecordLabel}：{lastCaseId}
-                                    </Text>
-                                )}
                                 {addCarActiveHere && latestTriage && turns.some((t) => t.role === 'system') && (
-                                    <AddCarRecordSummaryRail
-                                        triage={latestTriage}
-                                        priorSystemTriage={priorSystemTriage}
-                                        uiCopy={uiCopy}
-                                        mode="portal_pre"
-                                        flowStep={intakeFlowStep}
-                                        submitLabel={submitLabelForNextLane}
+                                    <Collapse
+                                        bordered={false}
+                                        style={{ background: 'transparent' }}
+                                        defaultActiveKey={[]}
+                                        items={[
+                                            {
+                                                key: 'record_rail',
+                                                label: (
+                                                    <Text style={{ fontSize: 13 }}>
+                                                        已记录 {(latestTriage.collected_fields?.filter(Boolean).length ?? 0)} 项
+                                                        {(latestTriage.still_needed_fields?.filter(Boolean).length ?? 0) > 0
+                                                            ? ` · 还缺 ${latestTriage.still_needed_fields!.filter(Boolean).length} 项`
+                                                            : ''}
+                                                    </Text>
+                                                ),
+                                                children: (
+                                                    <AddCarRecordSummaryRail
+                                                        triage={latestTriage}
+                                                        priorSystemTriage={priorSystemTriage}
+                                                        uiCopy={uiCopy}
+                                                        mode="portal_pre"
+                                                        flowStep={intakeFlowStep}
+                                                        submitLabel={submitLabelForNextLane}
+                                                    />
+                                                ),
+                                            },
+                                        ]}
                                     />
                                 )}
                                 {!addCarActiveHere && latestTriage && (
                                     <GenericIntakeStatusStrip triage={latestTriage} caption={addCarStatusStripLabel} />
                                 )}
-                                <div>
-                                    <Text strong style={{ fontSize: 12, color: '#434343', display: 'block', marginBottom: 6 }}>
-                                        当前请求与类型
-                                    </Text>
-                                    {latestTriage?.issue_category && (
-                                        <div style={{ marginBottom: 6 }}>
-                                            <Tag color="blue">{humanizeCategory(latestTriage.issue_category, latestTriage.source_text)}</Tag>
-                                        </div>
-                                    )}
-                                    {latestTriage?.quote_ready_status && !addCarActiveHere && (
-                                        <div>
-                                            <Text type="secondary" style={{ fontSize: 11 }}>整理度 / 报价准备：</Text>{' '}
-                                            <Tag color={QUOTE_READY_STATUS_LABELS[latestTriage.quote_ready_status]?.color ?? 'default'}>
-                                                {QUOTE_READY_STATUS_LABELS[latestTriage.quote_ready_status]?.label ?? latestTriage.quote_ready_status}
-                                            </Tag>
-                                        </div>
-                                    )}
-                                </div>
-                                <Divider style={{ margin: '4px 0' }} />
-                                {!addCarActiveHere && (latestTriage?.collected_fields?.length ?? 0) > 0 && (
-                                    <div>
-                                        <Text strong style={{ fontSize: 12, color: '#434343', display: 'block', marginBottom: 6 }}>
-                                            已记录要点
-                                        </Text>
-                                        <Space size={4} wrap>
-                                            {latestTriage!.collected_fields!.slice(0, 6).map((f) => (
-                                                <Tag key={f} color="green">
-                                                    {humanizeStructuredFieldForCustomer(f)}
-                                                </Tag>
-                                            ))}
-                                        </Space>
-                                    </div>
-                                )}
-                                {!addCarActiveHere && (latestTriage?.still_needed_fields?.length ?? 0) > 0 && (
-                                    <div>
-                                        <Text strong style={{ fontSize: 12, color: '#434343', display: 'block', marginBottom: 6 }}>
-                                            仍缺 / 待补充
-                                        </Text>
-                                        <Space size={4} wrap>
-                                            {latestTriage!.still_needed_fields!.slice(0, 4).map((f) => (
-                                                <Tag key={f} color="orange">
-                                                    {humanizeStructuredFieldForCustomer(f)}
-                                                </Tag>
-                                            ))}
-                                        </Space>
-                                    </div>
-                                )}
                                 {latestTriage?.next_best_question && (
                                     <div>
-                                        <Text strong style={{ fontSize: 12, color: '#434343', display: 'block', marginBottom: 6 }}>
-                                            {portalCustomerNextSuggestedHeading}
+                                        <Text strong style={{ fontSize: 14, color: '#262626', display: 'block', marginBottom: 8 }}>
+                                            办公室需要确认
                                         </Text>
-                                        <Text style={{ fontSize: 12, display: 'block', lineHeight: 1.55 }}>
-                                            {latestTriage.next_best_question.slice(0, 120)}
-                                            {(latestTriage.next_best_question?.length ?? 0) > 120 ? '…' : ''}
+                                        <Text style={{ fontSize: 15, display: 'block', lineHeight: 1.55 }}>
+                                            {latestTriage.next_best_question.slice(0, 200)}
+                                            {(latestTriage.next_best_question?.length ?? 0) > 200 ? '…' : ''}
                                         </Text>
                                     </div>
                                 )}
-                                {latestTriage && !addCarActiveHere && (
+                                {false && latestTriage && !addCarActiveHere && (
                                     <Tag
                                         color={caseLifecycleTagColor(resolveCaseLifecycle(latestTriage))}
                                         style={{ fontSize: 10 }}
@@ -1261,195 +1119,29 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                     );
                 })()}
 
-                {!formalSubmissionComplete && (
+                {!formalSubmissionComplete && turns.length > 0 && (
                     <Card size="small" style={cardStyle}>
                         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                            {turns.length > 0 &&
-                                customerEntryIsAddCarActive(turns, selectedButtonIntent) && (
-                                <Space size={4} wrap>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>
-                                        当前办理：
-                                    </Text>
-                                    <Tag
-                                        color="blue"
-                                        closable={!!selectedButtonIntent}
-                                        onClose={() => setSelectedButtonIntent(null)}
-                                        style={{ fontSize: 12 }}
-                                    >
-                                        加车报价
-                                    </Tag>
-                                    <Text type="secondary" style={{ fontSize: 11 }}>
-                                        （与本次加车无关的其他问题，完成后请用「提交新问题」）
-                                    </Text>
-                                </Space>
-                            )}
-                            {turns.length > 0 &&
-                                !customerEntryIsAddCarActive(turns, selectedButtonIntent) &&
-                                selectedButtonIntent && (
-                                <Space size={4}>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>
-                                        当前主题：
-                                    </Text>
-                                    <Tag
-                                        color="blue"
-                                        closable
-                                        onClose={() => setSelectedButtonIntent(null)}
-                                        style={{ fontSize: 12 }}
-                                    >
-                                        {quickStartButtons.find((b) => b.id === selectedButtonIntent)?.label ?? selectedButtonIntent}
-                                    </Tag>
-                                    <Text type="secondary" style={{ fontSize: 11 }}>
-                                        （可点击 × 取消，直接输入会覆盖）
-                                    </Text>
-                                </Space>
-                            )}
-                            {turns.length === 0 && (
-                                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
-                                    可先点选办理类型，或直接输入说明；提交后办公室按记录跟进。
-                                </Text>
-                            )}
                             {showHandoffPendingHint && (
                                 <Alert
                                     type="info"
                                     showIcon
-                                    message={uiCopy.portal_handoff_pending_alert_title ?? '资料已齐 · 待正式送达办公室'}
-                                    description={
-                                        <Text style={{ fontSize: 13, lineHeight: 1.55, margin: 0 }}>
-                                            {portalHandoffPendingCtaHint}
-                                        </Text>
-                                    }
+                                    message={uiCopy.portal_handoff_pending_alert_title ?? '资料已齐 · 请确认提交'}
                                 />
                             )}
-                            {showHandoffPendingHint &&
-                                uiCopy.light_identity?.show_optional_binding &&
-                                !identityStripDismissed && (
-                                    <div
-                                        style={{
-                                            padding: '6px 0 2px',
-                                            borderTop: '1px solid #f0f0f0',
-                                        }}
-                                    >
-                                        <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.65, display: 'block' }}>
-                                            {lightIdentityStripLine}{' '}
-                                            <Button
-                                                type="link"
-                                                size="small"
-                                                style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                                                onClick={() => {
-                                                    setIdentityBindingState('prompted');
-                                                    setIdentityWechatModalOpen(true);
-                                                }}
-                                            >
-                                                {lightIdentityWechatCta}
-                                            </Button>
-                                            <Text type="secondary" style={{ fontSize: 12 }}>
-                                                {' · '}
-                                            </Text>
-                                            <Button
-                                                type="link"
-                                                size="small"
-                                                style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                                                onClick={() => setIdentityBindingState('deferred')}
-                                            >
-                                                {lightIdentityDeferCta}
-                                            </Button>
-                                            <Text type="secondary" style={{ fontSize: 12 }}>
-                                                {' · '}
-                                            </Text>
-                                            <Button
-                                                type="link"
-                                                size="small"
-                                                style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                                                onClick={dismissIdentityStrip}
-                                            >
-                                                {lightIdentityDismissCta}
-                                            </Button>
-                                        </Text>
-                                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
-                                            {lightIdentityPhoneEmailHint}
-                                        </Text>
-                                    </div>
-                                )}
-                            <Modal
-                                title={
-                                    wechatBindingLive
-                                        ? uiCopy.light_identity?.modal_title?.trim() || '微信续接（可选）'
-                                        : lightIdentityModalTitle
-                                }
-                                open={identityWechatModalOpen}
-                                onCancel={() => setIdentityWechatModalOpen(false)}
-                                footer={
-                                    wechatBindingLive ? (
-                                        <>
-                                            <Button key="cancel" onClick={() => setIdentityWechatModalOpen(false)}>
-                                                取消
-                                            </Button>
-                                            <Button
-                                                key="go"
-                                                type="primary"
-                                                loading={wechatBindingBusy}
-                                                onClick={() => void handleWeChatBindingStart()}
-                                            >
-                                                开始微信续接
-                                            </Button>
-                                        </>
-                                    ) : (
-                                        [
-                                            <Button
-                                                key="ok"
-                                                type="primary"
-                                                onClick={() => setIdentityWechatModalOpen(false)}
-                                            >
-                                                知道了
-                                            </Button>,
-                                        ]
-                                    )
-                                }
-                            >
-                                <Paragraph style={{ marginBottom: 0 }}>
-                                    {wechatBindingLive ? lightIdentityModalBodyLive : lightIdentityModalBody}
-                                </Paragraph>
-                            </Modal>
                             {showAddCarPreSubmitGapAlert && (
                                 <Alert
                                     type="warning"
                                     showIcon
                                     message="提交前 · 系统仍标注这些待补项"
                                     description={
-                                        <div>
-                                            <Text style={{ fontSize: 13, lineHeight: 1.55, display: 'block', marginBottom: 8 }}>
-                                                建议先在下方输入框补充说明（写入同一条服务记录），减少办公室来回追问。若暂时只能先聊到这一步，也可继续发送消息后再等系统标为可提交。
-                                            </Text>
-                                            <Space size={4} wrap>
-                                                {preSubmitStillNeededFields.slice(0, 8).map((f) => (
-                                                    <Tag key={f} color="orange">
-                                                        {humanizeStructuredFieldForCustomer(f)}
-                                                    </Tag>
-                                                ))}
-                                                {preSubmitStillNeededFields.length > 8 ? <Tag>…</Tag> : null}
-                                            </Space>
-                                        </div>
-                                    }
-                                />
-                            )}
-                            {showAddCarHandoffPendingGapAlert && (
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    message="仍可补充后再正式提交"
-                                    description={
-                                        <div>
-                                            <Text style={{ fontSize: 13, lineHeight: 1.55, display: 'block', marginBottom: 8 }}>
-                                                系统已标「资料已齐」，但仍有结构化待补项。若方便，请先在输入框写好再点正式提交，办公室接手时更省事。
-                                            </Text>
-                                            <Space size={4} wrap>
-                                                {preSubmitStillNeededFields.slice(0, 8).map((f) => (
-                                                    <Tag key={f} color="orange">
-                                                        {humanizeStructuredFieldForCustomer(f)}
-                                                    </Tag>
-                                                ))}
-                                            </Space>
-                                        </div>
+                                        <Space size={4} wrap>
+                                            {preSubmitStillNeededFields.slice(0, 4).map((f) => (
+                                                <Tag key={f} color="orange">
+                                                    {humanizeStructuredFieldForCustomer(f)}
+                                                </Tag>
+                                            ))}
+                                        </Space>
                                     }
                                 />
                             )}
@@ -1463,7 +1155,7 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                         description={
                                             <Text style={{ fontSize: 13, lineHeight: 1.55, margin: 0 }}>
                                                 {uiCopy.portal_contact_only_input_hint ??
-                                                    '请在本对话直接回复称呼与手机号；回完后再点「正式提交办公室」。'}
+                                                    '请回复称呼与手机号，然后点确认提交。'}
                                             </Text>
                                         }
                                     />
@@ -1494,37 +1186,8 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                 loading={loading}
                                 block
                             >
-                                {turns.length === 0
-                                    ? selectedButtonIntent === 'add_car'
-                                        ? (uiCopy.customer_entry_submit_add_car ?? '提交加车请求')
-                                        : '提交报送'
-                                    : primarySubmitLabel}
+                                {primarySubmitLabel}
                             </Button>
-                            {showHandoffPendingHint && (
-                                <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.55, display: 'block' }}>
-                                    {uiCopy.portal_handoff_pending_button_subline ??
-                                        '点按后本条服务记录视为正式送达办公室排队处理；之后仍可在同一条记录下追加补充，不等于已报价或核保完成。'}
-                                </Text>
-                            )}
-                            <Button type="text" size="small" onClick={() => setShowExamples((v) => !v)}>
-                                {showExamples ? '收起示例' : '不确定如何描述？查看示例'}
-                            </Button>
-                            {showExamples && (
-                                <Card size="small" style={{ ...cardStyle, background: '#fafafa', borderColor: '#f0f0f0' }}>
-                                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                        {CUSTOMER_ENTRY_EXAMPLES.map((ex) => (
-                                            <Button
-                                                key={ex.label}
-                                                size="small"
-                                                type="link"
-                                                onClick={() => handleExampleFill(ex.text)}
-                                            >
-                                                {ex.label}
-                                            </Button>
-                                        ))}
-                                    </Space>
-                                </Card>
-                            )}
                         </Space>
                     </Card>
                 )}
@@ -1575,281 +1238,28 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                             }}
                         >
                             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                                {addCarHandoff && triage && (
-                                    <AddCarFlowExplanation
-                                        uiCopy={uiCopy}
-                                        variant="post_handoff"
-                                        stillNeededLabels={(triage.still_needed_fields ?? []).map((f) =>
-                                            humanizeStructuredFieldForCustomer(f),
-                                        )}
-                                    />
-                                )}
-                                <div>
-                                    {addCarHandoff && triage && (
-                                        <AddCarCaseStatusStrip
-                                            triage={triage}
-                                            phase="submitted"
-                                            caption={addCarStatusStripLabel}
-                                        />
-                                    )}
-                                    {!addCarHandoff && triage && (
-                                        <GenericIntakeStatusStrip triage={triage} caption={addCarStatusStripLabel} />
-                                    )}
-                                    {lastCaseId && (
-                                        <Text
-                                            type="secondary"
-                                            style={{ fontSize: 12, display: 'block', marginBottom: 10, fontFamily: 'monospace' }}
-                                            copyable={{ text: lastCaseId }}
-                                        >
-                                            {addCarCaseRecordLabel}：{lastCaseId}
-                                        </Text>
-                                    )}
-                                    {(() => {
-                                        const formalTs = formatPortalLocalDateTime(
-                                            triage?.formal_submitted_at ?? triage?.created_at,
-                                        );
-                                        const activityTs = formatPortalLocalDateTime(triage?.updated_at);
-                                        const hasCase = Boolean((triage?.case_id ?? '').toString().trim());
-                                        if (!formalTs && !activityTs) return null;
-                                        const showActivityLine =
-                                            hasCase &&
-                                            Boolean(formalTs && activityTs && activityTs !== formalTs);
-                                        const showFormalOnlyPersisted =
-                                            hasCase && Boolean(formalTs) && !showActivityLine;
-                                        return (
-                                            <div style={{ marginBottom: 10 }}>
-                                                {showActivityLine ? (
-                                                    <>
-                                                        <Text
-                                                            type="secondary"
-                                                            style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}
-                                                        >
-                                                            {portalFormalSubmittedAtLabel}：{formalTs}
-                                                        </Text>
-                                                        <Text
-                                                            type="secondary"
-                                                            style={{ fontSize: 12, display: 'block', lineHeight: 1.5, marginTop: 4 }}
-                                                        >
-                                                            {portalLastActivityAtLabel}：{activityTs}
-                                                        </Text>
-                                                    </>
-                                                ) : showFormalOnlyPersisted ? (
-                                                    <Text
-                                                        type="secondary"
-                                                        style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}
-                                                    >
-                                                        {portalFormalSubmittedAtLabel}：{formalTs}
-                                                    </Text>
-                                                ) : (
-                                                    <>
-                                                        <Text
-                                                            type="secondary"
-                                                            style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}
-                                                        >
-                                                            {portalSubmittedAtPrimaryLabel}：{activityTs ?? formalTs}
-                                                        </Text>
-                                                        {Boolean(
-                                                            formalTs && activityTs && formalTs !== activityTs,
-                                                        ) ? (
-                                                            <Text
-                                                                type="secondary"
-                                                                style={{
-                                                                    fontSize: 11,
-                                                                    display: 'block',
-                                                                    lineHeight: 1.5,
-                                                                    marginTop: 4,
-                                                                }}
-                                                            >
-                                                                {portalSubmittedAtCreatedPrefix}
-                                                                {formalTs}
-                                                            </Text>
-                                                        ) : null}
-                                                    </>
-                                                )}
-                                                <Text
-                                                    type="secondary"
-                                                    style={{ fontSize: 11, display: 'block', lineHeight: 1.5, marginTop: 6 }}
-                                                >
-                                                    {portalSubmittedAtTimingTruthNote}
-                                                </Text>
-                                            </div>
-                                        );
-                                    })()}
-                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                        {addCarHandoff ? addCarResultEyebrow : '受理结果 · 案件整理（非聊天正文）'}
-                                    </Text>
-                                    {addCarHandoff && (
-                                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 10, lineHeight: 1.5 }}>
-                                            {addCarResultEyebrowHint}
-                                        </Text>
-                                    )}
-                                    <Text strong style={{ fontSize: 15, color: '#237804', display: 'block', marginBottom: 10 }}>
-                                        {closureHeadline}
-                                    </Text>
-                                    {addCarHandoff && (triage?.broker_next_step ?? '').trim() && (
-                                        <div
-                                            style={{
-                                                padding: '10px 12px',
-                                                background: '#fff',
-                                                border: '1px solid #d9d9d9',
-                                                borderRadius: 8,
-                                                marginBottom: 10,
-                                            }}
-                                        >
-                                            <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                                                {addCarBrokerNextHeading}
-                                            </Text>
-                                            <Text style={{ fontSize: 13, lineHeight: 1.55 }}>{triage!.broker_next_step}</Text>
-                                        </div>
-                                    )}
-                                    <Text strong style={{ fontSize: 12, color: '#434343', display: 'block', marginBottom: 6 }}>
-                                        当前请求与类型
-                                    </Text>
-                                    <Space wrap size={[6, 6]} style={{ marginBottom: oneLiner ? 6 : 0 }}>
-                                        {triage?.issue_category && (
-                                            <Tag color="blue">
-                                                {humanizeCategory(triage.issue_category, triage.source_text)}
-                                            </Tag>
-                                        )}
-                                        {caseFocus && (
-                                            <Tag color="cyan">{getCaseFocusDisplayLabel(caseFocus) ?? caseFocus}</Tag>
-                                        )}
-                                    </Space>
-                                    {oneLiner && (
-                                        <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.55 }}>
-                                            {oneLiner}
-                                        </Text>
-                                    )}
-                                </div>
-                                {showAddCarStructuredPanel && triage && (
-                                        <div
-                                            style={{
-                                                padding: '12px 14px',
-                                                background: '#fff',
-                                                borderRadius: 8,
-                                                border: '1px solid #e6e6e6',
-                                            }}
-                                        >
-                                            <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
-                                                {uiCopy.handoff_received_summary_title_add_car ??
-                                                    '结构化记录（办公室核对用）'}
-                                            </Text>
-                                            <Text
-                                                type="secondary"
-                                                style={{ fontSize: 12, display: 'block', marginBottom: 8, lineHeight: 1.55 }}
-                                            >
-                                                {uiCopy.handoff_received_summary_intro_add_car ??
-                                                    '请您快速核对下列整理结果。若有出入，请用下方「追加到本条记录」说明，无需重开对话。'}
-                                            </Text>
-                                            {triage.human_confirmation_required && (
-                                                <Text
-                                                    type="secondary"
-                                                    style={{ fontSize: 12, display: 'block', marginBottom: 8, lineHeight: 1.55 }}
-                                                >
-                                                    {uiCopy.handoff_verify_with_office_note_add_car ??
-                                                        '其中标出的项目（如 VIN、驾驶人、材料是否已到齐）办公室仍会最终核实；若您发现不对，也请一并更正。'}
-                                                </Text>
-                                            )}
-                                            <Divider style={{ margin: '10px 0' }} />
-                                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                                {triage.quote_ready_status && (
-                                                    <div>
-                                                        <Text type="secondary" style={{ fontSize: 11 }}>
-                                                            整理度：
-                                                        </Text>{' '}
-                                                        <Tag
-                                                            color={
-                                                                QUOTE_READY_STATUS_LABELS[triage.quote_ready_status]?.color ??
-                                                                'default'
-                                                            }
-                                                        >
-                                                            {QUOTE_READY_STATUS_LABELS[triage.quote_ready_status]?.label ??
-                                                                triage.quote_ready_status}
-                                                        </Tag>
-                                                    </div>
-                                                )}
-                                                <AddCarHandoffGroupedSnapshot
-                                                    triage={triage}
-                                                    priorSystemTriage={priorHandoffTriage}
-                                                    uiCopy={uiCopy}
-                                                />
-                                            </Space>
-                                        </div>
-                                    )}
-                                <Divider orientation="left" plain style={{ margin: '4px 0' }}>
-                                    {portalPostHandoffNextSectionLabel}
-                                </Divider>
+                                <Text strong style={{ fontSize: 18, color: '#237804', display: 'block' }}>
+                                    ✅ {closureHeadline}
+                                </Text>
                                 {processingLine && (
-                                    <Text style={{ fontSize: 13, lineHeight: 1.55, display: 'block' }}>
+                                    <Text style={{ fontSize: 14, lineHeight: 1.6, display: 'block', color: '#262626' }}>
                                         {processingLine}
                                     </Text>
                                 )}
-                                {(triage?.broker_next_step ?? '').trim() && !addCarHandoff && (
-                                    <div
-                                        style={{
-                                            padding: '10px 12px',
-                                            background: '#fff',
-                                            border: '1px solid #d9d9d9',
-                                            borderRadius: 8,
-                                        }}
-                                    >
-                                        <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                                            {officeGenericBrokerNextHeading}
-                                        </Text>
-                                        <Text style={{ fontSize: 13, lineHeight: 1.55 }}>{triage.broker_next_step}</Text>
-                                    </div>
-                                )}
-                                {clientPrepTrimmed && (
-                                    <Alert
-                                        type="info"
-                                        showIcon
-                                        message="您可准备"
-                                        description={<Text style={{ fontSize: 13, lineHeight: 1.55 }}>{clientPrepTrimmed}</Text>}
-                                        style={{ background: '#e6f7ff', border: '1px solid #91d5ff' }}
-                                    />
-                                )}
-                                {addCarHandoff && uiCopy.handoff_office_followup_timing_add_car && (
-                                    <Alert
-                                        type="info"
-                                        showIcon
-                                        icon={<ClockCircleOutlined />}
-                                        message={
-                                            <Text style={{ fontSize: 13, lineHeight: 1.55 }}>
-                                                {uiCopy.handoff_office_followup_timing_add_car}
-                                            </Text>
-                                        }
-                                        style={{ background: '#e6f7ff', border: '1px solid #91d5ff' }}
-                                    />
-                                )}
-                                <Divider orientation="left" plain style={{ margin: '4px 0' }}>
-                                    {portalPostHandoffClosureSectionLabel}
-                                </Divider>
-                                <div
-                                    style={{
-                                        padding: '12px 14px',
-                                        background: '#fff',
-                                        borderRadius: 8,
-                                        border: '1px solid #d9f7be',
-                                        borderLeft: '4px solid #389e0d',
-                                    }}
-                                >
-                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
-                                        {portalClosureSummaryLabel}
+                                {!processingLine && (
+                                    <Text style={{ fontSize: 14, lineHeight: 1.6, display: 'block', color: '#262626' }}>
+                                        办公室正在处理。您无需重复发送相同信息。有进展时会联系您。
                                     </Text>
-                                    <Paragraph
-                                        style={{
-                                            fontSize: addCarHandoff ? 13 : 15,
-                                            lineHeight: 1.55,
-                                            whiteSpace: 'pre-wrap',
-                                            marginBottom: 0,
-                                        }}
+                                )}
+                                {lastCaseId && (
+                                    <Text
+                                        type="secondary"
+                                        style={{ fontSize: 12, display: 'block', fontFamily: 'monospace' }}
+                                        copyable={{ text: lastCaseId }}
                                     >
-                                        {lastTurn?.content ?? handoffDefault}
-                                    </Paragraph>
-                                </div>
-                                <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55 }}>
-                                    {caseFollowLine}
-                                </Text>
+                                        参考编号：{lastCaseId}
+                                    </Text>
+                                )}
                                 {lastCaseId && addCarHandoff && (
                                     <Collapse
                                         bordered={false}
@@ -1862,17 +1272,12 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                             {
                                                 key: 'same_case_append',
                                                 label: (
-                                                    <Text style={{ fontSize: 13, fontWeight: 500 }}>
-                                                        {uiCopy.handoff_same_request_panel_title ??
-                                                            '还要继续补充本次加车？（同一服务记录）'}
+                                                    <Text style={{ fontSize: 13 }}>
+                                                        {uiCopy.handoff_same_request_submit ?? '追加到本条记录'}
                                                     </Text>
                                                 ),
                                                 children: (
                                                     <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                                        <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.55 }}>
-                                                            {uiCopy.handoff_same_request_panel_intro ??
-                                                                '仅用于更正/补材料等同一条加车请求。另一件事请用「提交新问题」。'}
-                                                        </Text>
                                                         <TextArea
                                                             placeholder={
                                                                 uiCopy.handoff_same_request_placeholder ??
@@ -1898,14 +1303,9 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                                                 showIcon
                                                                 message="检测到新事项，未写入当前记录"
                                                                 description={
-                                                                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                                                                        <Text style={{ fontSize: 12 }}>
-                                                                            {postHandoffBoundaryBlocked.reason}
-                                                                        </Text>
-                                                                        <Button type="primary" onClick={handleNewConversation}>
-                                                                            提交新问题
-                                                                        </Button>
-                                                                    </Space>
+                                                                    <Button type="primary" onClick={handleNewConversation}>
+                                                                        提交新问题
+                                                                    </Button>
                                                                 }
                                                             />
                                                         )}
@@ -1915,29 +1315,32 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                         ]}
                                     />
                                 )}
-                                {addCarHandoff && (
-                                    <>
-                                        <Divider style={{ margin: '12px 0 8px' }} />
-                                        <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6, color: '#434343' }}>
-                                            本条记录 vs 新事项
-                                        </Text>
-                                        <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.55, display: 'block', marginBottom: 8 }}>
-                                            {addCarBoundaryHint}
-                                        </Text>
-                                    </>
+                                {showAddCarStructuredPanel && triage && (
+                                    <Collapse
+                                        bordered={false}
+                                        style={{ background: 'transparent' }}
+                                        defaultActiveKey={[]}
+                                        items={[
+                                            {
+                                                key: 'snapshot',
+                                                label: <Text style={{ fontSize: 13 }}>查看整理详情</Text>,
+                                                children: (
+                                                    <AddCarHandoffGroupedSnapshot
+                                                        triage={triage}
+                                                        priorSystemTriage={priorHandoffTriage}
+                                                        uiCopy={uiCopy}
+                                                    />
+                                                ),
+                                            },
+                                        ]}
+                                    />
                                 )}
-                                <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.5, color: '#595959' }}>
-                                    {boundaryHint}
-                                </Text>
                                 <Space size="middle" wrap>
-                                    <Button
-                                        type="primary"
-                                        size="large"
-                                        onClick={() => onSwitchToBroker(lastCaseId)}
-                                        icon={<SwapOutlined />}
-                                    >
-                                        查看工作台
-                                    </Button>
+                                    {onOpenMyRequests ? (
+                                        <Button type="default" onClick={() => onOpenMyRequests()}>
+                                            查看办理进度
+                                        </Button>
+                                    ) : null}
                                     <Button type="primary" ghost onClick={handleNewConversation}>
                                         提交新问题
                                     </Button>
