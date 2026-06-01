@@ -68,6 +68,7 @@ import {
     getCaseFocusDisplayLabel,
     getCaseReportOneLiner,
     getCaseTrackingSummary,
+    getCompactQueuePreview,
     getDraftReadinessLabel,
     getFollowUpDueTag,
     getFollowUpSummary,
