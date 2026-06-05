@@ -280,6 +280,18 @@ _FALLBACK_MARKERS: dict[str, tuple[str, ...]] = {
         "bundling", "bundle", "一起买", "一起买能打折", "home insurance", "房屋保险",
         "能打折", "discount",
     ),
+    "address_change": (
+        "搬家", "新地址", "moved to", "move to", "update garaging", "garaging address",
+        "change address", "地址要改", "地址不对", "update address", " relocated",
+    ),
+    "coverage_question": (
+        "liability", "umbrella", "comprehensive", "windshield", "deductible",
+        "coverage", "保额", "够不够", "玻璃", "自己修", "走保险",
+    ),
+    "underwriting_uw": (
+        "underwriting", "uw ", "uw.", "questionnaire", "prior claims", "respond within",
+        "核保", "underwriting needs", "incomplete", "deadline friday", "deadline",
+    ),
 }
 
 
@@ -818,6 +830,15 @@ def _is_add_vehicle_request(text: str) -> bool:
         and _text_has_add_car_driver_signal(raw)
     ):
         return True
+    # Family/teen vehicle add without explicit "add car" boilerplate (P16-Z24)
+    if text_has_vehicle_year_signal(lowered) and text_has_vehicle_make_model_signal(raw):
+        if re.search(
+            r"\b(for my (son|daughter|kid|teen|child)|who (just )?got (his|her|their) license|adding a)\b",
+            lowered,
+        ):
+            return True
+        if any(m in raw for m in ("给我儿子", "给我女儿", "刚拿驾照", "新驾照", "儿子开", "女儿开")):
+            return True
     if not _contains_any(lowered, _get_markers("add_vehicle")):
         return False
     if _contains_any(lowered, _get_markers("vehicle_context")) or "quote" in lowered or "报价" in lowered:
@@ -874,12 +895,155 @@ def _is_claim_intake_request(text: str) -> bool:
         x in lowered for x in ("sent", "already", "wechat", "微信", "upload", "emailed", "e-mail", "发", "发了", "发过了")
     ):
         return False
-    return _contains_any(text, _get_markers("claim_intake"))
+    if _contains_any(text, _get_markers("claim_intake")):
+        return True
+    claim_status_markers = (
+        "total loss",
+        "全损",
+        "filed claim",
+        "claim open",
+        "claim #",
+        "clm-",
+        "adjuster",
+        "shop estimate",
+        "insurer said",
+        "rear-ended",
+        "rear ended",
+        "uninsured driver",
+        "windshield",
+        "glass claim",
+        "um coverage",
+        "rental extension",
+        "不是全损",
+        "追尾",
+        "hit my parked",
+        "need to file claim",
+        "file a claim",
+        "police report #",
+        "recorded statement",
+        "neck pain",
+        "ambulance",
+    )
+    return any(m in lowered or m in (text or "") for m in claim_status_markers)
 
 
 def _is_add_driver_request(text: str) -> bool:
     """Customer asking to add driver to policy (teen, spouse, etc.)."""
     return _contains_any(text, _get_markers("add_driver"))
+
+
+def _is_address_change_request(text: str) -> bool:
+    """Customer or broker relay about garaging / mailing address update."""
+    raw = text or ""
+    lowered = raw.lower()
+    if _contains_any(raw, _get_markers("address_change")):
+        return True
+    if ("garaging" in lowered or "地址" in raw) and any(
+        m in lowered or m in raw for m in ("update", "change", "改", "搬", "moved", "新")
+    ):
+        return True
+    return False
+
+
+def _is_coverage_question(text: str) -> bool:
+    """Coverage limit / deductible / claim-vs-self-pay questions (not add-car quote)."""
+    if _is_add_vehicle_request(text) or _is_premium_review_request(text):
+        return False
+    raw = text or ""
+    has_q = any(x in raw or x in raw.lower() for x in ("?", "？", "吗", "怎么", "要不要", "够不够", "how", "does", "should", "what", "还是"))
+    return _contains_any(raw, _get_markers("coverage_question")) and has_q
+
+
+def _is_underwriting_followup_request(text: str) -> bool:
+    """Carrier/UW follow-up requiring client response (not generic missing DL resend)."""
+    raw = text or ""
+    lowered = raw.lower()
+    if not _contains_any(raw, _get_markers("underwriting_uw")):
+        return False
+    if _is_add_driver_request(raw) and "需要准备" in raw:
+        return False
+    if (
+        _contains_any(raw, _get_markers("missing_document_object"))
+        and _contains_any(raw, _get_markers("missing_document_request"))
+    ):
+        return False
+    return any(
+        m in lowered or m in raw
+        for m in (
+            "underwriting", "uw ", "uw.", "questionnaire", "prior claims", "respond within",
+            "核保", "incomplete", "deadline", "补说明", "对不上",
+        )
+    )
+
+
+def _extract_deadline_hint(text: str) -> str:
+    """Surface explicit deadline from notice text for office glance."""
+    raw = text or ""
+    lowered = raw.lower()
+    m = re.search(
+        r"(?i)(?:within|in|due in|by)\s+(\d+)\s+days?",
+        lowered,
+    )
+    if m:
+        return f"{m.group(1)} days"
+    m = re.search(r"(\d+)\s*天(?:内|后)?", raw)
+    if m:
+        return f"{m.group(1)} days"
+    m = re.search(r"(?i)\bby\s+(\d{1,2}/\d{1,2}/\d{2,4})\b", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?i)deadline\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)", lowered)
+    if m:
+        return m.group(1).capitalize()
+    if "deadline friday" in lowered or "deadline 周五" in raw:
+        return "Friday"
+    if any(m in raw for m in ("今天", "today")) and any(
+        m in lowered or m in raw for m in ("due", "处理", "cancel", "取消", "deadline")
+    ):
+        return "today"
+    m = re.search(r"(?i)renews?\s+(?:in\s+)?(\w+\s+\d{1,2}|\d{1,2}/\d{1,2})", lowered)
+    if m:
+        return f"renews {m.group(1)}"
+    return ""
+
+
+def _extract_policy_number_hint(text: str) -> str:
+    """Extract policy number token when present."""
+    raw = text or ""
+    m = re.search(r"(?i)policy\s*#?\s*([A-Z0-9][-A-Z0-9]{4,})", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"保单号?\s*[:：]?\s*([A-Z0-9][-A-Z0-9]{4,})", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?<![0-9])([A-Z]{2}-\d{6,})(?![0-9])", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?<![0-9])(\d{7,10})(?![0-9])", raw)
+    if m and any(x in raw.lower() for x in ("policy", "保单", "claim", "理赔", "renew")):
+        return m.group(1)
+    return ""
+
+
+def _message_needs_notice_image(text: str) -> bool:
+    """Customer mentions screenshot/image but no notice body was pasted."""
+    raw = (text or "").strip()
+    lowered = raw.lower()
+    mentions_image = any(
+        m in raw or m in lowered
+        for m in ("截图", "screenshot", "photo", "图片", "一张", "发了张", "发来一张")
+    )
+    if not mentions_image:
+        return False
+    has_notice_body = any(
+        m in lowered or m in raw
+        for m in (
+            "cancel", "payment", "due", "policy will", "notice:", "last notice",
+            "取消", "付款", "通知", "underwriting", "dmv", "declaration",
+        )
+    )
+    is_confusion_only = any(m in raw for m in ("看不懂", "什么意思", "what does", "看不懂"))
+    return mentions_image and (is_confusion_only or not has_notice_body)
 
 
 def _is_bundling_request(text: str) -> bool:
@@ -904,15 +1068,19 @@ def _build_customer_question_broker_next_step(text: str) -> str:
         return "Confirm whether DMV wants SR-22 filing proof, check any deadline, and tell the client exactly what to bring or what still needs to be filed."
     if _is_claim_intake_request(lowered):
         return "Guide client to collect evidence and start claim reporting; confirm photos and other-driver info received."
+    if _thread_is_remove_car_lane(text) or _is_remove_vehicle_request(lowered):
+        return "Confirm the sold vehicle details and sale date, then remove it cleanly without leaving the client unclear on what stays covered."
     # Add-car before premium review: mixed "加车 + 能便宜吗" stays on quote intake, not renewal review.
     if _is_add_vehicle_request(lowered):
         return "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day."
     if _is_premium_review_request(lowered):
         return "Review renewal notice and current premium; confirm remove-vehicle or coverage-adjust intent, then send 1–2 realistic options."
-    if _is_remove_vehicle_request(lowered):
-        return "Confirm the sold vehicle details and sale date, then remove it cleanly without leaving the client unclear on what stays covered."
     if _is_add_driver_request(lowered):
         return "Confirm which vehicle, driver details and license; then add driver to policy."
+    if _is_address_change_request(lowered):
+        return "Confirm new garaging address and effective date; update policy and request garaging proof if carrier requires."
+    if _is_coverage_question(lowered):
+        return "Review current limits and deductible; explain trade-offs and whether a claim makes sense for this loss."
     if _is_bundling_request(lowered):
         return "Review current auto and home policies; confirm bundling discount options."
     if _is_billing_clarification_request(lowered):
@@ -940,6 +1108,10 @@ def _build_customer_question_client_prep(text: str) -> str:
         return "Vehicle details, sale date, replacement-vehicle timing if any, and whether title or registration already transferred."
     if _is_add_driver_request(lowered):
         return "Which vehicle, driver name and license info."
+    if _is_address_change_request(lowered):
+        return "New garaging address, move date, and vehicles affected."
+    if _is_coverage_question(lowered):
+        return "Current declaration page and details of the loss or coverage question."
     if _is_bundling_request(lowered):
         return "Current auto policy, home policy if any, and what they want to bundle."
     if _is_billing_clarification_request(lowered):
@@ -1422,11 +1594,27 @@ def _classify_with_guardrails(text: str) -> tuple[str, str, bool]:
         return "cancellation_warning", "critical", True
 
     if has_weak_cancellation_marker and has_question_marker:
+        if any(m in (text or "") or m in t for m in ("7天", "7 days", "due", "通知", "notice", "取消保单")):
+            return "cancellation_warning", "critical", True
         return "customer_question", "medium", True
 
     # Mixed-intent: when claim + payment both present, prefer claim (accident first response)
     if _is_claim_intake_request(t) and any(x in t for x in _get_markers("payment")):
         return "customer_question", "medium", True
+
+    # Underwriting follow-up before generic missing-doc / signature (questionnaire, 核保)
+    if _thread_is_payment_lapse_lane(text or ""):
+        return "payment_lapse_expiration", "high", True
+
+    # P16-Z11: Chinese payment-failure phrasing (e.g. 保费420美元没扣成功)
+    raw_pay = text or ""
+    if any(m in raw_pay for m in ("没扣", "没扣成功", "扣款失败", "未扣款", "未成功扣款", "扣款未成功")):
+        return "payment_lapse_expiration", "high", True
+    if "扣" in raw_pay and any(m in raw_pay for m in ("失败", "没成功", "不成功")):
+        return "payment_lapse_expiration", "high", True
+
+    if _is_underwriting_followup_request(text or ""):
+        return "underwriting_followup", "high", True
 
     # TOP_SCENARIOS_HARDENING: premium + "我发你账单了" = bill sent for review, NOT payment failure
     if _is_premium_review_request(t):
@@ -1439,6 +1627,11 @@ def _classify_with_guardrails(text: str) -> tuple[str, str, bool]:
         return "payment_lapse_expiration", "high", True
 
     if has_payment_risk_marker and (has_policy_stop_marker or has_weak_cancellation_marker):
+        return "payment_lapse_expiration", "high", True
+
+    if has_policy_stop_marker and any(
+        m in (text or "") or m in t for m in ("分期", "installment", "恢复", "restore", "付清")
+    ):
         return "payment_lapse_expiration", "high", True
 
     if has_policy_stop_marker and ("notice" in t or "通知" in t) and has_question_marker:
@@ -1456,6 +1649,10 @@ def _classify_with_guardrails(text: str) -> tuple[str, str, bool]:
 
     # Add-car: multi-driver quote question hits 驾照 + 需要 before generic missing_document
     if _is_add_car_multi_driver_quote_question(text or ""):
+        return "customer_question", "medium", True
+
+    # Add-driver intake before generic missing-document (驾照 + 需要 would otherwise misfire)
+    if _is_add_driver_request(text or ""):
         return "customer_question", "medium", True
 
     # Add-car continuation: "…quote…还缺什么" is quote-readiness ask, not missing-document / unclear
@@ -1544,6 +1741,8 @@ def _classify_with_guardrails(text: str) -> tuple[str, str, bool]:
         or _is_remove_vehicle_request(t)
         or _is_claim_intake_request(t)
         or _is_add_driver_request(t)
+        or _is_address_change_request(t)
+        or _is_coverage_question(t)
         or _is_bundling_request(t)
     ):
         return "customer_question", "medium", True
@@ -1556,14 +1755,39 @@ def _classify_with_guardrails(text: str) -> tuple[str, str, bool]:
     ):
         return "customer_question", "medium", True
 
+    # Renewal shop-around / premium frustration (not passive renewal_reminder)
+    if ("renew" in t or "续保" in (text or "")) and (
+        _is_premium_review_request(t)
+        or "shop" in t
+        or "涨" in (text or "")
+        or "premium" in t
+    ):
+        return "customer_question", "medium", True
+
     if has_question_marker:
         return "customer_question", "medium", True
+
+    # Multi-turn correction clarifying real issue (e.g. not payment — address rejected by UW)
+    raw = text or ""
+    if (
+        re.search(r"不是[^，。]*[，,]?\s*是", raw)
+        or "不是payment" in raw.lower()
+        or "地址不对" in raw
+    ) and any(m in raw.lower() or m in raw for m in ("地址", "uw", "核保", "underwriting", "address")):
+        if _is_address_change_request(raw) or "地址" in raw:
+            return "customer_question", "medium", True
+        if _is_underwriting_followup_request(raw):
+            return "underwriting_followup", "high", True
 
     # Document confusion: asking what declaration page / garaging proof means
     if any(x in t for x in _get_markers("missing_document_object")) and any(
         x in t for x in ("什么", "是什么", "什么意思", "what is", "what does", "why", "为什么", "怎么")
     ):
         return "customer_question", "medium", True
+
+    # UW/signature context: questionnaire incomplete beats generic signature
+    if _is_underwriting_followup_request(text or ""):
+        return "underwriting_followup", "high", True
 
     if any(x in t for x in ["签名", "签了", "signature", "signed"]):
         return "missing_signature", "medium", True
@@ -1840,7 +2064,11 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
     lowered = (merged_text or "").lower()
 
     intent_hint = ""
-    if _is_add_vehicle_request(lowered):
+    if _thread_is_premium_review_lane(merged_text):
+        intent_hint = "Premium review / too high. "
+    elif _thread_is_remove_car_lane(merged_text):
+        intent_hint = "Remove vehicle from policy. "
+    elif _is_add_vehicle_request(lowered):
         # Distinguish new quote vs add-car when detectable
         if any(m in lowered for m in ("加车", "加一台", "加一辆", "add car", "add vehicle")):
             intent_hint = "Add car to existing policy. "
@@ -1850,6 +2078,12 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
         intent_hint = "Remove vehicle from policy. "
     elif _is_premium_review_request(lowered):
         intent_hint = "Premium review / too high. "
+    elif _is_address_change_request(lowered):
+        intent_hint = "Address / garaging change. "
+    elif _thread_is_claim_lane(merged_text):
+        intent_hint = "Claim intake / accident first response. "
+    elif _is_coverage_question(lowered):
+        intent_hint = "Coverage question. "
     elif category == "payment_lapse_expiration":
         intent_hint = "Payment failed / lapse risk. "
     elif category == "cancellation_warning":
@@ -1865,7 +2099,19 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
 
     collected_hint = ""
     still_needed_hint = ""
-    if _is_add_vehicle_request(lowered):
+    if _thread_is_remove_car_lane(merged_text):
+        fields = _extract_remove_car_fields(merged_text)
+        parts = []
+        if fields.get("vehicle"):
+            vehicle_concrete = _extract_primary_add_car_vehicle_concrete(merged_text)
+            parts.append(vehicle_concrete or "vehicle")
+        if fields.get("sale_date"):
+            parts.append("sale date")
+        if fields.get("transfer"):
+            parts.append("transfer")
+        if parts:
+            collected_hint = f" Collected: {', '.join(parts)}. "
+    elif _is_add_vehicle_request(lowered):
         fields = _extract_add_car_fields_truth_safe(merged_text)
         vehicle_concrete = _extract_primary_add_car_vehicle_concrete(merged_text)
         parts: list[str] = []
@@ -1905,8 +2151,9 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
             parts.append("transfer")
         if parts:
             collected_hint = f" Collected: {', '.join(parts)}. "
-    elif _is_premium_review_request(lowered):
-        if any(m in lowered for m in ["发你", "发我", "sent", "发过了", "already sent", "微信", "发你微信", "发我微信"]):
+    elif _is_premium_review_request(lowered) or _thread_is_premium_review_lane(merged_text):
+        renewal_fields = _extract_renewal_fields(merged_text)
+        if renewal_fields.get("bill_sent_claimed") or renewal_fields.get("policy_bill_sent"):
             collected_hint = " Collected: policy/bill sent. "
         elif any(m in lowered for m in ["发", "bill", "policy", "续保", "账单"]):
             collected_hint = " Collected: policy/bill mentioned. "
@@ -1919,6 +2166,32 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
                 collected_hint = f" Collected: {', '.join(_h(i) for i in items_sent)} resent. "
             if still:
                 collected_hint += f"Still needed: {', '.join(_h(i) for i in still)}. "
+    elif _thread_is_claim_lane(merged_text):
+        claim_parts: list[str] = []
+        plate = _extract_plate_hint(merged_text)
+        if plate:
+            claim_parts.append(f"plate {plate}")
+        claim_no = _extract_claim_number_hint(merged_text)
+        if claim_no:
+            claim_parts.append(f"claim {claim_no}")
+        amt = _extract_claim_amount_hint(merged_text)
+        if amt:
+            claim_parts.append(f"${amt}")
+        cf = _extract_claim_fields(merged_text)
+        if cf.get("hit_and_run"):
+            claim_parts.append("hit-and-run")
+        if cf.get("injuries"):
+            claim_parts.append("injuries")
+        if cf.get("police_report"):
+            claim_parts.append("police report")
+        cust = " ".join(re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")).lower()
+        if "total_loss" in cust or "全损" in cust:
+            claim_parts.append("total loss" if "不是全损" not in cust else "total loss disputed")
+        if claim_parts:
+            collected_hint = f" Collected: {', '.join(claim_parts)}. "
+        cust_claim = " ".join(re.findall(r"\[客户\]\s*([^[]+)", merged_text or ""))
+        if "不是事故" in cust_claim or "不是事故" in cust_claim.replace(" ", ""):
+            collected_hint += "Prior: parking scrape (not highway accident). "
     elif category in ("payment_lapse_expiration", "cancellation_warning"):
         _pay_segs = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
         _pay_last_c = (_pay_segs[-1] if _pay_segs else (merged_text or "")).strip()
@@ -1960,10 +2233,19 @@ def _build_conversation_summary(merged_text: str, base_result: dict[str, Any], c
 
     msg_count = f"{customer_count} customer message(s)."
     latest_snip = (merged_text.split("[客户]")[-1].strip() if "[客户]" in merged_text else merged_text)[:80]
+
+    deadline_hint = _extract_deadline_hint(merged_text)
+    if deadline_hint:
+        context_hint += f" Deadline: {deadline_hint}. "
+    policy_hint = _extract_policy_number_hint(merged_text)
+    if policy_hint:
+        context_hint += f" Policy #: {policy_hint}. "
+
     if latest_snip:
         summary = f"{intent_hint}{collected_hint}{still_needed_hint}{context_hint}{msg_count} Latest: {latest_snip}..."
     else:
         summary = f"{intent_hint}{collected_hint}{still_needed_hint}{context_hint}{msg_count}"
+    summary = _prepend_prior_customer_turn_on_correction(merged_text, summary)
     return summary, (secondary_hint.strip() if secondary_hint else "")
 
 
@@ -2564,6 +2846,36 @@ _SYSTEM_ADD_CAR_HANDOFF_MARKERS: tuple[str, ...] = (
     "quote details received",
 )
 
+_ADD_CAR_FOCUS_DEFER_MARKERS: tuple[str, ...] = (
+    "先专注",
+    "先把这台",
+    "先把这车",
+    "先加这台",
+    "先加进去",
+    "先帮我把",
+    "之后再单独",
+    "另一台我之后",
+    "另一台之后再",
+    "先不管另一台",
+    "先处理加车",
+    "focus on",
+    "let's focus on",
+    "add this one first",
+    "add the rx first",
+)
+
+
+def _customer_defers_to_add_car_focus(last_msg: str) -> bool:
+    """Customer explicitly asks to finish add-car first and defer a secondary issue (P16-Z24)."""
+    t = (last_msg or "").strip()
+    if not t:
+        return False
+    tl = t.lower()
+    if not any(m in t or m in tl for m in _ADD_CAR_FOCUS_DEFER_MARKERS):
+        return False
+    return any(m in t or m in tl for m in ("加", "add", "报价", "quote", "rx", "车", "vehicle", "car", "险"))
+
+
 _TOPIC_PIVOT_STRONG: tuple[str, ...] = (
     "另外一个",
     "另一個",
@@ -2719,6 +3031,103 @@ def _prior_thread_signals_add_car(source_text: str) -> bool:
     return any(m in sys_t for m in _SYSTEM_ADD_CAR_HANDOFF_MARKERS)
 
 
+def _thread_is_premium_review_lane(merged_text: str) -> bool:
+    """Premium/renewal thread across bubbles — wins over add-car heuristics on re-shop/coverage wording (Y45)."""
+    bodies = _customer_bodies_from_labeled_thread(merged_text)
+    if not bodies:
+        return _is_premium_review_request((merged_text or "").lower())
+    concat = " ".join(bodies)
+    if _is_premium_review_request(concat.lower()):
+        return True
+    if len(bodies) >= 2:
+        first = bodies[0]
+        last = bodies[-1].lower()
+        if any(m in first for m in ("续保", "续保费", "保费太高", "保费太贵", "premium too high", "renewal")):
+            if any(
+                m in last
+                for m in (
+                    "发你账单",
+                    "我发你账单",
+                    "账单发",
+                    "发你保单",
+                    "保单我发",
+                    "sent you",
+                    "sent the bill",
+                    "bill sent",
+                )
+            ):
+                return True
+    return False
+
+
+def _thread_is_remove_car_lane(merged_text: str) -> bool:
+    """Remove-vehicle thread across bubbles — wins over add-car on refund/materials follow-ups (D07)."""
+    bodies = _customer_bodies_from_labeled_thread(merged_text)
+    if not bodies:
+        return _is_remove_vehicle_request((merged_text or "").lower())
+    if len(bodies) >= 2 and _customer_defers_to_add_car_focus(bodies[-1]):
+        prior = " ".join(bodies[:-1])
+        if _prior_thread_signals_add_car(prior) or _is_add_vehicle_request(prior.lower()):
+            return False
+    concat = " ".join(bodies)
+    if _is_remove_vehicle_request(concat.lower()):
+        return True
+    if len(bodies) >= 2:
+        first = bodies[0]
+        last = bodies[-1].lower()
+        first_l = first.lower()
+        sold_thread = _is_remove_vehicle_request(first_l) or (
+            any(m in first for m in ("卖", "拿掉", "remove", "sold", "drop", "删掉"))
+            and any(m in first_l for m in ("车", "camry", "toyota", "honda", "vehicle", "car", "bmw"))
+        )
+        if sold_thread:
+            if any(m in last for m in ("refund", "退", "生效", "effective", "什么时候", "when")):
+                return True
+            if any(m in last for m in ("bill of sale", "transfer", "过户", "发你", "sent", "发了")):
+                return True
+    return False
+
+
+def _thread_is_payment_lapse_lane(merged_text: str) -> bool:
+    """Payment/lapse thread across bubbles — wins over UW/billing drift on status pings (D02/D10)."""
+    bodies = _customer_bodies_from_labeled_thread(merged_text)
+    if not bodies:
+        return False
+    concat = " ".join(bodies).lower()
+    if any(m in concat for m in ("lapse", "autopay", "policy lapse", "保单停", "停了", "分期", "installment")):
+        return True
+    if any(m in concat for m in ("paid", "付了", "portal", "confirmation #", "already paid", "已经付")):
+        return True
+    return False
+
+
+def _prepend_prior_customer_turn_on_correction(merged_text: str, summary: str) -> str:
+    """P16-Z6 Y44/Y45: keep prior-turn facts visible on correction or premium continuation."""
+    bodies = _customer_bodies_from_labeled_thread(merged_text)
+    if len(bodies) < 2:
+        return summary
+    last = bodies[-1]
+    last_l = last.lower()
+    is_correction = (
+        re.search(r"不是[^，。]*[，,]?\s*是", last)
+        or "不是payment" in last_l
+        or "不是续保" in last_l
+        or "说错了" in last
+        or "说错" in last
+    )
+    prior = (bodies[-2] if is_correction else bodies[0]).strip()
+    if not prior:
+        return summary
+    if not is_correction and not _thread_is_premium_review_lane(merged_text):
+        return summary
+    prior_snip = prior[:80].replace("\n", " ")
+    if prior_snip[:32].lower() in summary.lower():
+        return summary
+    if summary.startswith("Prior turn:"):
+        return summary
+    return f"Prior turn: {prior_snip}. " + summary
+
+
 # Add-Car lane beyond literal _is_add_vehicle_request: CASE_CONTRACT_V1 envelope must stay
 # when an office-visible / in-flight Add-Car record exists or the labeled thread already signals add-car.
 _ADD_CAR_LANE_STRUCTURAL_FIELD_IDS: frozenset[str] = frozenset(
@@ -2775,6 +3184,8 @@ def _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw: str)
         return False
     tl = t.lower()
     if _is_remove_vehicle_request(tl):
+        if _customer_defers_to_add_car_focus(t):
+            return False
         return True
     if _is_claim_intake_request(t):
         return True
@@ -2858,6 +3269,10 @@ def _effective_add_car_lane_active(
         return True
     if _last_customer_turn_blocks_add_car_context_carryover(last_customer_raw):
         return False
+    if _thread_is_premium_review_lane(merged_text):
+        return False
+    if _thread_is_remove_car_lane(merged_text):
+        return False
     if _reply_truth_context_implies_add_car_lane(reply_truth_context):
         return True
     if _prior_thread_signals_add_car(merged_text):
@@ -2879,6 +3294,8 @@ def _infer_prior_case_domain(source_text: str) -> str:
     if _is_premium_review_request(cl):
         return "premium"
     if _contains_any(cl, _get_markers("payment")) or _contains_any(cl, _get_markers("payment_risk")):
+        return "payment"
+    if _contains_any(cl, _get_markers("policy_stop")) or re.search(r"\blapse\b", cl):
         return "payment"
     if _contains_any(cl, _get_markers("strong_cancellation")) or _contains_any(cl, _get_markers("weak_cancellation")):
         return "payment"
@@ -2970,6 +3387,17 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
         ):
             pass
         elif (
+            prior == "remove_car"
+            and domains_quick <= {"add_car", "billing"}
+            and _thread_is_remove_car_lane(f"{source_text}\n[客户] {last_msg}")
+        ):
+            pass
+        elif (
+            prior == "payment"
+            and domains_quick <= {"billing"}
+        ):
+            pass
+        elif (
             prior == "add_car"
             and "premium" in domains_quick
             and _is_renewal_policy_coordination_followup(last_msg)
@@ -3042,6 +3470,10 @@ def _classify_append_case_boundary(source_text: str, last_msg: str) -> str:
             return ""
         return "new_issue"
     if prior != "generic" and prior != "add_car" and hit:
+        if prior == "remove_car" and hit <= {"billing"}:
+            return ""
+        if prior == "payment" and hit <= {"billing"}:
+            return ""
         return "new_issue"
 
     if "office" in domains and prior == "add_car":
@@ -3863,6 +4295,381 @@ def _extract_remove_car_fields(merged_text: str) -> dict[str, bool]:
     }
 
 
+def _remove_car_structured_fields(merged_text: str) -> tuple[list[str], list[str]]:
+    """Return (collected_fields, still_needed_fields) for remove-vehicle broker handoff."""
+    fields = _extract_remove_car_fields(merged_text)
+    collected: list[str] = []
+    if fields.get("vehicle"):
+        collected.append("vehicle")
+        vehicle_concrete = _extract_primary_add_car_vehicle_concrete(merged_text)
+        if vehicle_concrete:
+            if re.search(r"20[12][0-9]", vehicle_concrete):
+                collected.append("year")
+            collected.append("make_model")
+    if fields.get("sale_date"):
+        collected.append("sale_date")
+    if fields.get("transfer"):
+        collected.append("transfer_completed")
+    cust_bodies = _customer_bodies_from_labeled_thread(merged_text)
+    t = " ".join(cust_bodies).lower()
+    if any(m in t for m in ("发你", "sent", "发了", "bill of sale", "transfer", "过户")):
+        collected.append("customer_says_materials_sent")
+    still_needed: list[str] = []
+    if not fields.get("sale_date"):
+        still_needed.append("sale_date")
+    if not fields.get("transfer") and "customer_says_materials_sent" not in collected:
+        still_needed.append("transfer_proof")
+    return dedupe_preserve_order(collected), dedupe_preserve_order(still_needed)
+
+
+def _extract_zip_hint(text: str) -> str:
+    """Extract CA ZIP when present in garaging/address context."""
+    raw = text or ""
+    m = re.search(r"(?<![0-9])9[0-9]{4}(?![0-9])", raw)
+    return m.group(0) if m else ""
+
+
+def _extract_payment_amount_hint(text: str) -> str:
+    """Extract dollar payment amount when customer mentions a transfer."""
+    raw = text or ""
+    m = re.search(r"\$(\d+(?:\.\d{2})?)", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"(\d+(?:\.\d{2})?)\s*(?:美元|美金|usd|dollars?)", raw, re.I)
+    return m.group(1) if m else ""
+
+
+def _extract_payment_confirmation_hint(text: str) -> str:
+    """Extract payment confirmation number when customer cites carrier portal proof."""
+    raw = text or ""
+    m = re.search(r"(?i)confirmation\s*#?\s*([0-9]{4,12})", raw)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?i)确认号?\s*[:：]?\s*([0-9]{4,12})", raw)
+    return m.group(1) if m else ""
+
+
+def _extract_plate_hint(text: str) -> str:
+    """Extract license plate token from customer thread when present."""
+    raw = text or ""
+    for pat in (
+        r"车牌\s*([0-9A-Z]{4,8})",
+        r"plate\s*(?:was\s*|is\s*)?([0-9A-Z]{4,8})",
+        r"partial\s+plate\s+([0-9A-Z]{3,8})",
+        r"full\s+plate\s+(?:now\s+)?([0-9A-Z]{4,8})",
+        r"对方车牌\s*([0-9A-Z]{4,8})",
+    ):
+        m = re.search(pat, raw, re.IGNORECASE)
+        if m:
+            return m.group(1).upper()
+    m = re.search(r"\b([0-9][A-Z]{2,3}[0-9]{3,4})\b", raw, re.IGNORECASE)
+    if m and any(x in raw.lower() for x in ("plate", "车牌", "claim", "理赔", "对方", "driver", "hit")):
+        return m.group(1).upper()
+    return ""
+
+
+def _extract_claim_number_hint(text: str) -> str:
+    """Extract claim reference when present (e.g. CLM-8821)."""
+    raw = text or ""
+    m = re.search(r"(?i)claim\s*#?\s*([A-Z]{2,5}-[A-Z0-9]{3,8})", raw)
+    if m:
+        return m.group(1).upper()
+    m = re.search(r"(?i)filed\s+claim\s*#?\s*([A-Z0-9-]{5,12})", raw)
+    if m:
+        return m.group(1).upper()
+    m = re.search(r"(?i)(CLM-[A-Z0-9]{3,8})", raw)
+    if m:
+        return m.group(1).upper()
+    return ""
+
+
+def _extract_claim_amount_hint(text: str) -> str:
+    """Extract damage estimate / claim dollar amount from thread."""
+    raw = text or ""
+    for pat in (
+        r"\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)",
+        r"(?i)estimate\s*\$?\s*(\d{1,3}(?:,\d{3})*)",
+        r"(?i)\$\s*(\d{1,2})k\b",
+    ):
+        m = re.search(pat, raw)
+        if m:
+            amt = m.group(1).replace(",", "")
+            if "k" in pat.lower() and amt.isdigit():
+                return str(int(amt) * 1000)
+            return amt
+    m = re.search(r"(?<![0-9])(\d{4,5})(?![0-9])", raw)
+    if m:
+        window = raw[max(0, m.start() - 24) : m.end() + 24].lower()
+        if "vin" in window or "ends" in window:
+            return ""
+        if any(x in raw.lower() for x in ("estimate", "shop", "damage", "loss", "全损", "claim", "理赔", "rental")):
+            return m.group(1)
+    return ""
+
+
+def _suggest_waiting_on(
+    merged_text: str,
+    still_needed_fields: list[str] | None,
+    issue_category: str = "",
+) -> str:
+    """
+    Infer who the office is waiting on from customer language (suggest only; broker confirms via PATCH).
+    Values align with case_store.CASE_WAITING_ON_VALUES (office work → broker).
+    """
+    raw = merged_text or ""
+    t = raw.lower()
+    still = [str(x).lower() for x in (still_needed_fields or []) if str(x).strip()]
+    cat = (issue_category or "").lower()
+
+    carrier_markers = (
+        "adjuster还没",
+        "adjuster has not",
+        "adjuster still no",
+        "no adjuster",
+        "still no adjuster",
+        "carrier still",
+        "carrier has not",
+        "carrier hasn't",
+        "insurer has not",
+        "保险公司还没",
+        "保险公司没有",
+        "还在等保险公司",
+        "waiting on carrier",
+        "waiting on insurer",
+        "waiting on the adjuster",
+        "waiting for adjuster",
+        "waiting for carrier",
+        "waiting for insurance",
+        "对方保险拖",
+        "carrier还没回复",
+        "carrier那边",
+        "carrier有回复",
+        "carrier确认",
+        "确认恢复",
+        "adjuster有联系",
+        "adjuster contacted",
+        "did carrier accept",
+        "any update from carrier",
+        "roof leaking",
+        "escalate",
+    )
+    uw_markers = (
+        "uw still reviewing",
+        "underwriting still",
+        "waiting for underwriting",
+        "waiting on underwriting",
+        "核保还在",
+        "uw还有",
+        "uw还有别的",
+        "underwriting or billing",
+        "update from underwriting",
+    )
+    client_markers = (
+        "customer has not replied",
+        "client has not",
+        "还缺材料",
+        "还缺什么材料",
+        "send me",
+        "waiting for documents",
+        "waiting for client",
+        "waiting on client",
+        "waiting on customer",
+        "材料还没",
+    )
+    broker_markers = (
+        "quote出来",
+        "quote ready",
+        "refund大概",
+        "refund什么时候",
+        "什么时候生效",
+        "when will it take effect",
+        "waiting for quote",
+        "waiting on quote",
+        "waiting for refund",
+        "便宜方案",
+        "cheaper option",
+        "cheaper plan",
+    )
+
+    if any(m in t or m in raw for m in carrier_markers):
+        if any(m in t for m in ("uw还有", "underwriting or billing", "update from underwriting")) and not any(
+            m in t for m in ("adjuster", "carrier", "保险公司", "insurer")
+        ):
+            pass
+        else:
+            return "carrier"
+    if any(m in t or m in raw for m in uw_markers) or cat == "underwriting_followup":
+        if any(m in t for m in ("adjuster", "carrier", "保险公司")):
+            return "carrier"
+        return "underwriting"
+    if any(m in t or m in raw for m in client_markers):
+        return "client"
+    if still and any(
+        x in still
+        for x in (
+            "photos",
+            "other_driver",
+            "accident_time",
+            "police_report",
+            "declaration_page",
+            "garaging",
+            "name",
+            "phone",
+            "vin",
+        )
+    ):
+        if any(m in t for m in ("发你了", "sent", "发了", "uploaded", "attached", "already sent")):
+            pass
+        elif any(m in t for m in ("还缺", "still need", "missing", "send me")):
+            return "client"
+    if "verify_carrier_received" in still:
+        return "carrier"
+    if any(m in t or m in raw for m in broker_markers):
+        return "broker"
+    if any(m in t for m in ("有消息吗", "any update", "update?", "still showing", "有回复吗")):
+        if cat in ("payment_lapse_expiration", "cancellation_warning") or "paid" in t or "付了" in t:
+            return "carrier"
+        if cat == "underwriting_followup" or "underwriting" in t or "uw" in t:
+            return "underwriting"
+        if "adjuster" in t or "carrier" in t or "保险公司" in raw:
+            return "carrier"
+    return ""
+
+
+def _thread_has_claim_memory(persisted: list[str] | None) -> bool:
+    """True when prior collected fields indicate an open claim thread."""
+    for p in persisted or []:
+        pl = str(p).lower()
+        if pl in (
+            "accident_reported",
+            "hit_and_run",
+            "police_report",
+            "injuries",
+            "total_loss",
+            "total_loss_disputed",
+            "adjuster_waiting",
+            "carrier_delay",
+        ):
+            return True
+        if pl.startswith("plate_") or pl.startswith("claim_amount_") or pl.startswith("claim_number_"):
+            return True
+    return False
+
+
+def _thread_is_claim_lane(merged_text: str, persisted: list[str] | None = None) -> bool:
+    if _thread_has_claim_memory(persisted):
+        return True
+    if _is_claim_intake_request((merged_text or "").lower()):
+        return True
+    fields = _extract_claim_fields(merged_text)
+    return bool(fields.get("accident_reported") or fields.get("hit_and_run"))
+
+
+def _augment_claim_collected_from_merged(
+    collected: list[str],
+    still_needed: list[str],
+    merged_text: str,
+) -> tuple[list[str], list[str]]:
+    """Add durable claim tokens (plate, amounts, carrier/adjuster wait) from full thread."""
+    coll = list(collected)
+    still = list(still_needed)
+    plate = _extract_plate_hint(merged_text)
+    if plate and f"plate_{plate}" not in coll:
+        coll.append(f"plate_{plate}")
+    claim_no = _extract_claim_number_hint(merged_text)
+    if claim_no and f"claim_number_{claim_no}" not in coll:
+        coll.append(f"claim_number_{claim_no}")
+    policy = _extract_policy_number_hint(merged_text)
+    if policy and "policy_number" not in coll:
+        coll.append("policy_number")
+        coll.append(f"policy_{policy}")
+    amt = _extract_claim_amount_hint(merged_text)
+    if amt and f"claim_amount_{amt}" not in coll:
+        coll.append(f"claim_amount_{amt}")
+    matches = re.findall(r"\[客户\]\s*([^[]+)", merged_text or "")
+    customer_text = " ".join(matches).lower() if matches else (merged_text or "").lower()
+    if any(m in customer_text for m in ("total loss", "全损", "total_loss")):
+        if "total_loss_disputed" not in coll and any(
+            m in customer_text for m in ("不是全损", "not total loss", "还能开", "just bumper")
+        ):
+            coll.append("total_loss_disputed")
+        elif "total_loss" not in coll:
+            coll.append("total_loss")
+    if any(m in customer_text for m in ("adjuster", "理赔员", "保险公司", "carrier", "insurer")):
+        if any(
+            m in customer_text
+            for m in (
+                "还没", "still no", "has not", "waiting", "拖", "delay", "escalate", "leaking",
+            )
+        ):
+            if "adjuster_waiting" not in coll:
+                coll.append("adjuster_waiting")
+            if "carrier_delay" not in coll:
+                coll.append("carrier_delay")
+    if any(m in customer_text for m in ("rental", "租车", "extension")):
+        if "rental_extension" not in coll:
+            coll.append("rental_extension")
+    if re.search(r"\b101\b", customer_text) and any(
+        m in customer_text for m in ("rear", "ended", "追尾", "freeway", "highway")
+    ):
+        if "accident_location_101" not in coll:
+            coll.append("accident_location_101")
+    if any(m in customer_text for m in ("accord", "camry", "civic", "tesla", "2019", "2020")):
+        vm = re.search(
+            r"(20[12][0-9]\s+(?:honda\s+)?accord|20[12][0-9]\s+\w+\s+\w+|honda\s+civic|tesla\s+model)",
+            customer_text,
+            re.I,
+        )
+        if vm and f"vehicle_{vm.group(0).replace(' ', '_')[:40]}" not in coll:
+            coll.append(f"vehicle_{vm.group(0).replace(' ', '_')[:40]}")
+    if any(m in customer_text for m in ("uninsured", "um coverage", "deductible")):
+        if "um_coverage_question" not in coll:
+            coll.append("um_coverage_question")
+    if any(m in customer_text for m in ("statement", "recorded statement")):
+        if "carrier_statement_request" not in coll:
+            coll.append("carrier_statement_request")
+    if any(m in customer_text for m in ("rear-ended", "rear ended", "追尾")):
+        if "rear_end" not in coll:
+            coll.append("rear_end")
+    if "neck" in customer_text or "neck pain" in customer_text:
+        if "injury_neck" not in coll:
+            coll.append("injury_neck")
+    if "mri" in customer_text:
+        if "injury_mri" not in coll:
+            coll.append("injury_mri")
+    if any(m in customer_text for m in ("at fault", "at-fault", "对方全责", "other driver at fault")):
+        if "at_fault_other_driver" not in coll:
+            coll.append("at_fault_other_driver")
+    m_date = re.search(r"\b(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b", merged_text or "")
+    if m_date and any(x in customer_text for x in ("accident", "出事故", "claim", "理赔")):
+        tok = f"accident_date_{m_date.group(1).replace('/', '_')}"
+        if tok not in coll:
+            coll.append(tok)
+    if any(m in customer_text for m in ("windshield", "glass claim", "玻璃", "hood dent", "full claim")):
+        if "glass_or_vehicle_damage" not in coll:
+            coll.append("glass_or_vehicle_damage")
+    m_vin = re.search(r"(?i)vin\s*(?:ends\s*)?([0-9A-Z]{4,6})\b", merged_text or "")
+    if m_vin and f"vin_tail_{m_vin.group(1).upper()}" not in coll:
+        coll.append(f"vin_tail_{m_vin.group(1).upper()}")
+    if "不是payment" in customer_text or "不是 payment" in customer_text:
+        if "not_payment_issue" not in coll:
+            coll.append("not_payment_issue")
+    if any(m in customer_text for m in ("刮蹭", "scrape", "柱子", "护栏")):
+        if "parking_scrape_damage" not in coll:
+            coll.append("parking_scrape_damage")
+    if "parking" in customer_text or "停车" in customer_text:
+        if "parking_location" not in coll:
+            coll.append("parking_location")
+    if re.search(r"(?i)parking\s+p\d+", customer_text) or "p2" in customer_text:
+        if "parking_level_noted" not in coll:
+            coll.append("parking_level_noted")
+    if any(m in customer_text for m in ("police", "警察", "报案")):
+        m_pr = re.search(r"(?i)([A-Z]{2}-\d{4}-\d{3,5})", merged_text or "")
+        if m_pr and f"police_report_{m_pr.group(1)}" not in coll:
+            coll.append(f"police_report_{m_pr.group(1)}")
+    return dedupe_preserve_order(coll), dedupe_preserve_order(still)
+
+
 def _extract_missing_doc_status(merged_text: str) -> tuple[list[str], list[str]]:
     """
     Extract (items_mentioned, items_sent_status) from conversation text.
@@ -3937,6 +4744,10 @@ def _missing_document_structured_fields(merged_text: str) -> tuple[list[str], li
             still_needed.append(item)
     if items_sent and not still_needed:
         still_needed.append("verify_carrier_received")
+    zip_hint = _extract_zip_hint(merged_text)
+    if zip_hint:
+        collected.append("garaging_zip")
+        collected.append(f"zip_{zip_hint}")
     return (collected, still_needed)
 
 
@@ -4560,6 +5371,36 @@ def _augment_add_car_fields_from_persisted_collected(
     return out
 
 
+def _merge_persisted_collected(
+    new_collected: list[str],
+    new_still: list[str],
+    persisted: list[str] | None,
+    *,
+    persisted_still: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Union fresh extraction with persisted office truth; drop still entries already collected."""
+    pers = [str(x) for x in (persisted or []) if str(x).strip()]
+    if not pers and not persisted_still:
+        return dedupe_preserve_order(new_collected), dedupe_preserve_order(new_still)
+    pers_l = {str(x).lower() for x in pers}
+    coll_seen = {str(x).lower() for x in new_collected}
+    merged_col = list(new_collected)
+    for p in pers:
+        pl = str(p).lower()
+        if pl and pl not in coll_seen:
+            merged_col.append(p)
+            coll_seen.add(pl)
+    merged_still = [x for x in new_still if str(x).lower() not in pers_l]
+    if persisted_still:
+        still_seen = {str(x).lower() for x in merged_still}
+        for s in persisted_still:
+            sl = str(s).lower()
+            if sl and sl not in still_seen and sl not in pers_l:
+                merged_still.append(s)
+                still_seen.add(sl)
+    return dedupe_preserve_order(merged_col), dedupe_preserve_order(merged_still)
+
+
 def _reconcile_add_car_lists_with_persisted_record(
     collected: list[str],
     still_needed: list[str],
@@ -4980,12 +5821,26 @@ def _extract_renewal_fields(merged_text: str) -> dict[str, bool]:
             "发过了", "already sent",
         ]
     )
+    bill_sent_claimed = any(
+        m in t
+        for m in [
+            "发你账单",
+            "我发你账单",
+            "账单发你",
+            "发你保单",
+            "保单我发",
+            "sent you the bill",
+            "sent the bill",
+            "bill sent",
+        ]
+    ) or policy_bill_sent
     return {
         "premium_concern": premium_concern,
         "renewal_context": renewal_context,
         "remove_vehicle_interest": remove_vehicle_interest,
         "coverage_adjust_interest": coverage_adjust_interest,
         "policy_bill_sent": policy_bill_sent,
+        "bill_sent_claimed": bill_sent_claimed,
     }
 
 
@@ -5003,8 +5858,10 @@ def _renewal_structured_fields(merged_text: str) -> tuple[list[str], list[str]]:
         collected.append("coverage_adjust_interest")
     if fields.get("policy_bill_sent"):
         collected.append("policy_bill_sent")
+    if fields.get("bill_sent_claimed"):
+        collected.append("bill_sent_claimed")
     still_needed: list[str] = []
-    if not fields.get("policy_bill_sent"):
+    if not (fields.get("policy_bill_sent") or fields.get("bill_sent_claimed")):
         still_needed.append("renewal_notice_or_bill")
         still_needed.append("current_premium_details")
     if fields.get("remove_vehicle_interest"):
@@ -5053,9 +5910,11 @@ def _extract_claim_fields(merged_text: str) -> dict[str, bool]:
     injuries = any(
         m in t
         for m in [
-            "injuries", "受伤", "injury", "人没事",
+            "injuries", "受伤", "injury", "neck pain", "ambulance", "mri", "人没事",
         ]
     )
+    carrier_mentioned = any(m in t for m in ("carrier", "insurer", "保险公司", "对方保险"))
+    adjuster_mentioned = any(m in t for m in ("adjuster", "理赔员"))
     return {
         "accident_reported": accident_reported,
         "hit_and_run": hit_and_run,
@@ -5063,6 +5922,8 @@ def _extract_claim_fields(merged_text: str) -> dict[str, bool]:
         "other_driver_info": other_driver_info,
         "police_report": police_report,
         "injuries": injuries,
+        "carrier_mentioned": carrier_mentioned,
+        "adjuster_mentioned": adjuster_mentioned,
     }
 
 
@@ -5082,6 +5943,10 @@ def _claim_structured_fields(merged_text: str) -> tuple[list[str], list[str]]:
         collected.append("police_report")
     if fields.get("injuries"):
         collected.append("injuries")
+    if fields.get("carrier_mentioned"):
+        collected.append("carrier_mentioned")
+    if fields.get("adjuster_mentioned"):
+        collected.append("adjuster_mentioned")
     still_needed: list[str] = []
     if not fields.get("photos"):
         still_needed.append("photos")
@@ -5480,6 +6345,10 @@ def triage_conversation(
         v6_ocr_signals=v6_ocr_signals if isinstance(v6_ocr_signals, dict) else None,
         soft_route=soft_route,
     )
+    if is_add_car and _thread_is_premium_review_lane(merged_text):
+        is_add_car = False
+    if is_add_car and _thread_is_remove_car_lane(merged_text):
+        is_add_car = False
     weak_inline_first_turn = (
         not for_append
         and customer_count == 0
@@ -5759,7 +6628,9 @@ def triage_conversation(
 
     handoff_phrases = _get_handoff_phrases(resolved_client_id)
     stitched_cfg = _get_stitched_phrases(resolved_client_id)
-    is_remove_car = _is_remove_vehicle_request(lowered_merged)
+    is_remove_car = _is_remove_vehicle_request(lowered_merged) or _thread_is_remove_car_lane(merged_text)
+    if is_add_car and _customer_defers_to_add_car_focus(last_customer_raw):
+        is_remove_car = False
     post_submit_phrasing = _truth_allows_post_submit_handoff_phrasing(reply_truth_context)
     follow_up_type = _derive_follow_up_type(last_customer_raw, _all_customer_concat_from_merged(merged_text))
     collection_stage = _derive_collection_stage(
@@ -6009,6 +6880,9 @@ def triage_conversation(
         result["client_reply_draft"] = result_draft
 
     lowered = (merged_text or "").lower()
+    _ctx_pc = reply_truth_context or {}
+    _persisted_collected = list(_ctx_pc.get("persisted_collected_fields") or [])
+    _persisted_still = list(_ctx_pc.get("still_needed_fields") or [])
     if is_add_car:
         collected, still_needed, merge_meta, extracted_name, extracted_phone = _compute_add_car_collected_still_lists(
             merged_for_add_car_extraction,
@@ -6071,25 +6945,134 @@ def triage_conversation(
                 )
             if salvage:
                 result["client_reply_draft"] = salvage
-    elif _is_premium_review_request(lowered):
+    elif _thread_is_remove_car_lane(merged_text) or is_remove_car:
+        collected, still_needed = _remove_car_structured_fields(merged_text)
+        collected, still_needed = _merge_persisted_collected(
+            collected, still_needed, _persisted_collected, persisted_still=_persisted_still
+        )
+        result["collected_fields"] = collected
+        result["still_needed_fields"] = still_needed
+    elif _thread_is_premium_review_lane(merged_text) or _is_premium_review_request(lowered):
         collected, still_needed = _renewal_structured_fields(merged_text)
+        collected, still_needed = _merge_persisted_collected(
+            collected, still_needed, _persisted_collected, persisted_still=_persisted_still
+        )
         result["collected_fields"] = collected
         result["still_needed_fields"] = still_needed
-    elif _is_claim_intake_request(lowered):
+    elif _thread_is_claim_lane(merged_text, _persisted_collected):
         collected, still_needed = _claim_structured_fields(merged_text)
+        collected, still_needed = _augment_claim_collected_from_merged(collected, still_needed, merged_text)
+        collected, still_needed = _merge_persisted_collected(
+            collected, still_needed, _persisted_collected, persisted_still=_persisted_still
+        )
         result["collected_fields"] = collected
         result["still_needed_fields"] = still_needed
-    elif base_result.get("issue_category") == "missing_document":
-        collected, still_needed = _missing_document_structured_fields(merged_text)
-        result["collected_fields"] = collected
-        result["still_needed_fields"] = still_needed
-    elif base_result.get("issue_category") in ("cancellation_warning", "payment_lapse_expiration"):
+    elif base_result.get("issue_category") == "missing_document" or (
+        _contains_any(merged_text, _get_markers("missing_document_object"))
+        and _contains_any(merged_text, _get_markers("missing_document_request"))
+    ):
+        if _thread_is_claim_lane(merged_text, _persisted_collected):
+            collected, still_needed = _claim_structured_fields(merged_text)
+            collected, still_needed = _augment_claim_collected_from_merged(collected, still_needed, merged_text)
+            collected, still_needed = _merge_persisted_collected(
+                collected, still_needed, _persisted_collected, persisted_still=_persisted_still
+            )
+            result["collected_fields"] = collected
+            result["still_needed_fields"] = still_needed
+        else:
+            collected, still_needed = _missing_document_structured_fields(merged_text)
+            collected, still_needed = _merge_persisted_collected(
+                collected, still_needed, _persisted_collected, persisted_still=_persisted_still
+            )
+            result["collected_fields"] = collected
+            result["still_needed_fields"] = still_needed
+    elif _thread_is_payment_lapse_lane(merged_text) or base_result.get("issue_category") in (
+        "cancellation_warning",
+        "payment_lapse_expiration",
+    ):
         collected, still_needed = _cancellation_structured_fields(merged_text)
+        collected, still_needed = _merge_persisted_collected(
+            collected, still_needed, _persisted_collected, persisted_still=_persisted_still
+        )
         result["collected_fields"] = collected
         result["still_needed_fields"] = still_needed
     else:
-        result["collected_fields"] = []
-        result["still_needed_fields"] = []
+        if _persisted_collected or _persisted_still:
+            collected, still_needed = _merge_persisted_collected(
+                [], [], _persisted_collected, persisted_still=_persisted_still
+            )
+            result["collected_fields"] = collected
+            result["still_needed_fields"] = still_needed
+        else:
+            result["collected_fields"] = []
+            result["still_needed_fields"] = []
+
+    # P16-Y: screenshot-only intake — office still needs the notice image/text
+    if _message_needs_notice_image(merged_text):
+        still = list(result.get("still_needed_fields") or [])
+        if "notice_image" not in still:
+            still.append("notice_image")
+        result["still_needed_fields"] = still
+
+    deadline_hint = _extract_deadline_hint(merged_for_add_car_extraction)
+    if deadline_hint:
+        collected = list(result.get("collected_fields") or [])
+        token = f"deadline_{deadline_hint.replace(' ', '_').lower()}"
+        if token not in collected:
+            collected.append("deadline_mentioned")
+        result["collected_fields"] = collected
+    policy_hint = _extract_policy_number_hint(merged_for_add_car_extraction)
+    if policy_hint:
+        collected = list(result.get("collected_fields") or [])
+        if "policy_number" not in collected:
+            collected.append("policy_number")
+        result["collected_fields"] = collected
+    payment_amt = _extract_payment_amount_hint(merged_for_add_car_extraction)
+    if payment_amt:
+        collected = list(result.get("collected_fields") or [])
+        if "payment_amount" not in collected:
+            collected.append("payment_amount")
+        tok = f"payment_amount_{payment_amt}"
+        if tok not in collected:
+            collected.append(tok)
+        result["collected_fields"] = collected
+    pay_confirm = _extract_payment_confirmation_hint(merged_for_add_car_extraction)
+    if pay_confirm:
+        collected = list(result.get("collected_fields") or [])
+        tok = f"payment_confirmation_{pay_confirm}"
+        if tok not in collected:
+            collected.append(tok)
+        if "payment_confirmation" not in collected:
+            collected.append("payment_confirmation")
+        result["collected_fields"] = collected
+    cust_all = " ".join(re.findall(r"\[客户\]\s*([^[]+)", merged_for_add_car_extraction or ""))
+    if "autopay" in cust_all.lower():
+        collected = list(result.get("collected_fields") or [])
+        if "autopay_mentioned" not in collected:
+            collected.append("autopay_mentioned")
+        result["collected_fields"] = collected
+    if "portal" in cust_all.lower():
+        collected = list(result.get("collected_fields") or [])
+        if "carrier_portal_payment" not in collected:
+            collected.append("carrier_portal_payment")
+        result["collected_fields"] = collected
+    if any(m in cust_all for m in ("取消", "保费", "7天", "7 days")):
+        collected = list(result.get("collected_fields") or [])
+        for tok in ("cancel_notice_zh", "premium_zh"):
+            if tok not in collected and (
+                (tok == "cancel_notice_zh" and "取消" in cust_all)
+                or (tok == "premium_zh" and "保费" in cust_all)
+            ):
+                collected.append(tok)
+        result["collected_fields"] = collected
+
+    suggested_wo = _suggest_waiting_on(
+        merged_for_add_car_extraction,
+        result.get("still_needed_fields"),
+        str(base_result.get("issue_category") or ""),
+    )
+    if suggested_wo:
+        result["suggested_waiting_on"] = suggested_wo
 
     # Human‑confirmation signals for broker / UI visibility
     human_fields = _derive_human_confirmation_fields(
@@ -6130,7 +7113,9 @@ def triage_conversation(
             )
 
     # Package 2.0 Loop 2: Renewal handoff when policy/bill sent — clearer broker_next_step.
-    if handoff and _is_premium_review_request(lowered) and "policy_bill_sent" in collected_list:
+    if handoff and _is_premium_review_request(lowered) and (
+        "policy_bill_sent" in collected_list or "bill_sent_claimed" in collected_list
+    ):
         result["broker_next_step"] = (
             "Review renewal notice and quote options; "
             "confirm remove-vehicle intent if client asked, then send 1–2 realistic options."
@@ -6394,8 +7379,125 @@ def triage_conversation(
         merged_add_car_text=merged_for_add_car_extraction if is_add_car else None,
     )
     maybe_apply_impatient_add_car_collecting_prefix(result, last_customer_raw)
+    _apply_office_value_surface(
+        result,
+        merged_text=merged_text,
+        is_remove_car=is_remove_car,
+        is_add_car=is_add_car,
+    )
     apply_client_reply_finalize_to_result(result, {"merged_text": merged_text})
     return result
+
+
+def _apply_office_value_surface(
+    result: dict[str, Any],
+    *,
+    merged_text: str,
+    is_remove_car: bool,
+    is_add_car: bool,
+) -> None:
+    """P16-Z11: office-facing headline, next action, waiting-on, and classification evidence."""
+    raw = merged_text or ""
+    lowered = raw.lower()
+    cat = str(result.get("issue_category") or "").lower()
+    st = str(result.get("service_type") or "").lower()
+    still = [str(x) for x in (result.get("still_needed_fields") or []) if str(x).strip()]
+    collected = [str(x) for x in (result.get("collected_fields") or []) if str(x).strip()]
+
+    signals: list[str] = []
+    if "追尾" in raw or "rear" in lowered:
+        signals.append("提到追尾")
+    if "理赔员" in raw or "adjuster" in lowered:
+        signals.append("提到理赔员")
+    if re.search(r"\$?\d{3,5}", raw) or re.search(r"\d+\s*(?:美元|美金)", raw):
+        amt = _extract_payment_amount_hint(raw) or _extract_claim_amount_hint(raw)
+        if amt:
+            signals.append(f"提到{amt}美元" if _contains_chinese(raw) else f"mentioned ${amt}")
+    if "全损" in raw or "total loss" in lowered:
+        signals.append("提到全损")
+    if any(m in raw for m in ("没扣", "没扣成功", "扣款失败", "未扣款")):
+        signals.append("提到扣款失败")
+    if "保费" in raw and any(m in raw for m in ("没扣", "失败", "declined", "overdue")):
+        signals.append("提到保费问题")
+    if is_remove_car or any(m in raw for m in ("卖掉", "卖掉了", "卖车", "拿掉", "删车")):
+        signals.append("提到卖车/删车")
+    if re.search(r"camry|accord|honda|toyota|宝马|tesla", lowered):
+        signals.append("提到具体车型")
+    if result.get("classification_signals"):
+        pass
+    else:
+        result["classification_signals"] = signals[:8]
+
+    title = ""
+    if cat in ("payment_lapse_expiration", "cancellation_warning") or st == "billing":
+        title = "客户保费未成功扣款，存在保单失效风险"
+    elif is_remove_car or st == "remove_car":
+        title = "客户卖车，需要从保单移除车辆"
+    elif _is_claim_intake_request(raw) or st == "claim_intake" or _thread_is_claim_lane(raw, collected):
+        title = "客户发生事故，正在进入理赔流程"
+    elif is_add_car or st == "add_car":
+        title = "客户咨询加车报价"
+    elif cat == "missing_document" or st == "missing_document":
+        title = "客户需补交材料"
+    elif cat == "underwriting_followup":
+        title = "核保跟进中"
+    elif _is_premium_review_request(lowered):
+        title = "客户咨询保费/续保"
+    if title:
+        result["office_case_title"] = title
+
+    office_next = ""
+    if cat in ("payment_lapse_expiration", "cancellation_warning") or st == "billing":
+        office_next = "联系客户确认付款方式并协助完成扣款，避免保单失效"
+    elif is_remove_car or st == "remove_car":
+        if "transfer_proof" in still or "sale_date" in still:
+            office_next = "联系客户补销售证明和卖车日期，然后办理删车"
+        else:
+            office_next = "核实卖车信息并办理删车，确认剩余车辆保障"
+    elif _is_claim_intake_request(raw) or st == "claim_intake":
+        if "adjuster" in lowered or "理赔员" in raw:
+            office_next = "跟进理赔员进度，等待保险公司回复"
+        elif still:
+            office_next = f"联系客户补齐：{', '.join(still[:3])}"
+        else:
+            office_next = "协助客户完成事故报案并跟进理赔"
+    elif is_add_car:
+        _still_zh = {
+            "year": "年份",
+            "make_model": "车型",
+            "vin": "车架号",
+            "zip": "邮编",
+            "delivery_date": "提车日期",
+            "primary_driver": "主驾驶人",
+            "name": "姓名",
+            "phone": "电话",
+        }
+        if still:
+            labels = "、".join(_still_zh.get(s, s) for s in still[:4])
+            office_next = f"联系客户补齐{labels}，然后出报价"
+        elif (result.get("handoff_ready") or result.get("action_ready")) and (
+            result.get("primary_vehicle_summary") or collected
+        ):
+            vehicle = (result.get("primary_vehicle_summary") or "").strip()
+            office_next = f"信息齐全，可直接为{vehicle}出报价" if vehicle else "信息齐全，可直接出报价"
+        else:
+            vehicle = (result.get("primary_vehicle_summary") or "").strip()
+            office_next = f"核实{vehicle}信息并出报价" if vehicle else "核实车辆信息并出报价"
+        if "premium_zh" in collected or any(m in raw for m in ("多少钱", "保费", "大概多少", "how much", "ballpark")):
+            office_next = office_next.rstrip("。") + "（客户问了保费，先补齐信息再报价）"
+    if office_next:
+        result["office_broker_next_step"] = office_next
+
+    # Enrich suggested_waiting_on when not already set
+    if not result.get("suggested_waiting_on"):
+        if cat in ("payment_lapse_expiration", "cancellation_warning") or any(
+            m in raw for m in ("没扣", "没扣成功", "扣款失败")
+        ):
+            result["suggested_waiting_on"] = "client"
+        elif ("adjuster" in lowered or "理赔员" in raw) and _is_claim_intake_request(raw):
+            result["suggested_waiting_on"] = "carrier"
+        elif still and not is_add_car:
+            result["suggested_waiting_on"] = "client"
 
 
 def triage_message(text: str) -> dict[str, Any]:

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     Alert,
     Button,
@@ -32,12 +33,16 @@ import {
 import {
     appendFollowUpMessage,
     clearSessionId,
+    clearStoredActiveCaseId,
     fetchWeChatBindingStart,
     getInProgressSession,
     getOrCreateSessionId,
+    getSavedCase,
     getSessionId,
+    getStoredActiveCaseId,
     listRecentCasesPage,
     postWeChatBindingSimulateComplete,
+    setStoredActiveCaseId,
     triageMessage,
     type IdentityBindingState,
     type SoftRouteIntent,
@@ -58,6 +63,7 @@ import {
 import {
     composeAddCarStructuredIntakeMessage,
     customerEntryIsAddCarActive,
+    customerEntryTurnsFromSavedCase,
     formatPortalLocalDateTime,
     getCaseFocusDisplayLabel,
     getCaseReportOneLiner,
@@ -70,12 +76,26 @@ import {
     triageResultLooksLikeAddCar,
 } from "@/features/intake/utils";
 import { AddCarCaseStatusStrip, GenericIntakeStatusStrip, IntakeFlowStepTrack } from "@/features/intake/components/StatusStrips";
+import { resolveBuilderEvolutionPath } from '@/features/intake/prototypes/p16z21/evolutionPaths';
+import { PathGuidedRail } from '@/features/intake/prototypes/p16z21/PathGuidedRail';
+import { PathTimelineFirstBanner } from '@/features/intake/prototypes/p16z21/PathTimelineFirstBanner';
 
 const { TextArea } = Input;
 const { Title, Text, Paragraph } = Typography;
 
-export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, onOpenMyRequests }: CustomerEntryTabProps) {
+export function CustomerEntryTab({
+    onSwitchToBroker,
+    onOpenScenarioSimulation,
+    onOpenMyRequests,
+    continueCaseId,
+    onContinueCaseHandled,
+}: CustomerEntryTabProps) {
     const { uiCopy, clientId } = useClientConfig();
+    const [searchParams] = useSearchParams();
+    const builderEvolution = resolveBuilderEvolutionPath(searchParams);
+    const isMinimalBuilder = builderEvolution === 'minimal';
+    const isGuidedBuilder = builderEvolution === 'guided';
+    const isTimelineFirstBuilder = builderEvolution === 'timeline';
     const quickStartButtons = useMemo(
         () => (uiCopy.quick_start_buttons ? getQuickStartButtons(uiCopy) : DEFAULT_QUICK_START_BUTTONS),
         [uiCopy.quick_start_buttons],
@@ -196,6 +216,35 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
     const [identityStripDismissed, setIdentityStripDismissed] = useState(false);
     const loadingPlaceholderRef = useRef<HTMLDivElement>(null);
     const wechatBindingLive = uiCopy.light_identity?.wechat_binding_mode === 'live';
+    const returnHydrateStartedRef = useRef(false);
+
+    const hydrateActiveCase = useCallback(
+        async (caseId: string, showToast = true) => {
+            const cid = caseId.trim();
+            if (!cid) return false;
+            try {
+                const saved = await getSavedCase(cid);
+                if (saved.workbench_test || saved.workbench_archived) return false;
+                const savedClient = (saved.client_id || '').trim();
+                if (savedClient && clientId && savedClient !== clientId) return false;
+
+                setLastCaseId(saved.case_id);
+                setStoredActiveCaseId(clientId, saved.case_id);
+                setTurns(customerEntryTurnsFromSavedCase(saved));
+                if (triageResultLooksLikeAddCar(saved)) {
+                    setSelectedButtonIntent('add_car');
+                }
+                if (showToast) {
+                    message.success(portalSessionRestored, 2);
+                }
+                return true;
+            } catch {
+                clearStoredActiveCaseId(clientId);
+                return false;
+            }
+        },
+        [clientId, portalSessionRestored],
+    );
 
     useEffect(() => {
         try {
@@ -221,9 +270,11 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                     if (cid && clientId && cid !== clientId) return false;
                     return true;
                 });
-                const ongoing = visible.filter(
-                    (c) => triageResultLooksLikeAddCar(c) && resolveCaseLifecycle(c) !== 'submitted',
-                );
+                const ongoing = visible.filter((c) => {
+                    if (!triageResultLooksLikeAddCar(c)) return false;
+                    if (c.case_status === 'done') return false;
+                    return true;
+                });
                 if (cancelled) return;
                 if (ongoing.length >= 2) {
                     setResumePortalHint({ mode: 'multi', title: userFacingCaseTitle(ongoing[0]) });
@@ -436,24 +487,53 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
         }
     }, []);
 
-    /** In-progress persistence: restore conversation on mount when session_id exists */
+    /** In-progress persistence + active case restore on mount (P16-Z23 return loop). */
     useEffect(() => {
-        const sid = getSessionId();
-        if (!sid) return;
-        getInProgressSession(sid).then((data) => {
-            if (data?.light_identity_binding?.identity_binding_state === 'linked') {
-                setIdentityBindingState('linked');
+        if (returnHydrateStartedRef.current) return;
+        returnHydrateStartedRef.current = true;
+        let cancelled = false;
+        void (async () => {
+            const sid = getSessionId();
+            if (sid) {
+                const data = await getInProgressSession(sid);
+                if (cancelled) return;
+                if (data?.light_identity_binding?.identity_binding_state === 'linked') {
+                    setIdentityBindingState('linked');
+                }
+                if (data?.turns?.length) {
+                    const restored: ConversationTurn[] = data.turns.map((t) => ({
+                        role: t.role as 'customer' | 'system',
+                        content: t.text,
+                        triageResult: t.triageResult,
+                    }));
+                    setTurns(restored);
+                    message.success(portalSessionRestored, 2);
+                    return;
+                }
+                const sessionCaseId = (data?.active_case_id ?? '').trim();
+                if (sessionCaseId) {
+                    await hydrateActiveCase(sessionCaseId, true);
+                    return;
+                }
             }
-            if (!data?.turns?.length) return;
-            const restored: ConversationTurn[] = data.turns.map((t) => ({
-                role: t.role as 'customer' | 'system',
-                content: t.text,
-                triageResult: t.triageResult,
-            }));
-            setTurns(restored);
-            message.success(portalSessionRestored, 2);
+            const storedCaseId = getStoredActiveCaseId(clientId);
+            if (storedCaseId) {
+                await hydrateActiveCase(storedCaseId, true);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [clientId, hydrateActiveCase, portalSessionRestored]);
+
+    /** My Requests → Continue: hydrate selected case when parent passes continueCaseId. */
+    useEffect(() => {
+        const cid = (continueCaseId ?? '').trim();
+        if (!cid) return;
+        void hydrateActiveCase(cid, true).finally(() => {
+            onContinueCaseHandled?.();
         });
-    }, []);
+    }, [continueCaseId, hydrateActiveCase, onContinueCaseHandled]);
 
     useEffect(() => {
         if (loading && loadingPlaceholderRef.current) {
@@ -530,7 +610,7 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
             const addCarFlow = triageResultLooksLikeAddCar(data);
             if (data.case_id) {
                 setLastCaseId(data.case_id);
-                clearSessionId(); // Phase 2: new session for next conversation
+                setStoredActiveCaseId(clientId, data.case_id);
                 message.success(addCarFlow ? addCarHandoffToast : '已收到您的请求');
             } else if (data.handoff_ready) {
                 const suppressReadyToast =
@@ -595,7 +675,8 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
         setPostHandoffAppendKeys([]);
         setPostHandoffAppendDraft('');
         setPostHandoffBoundaryBlocked(null);
-        clearSessionId(); // Phase 2: fresh session for new conversation
+        clearStoredActiveCaseId(clientId);
+        clearSessionId();
     };
 
     const handlePostHandoffAppendSameCase = async () => {
@@ -684,6 +765,22 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                 }}
             >
             <Space direction="vertical" size={24} style={{ width: '100%' }}>
+                {isTimelineFirstBuilder && (
+                    <PathTimelineFirstBanner
+                        caseId={lastCaseId}
+                        turnCount={turns.length}
+                        lifecycleLabel={
+                            lastSystemTurnForFlowStep?.triageResult
+                                ? caseLifecycleUserLabel(resolveCaseLifecycle(lastSystemTurnForFlowStep.triageResult))
+                                : undefined
+                        }
+                        lifecycleColor={
+                            lastSystemTurnForFlowStep?.triageResult
+                                ? caseLifecycleTagColor(resolveCaseLifecycle(lastSystemTurnForFlowStep.triageResult))
+                                : undefined
+                        }
+                    />
+                )}
                 {/* P16-O: Message-first empty state — headline, textarea, send, trust only */}
                 {turns.length === 0 ? (
                     <Card size="small" style={cardStyle}>
@@ -713,8 +810,7 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                         size="small"
                                         style={{ padding: 0, height: 'auto', marginTop: 4 }}
                                         onClick={() => {
-                                            setLastCaseId(resumePortalHint.caseId);
-                                            setSelectedButtonIntent('add_car');
+                                            void hydrateActiveCase(resumePortalHint.caseId!, true);
                                         }}
                                     >
                                         用这条记录继续
@@ -740,7 +836,7 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                             style={{ padding: 0, height: 'auto', marginTop: 4 }}
                                             onClick={() => onOpenMyRequests()}
                                         >
-                                            打开我的办理
+                                            查看我的办理
                                         </Button>
                                     ) : null}
                                 </div>
@@ -767,6 +863,19 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                             <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55, textAlign: 'center', display: 'block' }}>
                                 {portalTrustLine}
                             </Text>
+                            {onOpenMyRequests ? (
+                                <div style={{ textAlign: 'center' }}>
+                                    <Button
+                                        type="link"
+                                        size="small"
+                                        style={{ padding: 0, height: 'auto', fontSize: 13 }}
+                                        onClick={() => onOpenMyRequests()}
+                                    >
+                                        查看我的办理
+                                    </Button>
+                                </div>
+                            ) : null}
+                            {!isMinimalBuilder && (
                             <Space wrap size={[8, 4]} style={{ justifyContent: 'center', width: '100%' }}>
                                 <Button
                                     type="link"
@@ -812,7 +921,8 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                     {portalHumanHelpLink}
                                 </Button>
                             </Space>
-                            {showStructuredAddCar && (
+                            )}
+                            {!isMinimalBuilder && showStructuredAddCar && (
                                 <div style={{ paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
                                     <Space direction="vertical" size="small" style={{ width: '100%' }}>
                                         <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
@@ -875,7 +985,14 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                     </Card>
                 ) : null}
 
-                {turns.length > 0 && (
+                {turns.length > 0 && isGuidedBuilder && customerEntryIsAddCarActive(turns, selectedButtonIntent) && (
+                    <PathGuidedRail
+                        collectedFields={lastSystemTurnForFlowStep?.triageResult?.collected_fields}
+                        stillNeededFields={lastSystemTurnForFlowStep?.triageResult?.still_needed_fields}
+                    />
+                )}
+
+                {turns.length > 0 && !isTimelineFirstBuilder && (
                 <IntakeFlowStepTrack
                     flowStep={intakeFlowStep}
                     trackLabel={
@@ -1338,7 +1455,7 @@ export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, o
                                 <Space size="middle" wrap>
                                     {onOpenMyRequests ? (
                                         <Button type="default" onClick={() => onOpenMyRequests()}>
-                                            查看办理进度
+                                            查看我的办理
                                         </Button>
                                     ) : null}
                                     <Button type="primary" ghost onClick={handleNewConversation}>

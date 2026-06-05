@@ -1,15 +1,15 @@
 /**
  * Unified Intake MVP — Customer Entry + Broker Workbench
  *
- * Tab A: Customer Entry — customer-facing intake
- * Tab B: My requests — user-facing case list + progress (persisted cases)
+ * Tab A: Customer Entry — customer-facing intake (default in dev / supervised demo)
+ * Tab B: My requests — secondary in supervised demo; top-level tab in full dev only
  * Tab C: Broker Workbench — office tool for triage, case sheet, follow-up, and drafts
  * Tab D: Scenario replay (simulation)
  *
- * Default tab: broker workbench in product_only trial; customer entry in dev/full UI.
+ * Default tab: broker in product_only trial; customer in dev / supervised demo preview.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, Button, Space, Tabs, Tag, Typography } from 'antd';
+import { Drawer, Tabs, Typography } from 'antd';
 import {
     CustomerServiceOutlined,
     InboxOutlined,
@@ -22,7 +22,7 @@ import { useClientConfig } from '../context/ClientConfigContext';
 import { CustomerEntryTab } from '@/features/intake/components/CustomerEntryTab';
 import { BrokerWorkbenchTab } from '@/features/intake/components/BrokerWorkbenchTab';
 import { MyRequestsTab } from '@/features/intake/components/MyRequestsTab';
-import { isUnifiedIntakeProductOnlyUi } from '../config/productSurface';
+import { isUnifiedIntakeProductOnlyUi, isUnifiedIntakeSupervisedDemoUi } from '../config/productSurface';
 
 const { Text } = Typography;
 
@@ -31,14 +31,19 @@ const UNIFIED_INTAKE_SHELL_MAX = 1280;
 
 const VALID_TABS = new Set(['customer', 'my_requests', 'broker', 'simulation']);
 
-function resolveInitialTab(productOnlyUi: boolean, tabParam: string | null): string {
+function resolveInitialTab(productOnlyUi: boolean, supervisedDemoUi: boolean, tabParam: string | null): string {
+    const hideCustomerTabs = productOnlyUi && !supervisedDemoUi;
     if (tabParam && VALID_TABS.has(tabParam)) {
-        if (productOnlyUi && (tabParam === 'simulation' || tabParam === 'my_requests' || tabParam === 'customer')) {
+        if (hideCustomerTabs && (tabParam === 'simulation' || tabParam === 'my_requests' || tabParam === 'customer')) {
             return 'broker';
+        }
+        // Supervised demo: my_requests is a secondary action inside 客户报送, not a primary tab.
+        if (supervisedDemoUi && tabParam === 'my_requests') {
+            return 'customer';
         }
         return tabParam;
     }
-    return productOnlyUi ? 'broker' : 'customer';
+    return productOnlyUi && !supervisedDemoUi ? 'broker' : 'customer';
 }
 
 // =============================================================================
@@ -70,10 +75,13 @@ export default function UnifiedIntakePage() {
     const { uiCopy, clientId } = useClientConfig();
     const [searchParams] = useSearchParams();
     const productOnlyUi = isUnifiedIntakeProductOnlyUi();
+    const supervisedDemoUi = isUnifiedIntakeSupervisedDemoUi();
     const officeWorkbench = uiCopy.office_workbench ?? '办公室工作台';
-    const portalBrandTagline = productOnlyUi
-        ? (uiCopy.portal_brand_tagline_trial ?? '粘贴客户消息 · 整理草稿 · 您确认后发送')
-        : (uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程');
+    const portalBrandTagline = supervisedDemoUi
+        ? (uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程')
+        : productOnlyUi
+          ? (uiCopy.portal_brand_tagline_trial ?? '粘贴客户消息 · 整理草稿 · 您确认后发送')
+          : (uiCopy.portal_brand_tagline ?? '车险报送入口 · 加车报价为当前旗舰流程');
     const portalTrustLineFallback = uiCopy.portal_trust_line ?? '我们不会自动回复；办公室确认后再联系您';
     const portalTabCustomer = uiCopy.portal_tab_customer_label ?? '客户报送';
     const portalTabCustomerSuffix = uiCopy.portal_tab_customer_suffix ?? '报送入口（加车优先）';
@@ -85,20 +93,25 @@ export default function UnifiedIntakePage() {
         uiCopy.portal_tab_my_requests_suffix ?? '进行中的请求与待补充项';
 
     const tabFromUrl = searchParams.get('tab');
-    const [activeTab, setActiveTab] = useState<string>(() => resolveInitialTab(productOnlyUi, tabFromUrl));
+    const [activeTab, setActiveTab] = useState<string>(() => resolveInitialTab(productOnlyUi, supervisedDemoUi, tabFromUrl));
     const [brokerInitialCaseId, setBrokerInitialCaseId] = useState<string | undefined>();
-    const [pilotIntroCollapsed, setPilotIntroCollapsed] = useState(productOnlyUi);
+    const [customerContinueCaseId, setCustomerContinueCaseId] = useState<string | null>(null);
     const [headerAvatarBroken, setHeaderAvatarBroken] = useState(false);
-    const showCustomerTab = !productOnlyUi;
-    const showSimulationTab = !productOnlyUi;
-    const showMyRequestsTab = !productOnlyUi;
-    const pilotIntro = productOnlyUi ? TRIAL_PILOT_INTRO : PILOT_INTRO;
+    const [myRequestsDrawerOpen, setMyRequestsDrawerOpen] = useState(false);
+    const showCustomerTab = !productOnlyUi || supervisedDemoUi;
+    const showSimulationTab = !productOnlyUi || supervisedDemoUi;
+    const showMyRequestsTab = !productOnlyUi && !supervisedDemoUi;
+    const pilotIntro = supervisedDemoUi ? PILOT_INTRO : productOnlyUi ? TRIAL_PILOT_INTRO : PILOT_INTRO;
     const singleTabMode = productOnlyUi && !showCustomerTab && !showMyRequestsTab && !showSimulationTab;
 
     useEffect(() => {
-        const next = resolveInitialTab(productOnlyUi, searchParams.get('tab'));
+        const tabParam = searchParams.get('tab');
+        const next = resolveInitialTab(productOnlyUi, supervisedDemoUi, tabParam);
         setActiveTab((current) => (current === next ? current : next));
-    }, [productOnlyUi, searchParams]);
+        if (supervisedDemoUi && tabParam === 'my_requests') {
+            setMyRequestsDrawerOpen(true);
+        }
+    }, [productOnlyUi, supervisedDemoUi, searchParams]);
 
     useEffect(() => {
         if (!showCustomerTab && activeTab === 'customer') {
@@ -138,6 +151,20 @@ export default function UnifiedIntakePage() {
         setActiveTab('broker');
     };
 
+    const handleOpenMyRequests = () => {
+        if (supervisedDemoUi) {
+            setMyRequestsDrawerOpen(true);
+            return;
+        }
+        setActiveTab('my_requests');
+    };
+
+    const handleContinueInCustomerPortal = (caseId: string) => {
+        setCustomerContinueCaseId(caseId);
+        setMyRequestsDrawerOpen(false);
+        setActiveTab('customer');
+    };
+
     const renderTabLabel = (icon: ReactNode, primary: string, suffix?: string, showSuffix = false) => (
         <span>
             {icon} {primary}
@@ -167,7 +194,9 @@ export default function UnifiedIntakePage() {
                                   onOpenScenarioSimulation={
                                       showSimulationTab ? () => setActiveTab('simulation') : undefined
                                   }
-                                  onOpenMyRequests={() => setActiveTab('my_requests')}
+                                  onOpenMyRequests={showCustomerTab ? handleOpenMyRequests : undefined}
+                                  continueCaseId={customerContinueCaseId}
+                                  onContinueCaseHandled={() => setCustomerContinueCaseId(null)}
                               />
                           ),
                       },
@@ -185,7 +214,7 @@ export default function UnifiedIntakePage() {
                               false,
                           ),
                           children: (
-                              <MyRequestsTab onContinueInCustomerPortal={() => setActiveTab('customer')} />
+                              <MyRequestsTab onContinueInCustomerPortal={handleContinueInCustomerPortal} />
                           ),
                       },
                   ]
@@ -215,6 +244,7 @@ export default function UnifiedIntakePage() {
     }, [
         clientId,
         brokerInitialCaseId,
+        customerContinueCaseId,
         officeWorkbench,
         portalTabCustomer,
         portalTabCustomerSuffix,
@@ -293,7 +323,7 @@ export default function UnifiedIntakePage() {
                     </div>
                 </div>
             </div>
-            {productOnlyUi && (
+            {(productOnlyUi || supervisedDemoUi) && (
                 <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
                     {pilotIntro.trust}
                 </Text>
@@ -313,6 +343,18 @@ export default function UnifiedIntakePage() {
                     items={tabItems}
                 />
             )}
+            {supervisedDemoUi ? (
+                <Drawer
+                    title={portalTabMyRequests}
+                    placement="right"
+                    width={Math.min(520, typeof window !== 'undefined' ? window.innerWidth - 24 : 520)}
+                    open={myRequestsDrawerOpen}
+                    onClose={() => setMyRequestsDrawerOpen(false)}
+                    destroyOnClose={false}
+                >
+                    <MyRequestsTab onContinueInCustomerPortal={handleContinueInCustomerPortal} />
+                </Drawer>
+            ) : null}
             </div>
         </div>
     );
