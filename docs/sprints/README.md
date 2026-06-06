@@ -10,7 +10,7 @@ Sprint documents capture discovery, execution notes, and acceptance criteria fro
 |-------|-----------|
 | **Runtime truth** | [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) |
 | **Active reduction** | [`docs/SIMPLIFICATION_MASTER_PLAN.md`](../SIMPLIFICATION_MASTER_PLAN.md), [`docs/SIMPLIFICATION_EXECUTION_PLAN.md`](../SIMPLIFICATION_EXECUTION_PLAN.md) |
-| **Historical** | [`docs/sprints/archive/`](./archive/README.md) |
+| **Historical** | [`docs/archive/sprints/`](../archive/sprints/INDEX.md) |
 | **Speculative** | Archived `FUTURE_SAAS_*`, `LONG_HORIZON_SAAS_*`, `TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT` — investor/historical only |
 | **Deprecated** | Old deploy reports — do not copy env tuples |
 
@@ -21,13 +21,19 @@ Sprint documents capture discovery, execution notes, and acceptance criteria fro
 
 When implementing changes, update `docs/CURRENT_PRODUCT_SHAPE.md` and runbooks — not a new sprint doc unless explicitly requested.
 
-## Archive (`docs/sprints/archive/`)
+## Archive (`docs/archive/sprints/`)
 
-**Batch 2 (2026-05-26):** ~90 root sprint docs + 16 historical directories → [`archive/`](./archive/README.md).
+> **HISTORICAL** — Sprint directories no longer live under `docs/sprints/`. See [`docs/archive/sprints/INDEX.md`](../archive/sprints/INDEX.md).
+
+**P8 batch (2026-05-28):** 38 sprint subdirectories → `docs/archive/sprints/` (git mv, not deleted).
+
+**Batch 2 (2026-05-26):** ~90 root sprint docs + 16 historical directories → now under `docs/archive/sprints/prior_sprints_archive/`.
 
 **P0 batch 2 (2026-05-26):** Turn-1 / focus-mode / stress-test packages + `workbench_handoff_readiness/` → archive. **Not deleted.**
 
 **P1 batch 3 (2026-05-26):** ~41 `ADD_CAR_*` / `add_car_*` sprint dirs → `archive/add_car_sprints/`; stale deploy reports; convergence docs → `docs/archive/convergence_reports/`. **Not deleted.**
+
+**P2 batch 4 (2026-05-26):** ~21 Role C/D + battery + simulation sprint dirs → `archive/p2_role_c_d_battery_sprints/`; ~29 reply/flow/UI polish dirs → `archive/p2_reply_flow_polish_sprints/`. **Not deleted.**
 
 ## Active at repo root (recent / convergence)
 

@@ -14,6 +14,11 @@
 | [`experiments/`](../../experiments/) | RAG / tuner / proxy experiments | Not needed for intake triage |
 | [`modules/autotuner/`](../../modules/autotuner/) | AutoTuner brain | Hidden in product-only UI |
 | [`jobhunter-clipper/`](../../jobhunter-clipper/) | Separate chrome extension lab | Ignore for broker pilot |
+| [`agents/`](../../agents/) | SearchForge lab agent modules | Ignore for broker pilot |
+| [`scripts/lab/`](../../scripts/lab/) | Lab script index + host resource triage | `scripts/README_OPERATOR.md` |
+| [`scripts/operator/`](../../scripts/operator/) | Thin wrappers for the 10 operator scripts | Same as parent `scripts/*.sh` |
+| [`docs/archive/platform/`](.) | Platform blueprints, AutoTuner docs, PLUGIN_ARCHITECTURE_MAP | `CURRENT_PRODUCT_SHAPE.md` |
+| [`docs/archive/sprint_reports/`](../sprint_reports/) | 71 historical `*_SPRINT_REPORT.md` from docs root | `BROKER_REPORTS_INDEX.md` |
 | [`docs/archive/README_LEGACY_SEARCHFORGE_LAB.md`](../README_LEGACY_SEARCHFORGE_LAB.md) | Old 1,500-line README | Current [`README.md`](../../README.md) |
 
 ---

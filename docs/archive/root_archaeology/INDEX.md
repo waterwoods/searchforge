@@ -13,3 +13,5 @@
 | `DEMO_CHECKLIST.md` | Superseded by `bash scripts/demo_pre_checklist.sh` |
 | `SOFT_DELETE_IMPLEMENTATION.md` | Historical implementation note |
 | `TEST_REPORT.md` / `TEST_PASS_REPORT.md` | Point-in-time test reports |
+| `demo_brain_report.html` | Historical lab demo artifact |
+| `triage.sh` | Moved to `scripts/lab/host_resource_triage.sh` — host/Docker resource sampling (lab) |
