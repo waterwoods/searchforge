@@ -1,0 +1,1342 @@
+{
+  "label": "before",
+  "case_count": 50,
+  "avg_total": 88.56,
+  "avg_by_dimension": {
+    "understanding": 24.68,
+    "missing_info": 17.06,
+    "office_actionability": 25.0,
+    "multi_message": 21.82
+  },
+  "cases": [
+    {
+      "id": "Y01",
+      "category": "cancellation",
+      "input_preview": "Notice: Policy will be cancelled in 7 days due to non-payment. Last notice.",
+      "multi_turn": false,
+      "expected_category": "cancellation_warning",
+      "got_category": "cancellation_warning",
+      "got_urgency": "critical",
+      "conversation_summary": "Cancellation warning.  Deadline: 7 days. 1 customer message(s). Latest: Notice: Policy will be cancelled in 7 days due to non-payment. Last notice....",
+      "broker_next_step": "Confirm whether the cancellation is still active, verify any payment already made, and call or text the client today with the exact deadline.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [
+        "notice_present",
+        "urgency_due_confusion",
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "This notice means the policy could cancel. The most important thing right now is to send me the notice and any payment confirmation—I will check; if it is still unpaid we will handle it today.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 25,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 97,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y02",
+      "category": "cancellation",
+      "input_preview": "⚠️ 重要：您的保单即将因未缴款而被取消",
+      "multi_turn": false,
+      "expected_category": "cancellation_warning",
+      "got_category": "cancellation_warning",
+      "got_urgency": "critical",
+      "conversation_summary": "Cancellation warning. 1 customer message(s). Latest: ⚠️ 重要：您的保单即将因未缴款而被取消...",
+      "broker_next_step": "Confirm whether the cancellation is still active, verify any payment already made, and call or text the client today with the exact deadline.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [
+        "cancel_notice_zh"
+      ],
+      "client_reply_draft": "这个通知说明保单有取消风险。现在最关键的是把通知和付款记录发我，我先帮你确认；如果还没付，今天尽快处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y03",
+      "category": "cancellation",
+      "input_preview": "保险公司说我的保单7天后要cancel，我已经付了呀",
+      "multi_turn": false,
+      "expected_category": "cancellation_warning",
+      "got_category": "cancellation_warning",
+      "got_urgency": "critical",
+      "conversation_summary": "Cancellation warning.  Collected: client says already paid.  Deadline: 7 days. 1 customer message(s). Latest: 保险公司说我的保单7天后要cancel，我已经付了呀...",
+      "broker_next_step": "Confirm whether the cancellation is still active, verify any payment already made, and call or text the client today with the exact deadline.",
+      "still_needed_fields": [
+        "verify_carrier_received"
+      ],
+      "collected_fields": [
+        "notice_present",
+        "already_paid_claimed",
+        "urgency_due_confusion",
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "这个通知说明保单有取消风险。现在最关键的是把通知和付款记录发我，我先帮你确认；如果还没付，今天尽快处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 20,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 92,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y04",
+      "category": "cancellation",
+      "input_preview": "Carrier notice: Your policy will be cancelled due to non-payment. 这个是不是今天一定要处理？",
+      "multi_turn": false,
+      "expected_category": "cancellation_warning",
+      "got_category": "cancellation_warning",
+      "got_urgency": "critical",
+      "conversation_summary": "Cancellation warning.  Deadline: today. 1 customer message(s). Latest: Carrier notice: Your policy will be cancelled due to non-payment. 这个是不是今天一定要处理？...",
+      "broker_next_step": "Confirm whether the cancellation is still active, verify any payment already made, and call or text the client today with the exact deadline.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [
+        "notice_present",
+        "urgency_due_confusion",
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "这个通知说明保单有取消风险。现在最关键的是把通知和付款记录发我，我先帮你确认；如果还没付，今天尽快处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y05",
+      "category": "cancellation",
+      "input_preview": "急死了 保单要停了 怎么办",
+      "multi_turn": false,
+      "expected_category": "cancellation_warning",
+      "got_category": "payment_lapse_expiration",
+      "got_urgency": "high",
+      "conversation_summary": "Payment failed / lapse risk. 1 customer message(s). Latest: 急死了 保单要停了 怎么办...",
+      "broker_next_step": "Confirm whether the payment actually failed, check whether the carrier still shows the balance due, and help the client fix it today.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [],
+      "client_reply_draft": "这看起来是付款出了问题。现在最关键的是把最新通知或付款截图发我，我先帮你确认；如果还没付，今天尽快处理，避免停保。",
+      "scores": {
+        "understanding": 9,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 72,
+        "notes": [
+          "category: got payment_lapse_expiration, expected cancellation_warning",
+          "urgency near-miss: got high, expected critical"
+        ]
+      }
+    },
+    {
+      "id": "Y06",
+      "category": "missing_documents",
+      "input_preview": "Underwriting requested driver's license copy. Client says \"I already sent it last week.\"",
+      "multi_turn": false,
+      "expected_category": "missing_document",
+      "got_category": "missing_document",
+      "got_urgency": "medium",
+      "conversation_summary": "Missing document follow-up.  Collected: driver license resent.  Client says already sent. 1 customer message(s). Latest: Underwriting requested driver's license copy. Client says \"I already sent it las...",
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "still_needed_fields": [
+        "verify_carrier_received"
+      ],
+      "collected_fields": [
+        "requested_driver_license",
+        "customer_says_sent_driver_license",
+        "already_sent_claimed",
+        "underwriting_followup"
+      ],
+      "client_reply_draft": "Got it. Our office will verify what is already on file (including the driver's license copy). You usually do not need to resend everything—we will only ask if something is still missing.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 20,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 92,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y07",
+      "category": "missing_documents",
+      "input_preview": "需要驾照 copy 客户说上周寄了",
+      "multi_turn": false,
+      "expected_category": "missing_document",
+      "got_category": "missing_document",
+      "got_urgency": "medium",
+      "conversation_summary": "Missing document follow-up. Still needed: driver license.  Client says already sent. 1 customer message(s). Latest: 需要驾照 copy 客户说上周寄了...",
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "still_needed_fields": [
+        "driver_license"
+      ],
+      "collected_fields": [
+        "requested_driver_license"
+      ],
+      "client_reply_draft": "收到。办公室会核对已有材料（含 驾照正反面），一般不用重复整套发；若还缺项会明确告诉您。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y08",
+      "category": "missing_documents",
+      "input_preview": "UW follow up - need dec page + garaging proof. 客户说上周发过了",
+      "multi_turn": false,
+      "expected_category": "missing_document",
+      "got_category": "missing_document",
+      "got_urgency": "medium",
+      "conversation_summary": "Missing document follow-up.  Collected: declaration page, garaging proof resent.  Client says already sent. 1 customer message(s). Latest: UW follow up - need dec page + garaging proof. 客户说上周发过了...",
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "still_needed_fields": [
+        "verify_carrier_received"
+      ],
+      "collected_fields": [
+        "requested_declaration_page",
+        "requested_garaging_proof",
+        "customer_says_sent_declaration_page",
+        "customer_says_sent_garaging_proof",
+        "already_sent_claimed",
+        "underwriting_followup"
+      ],
+      "client_reply_draft": "收到。办公室会核对已有材料（含 declaration page（保单首页） 和 garaging proof（车辆停放地址证明）），一般不用重复整套发；若还缺项会明确告诉您。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y09",
+      "category": "missing_documents",
+      "input_preview": "carrier 说 declaration page missing，这个什么意思",
+      "multi_turn": false,
+      "expected_category": "missing_document",
+      "got_category": "missing_document",
+      "got_urgency": "medium",
+      "conversation_summary": "Missing document follow-up. Still needed: declaration page. 1 customer message(s). Latest: carrier 说 declaration page missing，这个什么意思...",
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "still_needed_fields": [
+        "declaration_page"
+      ],
+      "collected_fields": [
+        "requested_declaration_page"
+      ],
+      "client_reply_draft": "现在文件里还缺 declaration page（保单首页）。请再发我一次；如果你之前已经发过，也跟我说一声，我这边帮你核对，核对好后就能往下推。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y10",
+      "category": "missing_documents",
+      "input_preview": "Escrow department requests updated declaration page for loan refinance. Due in 14 days.",
+      "multi_turn": false,
+      "expected_category": "missing_document",
+      "got_category": "missing_document",
+      "got_urgency": "medium",
+      "conversation_summary": "Missing document follow-up. Still needed: declaration page.  Deadline: 14 days. 1 customer message(s). Latest: Escrow department requests updated declaration page for loan refinance. Due in 1...",
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "still_needed_fields": [
+        "declaration_page"
+      ],
+      "collected_fields": [
+        "requested_declaration_page",
+        "underwriting_followup",
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "They still need the declaration page. Please send it again when you can, and if you already sent it, tell me so I can check on my side—once verified we can move forward.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 21,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 93,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y11",
+      "category": "address_change",
+      "input_preview": "我搬家了，新地址是94588 Pleasanton，保单地址要改吗？",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Address / garaging change. 1 customer message(s). Latest: 我搬家了，新地址是94588 Pleasanton，保单地址要改吗？...",
+      "broker_next_step": "Confirm new garaging address and effective date; update policy and request garaging proof if carrier requires.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "把完整通知或更清楚的照片发我。我先帮你看一下，再告诉你重点和下一步怎么处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y12",
+      "category": "address_change",
+      "input_preview": "Moved to 90210 last month — need to update garaging address on both cars",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Address / garaging change. 1 customer message(s). Latest: Moved to 90210 last month — need to update garaging address on both cars...",
+      "broker_next_step": "Confirm new garaging address and effective date; update policy and request garaging proof if carrier requires.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "Send me the full notice or a clearer photo and I will tell you what it means and what needs to be handled next.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y13",
+      "category": "address_change",
+      "input_preview": "客户说从San Jose搬到Fremont了，garaging proof要重新发吗",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Address / garaging change. 1 customer message(s). Latest: 客户说从San Jose搬到Fremont了，garaging proof要重新发吗...",
+      "broker_next_step": "Confirm new garaging address and effective date; update policy and request garaging proof if carrier requires.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "这个意思多半是还在要 garaging proof（车辆停放地址证明）。把完整通知发我，我先帮你确认缺哪一份、要补给谁。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y14",
+      "category": "driver_addition",
+      "input_preview": "我儿子刚拿驾照，想加到我的保单上，需要准备什么？",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "1 customer message(s). Latest: 我儿子刚拿驾照，想加到我的保单上，需要准备什么？...",
+      "broker_next_step": "Confirm which vehicle, driver details and license; then add driver to policy.",
+      "still_needed_fields": [
+        "driver_license"
+      ],
+      "collected_fields": [
+        "requested_driver_license"
+      ],
+      "client_reply_draft": "好的，可以加司机。把要加的是哪辆车、驾驶人信息和驾照发我，我先帮你确认下一步。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y15",
+      "category": "driver_addition",
+      "input_preview": "Add my wife as a driver on the 2020 Camry policy",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2020 Toyota Camry, driver. 1 customer message(s). Latest: Add my wife as a driver on the 2020 Camry policy...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "vin",
+        "zip",
+        "delivery_date"
+      ],
+      "collected_fields": [
+        "year",
+        "make_model",
+        "primary_driver"
+      ],
+      "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2020 Toyota Camry • ZIP: (add ZIP) • Office may still need: vin, zip, delivery_date If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y16",
+      "category": "driver_addition",
+      "input_preview": "teen driver just got license — how do I add them? VIN 1HGCM82633A004352",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "New quote / new vehicle.  Collected: VIN, driver. 1 customer message(s). Latest: teen driver just got license — how do I add them? VIN 1HGCM82633A004352...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "name",
+        "phone"
+      ],
+      "collected_fields": [
+        "vin",
+        "primary_driver",
+        "additional_drivers_yes"
+      ],
+      "client_reply_draft": "Got the VIN—please send the year and make/model for our office records.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y17",
+      "category": "vehicle_addition",
+      "input_preview": "想加一台2021 Tesla Model Y，下周提车，今天能不能先出报价",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Add car to existing policy.  Collected: 2021 Tesla Model Y. 1 customer message(s). Latest: 想加一台2021 Tesla Model Y，下周提车，今天能不能先出报价...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "vin",
+        "zip",
+        "delivery_date",
+        "primary_driver"
+      ],
+      "collected_fields": [
+        "year",
+        "make_model",
+        "insurance_status_add_to_existing"
+      ],
+      "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2021 Tesla Model Y • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y18",
+      "category": "vehicle_addition",
+      "input_preview": "I bought a new BMW X5, how much is insurance?",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "New quote / new vehicle.  Collected: BMW X5. 1 customer message(s). Latest: I bought a new BMW X5, how much is insurance?...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "delivery_date",
+        "primary_driver"
+      ],
+      "collected_fields": [
+        "make_model",
+        "insurance_status_new_customer"
+      ],
+      "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: BMW X5 • ZIP: (add ZIP) • Office may still need: year, make_model, vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message; exact premium depends on the vehicle and garaging—our office will run the numbers.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y19",
+      "category": "vehicle_addition",
+      "input_preview": "2024 Honda CR-V VIN 5J6RT6H50RL012345 zip 92618 delivery Friday — quote please",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Honda CR-V, VIN, zip. 1 customer message(s). Latest: 2024 Honda CR-V VIN 5J6RT6H50RL012345 zip 92618 delivery Friday — quote please...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "delivery_date",
+        "primary_driver",
+        "name",
+        "phone"
+      ],
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip"
+      ],
+      "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2024 Honda CR-V • ZIP: 92618 • Area hint: Orange County, CA • Office may still need: delivery_date, primary_driver, name, phone If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y20",
+      "category": "vehicle_addition",
+      "input_preview": "客户卖掉旧车了，想把2014 Honda Accord从保单拿掉",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Remove vehicle from policy.  Collected: 2014 Honda Accord. 1 customer message(s). Latest: 客户卖掉旧车了，想把2014 Honda Accord从保单拿掉...",
+      "broker_next_step": "Confirm the sold vehicle details and sale date, then remove it cleanly without leaving the client unclear on what stays covered.",
+      "still_needed_fields": [
+        "sale_date",
+        "transfer_proof"
+      ],
+      "collected_fields": [
+        "vehicle",
+        "year",
+        "make_model"
+      ],
+      "client_reply_draft": "好的，可以处理。把卖车日期、车辆信息和是否已经过户发我，我先帮你确认。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y21",
+      "category": "billing",
+      "input_preview": "Payment failed. Your card on file was declined. Please update payment method.",
+      "multi_turn": false,
+      "expected_category": "payment_lapse_expiration",
+      "got_category": "payment_lapse_expiration",
+      "got_urgency": "high",
+      "conversation_summary": "Payment failed / lapse risk. 1 customer message(s). Latest: Payment failed. Your card on file was declined. Please update payment method....",
+      "broker_next_step": "Confirm whether the payment actually failed, check whether the carrier still shows the balance due, and help the client fix it today.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [],
+      "client_reply_draft": "This looks like a payment issue. The most important thing right now is to send me the latest notice or any payment confirmation—I will check; if it is still unpaid we will fix it today.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y22",
+      "category": "billing",
+      "input_preview": "这个是不是保单要停了？我昨天收到账单 overdue",
+      "multi_turn": false,
+      "expected_category": "payment_lapse_expiration",
+      "got_category": "payment_lapse_expiration",
+      "got_urgency": "high",
+      "conversation_summary": "Payment failed / lapse risk. 1 customer message(s). Latest: 这个是不是保单要停了？我昨天收到账单 overdue...",
+      "broker_next_step": "Confirm whether the payment actually failed, check whether the carrier still shows the balance due, and help the client fix it today.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [
+        "urgency_due_confusion"
+      ],
+      "client_reply_draft": "这看起来是付款出了问题。现在最关键的是把最新通知或付款截图发我，我先帮你确认；如果还没付，今天尽快处理，避免停保。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y23",
+      "category": "billing",
+      "input_preview": "AutoPay failed again, please update card to avoid interruption in coverage",
+      "multi_turn": false,
+      "expected_category": "payment_lapse_expiration",
+      "got_category": "payment_lapse_expiration",
+      "got_urgency": "high",
+      "conversation_summary": "Payment failed / lapse risk. 1 customer message(s). Latest: AutoPay failed again, please update card to avoid interruption in coverage...",
+      "broker_next_step": "Confirm whether the payment actually failed, check whether the carrier still shows the balance due, and help the client fix it today.",
+      "still_needed_fields": [
+        "payment_proof_or_screenshot"
+      ],
+      "collected_fields": [
+        "autopay_mentioned"
+      ],
+      "client_reply_draft": "This looks like a payment issue. The most important thing right now is to send me the latest notice or any payment confirmation—I will check; if it is still unpaid we will fix it today.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y24",
+      "category": "billing",
+      "input_preview": "这个月保费太高了，能不能看看怎么降一点",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Premium review / too high. 1 customer message(s). Latest: 这个月保费太高了，能不能看看怎么降一点...",
+      "broker_next_step": "Review renewal notice and current premium; confirm remove-vehicle or coverage-adjust intent, then send 1–2 realistic options.",
+      "still_needed_fields": [
+        "renewal_notice_or_bill",
+        "current_premium_details"
+      ],
+      "collected_fields": [
+        "premium_concern",
+        "premium_zh"
+      ],
+      "client_reply_draft": "我先帮你看这次保费为什么变高，再看看有没有能调整的地方。把现在保单和最新账单发我（先发其中一个也行），我先帮你核对。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y25",
+      "category": "billing",
+      "input_preview": "Client says renewal premium is too high, can we review options?",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Premium review / too high. 1 customer message(s). Latest: Client says renewal premium is too high, can we review options?...",
+      "broker_next_step": "Review renewal notice and current premium; confirm remove-vehicle or coverage-adjust intent, then send 1–2 realistic options.",
+      "still_needed_fields": [
+        "renewal_notice_or_bill",
+        "current_premium_details"
+      ],
+      "collected_fields": [
+        "renewal_context"
+      ],
+      "client_reply_draft": "There are usually options. I can review why the premium went up and see what can realistically be adjusted. Send me the current policy page or latest bill (either one works), and I will check.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y26",
+      "category": "coverage",
+      "input_preview": "Need SR-22 filing proof for DMV suspension clearance, what should client bring?",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "DMV / SR-22 help. 1 customer message(s). Latest: Need SR-22 filing proof for DMV suspension clearance, what should client bring?...",
+      "broker_next_step": "Confirm whether DMV wants SR-22 filing proof, check any deadline, and tell the client exactly what to bring or what still needs to be filed.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "Send me the DMV notice and I will confirm whether they need SR-22 filing proof and what to bring.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y27",
+      "category": "coverage",
+      "input_preview": "客户问 liability 100/300 够不够，要不要加 umbrella",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Coverage question. 1 customer message(s). Latest: 客户问 liability 100/300 够不够，要不要加 umbrella...",
+      "broker_next_step": "Review current limits and deductible; explain trade-offs and whether a claim makes sense for this loss.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "把完整通知或更清楚的照片发我。我先帮你看一下，再告诉你重点和下一步怎么处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y28",
+      "category": "coverage",
+      "input_preview": "Does comprehensive cover windshield replacement? 2022 Tesla",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Claim intake / accident first response. 1 customer message(s). Latest: Does comprehensive cover windshield replacement? 2022 Tesla...",
+      "broker_next_step": "Guide client to collect evidence and start claim reporting; confirm photos and other-driver info received.",
+      "still_needed_fields": [
+        "photos",
+        "other_driver_insurance_license",
+        "accident_time_location",
+        "police_report_if_applicable"
+      ],
+      "collected_fields": [
+        "glass_or_vehicle_damage"
+      ],
+      "client_reply_draft": "Accidents can be stressful—first make sure everyone is okay. Then take photos and get the other driver's license and insurance info. Send me what happened, the other driver's info and photos, and I can confirm the next steps to report the claim.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y29",
+      "category": "underwriting",
+      "input_preview": "Underwriting needs clarification on prior claims. Please respond within 10 days.",
+      "multi_turn": false,
+      "expected_category": "underwriting_followup",
+      "got_category": "underwriting_followup",
+      "got_urgency": "high",
+      "conversation_summary": "Claim intake / accident first response.  Deadline: 10 days. 1 customer message(s). Latest: Underwriting needs clarification on prior claims. Please respond within 10 days....",
+      "broker_next_step": "Confirm exactly what underwriting still needs, send the client a short checklist, and respond before the stated deadline.",
+      "still_needed_fields": [
+        "photos",
+        "other_driver_insurance_license",
+        "accident_time_location",
+        "police_report_if_applicable"
+      ],
+      "collected_fields": [
+        "accident_reported",
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "Underwriting still needs more information. Send me the requested details and I will help get this back to them before the deadline.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 21,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 93,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y30",
+      "category": "underwriting",
+      "input_preview": "UW questionnaire incomplete — need signed form by 3/15/2026",
+      "multi_turn": false,
+      "expected_category": "underwriting_followup",
+      "got_category": "underwriting_followup",
+      "got_urgency": "high",
+      "conversation_summary": " Deadline: 3/15/2026. 1 customer message(s). Latest: UW questionnaire incomplete — need signed form by 3/15/2026...",
+      "broker_next_step": "Confirm exactly what underwriting still needs, send the client a short checklist, and respond before the stated deadline.",
+      "still_needed_fields": [],
+      "collected_fields": [
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "Underwriting still needs more information. Send me the requested details and I will help get this back to them before the deadline.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 21,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 93,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y31",
+      "category": "underwriting",
+      "input_preview": "核保说之前事故记录对不上，要我补说明，deadline Friday",
+      "multi_turn": false,
+      "expected_category": "underwriting_followup",
+      "got_category": "underwriting_followup",
+      "got_urgency": "high",
+      "conversation_summary": " Deadline: Friday. 1 customer message(s). Latest: 核保说之前事故记录对不上，要我补说明，deadline Friday...",
+      "broker_next_step": "Confirm exactly what underwriting still needs, send the client a short checklist, and respond before the stated deadline.",
+      "still_needed_fields": [],
+      "collected_fields": [
+        "deadline_mentioned"
+      ],
+      "client_reply_draft": "保险公司这边还要补一些资料。把通知里要的内容发我，我整理后尽快帮你回复。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 21,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 93,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y32",
+      "category": "renewal",
+      "input_preview": "Renewal reminder: Your policy renews in 45 days. No action needed at this time.",
+      "multi_turn": false,
+      "expected_category": "renewal_reminder",
+      "got_category": "renewal_reminder",
+      "got_urgency": "low",
+      "conversation_summary": " Deadline: 45 days.  Policy #: renews. 1 customer message(s). Latest: Renewal reminder: Your policy renews in 45 days. No action needed at this time....",
+      "broker_next_step": "Optional outreach for retention. No immediate action required.",
+      "still_needed_fields": [],
+      "collected_fields": [
+        "deadline_mentioned",
+        "policy_number"
+      ],
+      "client_reply_draft": "Got it. We've noted your info—our office will review and follow up with you.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y33",
+      "category": "renewal",
+      "input_preview": "续保通知到了，保费涨了30%，客户很生气",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Premium review / too high.  Collected: policy/bill mentioned. 1 customer message(s). Latest: 续保通知到了，保费涨了30%，客户很生气...",
+      "broker_next_step": "Review renewal notice and current premium; confirm remove-vehicle or coverage-adjust intent, then send 1–2 realistic options.",
+      "still_needed_fields": [
+        "renewal_notice_or_bill",
+        "current_premium_details"
+      ],
+      "collected_fields": [
+        "renewal_context",
+        "premium_zh"
+      ],
+      "client_reply_draft": "我先帮你看这次保费为什么变高，再看看有没有能调整的地方。把现在保单和最新账单发我（先发其中一个也行），我先帮你核对。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y34",
+      "category": "renewal",
+      "input_preview": "Policy #CA-8829101 renews March 15 — client wants to shop around first",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": " Deadline: renews march 15.  Policy #: CA-8829101. 1 customer message(s). Latest: Policy #CA-8829101 renews March 15 — client wants to shop around first...",
+      "broker_next_step": "Read the notice in plain language, confirm whether there is any deadline or payment risk, and tell the client the next step clearly.",
+      "still_needed_fields": [],
+      "collected_fields": [
+        "deadline_mentioned",
+        "policy_number"
+      ],
+      "client_reply_draft": "Send me the full notice or a clearer photo and I will tell you what it means and what needs to be handled next.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 20,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 92,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y35",
+      "category": "claims",
+      "input_preview": "刚出事故了，对方追尾我，现在要报claim吗？保单号8829101",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Claim intake / accident first response.  Policy #: 8829101. 1 customer message(s). Latest: 刚出事故了，对方追尾我，现在要报claim吗？保单号8829101...",
+      "broker_next_step": "Guide client to collect evidence and start claim reporting; confirm photos and other-driver info received.",
+      "still_needed_fields": [
+        "photos",
+        "accident_time_location",
+        "police_report_if_applicable"
+      ],
+      "collected_fields": [
+        "accident_reported",
+        "other_driver_info",
+        "policy_number",
+        "policy_8829101",
+        "rear_end"
+      ],
+      "client_reply_draft": "刚出事故一定很着急，先别慌。先确保人没事，再拍现场照片、记下对方车牌和保险信息。先把事故经过、对方信息和照片发我，我就能帮你确认下一步怎么报案。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y36",
+      "category": "claims",
+      "input_preview": "Rear-ended yesterday on 101, other driver has no insurance. What do I do?",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Claim intake / accident first response. 1 customer message(s). Latest: Rear-ended yesterday on 101, other driver has no insurance. What do I do?...",
+      "broker_next_step": "Guide client to collect evidence and start claim reporting; confirm photos and other-driver info received.",
+      "still_needed_fields": [
+        "photos",
+        "accident_time_location",
+        "police_report_if_applicable"
+      ],
+      "collected_fields": [
+        "other_driver_info",
+        "accident_location_101",
+        "rear_end"
+      ],
+      "client_reply_draft": "Accidents can be stressful—first make sure everyone is okay. Then take photos and get the other driver's license and insurance info. Send me what happened, the other driver's info and photos, and I can confirm the next steps to report the claim.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y37",
+      "category": "claims",
+      "input_preview": "玻璃裂了，走保险还是自己修？deductible 500",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Coverage question. 1 customer message(s). Latest: 玻璃裂了，走保险还是自己修？deductible 500...",
+      "broker_next_step": "Review current limits and deductible; explain trade-offs and whether a claim makes sense for this loss.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "把完整通知或更清楚的照片发我。我先帮你看一下，再告诉你重点和下一步怎么处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y38",
+      "category": "multi_turn",
+      "input_preview": "客户发来一张截图 上面是dmv的信 看不懂",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "1 customer message(s). Latest: 客户发来一张截图 上面是dmv的信 看不懂...",
+      "broker_next_step": "Read the notice in plain language, confirm whether there is any deadline or payment risk, and tell the client the next step clearly.",
+      "still_needed_fields": [
+        "notice_image"
+      ],
+      "collected_fields": [],
+      "client_reply_draft": "把完整通知或更清楚的照片发我。我先帮你看一下，再告诉你重点和下一步怎么处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 20,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 92,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y39",
+      "category": "multi_turn",
+      "input_preview": "这个英文 notice 看不懂",
+      "multi_turn": false,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "English notice confusion. 1 customer message(s). Latest: 这个英文 notice 看不懂...",
+      "broker_next_step": "Read the notice in plain language, confirm whether there is any deadline or payment risk, and tell the client the next step clearly.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "英文通知有些术语看不懂很正常。把完整通知或更清楚的照片发我，我先帮你看一下，再告诉你重点和下一步怎么处理。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y40",
+      "category": "multi_turn",
+      "input_preview": "客户发来截图：保单申请需要签名，但客户说「我签了呀，怎么还说要签？」",
+      "multi_turn": false,
+      "expected_category": "missing_signature",
+      "got_category": "missing_signature",
+      "got_urgency": "medium",
+      "conversation_summary": "1 customer message(s). Latest: 客户发来截图：保单申请需要签名，但客户说「我签了呀，怎么还说要签？」...",
+      "broker_next_step": "Verify which document and which field still need a signature, then point the client to the exact page to sign.",
+      "still_needed_fields": [
+        "notice_image"
+      ],
+      "collected_fields": [],
+      "client_reply_draft": "看起来还有签名没完成。把要签名的那一页发我，我先帮你确认是哪一栏。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y41",
+      "category": "multi_turn",
+      "input_preview": "When will coverage be restored?",
+      "multi_turn": true,
+      "expected_category": "payment_lapse_expiration",
+      "got_category": "payment_lapse_expiration",
+      "got_urgency": "high",
+      "conversation_summary": "Coverage question.  Collected: client says already paid. 3 customer message(s). Latest: When will coverage be restored?...",
+      "broker_next_step": "Confirm with carrier that payment was received; if not, process payment today to avoid lapse.",
+      "still_needed_fields": [
+        "verify_carrier_received"
+      ],
+      "collected_fields": [
+        "notice_present",
+        "already_paid_claimed"
+      ],
+      "client_reply_draft": "Got it. We've noted your info—our office will review and follow up with you.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 20,
+        "office_actionability": 25,
+        "multi_message": 25,
+        "total": 95,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y42",
+      "category": "multi_turn",
+      "input_preview": "VIN 4T1B11HK5KU123456 zip 91765",
+      "multi_turn": true,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2021 Toyota Camry, VIN, zip. 2 customer message(s). Latest: VIN 4T1B11HK5KU123456 zip 91765...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "delivery_date",
+        "primary_driver",
+        "name",
+        "phone"
+      ],
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "insurance_status_add_to_existing"
+      ],
+      "client_reply_draft": "Got it, 2021 model. Toyota Camry. zip 91765. Send the delivery or effective date so I can prepare the quote.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 20,
+        "total": 86,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y43",
+      "category": "multi_turn",
+      "input_preview": "客户说驾照正反面都发你微信了",
+      "multi_turn": true,
+      "expected_category": "missing_document",
+      "got_category": "missing_document",
+      "got_urgency": "medium",
+      "conversation_summary": "Missing document follow-up.  Collected: driver license resent.  Client says already sent. 2 customer message(s). Latest: 客户说驾照正反面都发你微信了...",
+      "broker_next_step": "Verify with carrier that resubmitted documents were received; request any still-missing items.",
+      "still_needed_fields": [
+        "verify_carrier_received"
+      ],
+      "collected_fields": [
+        "requested_driver_license",
+        "customer_says_sent_driver_license",
+        "already_sent_claimed",
+        "underwriting_followup"
+      ],
+      "client_reply_draft": "好的，收到了。办公室会尽快处理，有结果会联系您。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 20,
+        "office_actionability": 25,
+        "multi_message": 18,
+        "total": 88,
+        "notes": [
+          "prior turn context weak in summary/collected"
+        ]
+      }
+    },
+    {
+      "id": "Y44",
+      "category": "multi_turn",
+      "input_preview": "不是payment问题，是地址不对被UW退回了",
+      "multi_turn": true,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Prior turn: 保单要cancel了. Address / garaging change.  Customer corrected/clarified. 2 customer message(s). Latest: 不是payment问题，是地址不对被UW退回了...",
+      "broker_next_step": "Confirm new garaging address and effective date; update policy and request garaging proof if carrier requires.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "好的，明白了。办公室会尽快处理，有结果会联系您。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 20,
+        "total": 86,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y45",
+      "category": "multi_turn",
+      "input_preview": "我发你账单了，你看能不能换便宜点的coverage",
+      "multi_turn": true,
+      "expected_category": "customer_question",
+      "got_category": "customer_question",
+      "got_urgency": "medium",
+      "conversation_summary": "Prior turn: 续保费太高. Premium review / too high. 2 customer message(s). Latest: 我发你账单了，你看能不能换便宜点的coverage...",
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "still_needed_fields": [
+        "target_coverage_preference"
+      ],
+      "collected_fields": [
+        "premium_concern",
+        "renewal_context",
+        "coverage_adjust_interest",
+        "policy_bill_sent",
+        "bill_sent_claimed",
+        "premium_zh"
+      ],
+      "client_reply_draft": "收到，我发你账单了，你看能不能换便宜点的 coverage，请先发年份和车型，办公室报价前需要这两项；具体数字要等办公室按车型和地址算出来。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 20,
+        "total": 86,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y46",
+      "category": "edge",
+      "input_preview": "[Forwarded email, subject: \"Important - Action Required\" but body is just a generic marketing footer",
+      "multi_turn": false,
+      "expected_category": "unclear",
+      "got_category": "unclear",
+      "got_urgency": "medium",
+      "conversation_summary": "1 customer message(s). Latest: [Forwarded email, subject: \"Important - Action Required\" but body is just a gene...",
+      "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "This part is still unclear. Send me the full notice or a little more context and I will confirm the next step.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y47",
+      "category": "edge",
+      "input_preview": "Your policy is pending issuance. We will notify you within 5-7 business days.",
+      "multi_turn": false,
+      "expected_category": "policy_delay_pending",
+      "got_category": "policy_delay_pending",
+      "got_urgency": "low",
+      "conversation_summary": "1 customer message(s). Latest: Your policy is pending issuance. We will notify you within 5-7 business days....",
+      "broker_next_step": "No action needed right now. Keep the file parked and update the client if the carrier misses the stated timeline.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "Got it. We've noted your info—our office will review and follow up with you.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y48",
+      "category": "edge",
+      "input_preview": "Lienholder requests certificate of insurance. Policy number and effective dates needed.",
+      "multi_turn": false,
+      "expected_category": "informational",
+      "got_category": "informational",
+      "got_urgency": "medium",
+      "conversation_summary": " Policy #: number. 1 customer message(s). Latest: Lienholder requests certificate of insurance. Policy number and effective dates ...",
+      "broker_next_step": "No action required. Optional brief confirmation to client.",
+      "still_needed_fields": [],
+      "collected_fields": [
+        "policy_number"
+      ],
+      "client_reply_draft": "Got it. We've noted your info—our office will review and follow up with you.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y49",
+      "category": "edge",
+      "input_preview": "联系人工",
+      "multi_turn": false,
+      "expected_category": "customer_requested_human",
+      "got_category": "customer_requested_human",
+      "got_urgency": "medium",
+      "conversation_summary": "Customer requested to speak with office / 客户要求联系人工",
+      "broker_next_step": "Customer requested human contact. Call or message back promptly.",
+      "still_needed_fields": [],
+      "collected_fields": [
+        "customer_requested_human"
+      ],
+      "client_reply_draft": "好的，已帮您转给陈奎办公室，他们会尽快联系您。",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 20,
+        "total": 86,
+        "notes": []
+      }
+    },
+    {
+      "id": "Y50",
+      "category": "edge",
+      "input_preview": "Your proof of insurance has been emailed to the DMV. No further action required.",
+      "multi_turn": false,
+      "expected_category": "informational",
+      "got_category": "informational",
+      "got_urgency": "low",
+      "conversation_summary": "1 customer message(s). Latest: Your proof of insurance has been emailed to the DMV. No further action required....",
+      "broker_next_step": "No action required. Optional brief confirmation to client.",
+      "still_needed_fields": [],
+      "collected_fields": [],
+      "client_reply_draft": "Got it. We've noted your info—our office will review and follow up with you.",
+      "scores": {
+        "understanding": 25,
+        "missing_info": 16,
+        "office_actionability": 25,
+        "multi_message": 22,
+        "total": 88,
+        "notes": []
+      }
+    }
+  ]
+}

@@ -1,8 +1,21 @@
-# Andy Quick Start — Broker Demo
+# Andy Quick Start — Unified Intake (Local)
 
-One file to read before running the demo.
+One file before running the **Unified Intake** workbench locally.
 
-**Runtime path:** Default = **8001** (run_demo_local). Docker = 8000. Recovery = `bash scripts/restore_8001_readiness.sh`. See `docs/runbooks/RUNTIME_PATH_STANDARD.md`.
+**Product:** inbox triage + case workbench — **not** the SearchForge RAG lab (that is optional at `/demo`).
+
+**Runtime path:** Default = **8001** (`run_demo_local.sh`). Docker **8000** = legacy lab stack. Recovery = `bash scripts/restore_8001_readiness.sh`. See `docs/runbooks/RUNTIME_PATH_STANDARD.md`.
+
+**Recommended local pilot posture** (matches Cloud Run; add to `.env`):
+
+```bash
+UNIFIED_INTAKE_PRODUCT_ONLY=1
+UNIFIED_INTAKE_INTAKE_CORE_READINESS=1
+```
+
+Intake triage works **without Qdrant**. Vectors are only for notice/knowledge wedge and the `/demo` page. See `configs/demo.env.example` — LOCAL RECOMMENDED block.
+
+**Ignore list:** `docs/runbooks/OPERATOR_IGNORE_LIST.md`
 
 ## 1. Run demo prep
 
@@ -17,7 +30,7 @@ Runs guardrail + validation (if backend up) + writes checklist. Output: `results
 bash scripts/demo_prep_one_command.sh
 ```
 
-- **If "Use Live path" or "Ready for Live Demo"** → Open http://localhost:5173/demo and run the script.
+- **If "Use Live path" or "Ready for Live Demo"** → Open http://localhost:5173/workbench/unified-intake (product) or http://localhost:5173/demo (optional RAG wedge).
 - **If "Use Offline path"** → Either use offline (click recommended questions) or fix live (see below).
 
 ## 2. Start demo (if not already running)
@@ -34,9 +47,12 @@ USE_LOCAL_QDRANT=1 bash scripts/run_demo_local.sh
 
 *(Requires: `docker compose up -d qdrant` and `bash scripts/seed_local_qdrant.sh` first.)*
 
-## 3. Demo URL
+## 3. URLs
 
-**http://localhost:5173/demo**
+| URL | Use |
+|-----|-----|
+| **http://localhost:5173/workbench/unified-intake** | **Product** — intake workbench |
+| http://localhost:5173/demo | Optional RAG Q&A wedge (needs vectors for live mode) |
 
 ## 4. If live fails
 

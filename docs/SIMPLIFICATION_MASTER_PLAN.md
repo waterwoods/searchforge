@@ -32,7 +32,7 @@
 
 - SearchForge R&D platform (RAG lab, tuner, graph, vitals, jobhunter, mortgage)
 - Enterprise IAM / multi-tenant admin
-- “Trusted Assistant Platform” as a separate SKU (`docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` is **investor theater** — useful framing, dangerous as build list)
+- “Trusted Assistant Platform” as a separate SKU (`docs/archive/platform/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` is **investor theater** — useful framing, dangerous as build list)
 - Full CRM, Stripe billing, workflow engine, event bus
 
 ---

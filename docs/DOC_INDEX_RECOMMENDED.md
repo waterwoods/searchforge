@@ -10,7 +10,7 @@
 | Document | Notes |
 |----------|--------|
 | `docs/SYSTEM_ONE_PAGE_MAP.md` | ~3 minutes; diagram + facts. |
-| `docs/UNIFIED_INTAKE_MASTER_BLUEPRINT.md` | Full module table + invariants. |
+| `docs/archive/platform/UNIFIED_INTAKE_MASTER_BLUEPRINT.md` | Full module table + invariants (**archived** — cross-check `CURRENT_PRODUCT_SHAPE.md`). |
 | `docs/PRODUCT_TRUTH_DOCUMENT.md` | Product principles, field strategy, broker completion. |
 | `docs/PG_TRUTH_PIPELINE_CONTRACT.md` | API ↔ PG vehicle identity contract. |
 | `docs/AMBIGUITY_CLARIFY_CONTRACT.md` | Clarify vs guess for multi-vehicle. |
@@ -46,7 +46,7 @@
 | Path pattern | Notes |
 |--------------|--------|
 | `results/*REPORT*.md` | Lock-in, takeover, evaluation — **check date**; may describe target state ahead of branch tip. |
-| `results/SIMPLIFICATION_AND_PLUGIN_AUDIT.md` | Plug-in audit (aligns with `PLUGIN_ARCHITECTURE_MAP.md`). |
+| `results/SIMPLIFICATION_AND_PLUGIN_AUDIT.md` | Plug-in audit (aligns with `docs/archive/platform/PLUGIN_ARCHITECTURE_MAP.md`). |
 | `docs/sprints/**/03_FINAL_REPORT.md` | Historical sprint outputs. |
 
 ---
@@ -61,7 +61,7 @@
 | `results/FINAL_LOCKIN_REPORT.md` | Valuable metrics; **REMOVE_LATER** items may be stale vs branch — cite alongside `DEPRECATED_PATHS.md`. |
 | `results/FINAL_SYSTEM_REPORT.md` | May assert resolver wiring that **branch tip** does not show — archive mentally as “sprint snapshot.” |
 | Older `docs/sprints/**/01_BLUEPRINT.md` files | Useful archaeology; not READ_FIRST. |
-| `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Potential overlap** with `UNIFIED_INTAKE_MASTER_BLUEPRINT.md` — keep both; prefer **master blueprint** for architecture until outlines are reconciled in a future edit. |
+| `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Potential overlap** with archived master blueprint — prefer `CURRENT_PRODUCT_SHAPE.md` for runtime truth. |
 
 **Missing doc placeholder:** `docs/PG_MULTIVEHICLE_ENTITY_PLAN.md` — referenced in sprint audit but **not in repo**; use `VEHICLE_ENTITY_MEMORY_MVP.md` instead.
 
@@ -69,9 +69,10 @@
 
 ## New in this audit sprint
 
-- `docs/UNIFIED_INTAKE_MASTER_BLUEPRINT.md`
+- `docs/archive/platform/UNIFIED_INTAKE_MASTER_BLUEPRINT.md` (archived P6)
 - `docs/DEPRECATED_PATHS.md`
-- `docs/PLUGIN_ARCHITECTURE_MAP.md`
+- `docs/archive/platform/PLUGIN_ARCHITECTURE_MAP.md` (archived P6)
 - `docs/SYSTEM_ONE_PAGE_MAP.md`
 - `docs/DOC_INDEX_RECOMMENDED.md` (this file)
 - `results/MASTER_BLUEPRINT_AUDIT_REPORT.md`
+- `docs/archive/sprint_reports/` — 71 historical sprint reports (archived P6)

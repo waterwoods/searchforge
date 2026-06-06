@@ -66,8 +66,17 @@ Local dev and **non-paid** Cloud Run smoke deploys may use relaxed posture **onl
 |-----------------|-------------------------|
 | `bash scripts/run_demo_local.sh` (port 8001) | `DEMO_MODE=true` with `ENV=prod` |
 | JSON case files when no DB URL | JSON case writes with PG-primary |
-| `platform_full` (no `PRODUCT_ONLY`) | Anonymous support/intake on public URL |
+| `platform_full` (no `PRODUCT_ONLY`) — **lab opt-in** | Anonymous support/intake on public URL |
 | In-memory sessions (`UNIFIED_INTAKE_ALLOW_INMEMORY_SESSIONS_FOR_TESTS=1`) | Missing intake/support keys |
+
+**Recommended local pilot posture** (trial prep — matches Cloud Run; add to `.env`):
+
+```bash
+UNIFIED_INTAKE_PRODUCT_ONLY=1
+UNIFIED_INTAKE_INTAKE_CORE_READINESS=1
+```
+
+Without `RUN_DEMO_LAB=1`, `run_demo_local.sh` **defaults** to the flags above (paid-pilot parity). Lab stack: `RUN_DEMO_LAB=1 bash scripts/run_demo_local.sh`. See `configs/demo.env.example` LOCAL block and `docs/runbooks/OPERATOR_IGNORE_LIST.md`.
 
 Set `PILOT_DEPLOY_STRICT=1` in `.env.cloudrun` to force paid-pilot validation even during staging experiments.
 
@@ -151,4 +160,4 @@ See also: `docs/sprints/README.md`.
 | `docs/DEPRECATED_PATHS.md` | Removed flags and dead paths |
 | `docs/SIMPLIFICATION_MASTER_PLAN.md` | Reduction roadmap (hide/archive/delete — not runtime truth) |
 
-**Not runtime truth (future exploration / investor framing):** `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md`, archived `FUTURE_SAAS_*` and `LONG_HORIZON_SAAS_*` sprint docs — see `docs/PROJECT_DOC_SYSTEM_MAP.md` § Future exploration.
+**Not runtime truth (future exploration / investor framing):** `docs/archive/platform/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md`, archived `FUTURE_SAAS_*` and `LONG_HORIZON_SAAS_*` sprint docs — see `docs/PROJECT_DOC_SYSTEM_MAP.md` § Future exploration.

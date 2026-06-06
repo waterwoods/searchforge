@@ -16,14 +16,42 @@ Then use this map to find specific docs.
 
 ---
 
-## PRIMARY — Current Source of Truth
+## START HERE — ≤10 docs (operators, founders, support)
+
+Read in this order. **Ignore everything else** until you need a specific task.
+
+| # | Doc | Who |
+|---|-----|-----|
+| 1 | `AGENTS.md` | Agents / engineers |
+| 2 | `docs/CURRENT_PRODUCT_SHAPE.md` | Everyone — what the product is *today* |
+| 3 | `docs/goals/insurance_paid_pilot_goal.md` | Founders — scope in/out |
+| 4 | `docs/runbooks/OPERATOR_CHEAT_SHEET.md` | Operators — deploy, health, 2am |
+| 4a | `docs/runbooks/OPERATOR_SURFACE.md` | Everyone — **target operator surface** (10 scripts, 10 docs, 5 endpoints) |
+| 4b | `docs/runbooks/OPERATOR_IGNORE_LIST.md` | Operators — what to ignore (vectors, /ready, sprints) |
+| 5 | `docs/runbooks/SUPPORT_TRUTH_MAP.md` | Support — manifest keys, health |
+| 6 | `docs/runbooks/DEPLOY_TRUTH_MAP.md` | Operators — which deploy script |
+| 7 | `docs/ANDY_QUICK_START.md` | Founders — local demo |
+| 8 | `docs/runbooks/DEPLOYMENT_PLAYBOOK.md` | Operators — release steps |
+| 9 | `docs/SIMPLIFICATION_MASTER_PLAN.md` | Engineers — what to delete/hide |
+| 10 | `docs/trial/INDEX.md` | Founders — real broker trial |
+| — | `docs/BROKER_ONE_PAGER.md` | **Brokers** — what it is, why pay, how to try |
+| — | `docs/FOUNDER_ONE_PATH.md` | **Founders** — single canonical path |
+| — | `docs/P9_BROKER_SURFACE_PLAN.md` | P9 customer journey + confusion lists |
+
+**Paid pilot only?** Skip platform blueprints below; `CURRENT_PRODUCT_SHAPE` wins over any blueprint.
+
+**Macro product direction (not daily ops):** `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` — read before large product sprints, not before every deploy.
+
+---
+
+## PRIMARY — Extended reference (beyond START HERE)
 
 | Doc | Purpose |
 |-----|---------|
 | `AGENTS.md` | Single entry point for agents |
 | `docs/CURRENT_PRODUCT_SHAPE.md` | **Current** product, deployment, paid-pilot env requirements |
 | `docs/SIMPLIFICATION_MASTER_PLAN.md` | **Reduction roadmap** — what to hide/archive/delete; brutally honest inventory |
-| `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Macro blueprint (north star)** — Unified Intake product direction, business framing, state-driven flow, client-pack strategy, technical evolution; align major sprints |
+| `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Macro blueprint** — product direction for major sprints; **not** deploy/runtime truth (see START HERE) |
 | `docs/goals/insurance_paid_pilot_goal.md` | Master goal, scope, deliverables |
 | `docs/STANDARD_SCENARIO_PACKAGE.md` | Sellable package: 7 scenarios, broker value, demo path |
 | `docs/ANDY_QUICK_START.md` | One file before running demo |
@@ -36,16 +64,23 @@ Then use this map to find specific docs.
 | `docs/sprints/MATURE_SKELETON_COMMERCIAL_INTAKE_BACKBONE/03_PAGE_FLOW_STATE_HANDOFF_BACKBONE_SPEC.md` | **Mature backbone** — page, flow, state, handoff structure; borrow from Stripe/Amazon/Intercom/Zendesk; future-sprint reference |
 | `docs/LIGHTWEIGHT_STATE_MACHINE_BLUEPRINT.md` | Lightweight state machine, field progress, follow-up type strategy |
 | `docs/KNOWLEDGE_ARCHITECTURE_AND_CONFIG_LAYER.md` | Architecture layers: rules, knowledge, client, state, tests |
-| `docs/CHEN_KUI_TRIAL_PACK.md` | Chen Kui trial pack: scenarios, order, value validation questions, pilot offer |
-| `docs/trial/INDEX.md` | **Real Broker Trial Package** — 1-week pilot: blueprint, scope, scenario pack, metrics, workflow, founder notes |
-| `docs/trial/TRIAL_EXECUTION_BLUEPRINT.md` | **Trial execution readiness** — last-mile hardening, runbook, handoff spec |
-| `docs/trial/FOUNDER_LAUNCH_NOTES.md` | **Trial launch** — single entry: what to do, say, inspect, collect; `bash scripts/trial_launch_check.sh` |
+| `docs/BROKER_ONE_PAGER.md` | **Broker customer** — one page: what, why pay, try, support |
+| `docs/BROKER_DEMO_FLOW.md` | Founder → broker demo steps |
+| `docs/BROKER_TRIAL_PLAYBOOK.md` | Broker 7-day trial playbook |
+| `docs/FOUNDER_ONE_PATH.md` | **Founder** — run, validate, demo, deploy, trial, support |
+| `docs/DEMO_STORY.md` | Demo narrative + 15/5/60 sec variants |
+| `docs/TRIAL_ONE_PATH.md` | Trial Day 0–7 — single path |
+| `docs/CUSTOMER_LANGUAGE_GUIDE.md` | Engineer → broker vocabulary |
+| `docs/trial/INDEX.md` | **Real Broker Trial** — templates + launch command |
 | `docs/RETRIEVAL_KNOWLEDGE_LAYER_FOUNDATION.md` | Retrieval boundaries: what goes into RAG vs rules/config vs state |
 | `docs/CURRENT_SYSTEM_FILE_CLASSIFICATION.md` | File-to-layer mapping, what lives where |
 | `docs/CONFIG_EXTRACTION_GUIDE.md` | Config structure, what is extracted, common/industry/client boundary |
 | `docs/CLIENT_PACK_FOUNDATION.md` | Package model: common base → industry pack → client pack |
 | `docs/DEPLOYMENT_READINESS.md` | Vercel + Cloud Run deployment checklist, env vars, cost notes |
 | `docs/runbooks/DEPLOYMENT_PLAYBOOK.md` | Release operations: pre/deploy/post, gotchas |
+| `docs/runbooks/OPERATOR_CHEAT_SHEET.md` | **2am operator path** — deploy, health, env, legacy vs prod |
+| `docs/runbooks/DEPLOY_TRUTH_MAP.md` | Deploy scripts: which to run, which to avoid |
+| `docs/runbooks/SUPPORT_TRUTH_MAP.md` | Support manifest, keys, health for operators |
 | `docs/runbooks/RELEASE_CHECKLIST.md` | Every-release checklist (use before claiming success) |
 
 ---
@@ -56,7 +91,9 @@ Then use this map to find specific docs.
 
 | Doc | Class | Use |
 |-----|-------|-----|
-| `docs/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | Investor / platform fantasy | Fundraising narrative — dangerous as a build list |
+| `docs/archive/platform/TRUSTED_ASSISTANT_PLATFORM_BLUEPRINT.md` | Investor / platform fantasy | Fundraising narrative — dangerous as a build list |
+| `docs/archive/platform/` | Platform blueprints + AutoTuner docs | Archived — not deploy truth |
+| `docs/archive/sprint_reports/` | Historical `*_SPRINT_REPORT.md` | Point-in-time — ignore unless debugging history |
 | `docs/sprints/archive/FUTURE_SAAS_OPERATING_SYSTEM_SPRINT.md` | Historical architecture | Multi-tenant OS speculation — archived |
 | `docs/sprints/archive/FUTURE_SAAS_OPERATING_SYSTEM_FINAL_REPORT.md` | Historical report | Same — not shipped |
 | `docs/sprints/archive/LONG_HORIZON_SAAS_OPERATING_SYSTEM_SPRINT.md` | Historical architecture | Long-horizon convergence — not current deploy |
@@ -71,8 +108,9 @@ Then use this map to find specific docs.
 
 | Use | Docs |
 |-----|------|
-| **Primary** — read first | `docs/runbooks/BROKER_VALUE_VALIDATION_MEETING_PACK.md`, `docs/ANDY_QUICK_START.md`, `docs/ANDY_2MIN_BEFORE_DEMO.md` |
-| **Supporting** — when needed | `docs/BROKER_DEMO_OPERATOR_RUNBOOK.md`, `docs/BROKER_DEMO_CHECKLIST.md`, `docs/BROKER_MEETING_PACKAGE.md`, `docs/BROKER_DEMO_SCRIPT_15MIN.md`, `docs/broker_value_feedback_form.md`, `docs/FOUNDER_DEMO_SOP.md` (Unified Intake / Chen Kui trial) |
+| **Primary** — read first | `docs/BROKER_ONE_PAGER.md`, `docs/DEMO_STORY.md`, `docs/BROKER_DEMO_FLOW.md`, `docs/ANDY_QUICK_START.md` |
+| **Supporting** — when needed | `docs/runbooks/BROKER_VALUE_VALIDATION_MEETING_PACK.md`, `docs/ANDY_2MIN_BEFORE_DEMO.md` |
+| **Archived (P9)** | `docs/archive/p9_broker_surface/` — pre-P9 broker/founder/trial overlap |
 
 Primary = single source of truth. Supporting = lighter summaries or one-purpose docs (checklist, feedback form).
 
@@ -102,6 +140,8 @@ Primary = single source of truth. Supporting = lighter summaries or one-purpose 
 | Task | Doc |
 |------|-----|
 | Demo prep | `docs/ANDY_QUICK_START.md`, `docs/ANDY_2MIN_BEFORE_DEMO.md` |
+| Deploy / 2am ops | `docs/runbooks/OPERATOR_CHEAT_SHEET.md`, `docs/runbooks/DEPLOY_TRUTH_MAP.md` |
+| Support / prod debug | `docs/runbooks/SUPPORT_TRUTH_MAP.md` |
 | Broker meeting | `docs/runbooks/BROKER_VALUE_VALIDATION_MEETING_PACK.md` |
 | Ports / runtime | `docs/runbooks/RUNTIME_PATH_STANDARD.md` |
 | Quality bar | `docs/BROKER_DEMO_QUALITY_STANDARD.md` |

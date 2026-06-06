@@ -1,0 +1,558 @@
+{
+  "scenario_ids": [
+    "AC01",
+    "AC02",
+    "AC03",
+    "AC04",
+    "AC05",
+    "AC06",
+    "AC07",
+    "AC08",
+    "AC09",
+    "AC10"
+  ],
+  "engine_results": [
+    {
+      "id": "AC01",
+      "title": "完整客户 · Tesla · 中文",
+      "case_quality": 89,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 94,
+        "completeness": 89,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ]
+    },
+    {
+      "id": "AC02",
+      "title": "Complete customer · Toyota · English",
+      "case_quality": 89,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 94,
+        "completeness": 89,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ]
+    },
+    {
+      "id": "AC03",
+      "title": "VIN缺失 · Honda · 中文",
+      "case_quality": 81,
+      "service_type": "add_car",
+      "handoff_ready": false,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": false,
+        "clarity": 86,
+        "completeness": 81,
+        "confidence": 71,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": []
+    },
+    {
+      "id": "AC04",
+      "title": "Driver missing · Toyota · mixed",
+      "case_quality": 81,
+      "service_type": "add_car",
+      "handoff_ready": false,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": false,
+        "clarity": 86,
+        "completeness": 81,
+        "confidence": 71,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": []
+    },
+    {
+      "id": "AC05",
+      "title": "保险卡已上传 · Tesla",
+      "case_quality": 92,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 97,
+        "completeness": 92,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": []
+    },
+    {
+      "id": "AC06",
+      "title": "配偶主驾 · Lexus · 中文",
+      "case_quality": 82,
+      "service_type": "add_car",
+      "handoff_ready": false,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": false,
+        "clarity": 87,
+        "completeness": 82,
+        "confidence": 72,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": [
+        "expected collected miss: ['primary_driver']"
+      ]
+    },
+    {
+      "id": "AC07",
+      "title": "Teen driver · Honda · English",
+      "case_quality": 92,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 97,
+        "completeness": 92,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": []
+    },
+    {
+      "id": "AC08",
+      "title": "Tesla 急单 · 中文",
+      "case_quality": 87,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 92,
+        "completeness": 87,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']"
+      ]
+    },
+    {
+      "id": "AC09",
+      "title": "Toyota · 中英混合",
+      "case_quality": 92,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 97,
+        "completeness": 92,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": []
+    },
+    {
+      "id": "AC10",
+      "title": "Honda CR-V · English complete",
+      "case_quality": 89,
+      "service_type": "add_car",
+      "handoff_ready": true,
+      "broker": {
+        "need_wechat": false,
+        "quote_immediately": true,
+        "clarity": 94,
+        "completeness": 89,
+        "confidence": 100,
+        "minutes_saved_gross": 6.1,
+        "minutes_saved_net": 6.1
+      },
+      "founder_pass": true,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ]
+    }
+  ],
+  "paths": {
+    "minimal": {
+      "scenarios": [
+        {
+          "id": "AC01",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 94
+        },
+        {
+          "id": "AC02",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 94
+        },
+        {
+          "id": "AC03",
+          "case_quality": 81,
+          "need_wechat": false,
+          "broker_confidence": 71,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 87
+        },
+        {
+          "id": "AC04",
+          "case_quality": 81,
+          "need_wechat": false,
+          "broker_confidence": 71,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 87
+        },
+        {
+          "id": "AC05",
+          "case_quality": 92,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 95
+        },
+        {
+          "id": "AC06",
+          "case_quality": 82,
+          "need_wechat": false,
+          "broker_confidence": 72,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 87
+        },
+        {
+          "id": "AC07",
+          "case_quality": 92,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 95
+        },
+        {
+          "id": "AC08",
+          "case_quality": 87,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 94
+        },
+        {
+          "id": "AC09",
+          "case_quality": 92,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 95
+        },
+        {
+          "id": "AC10",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.4,
+          "customer_friction": 84,
+          "engineering_cost": 100,
+          "commercial_readiness": 94
+        }
+      ],
+      "averages": {
+        "case_quality": 87.4,
+        "broker_confidence": 91.4,
+        "minutes_saved": 6.4,
+        "customer_friction": 84.0,
+        "engineering_cost": 100.0,
+        "commercial_readiness": 92.2
+      },
+      "need_wechat_count": 0,
+      "founder_pass_count": 10
+    },
+    "guided": {
+      "scenarios": [
+        {
+          "id": "AC01",
+          "case_quality": 91,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC02",
+          "case_quality": 91,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC03",
+          "case_quality": 83,
+          "need_wechat": false,
+          "broker_confidence": 74,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 84
+        },
+        {
+          "id": "AC04",
+          "case_quality": 83,
+          "need_wechat": false,
+          "broker_confidence": 74,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 84
+        },
+        {
+          "id": "AC05",
+          "case_quality": 94,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC06",
+          "case_quality": 84,
+          "need_wechat": false,
+          "broker_confidence": 75,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 85
+        },
+        {
+          "id": "AC07",
+          "case_quality": 94,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC08",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 91
+        },
+        {
+          "id": "AC09",
+          "case_quality": 94,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC10",
+          "case_quality": 91,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.9,
+          "customer_friction": 77,
+          "engineering_cost": 77,
+          "commercial_readiness": 92
+        }
+      ],
+      "averages": {
+        "case_quality": 89.4,
+        "broker_confidence": 92.3,
+        "minutes_saved": 6.9,
+        "customer_friction": 77.0,
+        "engineering_cost": 77.0,
+        "commercial_readiness": 89.6
+      },
+      "need_wechat_count": 0,
+      "founder_pass_count": 10
+    },
+    "timeline": {
+      "scenarios": [
+        {
+          "id": "AC01",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 91
+        },
+        {
+          "id": "AC02",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 91
+        },
+        {
+          "id": "AC03",
+          "case_quality": 81,
+          "need_wechat": false,
+          "broker_confidence": 73,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 84
+        },
+        {
+          "id": "AC04",
+          "case_quality": 81,
+          "need_wechat": false,
+          "broker_confidence": 73,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 84
+        },
+        {
+          "id": "AC05",
+          "case_quality": 92,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC06",
+          "case_quality": 82,
+          "need_wechat": false,
+          "broker_confidence": 74,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 84
+        },
+        {
+          "id": "AC07",
+          "case_quality": 92,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC08",
+          "case_quality": 87,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 91
+        },
+        {
+          "id": "AC09",
+          "case_quality": 92,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 92
+        },
+        {
+          "id": "AC10",
+          "case_quality": 89,
+          "need_wechat": false,
+          "broker_confidence": 100,
+          "minutes_saved": 6.3,
+          "customer_friction": 75,
+          "engineering_cost": 80,
+          "commercial_readiness": 91
+        }
+      ],
+      "averages": {
+        "case_quality": 87.4,
+        "broker_confidence": 92.0,
+        "minutes_saved": 6.3,
+        "customer_friction": 75.0,
+        "engineering_cost": 80.0,
+        "commercial_readiness": 89.2
+      },
+      "need_wechat_count": 0,
+      "founder_pass_count": 10
+    }
+  },
+  "role_d_reference": {
+    "reread": 82.6,
+    "need_wechat": "0/10",
+    "source": "P16Z10B local battery"
+  }
+}

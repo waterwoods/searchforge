@@ -27,7 +27,7 @@
 ### 1. Old triage vehicle selection / primary extract
 
 - **Why deprecated:** Parallel “which vehicle wins” logic fights the **VehicleResolver** and breaks the mental model: one decision, one PG row, API mirror.
-- **Still present?** **Mixed** — `_extract_primary_add_car_vehicle_concrete` is removed. Add-car `vehicle_key` / `primary_vehicle_summary` are assembled in `triage.py` via `_derive_vehicle_key_from_add_car_text`, live entity payload reads, and related branches. **`resolve_add_car_active_vehicle` in `active_vehicle_resolver.py` is not imported by `triage.py`** (grep-verified 2026-05-07); it remains tested behavior **without** a production call site until an intentional wiring or removal sprint.
+- **Still present?** **Triage-only** — `_extract_primary_add_car_vehicle_concrete` is removed. Add-car `vehicle_key` / `primary_vehicle_summary` are assembled in `triage.py` via `_derive_vehicle_key_from_add_car_text`, live entity payload reads, and related branches. Parallel `active_vehicle_resolver` module was **deleted** 2026-05-28 (see section below).
 - **Safe removal step:** N/A for primary extract — keep resolver + guardrails when changing multi-vehicle behavior.
 
 ### 2. Heuristic API vehicle fields without PG
@@ -74,8 +74,8 @@
 
 ---
 
-## `active_vehicle_resolver` vs `triage.py` (explicit)
+## `active_vehicle_resolver` — removed (2026-05-28)
 
-- **Module:** `services/fiqa_api/inbox_triage/active_vehicle_resolver.py` — `resolve_add_car_active_vehicle` is **unit-tested** deterministic resolver logic (segment + message → resolution or ambiguous).
-- **Triage (`triage.py`):** **Does not import** this module on current mainline. Vehicle scope conflicts for append flows use `routing_guard.py` (`detect_vehicle_conflict`, `text_suggests_vehicle_scope_ambiguity`, etc.) alongside triage fields.
-- **API JSON (`primary_vehicle_summary` / `vehicle_key`) when Postgres + `session_id`:** **One** convergence point on the HTTP route: `_finalize_response_with_pg_truth` (PG row → mirror → draft sync → `apply_client_reply_finalize_to_result`). No second “display path” after that.
+- **Was:** Parallel `resolve_add_car_active_vehicle` module, unit-tested but **never imported by `triage.py`** — dangerous double-authority.
+- **Decision:** **DELETE** — production vehicle lines stay in `triage.py` heuristics + `routing_guard.py`; finalized API fields from `_finalize_response_with_pg_truth` on the HTTP route.
+- **Do not reintroduce** without wiring through triage + PG finalize in one sprint with scenario parity.

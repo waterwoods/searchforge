@@ -1,0 +1,2728 @@
+{
+  "summary": {
+    "generated_at": "2026-06-05T01:57:46.387229+00:00",
+    "scenario_count": 20,
+    "avg_case_quality": 83.9,
+    "avg_minutes_saved": 6.2,
+    "need_wechat_pct": 10.0,
+    "avg_broker_confidence": 80.7,
+    "best": [
+      {
+        "id": "AC05",
+        "title": "保险卡已上传 · Tesla",
+        "tags": [
+          "insurance_card",
+          "tesla",
+          "chinese"
+        ],
+        "completeness": "partial",
+        "turn_count": 3,
+        "service_type": "add_car",
+        "collected_fields": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver",
+          "insurance_status_add_to_existing",
+          "customer_says_materials_sent"
+        ],
+        "still_needed_fields": [
+          "name",
+          "phone"
+        ],
+        "broker_next_step": "Run quote for 2024 Tesla Model Y. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+        "primary_vehicle_summary": "2024 Tesla Model Y",
+        "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y, VIN, zip, delivery, driver.  Client says already sent. 3 customer message(s). Latest: VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。...",
+        "handoff_ready": true,
+        "action_ready": true,
+        "case_quality": 92,
+        "quality_notes": [],
+        "broker": {
+          "understand_5s": true,
+          "need_wechat": false,
+          "quote_immediately": true,
+          "still_missing": [
+            "name",
+            "phone"
+          ],
+          "minutes_saved": 5.2,
+          "manual_minutes": 5.9,
+          "with_builder_minutes": 0.7,
+          "case_clarity": 100,
+          "case_completeness": 100,
+          "broker_confidence": 100
+        },
+        "turn_snapshots": [
+          {
+            "turn_index": 0,
+            "text": "我买了台2024 Tesla Model Y，想加到保单。",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "insurance_status_add_to_existing"
+            ],
+            "still_needed_fields": [
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2024 Tesla Model Y",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y. 1 customer message(s). Latest: 我买了台2024 Tesla Model Y，想加到保单。...",
+            "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2024 Tesla Model Y • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+          },
+          {
+            "turn_index": 1,
+            "text": "刚才微信发了现有保险卡照片，你们收到了吗？",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "insurance_status_add_to_existing",
+              "customer_says_materials_sent"
+            ],
+            "still_needed_fields": [
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2024 Tesla Model Y",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y.  Client says already sent. 2 customer message(s). Latest: 刚才微信发了现有保险卡照片，你们收到了吗？...",
+            "client_reply_draft": "收到——我已记下您为 2024 Tesla Model Y 发来的材料；办公室会核对，若仍有缺项会再联系您，邮编发我一下，好整理进办公室报价单。"
+          },
+          {
+            "turn_index": 2,
+            "text": "VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver",
+              "insurance_status_add_to_existing",
+              "customer_says_materials_sent"
+            ],
+            "still_needed_fields": [
+              "name",
+              "phone"
+            ],
+            "broker_next_step": "Run quote for 2024 Tesla Model Y. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+            "handoff_ready": true,
+            "action_ready": true,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2024 Tesla Model Y",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y, VIN, zip, delivery, driver.  Client says already sent. 3 customer message(s). Latest: VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。...",
+            "client_reply_draft": "已把这条补充记到同一条加车服务记录里；待您在入口正式提交办公室后，同事会按最新信息在队列中继续核对与报价准备。（若方便：请在本对话补一行姓名与电话，便于办公室联系。）"
+          }
+        ]
+      },
+      {
+        "id": "AC07",
+        "title": "Teen driver · Honda · English",
+        "tags": [
+          "teenage_driver",
+          "honda",
+          "english"
+        ],
+        "completeness": "partial",
+        "turn_count": 2,
+        "service_type": "add_car",
+        "collected_fields": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "primary_driver"
+        ],
+        "still_needed_fields": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+        "primary_vehicle_summary": "2021 Honda Civic",
+        "conversation_summary": "New quote / new vehicle.  Collected: 2021 Honda Civic, VIN, zip, driver. 2 customer message(s). Latest: He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in drivew...",
+        "handoff_ready": true,
+        "action_ready": true,
+        "case_quality": 92,
+        "quality_notes": [],
+        "broker": {
+          "understand_5s": true,
+          "need_wechat": false,
+          "quote_immediately": true,
+          "still_missing": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "minutes_saved": 5.6,
+          "manual_minutes": 6.2,
+          "with_builder_minutes": 0.7,
+          "case_clarity": 100,
+          "case_completeness": 83,
+          "broker_confidence": 100
+        },
+        "turn_snapshots": [
+          {
+            "turn_index": 0,
+            "text": "Adding a 2021 Honda Civic for my son who just got his license.",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model"
+            ],
+            "still_needed_fields": [
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2021 Honda Civic",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2021 Honda Civic. 1 customer message(s). Latest: Adding a 2021 Honda Civic for my son who just got his license....",
+            "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2021 Honda Civic • ZIP: (add ZIP) • Office may still need: vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" o"
+          },
+          {
+            "turn_index": 1,
+            "text": "He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in driveway.",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "primary_driver"
+            ],
+            "still_needed_fields": [
+              "delivery_date",
+              "name",
+              "phone"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": true,
+            "action_ready": true,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2021 Honda Civic",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2021 Honda Civic, VIN, zip, driver. 2 customer message(s). Latest: He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in drivew...",
+            "client_reply_draft": "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed."
+          }
+        ]
+      },
+      {
+        "id": "AC09",
+        "title": "Toyota · 中英混合",
+        "tags": [
+          "toyota",
+          "mixed_language"
+        ],
+        "completeness": "partial",
+        "turn_count": 2,
+        "service_type": "add_car",
+        "collected_fields": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver",
+          "insurance_status_add_to_existing"
+        ],
+        "still_needed_fields": [
+          "name",
+          "phone"
+        ],
+        "broker_next_step": "Run quote for 2023 Toyota Highlander. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+        "primary_vehicle_summary": "2023 Toyota Highlander",
+        "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Highlander, VIN, zip, delivery, driver. 2 customer message(s). Latest: VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。...",
+        "handoff_ready": true,
+        "action_ready": true,
+        "case_quality": 92,
+        "quality_notes": [],
+        "broker": {
+          "understand_5s": true,
+          "need_wechat": false,
+          "quote_immediately": true,
+          "still_missing": [
+            "name",
+            "phone"
+          ],
+          "minutes_saved": 4.7,
+          "manual_minutes": 5.3,
+          "with_builder_minutes": 0.7,
+          "case_clarity": 100,
+          "case_completeness": 100,
+          "broker_confidence": 100
+        },
+        "turn_snapshots": [
+          {
+            "turn_index": 0,
+            "text": "Hi陈哥，新买了2023 Toyota Highlander，想add to existing policy。",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "insurance_status_add_to_existing"
+            ],
+            "still_needed_fields": [
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2023 Toyota Highlander",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Highlander. 1 customer message(s). Latest: Hi陈哥，新买了2023 Toyota Highlander，想add to existing policy。...",
+            "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Toyota Highlander • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+          },
+          {
+            "turn_index": 1,
+            "text": "VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver",
+              "insurance_status_add_to_existing"
+            ],
+            "still_needed_fields": [
+              "name",
+              "phone"
+            ],
+            "broker_next_step": "Run quote for 2023 Toyota Highlander. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+            "handoff_ready": true,
+            "action_ready": true,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2023 Toyota Highlander",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Highlander, VIN, zip, delivery, driver. 2 customer message(s). Latest: VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。...",
+            "client_reply_draft": "我们已经帮你准备好报价信息了 ✅ 现在只需要一步，我们就可以帮你完成报价 发一下称呼和手机号即可 不会骚扰，仅用于本次报价 一般几分钟内会有结果"
+          }
+        ]
+      }
+    ],
+    "worst": [
+      {
+        "id": "AC11",
+        "title": "中文极简开场",
+        "tags": [
+          "chinese",
+          "incomplete",
+          "minimal"
+        ],
+        "completeness": "incomplete",
+        "turn_count": 1,
+        "service_type": "add_car",
+        "collected_fields": [
+          "insurance_status_add_to_existing"
+        ],
+        "still_needed_fields": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+        "primary_vehicle_summary": null,
+        "conversation_summary": "Add car to existing policy. 1 customer message(s). Latest: 想加一台新车...",
+        "handoff_ready": false,
+        "action_ready": false,
+        "case_quality": 73,
+        "quality_notes": [],
+        "broker": {
+          "understand_5s": true,
+          "need_wechat": true,
+          "quote_immediately": false,
+          "still_missing": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "minutes_saved": 6.5,
+          "manual_minutes": 8.2,
+          "with_builder_minutes": 1.8,
+          "case_clarity": 53,
+          "case_completeness": 0,
+          "broker_confidence": 16
+        },
+        "turn_snapshots": [
+          {
+            "turn_index": 0,
+            "text": "想加一台新车",
+            "service_type": "add_car",
+            "collected_fields": [
+              "insurance_status_add_to_existing"
+            ],
+            "still_needed_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": null,
+            "conversation_summary": "Add car to existing policy. 1 customer message(s). Latest: 想加一台新车...",
+            "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 想加一台新车 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+          }
+        ]
+      },
+      {
+        "id": "AC12",
+        "title": "English minimal opener",
+        "tags": [
+          "english",
+          "incomplete",
+          "minimal"
+        ],
+        "completeness": "incomplete",
+        "turn_count": 1,
+        "service_type": "add_car",
+        "collected_fields": [
+          "insurance_status_new_customer"
+        ],
+        "still_needed_fields": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+        "primary_vehicle_summary": null,
+        "conversation_summary": "New quote / new vehicle. 1 customer message(s). Latest: New car quote please...",
+        "handoff_ready": false,
+        "action_ready": false,
+        "case_quality": 73,
+        "quality_notes": [],
+        "broker": {
+          "understand_5s": true,
+          "need_wechat": true,
+          "quote_immediately": false,
+          "still_missing": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "minutes_saved": 6.5,
+          "manual_minutes": 8.2,
+          "with_builder_minutes": 1.8,
+          "case_clarity": 53,
+          "case_completeness": 0,
+          "broker_confidence": 16
+        },
+        "turn_snapshots": [
+          {
+            "turn_index": 0,
+            "text": "New car quote please",
+            "service_type": "add_car",
+            "collected_fields": [
+              "insurance_status_new_customer"
+            ],
+            "still_needed_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": null,
+            "conversation_summary": "New quote / new vehicle. 1 customer message(s). Latest: New car quote please...",
+            "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: New car quote please • ZIP: (add ZIP) • Office may still need: year, make_model, vin, zip, delivery_date, primary_driver If it loo"
+          }
+        ]
+      },
+      {
+        "id": "AC15",
+        "title": "Teen + spouse confusion · mixed",
+        "tags": [
+          "teenage_driver",
+          "spouse_driver",
+          "mixed_language"
+        ],
+        "completeness": "incomplete",
+        "turn_count": 3,
+        "service_type": "add_car",
+        "collected_fields": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "primary_driver",
+          "insurance_status_new_customer",
+          "additional_drivers_yes"
+        ],
+        "still_needed_fields": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+        "primary_vehicle_summary": "2022 Honda",
+        "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda, VIN, zip, driver. 3 customer message(s). Latest: Who should be primary driver? 你帮我建议一下...",
+        "handoff_ready": true,
+        "action_ready": true,
+        "case_quality": 65,
+        "quality_notes": [
+          "still_needed miss: expected ['primary_driver'], got ['delivery_date', 'name', 'phone']"
+        ],
+        "broker": {
+          "understand_5s": true,
+          "need_wechat": false,
+          "quote_immediately": true,
+          "still_missing": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "minutes_saved": 6.2,
+          "manual_minutes": 7.0,
+          "with_builder_minutes": 0.7,
+          "case_clarity": 80,
+          "case_completeness": 83,
+          "broker_confidence": 91
+        },
+        "turn_snapshots": [
+          {
+            "turn_index": 0,
+            "text": "Bought 2022 Honda Pilot — 主要给我老婆开，但17岁儿子也会开。",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "insurance_status_new_customer",
+              "additional_drivers_yes"
+            ],
+            "still_needed_fields": [
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2022 Honda",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda. 1 customer message(s). Latest: Bought 2022 Honda Pilot — 主要给我老婆开，但17岁儿子也会开。...",
+            "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2022 Honda • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+          },
+          {
+            "turn_index": 1,
+            "text": "VIN 5FNYF6H50NB123456 ZIP 92804 delivery next week",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "insurance_status_new_customer",
+              "additional_drivers_yes"
+            ],
+            "still_needed_fields": [
+              "delivery_date",
+              "primary_driver",
+              "name",
+              "phone"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": false,
+            "action_ready": false,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2022 Honda",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda, VIN, zip. 2 customer message(s). Latest: VIN 5FNYF6H50NB123456 ZIP 92804 delivery next week...",
+            "client_reply_draft": "收到，2022 Honda。 邮编 92804，具体是几月几号提车？"
+          },
+          {
+            "turn_index": 2,
+            "text": "Who should be primary driver? 你帮我建议一下",
+            "service_type": "add_car",
+            "collected_fields": [
+              "year",
+              "make_model",
+              "vin",
+              "zip",
+              "primary_driver",
+              "insurance_status_new_customer",
+              "additional_drivers_yes"
+            ],
+            "still_needed_fields": [
+              "delivery_date",
+              "name",
+              "phone"
+            ],
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "handoff_ready": true,
+            "action_ready": true,
+            "issue_category": "customer_question",
+            "primary_vehicle_summary": "2022 Honda",
+            "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda, VIN, zip, driver. 3 customer message(s). Latest: Who should be primary driver? 你帮我建议一下...",
+            "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+          }
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "id": "AC01",
+      "title": "完整客户 · Tesla · 中文",
+      "tags": [
+        "complete",
+        "tesla",
+        "chinese"
+      ],
+      "completeness": "complete",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "insurance_status_add_to_existing",
+        "name",
+        "phone"
+      ],
+      "still_needed_fields": [
+        "delivery_date"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2024 Tesla Model 3",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model 3, VIN, zip, driver. 3 customer message(s). Latest: 我叫王明，手机626-555-0188，这些够你们报价了吗？...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 89,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date"
+        ],
+        "minutes_saved": 6.4,
+        "manual_minutes": 7.1,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "陈哥你好，刚提了2024 Tesla Model 3，想加到现有保单。",
+          "service_type": "general_inquiry",
+          "collected_fields": [],
+          "still_needed_fields": [],
+          "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "unclear",
+          "primary_vehicle_summary": null,
+          "conversation_summary": "1 customer message(s). Latest: 陈哥你好，刚提了2024 Tesla Model 3，想加到现有保单。...",
+          "client_reply_draft": "这段内容还不够完整。把完整通知或前后内容再发我一下，我帮你确认下一步。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 5YJ3E1EA1KF123456，邮编91789，下周五3月15号提车，主驾是我本人。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Run quote for 2024 Tesla Model 3. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Tesla Model 3",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model 3, VIN, zip, delivery, driver. 2 customer message(s). Latest: VIN 5YJ3E1EA1KF123456，邮编91789，下周五3月15号提车，主驾是我本人。...",
+          "client_reply_draft": "我们已经帮你准备好报价信息了 ✅ 现在只需要一步，我们就可以帮你完成报价 发一下称呼和手机号即可 不会骚扰，仅用于本次报价 一般几分钟内会有结果"
+        },
+        {
+          "turn_index": 2,
+          "text": "我叫王明，手机626-555-0188，这些够你们报价了吗？",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "name",
+            "phone"
+          ],
+          "still_needed_fields": [
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Tesla Model 3",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model 3, VIN, zip, driver. 3 customer message(s). Latest: 我叫王明，手机626-555-0188，这些够你们报价了吗？...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        }
+      ]
+    },
+    {
+      "id": "AC02",
+      "title": "Complete customer · Toyota · English",
+      "tags": [
+        "complete",
+        "toyota",
+        "english"
+      ],
+      "completeness": "complete",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "insurance_status_new_customer",
+        "name",
+        "phone"
+      ],
+      "still_needed_fields": [
+        "delivery_date"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2023 Toyota Camry",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Camry, VIN, zip, driver. 3 customer message(s). Latest: Name is David Chen, phone 310-555-0142. Ready for quote?...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 89,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date"
+        ],
+        "minutes_saved": 6.4,
+        "manual_minutes": 7.1,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "Hi, I bought a 2023 Toyota Camry and need to add it to my policy.",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_new_customer"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Camry",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Camry. 1 customer message(s). Latest: Hi, I bought a 2023 Toyota Camry and need to add it to my policy....",
+          "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2023 Toyota Camry • ZIP: (add ZIP) • Office may still need: vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" "
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 4T1B11HK5KU123456, ZIP 90210, picking up next Monday. I'm the primary driver.",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "name"
+          ],
+          "still_needed_fields": [
+            "phone"
+          ],
+          "broker_next_step": "Run quote for 2023 Toyota Camry. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Camry",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Camry, VIN, zip, delivery, driver. 2 customer message(s). Latest: VIN 4T1B11HK5KU123456, ZIP 90210, picking up next Monday. I'm the primary driver...",
+          "client_reply_draft": "Your quote details are ready ✅ One quick step left—we can finish your quote request Just send a mobile number here No spam—only used for this quote You’ll usually hear back within a few minutes"
+        },
+        {
+          "turn_index": 2,
+          "text": "Name is David Chen, phone 310-555-0142. Ready for quote?",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "name",
+            "phone"
+          ],
+          "still_needed_fields": [
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Camry",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Camry, VIN, zip, driver. 3 customer message(s). Latest: Name is David Chen, phone 310-555-0142. Ready for quote?...",
+          "client_reply_draft": "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed."
+        }
+      ]
+    },
+    {
+      "id": "AC03",
+      "title": "VIN缺失 · Honda · 中文",
+      "tags": [
+        "vin_missing",
+        "honda",
+        "chinese",
+        "incomplete"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "primary_driver",
+        "insurance_status_add_to_existing",
+        "materials_send_question"
+      ],
+      "still_needed_fields": [
+        "vin",
+        "delivery_date"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2022 Honda Accord",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda Accord, zip, driver. 2 customer message(s). Latest: 邮编92618，这周六提车，主驾是我。VIN我晚点拍给你可以吗？...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 81,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "vin",
+          "delivery_date"
+        ],
+        "minutes_saved": 7.1,
+        "manual_minutes": 7.8,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 96,
+        "case_completeness": 66,
+        "broker_confidence": 71
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "你好，我新买了2022 Honda Accord，想加保。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2022 Honda Accord",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda Accord. 1 customer message(s). Latest: 你好，我新买了2022 Honda Accord，想加保。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2022 Honda Accord • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "邮编92618，这周六提车，主驾是我。VIN我晚点拍给你可以吗？",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "materials_send_question"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2022 Honda Accord",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda Accord, zip, driver. 2 customer message(s). Latest: 邮编92618，这周六提车，主驾是我。VIN我晚点拍给你可以吗？...",
+          "client_reply_draft": "可以，先发我，办公室一起核。收到，2022 Honda Accord。 邮编 92618，具体是几月几号提车？"
+        }
+      ]
+    },
+    {
+      "id": "AC04",
+      "title": "Driver missing · Toyota · mixed",
+      "tags": [
+        "driver_missing",
+        "toyota",
+        "mixed",
+        "incomplete"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "primary_driver",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2024 Toyota RAV4",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Toyota RAV4, VIN, zip. 2 customer message(s). Latest: VIN JTMB1RFV0RD123456 — who drives还没定，可能是我老婆也可能是我。...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 81,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "delivery_date",
+          "primary_driver",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 6.8,
+        "manual_minutes": 7.5,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 96,
+        "case_completeness": 66,
+        "broker_confidence": 71
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "刚订了2024 Toyota RAV4，zip 94538，下周四delivery。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Toyota RAV4",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Toyota RAV4, zip, delivery. 1 customer message(s). Latest: 刚订了2024 Toyota RAV4，zip 94538，下周四delivery。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2024 Toyota RAV4 • 邮编: 94538 • 地区: East Bay, CA • 待办公室补齐: vin, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN JTMB1RFV0RD123456 — who drives还没定，可能是我老婆也可能是我。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Toyota RAV4",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Toyota RAV4, VIN, zip. 2 customer message(s). Latest: VIN JTMB1RFV0RD123456 — who drives还没定，可能是我老婆也可能是我。...",
+          "client_reply_draft": "收到，2024 Toyota RAV4，提车日期发我一下（或生效日），我好安排报价。"
+        }
+      ]
+    },
+    {
+      "id": "AC05",
+      "title": "保险卡已上传 · Tesla",
+      "tags": [
+        "insurance_card",
+        "tesla",
+        "chinese"
+      ],
+      "completeness": "partial",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "insurance_status_add_to_existing",
+        "customer_says_materials_sent"
+      ],
+      "still_needed_fields": [
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Run quote for 2024 Tesla Model Y. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+      "primary_vehicle_summary": "2024 Tesla Model Y",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y, VIN, zip, delivery, driver.  Client says already sent. 3 customer message(s). Latest: VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 92,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 5.2,
+        "manual_minutes": 5.9,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 100,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "我买了台2024 Tesla Model Y，想加到保单。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Tesla Model Y",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y. 1 customer message(s). Latest: 我买了台2024 Tesla Model Y，想加到保单。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2024 Tesla Model Y • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "刚才微信发了现有保险卡照片，你们收到了吗？",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_add_to_existing",
+            "customer_says_materials_sent"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Tesla Model Y",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y.  Client says already sent. 2 customer message(s). Latest: 刚才微信发了现有保险卡照片，你们收到了吗？...",
+          "client_reply_draft": "收到——我已记下您为 2024 Tesla Model Y 发来的材料；办公室会核对，若仍有缺项会再联系您，邮编发我一下，好整理进办公室报价单。"
+        },
+        {
+          "turn_index": 2,
+          "text": "VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing",
+            "customer_says_materials_sent"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Run quote for 2024 Tesla Model Y. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Tesla Model Y",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model Y, VIN, zip, delivery, driver.  Client says already sent. 3 customer message(s). Latest: VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。...",
+          "client_reply_draft": "已把这条补充记到同一条加车服务记录里；待您在入口正式提交办公室后，同事会按最新信息在队列中继续核对与报价准备。（若方便：请在本对话补一行姓名与电话，便于办公室联系。）"
+        }
+      ]
+    },
+    {
+      "id": "AC06",
+      "title": "配偶主驾 · Lexus · 中文",
+      "tags": [
+        "spouse_driver",
+        "chinese"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "primary_driver",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2023 Lexus",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus, VIN, zip. 2 customer message(s). Latest: 主驾是她，我偶尔开。邮编91776，VIN 2T2BZMCA8PC123456。...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 82,
+      "quality_notes": [
+        "expected collected miss: ['primary_driver']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "delivery_date",
+          "primary_driver",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 5.8,
+        "manual_minutes": 6.5,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 97,
+        "case_completeness": 66,
+        "broker_confidence": 71
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "帮我给我老婆新买的那台2023 Lexus RX 350加险，下周提车。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Lexus",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus. 1 customer message(s). Latest: 帮我给我老婆新买的那台2023 Lexus RX 350加险，下周提车。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Lexus • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "主驾是她，我偶尔开。邮编91776，VIN 2T2BZMCA8PC123456。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Lexus",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus, VIN, zip. 2 customer message(s). Latest: 主驾是她，我偶尔开。邮编91776，VIN 2T2BZMCA8PC123456。...",
+          "client_reply_draft": "收到，2023 Lexus。 邮编 91776，提车日期发我一下（或生效日），我好安排报价。"
+        }
+      ]
+    },
+    {
+      "id": "AC07",
+      "title": "Teen driver · Honda · English",
+      "tags": [
+        "teenage_driver",
+        "honda",
+        "english"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2021 Honda Civic",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2021 Honda Civic, VIN, zip, driver. 2 customer message(s). Latest: He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in drivew...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 92,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 5.6,
+        "manual_minutes": 6.2,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "Adding a 2021 Honda Civic for my son who just got his license.",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2021 Honda Civic",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2021 Honda Civic. 1 customer message(s). Latest: Adding a 2021 Honda Civic for my son who just got his license....",
+          "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2021 Honda Civic • ZIP: (add ZIP) • Office may still need: vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" o"
+        },
+        {
+          "turn_index": 1,
+          "text": "He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in driveway.",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2021 Honda Civic",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2021 Honda Civic, VIN, zip, driver. 2 customer message(s). Latest: He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in drivew...",
+          "client_reply_draft": "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed."
+        }
+      ]
+    },
+    {
+      "id": "AC08",
+      "title": "Tesla 急单 · 中文",
+      "tags": [
+        "tesla",
+        "chinese",
+        "urgent"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2024 Tesla Model 3",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model 3, VIN, zip, driver. 2 customer message(s). Latest: VIN 5YJ3E1EA4RF123456 邮编94086 我开...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 87,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 5.6,
+        "manual_minutes": 6.2,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "明天就要提2024 Tesla Model 3了！！能今天加进保单吗？",
+          "service_type": "general_inquiry",
+          "collected_fields": [],
+          "still_needed_fields": [],
+          "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "unclear",
+          "primary_vehicle_summary": null,
+          "conversation_summary": "1 customer message(s). Latest: 明天就要提2024 Tesla Model 3了！！能今天加进保单吗？...",
+          "client_reply_draft": "这段内容还不够完整。把完整通知或前后内容再发我一下，我帮你确认下一步。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 5YJ3E1EA4RF123456 邮编94086 我开",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Tesla Model 3",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Tesla Model 3, VIN, zip, driver. 2 customer message(s). Latest: VIN 5YJ3E1EA4RF123456 邮编94086 我开...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        }
+      ]
+    },
+    {
+      "id": "AC09",
+      "title": "Toyota · 中英混合",
+      "tags": [
+        "toyota",
+        "mixed_language"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "insurance_status_add_to_existing"
+      ],
+      "still_needed_fields": [
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Run quote for 2023 Toyota Highlander. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+      "primary_vehicle_summary": "2023 Toyota Highlander",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Highlander, VIN, zip, delivery, driver. 2 customer message(s). Latest: VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 92,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 4.7,
+        "manual_minutes": 5.3,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 100,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "Hi陈哥，新买了2023 Toyota Highlander，想add to existing policy。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Highlander",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Highlander. 1 customer message(s). Latest: Hi陈哥，新买了2023 Toyota Highlander，想add to existing policy。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Toyota Highlander • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Run quote for 2023 Toyota Highlander. Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Highlander",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Highlander, VIN, zip, delivery, driver. 2 customer message(s). Latest: VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。...",
+          "client_reply_draft": "我们已经帮你准备好报价信息了 ✅ 现在只需要一步，我们就可以帮你完成报价 发一下称呼和手机号即可 不会骚扰，仅用于本次报价 一般几分钟内会有结果"
+        }
+      ]
+    },
+    {
+      "id": "AC10",
+      "title": "Honda CR-V · English complete",
+      "tags": [
+        "honda",
+        "english",
+        "complete"
+      ],
+      "completeness": "complete",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "name",
+        "phone",
+        "policy_number"
+      ],
+      "still_needed_fields": [
+        "delivery_date"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2024 Honda CR-V",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Honda CR-V, VIN, zip, driver.  Policy #: please. 3 customer message(s). Latest: Jennifer Wu, 858-555-0199...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 89,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date"
+        ],
+        "minutes_saved": 6.4,
+        "manual_minutes": 7.1,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "Need to add my new 2024 Honda CR-V to policy please.",
+          "service_type": "general_inquiry",
+          "collected_fields": [
+            "policy_number"
+          ],
+          "still_needed_fields": [],
+          "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "unclear",
+          "primary_vehicle_summary": null,
+          "conversation_summary": " Policy #: please. 1 customer message(s). Latest: Need to add my new 2024 Honda CR-V to policy please....",
+          "client_reply_draft": "This part is still unclear. Send me the full notice or a little more context and I will confirm the next step."
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 7FARW2H89RE123456, ZIP 92101, delivery March 20, I'm primary driver.",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "name",
+            "policy_number"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Honda CR-V",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Honda CR-V, VIN, zip, driver.  Policy #: please. 2 customer message(s). Latest: VIN 7FARW2H89RE123456, ZIP 92101, delivery March 20, I'm primary driver....",
+          "client_reply_draft": "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed."
+        },
+        {
+          "turn_index": 2,
+          "text": "Jennifer Wu, 858-555-0199",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "name",
+            "phone",
+            "policy_number"
+          ],
+          "still_needed_fields": [
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Honda CR-V",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Honda CR-V, VIN, zip, driver.  Policy #: please. 3 customer message(s). Latest: Jennifer Wu, 858-555-0199...",
+          "client_reply_draft": "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed."
+        }
+      ]
+    },
+    {
+      "id": "AC11",
+      "title": "中文极简开场",
+      "tags": [
+        "chinese",
+        "incomplete",
+        "minimal"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 1,
+      "service_type": "add_car",
+      "collected_fields": [
+        "insurance_status_add_to_existing"
+      ],
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "delivery_date",
+        "primary_driver"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": null,
+      "conversation_summary": "Add car to existing policy. 1 customer message(s). Latest: 想加一台新车...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 73,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": true,
+        "quote_immediately": false,
+        "still_missing": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "minutes_saved": 6.5,
+        "manual_minutes": 8.2,
+        "with_builder_minutes": 1.8,
+        "case_clarity": 53,
+        "case_completeness": 0,
+        "broker_confidence": 16
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "想加一台新车",
+          "service_type": "add_car",
+          "collected_fields": [
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": null,
+          "conversation_summary": "Add car to existing policy. 1 customer message(s). Latest: 想加一台新车...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 想加一台新车 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        }
+      ]
+    },
+    {
+      "id": "AC12",
+      "title": "English minimal opener",
+      "tags": [
+        "english",
+        "incomplete",
+        "minimal"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 1,
+      "service_type": "add_car",
+      "collected_fields": [
+        "insurance_status_new_customer"
+      ],
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "delivery_date",
+        "primary_driver"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": null,
+      "conversation_summary": "New quote / new vehicle. 1 customer message(s). Latest: New car quote please...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 73,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": true,
+        "quote_immediately": false,
+        "still_missing": [
+          "year",
+          "make_model",
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "minutes_saved": 6.5,
+        "manual_minutes": 8.2,
+        "with_builder_minutes": 1.8,
+        "case_clarity": 53,
+        "case_completeness": 0,
+        "broker_confidence": 16
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "New car quote please",
+          "service_type": "add_car",
+          "collected_fields": [
+            "insurance_status_new_customer"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": null,
+          "conversation_summary": "New quote / new vehicle. 1 customer message(s). Latest: New car quote please...",
+          "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: New car quote please • ZIP: (add ZIP) • Office may still need: year, make_model, vin, zip, delivery_date, primary_driver If it loo"
+        }
+      ]
+    },
+    {
+      "id": "AC13",
+      "title": "VIN 最后一轮补齐 · Toyota",
+      "tags": [
+        "toyota",
+        "chinese",
+        "multi_turn"
+      ],
+      "completeness": "complete",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "materials_still_pending"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2023 Toyota Corolla",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Corolla, VIN, zip, driver. 3 customer message(s). Latest: VIN 2T1BURHE0PC123456 刚收到...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 89,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']",
+        "complete scenario still missing structural: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 6.1,
+        "manual_minutes": 6.8,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "买了2023 Toyota Corolla，邮编90640，这周日提车，我开。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "primary_driver"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Corolla",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Corolla, zip, driver. 1 customer message(s). Latest: 买了2023 Toyota Corolla，邮编90640，这周日提车，我开。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Toyota Corolla • 邮编: (待补充) • 待办公室补齐: vin, delivery_date 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN还没拿到，销售说今天给我。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "primary_driver",
+            "materials_still_pending"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Corolla",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Corolla, zip, driver. 2 customer message(s). Latest: VIN还没拿到，销售说今天给我。...",
+          "client_reply_draft": "收到，2023 Toyota Corolla，提车日期发我一下（或生效日），我好安排报价。"
+        },
+        {
+          "turn_index": 2,
+          "text": "VIN 2T1BURHE0PC123456 刚收到",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "materials_still_pending"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Toyota Corolla",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Toyota Corolla, VIN, zip, driver. 3 customer message(s). Latest: VIN 2T1BURHE0PC123456 刚收到...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        }
+      ]
+    },
+    {
+      "id": "AC14",
+      "title": "家庭多车背景 · 中文",
+      "tags": [
+        "chinese",
+        "family_context"
+      ],
+      "completeness": "partial",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "policy_number"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2024 BMW X3",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 BMW X3, VIN, zip, driver.  Policy #: 9123456. 3 customer message(s). Latest: 另外想问能不能一起bundle便宜点？先帮我把X3加进去。...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 87,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 6.1,
+        "manual_minutes": 6.8,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "家里已有两台车在这个保单，现在再买一台2024 BMW X3给太太开。",
+          "service_type": "general_inquiry",
+          "collected_fields": [],
+          "still_needed_fields": [],
+          "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "unclear",
+          "primary_vehicle_summary": null,
+          "conversation_summary": "1 customer message(s). Latest: 家里已有两台车在这个保单，现在再买一台2024 BMW X3给太太开。...",
+          "client_reply_draft": "这段内容还不够完整。把完整通知或前后内容再发我一下，我帮你确认下一步。"
+        },
+        {
+          "turn_index": 1,
+          "text": "她主驾。邮编91364，VIN 5UX53DP04N9123456，下月1号提车。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "policy_number"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 BMW X3",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 BMW X3, VIN, zip, driver.  Policy #: 9123456. 2 customer message(s). Latest: 她主驾。邮编91364，VIN 5UX53DP04N9123456，下月1号提车。...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        },
+        {
+          "turn_index": 2,
+          "text": "另外想问能不能一起bundle便宜点？先帮我把X3加进去。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "policy_number"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 BMW X3",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 BMW X3, VIN, zip, driver.  Policy #: 9123456. 3 customer message(s). Latest: 另外想问能不能一起bundle便宜点？先帮我把X3加进去。...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        }
+      ]
+    },
+    {
+      "id": "AC15",
+      "title": "Teen + spouse confusion · mixed",
+      "tags": [
+        "teenage_driver",
+        "spouse_driver",
+        "mixed_language"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 3,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "insurance_status_new_customer",
+        "additional_drivers_yes"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2022 Honda",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda, VIN, zip, driver. 3 customer message(s). Latest: Who should be primary driver? 你帮我建议一下...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 65,
+      "quality_notes": [
+        "still_needed miss: expected ['primary_driver'], got ['delivery_date', 'name', 'phone']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 6.2,
+        "manual_minutes": 7.0,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 80,
+        "case_completeness": 83,
+        "broker_confidence": 91
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "Bought 2022 Honda Pilot — 主要给我老婆开，但17岁儿子也会开。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_new_customer",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2022 Honda",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda. 1 customer message(s). Latest: Bought 2022 Honda Pilot — 主要给我老婆开，但17岁儿子也会开。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2022 Honda • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 5FNYF6H50NB123456 ZIP 92804 delivery next week",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "insurance_status_new_customer",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2022 Honda",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda, VIN, zip. 2 customer message(s). Latest: VIN 5FNYF6H50NB123456 ZIP 92804 delivery next week...",
+          "client_reply_draft": "收到，2022 Honda。 邮编 92804，具体是几月几号提车？"
+        },
+        {
+          "turn_index": 2,
+          "text": "Who should be primary driver? 你帮我建议一下",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "additional_drivers_yes"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2022 Honda",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2022 Honda, VIN, zip, driver. 3 customer message(s). Latest: Who should be primary driver? 你帮我建议一下...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        }
+      ]
+    },
+    {
+      "id": "AC16",
+      "title": "材料说已发 · 中文",
+      "tags": [
+        "materials_sent",
+        "chinese"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "insurance_status_add_to_existing",
+        "customer_says_materials_sent"
+      ],
+      "still_needed_fields": [
+        "delivery_date",
+        "primary_driver",
+        "name",
+        "phone"
+      ],
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "primary_vehicle_summary": "2023 Tesla Model 3",
+      "conversation_summary": "Add car to existing policy.  Collected: 2023 Tesla Model 3, VIN, zip.  Client says already sent. 2 customer message(s). Latest: 驾照和garaging proof上周都在微信发过了，你们收到了吗？...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 82,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "delivery_date",
+          "primary_driver",
+          "name",
+          "phone"
+        ],
+        "minutes_saved": 6.1,
+        "manual_minutes": 6.8,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 97,
+        "case_completeness": 66,
+        "broker_confidence": 71
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "加一台2023 Tesla Model 3，VIN 5YJ3E1EA1KF654321 邮编92602 周五提车",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "insurance_status_add_to_existing"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Tesla Model 3",
+          "conversation_summary": "Add car to existing policy.  Collected: 2023 Tesla Model 3, VIN, zip. 1 customer message(s). Latest: 加一台2023 Tesla Model 3，VIN 5YJ3E1EA1KF654321 邮编92602 周五提车...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Tesla Model 3 • 邮编: (待补充) • 待办公室补齐: delivery_date, primary_driver, name, phone 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "驾照和garaging proof上周都在微信发过了，你们收到了吗？",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "insurance_status_add_to_existing",
+            "customer_says_materials_sent"
+          ],
+          "still_needed_fields": [
+            "delivery_date",
+            "primary_driver",
+            "name",
+            "phone"
+          ],
+          "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "missing_document",
+          "primary_vehicle_summary": "2023 Tesla Model 3",
+          "conversation_summary": "Add car to existing policy.  Collected: 2023 Tesla Model 3, VIN, zip.  Client says already sent. 2 customer message(s). Latest: 驾照和garaging proof上周都在微信发过了，你们收到了吗？...",
+          "client_reply_draft": "收到——我已记下您为 2023 Tesla Model 3 发来的材料；办公室会核对，若仍有缺项会再联系您，提车日期发我一下（或生效日），我好安排报价。"
+        }
+      ]
+    },
+    {
+      "id": "AC17",
+      "title": "VIN晚点 · Toyota · English",
+      "tags": [
+        "vin_missing",
+        "toyota",
+        "english"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "primary_driver",
+        "name"
+      ],
+      "still_needed_fields": [
+        "vin",
+        "delivery_date"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2024 Toyota",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2024 Toyota, zip, driver. 2 customer message(s). Latest: Don't have VIN yet — dealer will text me tonight. Can you start the quote?...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 81,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "vin",
+          "delivery_date"
+        ],
+        "minutes_saved": 7.0,
+        "manual_minutes": 7.7,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 96,
+        "case_completeness": 66,
+        "broker_confidence": 71
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "2024 Toyota Tacoma, ZIP 95757, picking up Friday, I'm the driver.",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "primary_driver",
+            "name"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Toyota",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Toyota, zip, driver. 1 customer message(s). Latest: 2024 Toyota Tacoma, ZIP 95757, picking up Friday, I'm the driver....",
+          "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2024 Toyota • ZIP: 95757 • Office may still need: vin, delivery_date If it looks right, reply \"OK\" or \"yes\". If anything is wrong,"
+        },
+        {
+          "turn_index": 1,
+          "text": "Don't have VIN yet — dealer will text me tonight. Can you start the quote?",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "primary_driver",
+            "name"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2024 Toyota",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2024 Toyota, zip, driver. 2 customer message(s). Latest: Don't have VIN yet — dealer will text me tonight. Can you start the quote?...",
+          "client_reply_draft": "Got it, 2024 model. Toyota. Send the delivery or effective date so I can prepare the quote."
+        }
+      ]
+    },
+    {
+      "id": "AC18",
+      "title": "新客户 · 无现有保单 · 中文",
+      "tags": [
+        "new_customer",
+        "chinese"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "insurance_status_new_customer",
+        "name",
+        "phone"
+      ],
+      "still_needed_fields": [
+        "delivery_date"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "2023 Honda",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2023 Honda, VIN, zip, driver. 2 customer message(s). Latest: VIN 3CZRZ1H59PM123456，邮编91748，下周提车，我开。手机626-888-0123...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 87,
+      "quality_notes": [
+        "expected collected miss: ['delivery_date']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": true,
+        "still_missing": [
+          "delivery_date"
+        ],
+        "minutes_saved": 6.0,
+        "manual_minutes": 6.7,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 83,
+        "broker_confidence": 100
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "我是新客户，第一次在你们这买保险，刚买了2023 Honda HR-V。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "insurance_status_new_customer",
+            "name"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Honda",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Honda. 1 customer message(s). Latest: 我是新客户，第一次在你们这买保险，刚买了2023 Honda HR-V。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Honda • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 3CZRZ1H59PM123456，邮编91748，下周提车，我开。手机626-888-0123",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "insurance_status_new_customer",
+            "name",
+            "phone"
+          ],
+          "still_needed_fields": [
+            "delivery_date"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Honda",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Honda, VIN, zip, driver. 2 customer message(s). Latest: VIN 3CZRZ1H59PM123456，邮编91748，下周提车，我开。手机626-888-0123...",
+          "client_reply_draft": "我已经帮你整理好信息了，现在可以帮你推进报价了。 我先帮你往下走，如果需要补充我再跟你确认。"
+        }
+      ]
+    },
+    {
+      "id": "AC19",
+      "title": "Urgent same-day · Tesla English",
+      "tags": [
+        "tesla",
+        "english",
+        "urgent"
+      ],
+      "completeness": "partial",
+      "turn_count": 2,
+      "service_type": "add_car",
+      "collected_fields": [
+        "make_model",
+        "vin",
+        "zip",
+        "primary_driver",
+        "name"
+      ],
+      "still_needed_fields": [
+        "year",
+        "delivery_date",
+        "phone"
+      ],
+      "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+      "primary_vehicle_summary": "Tesla Model Y",
+      "conversation_summary": "New quote / new vehicle.  Collected: Tesla Model Y, VIN, zip, driver. 2 customer message(s). Latest: VIN 7SAYGDEE8RA123456 ZIP 94025 I'm primary...",
+      "handoff_ready": true,
+      "action_ready": true,
+      "case_quality": 86,
+      "quality_notes": [
+        "expected collected miss: ['year']"
+      ],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "year",
+          "delivery_date",
+          "phone"
+        ],
+        "minutes_saved": 6.0,
+        "manual_minutes": 6.7,
+        "with_builder_minutes": 0.7,
+        "case_clarity": 100,
+        "case_completeness": 66,
+        "broker_confidence": 73
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "Picking up my Tesla Model Y TODAY — need insurance ASAP!",
+          "service_type": "add_car",
+          "collected_fields": [
+            "make_model"
+          ],
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "Tesla Model Y",
+          "conversation_summary": "New quote / new vehicle.  Collected: Tesla Model Y. 1 customer message(s). Latest: Picking up my Tesla Model Y TODAY — need insurance ASAP!...",
+          "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: Tesla Model Y • ZIP: (add ZIP) • Office may still need: year, make_model, vin, zip, delivery_date, primary_driver If it looks righ"
+        },
+        {
+          "turn_index": 1,
+          "text": "VIN 7SAYGDEE8RA123456 ZIP 94025 I'm primary",
+          "service_type": "add_car",
+          "collected_fields": [
+            "make_model",
+            "vin",
+            "zip",
+            "primary_driver",
+            "name"
+          ],
+          "still_needed_fields": [
+            "year",
+            "delivery_date",
+            "phone"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": true,
+          "action_ready": true,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "Tesla Model Y",
+          "conversation_summary": "New quote / new vehicle.  Collected: Tesla Model Y, VIN, zip, driver. 2 customer message(s). Latest: VIN 7SAYGDEE8RA123456 ZIP 94025 I'm primary...",
+          "client_reply_draft": "I've got everything I need to get started. I'll begin preparing your quote and follow up if anything else is needed."
+        }
+      ]
+    },
+    {
+      "id": "AC20",
+      "title": "高风险混合 · spouse + materials · 中文",
+      "tags": [
+        "spouse_driver",
+        "materials_sent",
+        "chinese",
+        "high_risk"
+      ],
+      "completeness": "incomplete",
+      "turn_count": 5,
+      "service_type": "add_car",
+      "collected_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "materials_send_question",
+        "customer_says_materials_sent"
+      ],
+      "still_needed_fields": [
+        "vin",
+        "delivery_date",
+        "primary_driver"
+      ],
+      "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+      "primary_vehicle_summary": "2023 Lexus",
+      "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus, zip.  Client says already sent. 5 customer message(s). Latest: 先专注把这台RX加进去吧，另一台我之后再单独说。...",
+      "handoff_ready": false,
+      "action_ready": false,
+      "case_quality": 81,
+      "quality_notes": [],
+      "broker": {
+        "understand_5s": true,
+        "need_wechat": false,
+        "quote_immediately": false,
+        "still_missing": [
+          "vin",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "minutes_saved": 7.3,
+        "manual_minutes": 8.2,
+        "with_builder_minutes": 0.9,
+        "case_clarity": 96,
+        "case_completeness": 50,
+        "broker_confidence": 63
+      },
+      "turn_snapshots": [
+        {
+          "turn_index": 0,
+          "text": "帮我给我配偶新买的那台2023 Lexus RX加险，下周提车。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "customer_question",
+          "primary_vehicle_summary": "2023 Lexus",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus. 1 customer message(s). Latest: 帮我给我配偶新买的那台2023 Lexus RX加险，下周提车。...",
+          "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: 2023 Lexus • 邮编: (待补充) • 待办公室补齐: vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。"
+        },
+        {
+          "turn_index": 1,
+          "text": "驾照复印件我上周已经在微信发过了，你们那边收到了吗？",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "customer_says_materials_sent"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "zip",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "missing_document",
+          "primary_vehicle_summary": "2023 Lexus",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus.  Client says already sent. 2 customer message(s). Latest: 驾照复印件我上周已经在微信发过了，你们那边收到了吗？...",
+          "client_reply_draft": "收到——我已记下您为 2023 Lexus 发来的材料；办公室会核对，若仍有缺项会再联系您，邮编发我一下，好整理进办公室报价单。"
+        },
+        {
+          "turn_index": 2,
+          "text": "邮编91776。VIN我晚点拍给你可以吗？",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "materials_send_question",
+            "customer_says_materials_sent"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "missing_document",
+          "primary_vehicle_summary": "2023 Lexus",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus, zip.  Client says already sent. 3 customer message(s). Latest: 邮编91776。VIN我晚点拍给你可以吗？...",
+          "client_reply_draft": "可以，先发我，办公室一起核。收到，2023 Lexus。 邮编 91776，提车日和主要驾驶人发我，好一并交给办公室报价。"
+        },
+        {
+          "turn_index": 3,
+          "text": "另外想问一下，我现在保单里另一台旧车能不能拿掉重新报？",
+          "service_type": "remove_car",
+          "collected_fields": [
+            "vehicle",
+            "year",
+            "make_model",
+            "sale_date"
+          ],
+          "still_needed_fields": [
+            "transfer_proof"
+          ],
+          "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "missing_document",
+          "primary_vehicle_summary": null,
+          "conversation_summary": "Remove vehicle from policy.  Collected: 2023 Lexus, sale date.  Client says already sent.  Also asked: add car. 4 customer message(s). Latest: 另外想问一下，我现在保单里另一台旧车能不能拿掉重新报？...",
+          "client_reply_draft": "收到，2023 Lexus，提车日和主要驾驶人发我，好一并交给办公室报价。"
+        },
+        {
+          "turn_index": 4,
+          "text": "先专注把这台RX加进去吧，另一台我之后再单独说。",
+          "service_type": "add_car",
+          "collected_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "materials_send_question",
+            "customer_says_materials_sent"
+          ],
+          "still_needed_fields": [
+            "vin",
+            "delivery_date",
+            "primary_driver"
+          ],
+          "broker_next_step": "Verify whether customer-resubmitted items were received; request any still-missing items.",
+          "handoff_ready": false,
+          "action_ready": false,
+          "issue_category": "missing_document",
+          "primary_vehicle_summary": "2023 Lexus",
+          "conversation_summary": "New quote / new vehicle.  Collected: 2023 Lexus, zip.  Client says already sent. 5 customer message(s). Latest: 先专注把这台RX加进去吧，另一台我之后再单独说。...",
+          "client_reply_draft": "收到，2023 Lexus，提车日和主要驾驶人发我，好一并交给办公室报价。"
+        }
+      ]
+    }
+  ]
+}
