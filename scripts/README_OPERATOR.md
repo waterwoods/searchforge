@@ -4,6 +4,8 @@
 **Full surface:** [`docs/runbooks/OPERATOR_SURFACE.md`](../docs/runbooks/OPERATOR_SURFACE.md)  
 **Ignore the rest:** ~460 other files in `scripts/` are lab, regression batteries, or historical SearchForge flows.
 
+**Optional path:** The same 10 scripts are also available as `bash scripts/operator/<name>.sh` (thin wrappers).
+
 ---
 
 ## The 10 scripts
@@ -27,7 +29,7 @@
 
 ```bash
 bash scripts/trial_launch_check.sh
-# then read docs/trial/FOUNDER_LAUNCH_NOTES.md
+# then read docs/TRIAL_ONE_PATH.md
 ```
 
 `founder_pre_trial_checklist.sh` still works (execution-depth checklist). For **launch**, prefer `trial_launch_check.sh`.

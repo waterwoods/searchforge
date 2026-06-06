@@ -1,0 +1,234 @@
+{
+  "version": 1,
+  "description": "P16-Z20 Add-Car commercial simulation — 20 realistic WeChat-style customer scenarios",
+  "scenarios": [
+    {
+      "id": "AC01",
+      "title": "完整客户 · Tesla · 中文",
+      "tags": ["complete", "tesla", "chinese"],
+      "turns": [
+        "陈哥你好，刚提了2024 Tesla Model 3，想加到现有保单。",
+        "VIN 5YJ3E1EA1KF123456，邮编91789，下周五3月15号提车，主驾是我本人。",
+        "我叫王明，手机626-555-0188，这些够你们报价了吗？"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "AC02",
+      "title": "Complete customer · Toyota · English",
+      "tags": ["complete", "toyota", "english"],
+      "turns": [
+        "Hi, I bought a 2023 Toyota Camry and need to add it to my policy.",
+        "VIN 4T1B11HK5KU123456, ZIP 90210, picking up next Monday. I'm the primary driver.",
+        "Name is David Chen, phone 310-555-0142. Ready for quote?"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "AC03",
+      "title": "VIN缺失 · Honda · 中文",
+      "tags": ["vin_missing", "honda", "chinese", "incomplete"],
+      "turns": [
+        "你好，我新买了2022 Honda Accord，想加保。",
+        "邮编92618，这周六提车，主驾是我。VIN我晚点拍给你可以吗？"
+      ],
+      "expected_still": ["vin"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "AC04",
+      "title": "Driver missing · Toyota · mixed",
+      "tags": ["driver_missing", "toyota", "mixed", "incomplete"],
+      "turns": [
+        "刚订了2024 Toyota RAV4，zip 94538，下周四delivery。",
+        "VIN JTMB1RFV0RD123456 — who drives还没定，可能是我老婆也可能是我。"
+      ],
+      "expected_still": ["primary_driver"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "AC05",
+      "title": "保险卡已上传 · Tesla",
+      "tags": ["insurance_card", "tesla", "chinese"],
+      "turns": [
+        "我买了台2024 Tesla Model Y，想加到保单。",
+        "刚才微信发了现有保险卡照片，你们收到了吗？",
+        "VIN 7SAYGDEE5PA123456，邮编90024，下周三提车，我开。"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC06",
+      "title": "配偶主驾 · Lexus · 中文",
+      "tags": ["spouse_driver", "chinese"],
+      "turns": [
+        "帮我给我老婆新买的那台2023 Lexus RX 350加险，下周提车。",
+        "主驾是她，我偶尔开。邮编91776，VIN 2T2BZMCA8PC123456。"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC07",
+      "title": "Teen driver · Honda · English",
+      "tags": ["teenage_driver", "honda", "english"],
+      "turns": [
+        "Adding a 2021 Honda Civic for my son who just got his license.",
+        "He's 17, primary driver. VIN 2HGFC2F59MH123456, ZIP 92801, car already in driveway."
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC08",
+      "title": "Tesla 急单 · 中文",
+      "tags": ["tesla", "chinese", "urgent"],
+      "turns": [
+        "明天就要提2024 Tesla Model 3了！！能今天加进保单吗？",
+        "VIN 5YJ3E1EA4RF123456 邮编94086 我开"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC09",
+      "title": "Toyota · 中英混合",
+      "tags": ["toyota", "mixed_language"],
+      "turns": [
+        "Hi陈哥，新买了2023 Toyota Highlander，想add to existing policy。",
+        "VIN 5TDDZRFH8PS123456，zip 95123，pick up 下周五，primary driver是我。"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC10",
+      "title": "Honda CR-V · English complete",
+      "tags": ["honda", "english", "complete"],
+      "turns": [
+        "Need to add my new 2024 Honda CR-V to policy please.",
+        "VIN 7FARW2H89RE123456, ZIP 92101, delivery March 20, I'm primary driver.",
+        "Jennifer Wu, 858-555-0199"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "AC11",
+      "title": "中文极简开场",
+      "tags": ["chinese", "incomplete", "minimal"],
+      "turns": [
+        "想加一台新车"
+      ],
+      "expected_still": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "AC12",
+      "title": "English minimal opener",
+      "tags": ["english", "incomplete", "minimal"],
+      "turns": [
+        "New car quote please"
+      ],
+      "expected_still": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "AC13",
+      "title": "VIN 最后一轮补齐 · Toyota",
+      "tags": ["toyota", "chinese", "multi_turn"],
+      "turns": [
+        "买了2023 Toyota Corolla，邮编90640，这周日提车，我开。",
+        "VIN还没拿到，销售说今天给我。",
+        "VIN 2T1BURHE0PC123456 刚收到"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "AC14",
+      "title": "家庭多车背景 · 中文",
+      "tags": ["chinese", "family_context"],
+      "turns": [
+        "家里已有两台车在这个保单，现在再买一台2024 BMW X3给太太开。",
+        "她主驾。邮编91364，VIN 5UX53DP04N9123456，下月1号提车。",
+        "另外想问能不能一起bundle便宜点？先帮我把X3加进去。"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC15",
+      "title": "Teen + spouse confusion · mixed",
+      "tags": ["teenage_driver", "spouse_driver", "mixed_language"],
+      "turns": [
+        "Bought 2022 Honda Pilot — 主要给我老婆开，但17岁儿子也会开。",
+        "VIN 5FNYF6H50NB123456 ZIP 92804 delivery next week",
+        "Who should be primary driver? 你帮我建议一下"
+      ],
+      "expected_still": ["primary_driver"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "AC16",
+      "title": "材料说已发 · 中文",
+      "tags": ["materials_sent", "chinese"],
+      "turns": [
+        "加一台2023 Tesla Model 3，VIN 5YJ3E1EA1KF654321 邮编92602 周五提车",
+        "驾照和garaging proof上周都在微信发过了，你们收到了吗？"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC17",
+      "title": "VIN晚点 · Toyota · English",
+      "tags": ["vin_missing", "toyota", "english"],
+      "turns": [
+        "2024 Toyota Tacoma, ZIP 95757, picking up Friday, I'm the driver.",
+        "Don't have VIN yet — dealer will text me tonight. Can you start the quote?"
+      ],
+      "expected_still": ["vin"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "AC18",
+      "title": "新客户 · 无现有保单 · 中文",
+      "tags": ["new_customer", "chinese"],
+      "turns": [
+        "我是新客户，第一次在你们这买保险，刚买了2023 Honda HR-V。",
+        "VIN 3CZRZ1H59PM123456，邮编91748，下周提车，我开。手机626-888-0123"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC19",
+      "title": "Urgent same-day · Tesla English",
+      "tags": ["tesla", "english", "urgent"],
+      "turns": [
+        "Picking up my Tesla Model Y TODAY — need insurance ASAP!",
+        "VIN 7SAYGDEE8RA123456 ZIP 94025 I'm primary"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "AC20",
+      "title": "高风险混合 · spouse + materials · 中文",
+      "tags": ["spouse_driver", "materials_sent", "chinese", "high_risk"],
+      "turns": [
+        "帮我给我配偶新买的那台2023 Lexus RX加险，下周提车。",
+        "驾照复印件我上周已经在微信发过了，你们那边收到了吗？",
+        "邮编91776。VIN我晚点拍给你可以吗？",
+        "另外想问一下，我现在保单里另一台旧车能不能拿掉重新报？",
+        "先专注把这台RX加进去吧，另一台我之后再单独说。"
+      ],
+      "expected_still": ["vin"],
+      "completeness": "incomplete"
+    }
+  ]
+}

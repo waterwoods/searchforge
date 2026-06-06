@@ -1,0 +1,38 @@
+# =============================================================================
+# UNIFIED INTAKE PRODUCT STACK — minimal Docker (optional)
+#
+# Default local dev (recommended): bash scripts/run_demo_local.sh → :8001
+# Full SearchForge lab stack:     docker compose -f docker-compose.lab.yml up
+# Paid pilot deploy:                bash scripts/deploy_paid_pilot.sh (Cloud Run)
+#
+# This compose includes ONLY rag-api with product-only posture.
+# No Milvus, GPU, retrieval-proxy, graph, or etcd/minio.
+# Qdrant is NOT required for core intake triage (intake_core readiness).
+# =============================================================================
+
+services:
+  rag-api:
+    build:
+      context: .
+      dockerfile: services/fiqa_api/Dockerfile
+      args:
+        MAIN_PORT: ${MAIN_PORT:-8000}
+    restart: unless-stopped
+    env_file:
+      - .env.current
+    environment:
+      - MAIN_PORT=8000
+      - UVICORN_WORKERS=1
+      - UNIFIED_INTAKE_PRODUCT_ONLY=1
+      - UNIFIED_INTAKE_INTAKE_CORE_READINESS=1
+      - FAST_STARTUP=1
+      - INIT_TIMEOUT_SEC=30
+      - PYTHONPATH=/app:${PYTHONPATH:-}
+      - ENV_FILE=/app/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/fiqa_api:/app/services/fiqa_api:ro
+      - ./configs:/app/configs:ro
+      - ./data:/app/data
+      - ./.env.current:/app/.env:ro

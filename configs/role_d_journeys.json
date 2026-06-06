@@ -1,0 +1,136 @@
+{
+  "version": "P16-Z7",
+  "description": "10 realistic multi-day insurance journeys for Role D memory validation",
+  "journeys": [
+    {
+      "id": "D01",
+      "category": "cancellation",
+      "title": "7-day cancel notice — client pays late",
+      "days": [
+        { "day": 1, "message": "收到保险公司信说要7天内取消保单，我怎么办？" },
+        { "day": 2, "message": "我刚转了$420，截图发你了，能帮我保住吗？" },
+        { "day": 3, "message": "carrier那边有回复吗？还是说还要等？" }
+      ],
+      "expected_category": "cancellation_warning",
+      "expected_intent_hints": ["cancel", "payment", "carrier"],
+      "reread_must_have_any": ["cancel", "7", "payment", "420", "carrier", "取消", "保费"]
+    },
+    {
+      "id": "D02",
+      "category": "payment_issue",
+      "title": "Autopay failed — client claims paid",
+      "days": [
+        { "day": 1, "message": "Why did my policy lapse? I thought autopay was on." },
+        { "day": 2, "message": "I paid on 3/12 through the carrier portal — confirmation #88291." },
+        { "day": 3, "message": "Any update from underwriting or billing? Still showing lapse." }
+      ],
+      "expected_category": "payment_lapse_expiration",
+      "expected_intent_hints": ["lapse", "paid", "portal"],
+      "reread_must_have_any": ["lapse", "autopay", "paid", "88291", "portal", "billing"]
+    },
+    {
+      "id": "D03",
+      "category": "missing_document",
+      "title": "Garaging proof chase — client sends DL",
+      "days": [
+        { "day": 1, "message": "核保说要我补garaging proof，我搬家到94588了" },
+        { "day": 2, "message": "水电单和驾照照片都发你了，你看够不够？" },
+        { "day": 3, "message": "UW还有别的要求吗？我下周要用车" }
+      ],
+      "expected_category": "missing_document",
+      "expected_intent_hints": ["garaging", "94588", "proof"],
+      "reread_must_have_any": ["garaging", "94588", "proof", "UW", "核保", "搬家"]
+    },
+    {
+      "id": "D04",
+      "category": "underwriting",
+      "title": "UW questionnaire deadline",
+      "days": [
+        { "day": 1, "message": "Underwriting needs completed driver questionnaire by 3/15/2026. Policy 4412098." },
+        { "day": 2, "message": "Teen driver form signed — attached PDF. Anything else?" },
+        { "day": 3, "message": "Did carrier accept the forms? Deadline is Friday." }
+      ],
+      "expected_category": "underwriting_followup",
+      "expected_intent_hints": ["underwriting", "questionnaire", "3/15"],
+      "reread_must_have_any": ["underwriting", "questionnaire", "3/15", "4412098", "teen", "driver"]
+    },
+    {
+      "id": "D05",
+      "category": "claim",
+      "title": "Rear-end FNOL — plate then photos",
+      "days": [
+        { "day": 1, "message": "昨天追尾了，对方跑了，车牌8ABC123，要报claim" },
+        { "day": 2, "message": "现场照片和车头损伤都发你了" },
+        { "day": 3, "message": "adjuster有联系我吗？还是要我再打电话？" }
+      ],
+      "expected_category": "claim_intake",
+      "expected_intent_hints": ["claim", "plate", "8ABC123"],
+      "reread_must_have_any": ["claim", "8ABC123", "plate", "photo", "adjuster", "追尾"]
+    },
+    {
+      "id": "D06",
+      "category": "add_driver",
+      "title": "Add teen driver — license follow-up",
+      "days": [
+        { "day": 1, "message": "想加我儿子开车，17岁，有learner permit" },
+        { "day": 2, "message": "驾照正反面照片发你了，2020 Honda Civic" },
+        { "day": 3, "message": "quote出来了吗？大概加多少钱？" }
+      ],
+      "expected_category": "customer_question",
+      "expected_intent_hints": ["driver", "teen", "permit"],
+      "reread_must_have_any": ["driver", "17", "permit", "Honda", "Civic", "quote", "驾照"]
+    },
+    {
+      "id": "D07",
+      "category": "remove_vehicle",
+      "title": "Sold second car — remove from policy",
+      "days": [
+        { "day": 1, "message": "我把2018 Toyota Camry卖掉了，要从保单拿掉" },
+        { "day": 2, "message": "bill of sale和新车主的transfer都发你了" },
+        { "day": 3, "message": "refund大概多少？什么时候生效？" }
+      ],
+      "expected_category": "customer_question",
+      "expected_intent_hints": ["remove", "sold", "Camry"],
+      "reread_must_have_any": ["remove", "sold", "Camry", "Toyota", "refund", "拿掉"]
+    },
+    {
+      "id": "D08",
+      "category": "coverage_review",
+      "title": "Renewal premium too high — bill sent",
+      "days": [
+        { "day": 1, "message": "续保费太高，能不能换便宜点的coverage？" },
+        { "day": 2, "message": "我发你账单了，你看能不能换便宜点的coverage" },
+        { "day": 3, "message": "有便宜方案了吗？不想降太多保额" }
+      ],
+      "expected_category": "customer_question",
+      "expected_intent_hints": ["premium", "renewal", "coverage"],
+      "reread_must_have_any": ["premium", "renewal", "coverage", "续保", "账单", "便宜"]
+    },
+    {
+      "id": "D09",
+      "category": "cancellation",
+      "title": "Correction — cancel was wrong, address UW return",
+      "days": [
+        { "day": 1, "message": "保单要cancel了" },
+        { "day": 2, "message": "不是payment问题，是地址不对被UW退回了" },
+        { "day": 3, "message": "新地址证明发你了，94566，请帮重新送UW" }
+      ],
+      "expected_category": "customer_question",
+      "expected_intent_hints": ["cancel", "address", "UW"],
+      "reread_must_have_any": ["cancel", "address", "UW", "94566", "payment", "Prior"]
+    },
+    {
+      "id": "D10",
+      "category": "payment_issue",
+      "title": "Installment plan request after lapse",
+      "days": [
+        { "day": 1, "message": "保单停了，我想分期付清能恢复吗？" },
+        { "day": 2, "message": "首付$200今天转了，剩下分3期可以吗？" },
+        { "day": 3, "message": "office有跟carrier确认恢复了吗？" }
+      ],
+      "expected_category": "payment_lapse_expiration",
+      "expected_intent_hints": ["lapse", "installment", "restore"],
+      "reread_must_have_any": ["lapse", "installment", "200", "carrier", "恢复", "分期"]
+    }
+  ]
+}

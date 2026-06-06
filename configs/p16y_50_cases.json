@@ -1,0 +1,68 @@
+{
+  "version": "1",
+  "description": "P16-Y Case Intelligence battery — 50 realistic broker messages",
+  "cases": [
+    {"id": "Y01", "category": "cancellation", "input": "Notice: Policy will be cancelled in 7 days due to non-payment. Last notice.", "expected_category": "cancellation_warning", "expected_urgency": "critical", "multi_turn": false, "expected_still_any": ["payment_proof_or_screenshot"], "expected_deadline": true},
+    {"id": "Y02", "category": "cancellation", "input": "⚠️ 重要：您的保单即将因未缴款而被取消", "expected_category": "cancellation_warning", "expected_urgency": "critical", "multi_turn": false},
+    {"id": "Y03", "category": "cancellation", "input": "保险公司说我的保单7天后要cancel，我已经付了呀", "expected_category": "cancellation_warning", "expected_urgency": "critical", "multi_turn": false, "expected_collected_any": ["already_paid_claimed"]},
+    {"id": "Y04", "category": "cancellation", "input": "Carrier notice: Your policy will be cancelled due to non-payment. 这个是不是今天一定要处理？", "expected_category": "cancellation_warning", "expected_urgency": "critical", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y05", "category": "cancellation", "input": "急死了 保单要停了 怎么办", "expected_category": "cancellation_warning", "expected_urgency": "critical", "multi_turn": false},
+
+    {"id": "Y06", "category": "missing_documents", "input": "Underwriting requested driver's license copy. Client says \"I already sent it last week.\"", "expected_category": "missing_document", "expected_urgency": "medium", "multi_turn": false, "expected_still_any": ["verify_carrier_received"]},
+    {"id": "Y07", "category": "missing_documents", "input": "需要驾照 copy 客户说上周寄了", "expected_category": "missing_document", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y08", "category": "missing_documents", "input": "UW follow up - need dec page + garaging proof. 客户说上周发过了", "expected_category": "missing_document", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y09", "category": "missing_documents", "input": "carrier 说 declaration page missing，这个什么意思", "expected_category": "missing_document", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y10", "category": "missing_documents", "input": "Escrow department requests updated declaration page for loan refinance. Due in 14 days.", "expected_category": "missing_document", "expected_urgency": "medium", "multi_turn": false, "expected_deadline": true},
+
+    {"id": "Y11", "category": "address_change", "input": "我搬家了，新地址是94588 Pleasanton，保单地址要改吗？", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_intent_hint": "address"},
+    {"id": "Y12", "category": "address_change", "input": "Moved to 90210 last month — need to update garaging address on both cars", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y13", "category": "address_change", "input": "客户说从San Jose搬到Fremont了，garaging proof要重新发吗", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+
+    {"id": "Y14", "category": "driver_addition", "input": "我儿子刚拿驾照，想加到我的保单上，需要准备什么？", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_intent_hint": "driver"},
+    {"id": "Y15", "category": "driver_addition", "input": "Add my wife as a driver on the 2020 Camry policy", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y16", "category": "driver_addition", "input": "teen driver just got license — how do I add them? VIN 1HGCM82633A004352", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+
+    {"id": "Y17", "category": "vehicle_addition", "input": "想加一台2021 Tesla Model Y，下周提车，今天能不能先出报价", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y18", "category": "vehicle_addition", "input": "I bought a new BMW X5, how much is insurance?", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_draft_en": true},
+    {"id": "Y19", "category": "vehicle_addition", "input": "2024 Honda CR-V VIN 5J6RT6H50RL012345 zip 92618 delivery Friday — quote please", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y20", "category": "vehicle_addition", "input": "客户卖掉旧车了，想把2014 Honda Accord从保单拿掉", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+
+    {"id": "Y21", "category": "billing", "input": "Payment failed. Your card on file was declined. Please update payment method.", "expected_category": "payment_lapse_expiration", "expected_urgency": "high", "multi_turn": false},
+    {"id": "Y22", "category": "billing", "input": "这个是不是保单要停了？我昨天收到账单 overdue", "expected_category": "payment_lapse_expiration", "expected_urgency": "high", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y23", "category": "billing", "input": "AutoPay failed again, please update card to avoid interruption in coverage", "expected_category": "payment_lapse_expiration", "expected_urgency": "high", "multi_turn": false},
+    {"id": "Y24", "category": "billing", "input": "这个月保费太高了，能不能看看怎么降一点", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y25", "category": "billing", "input": "Client says renewal premium is too high, can we review options?", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+
+    {"id": "Y26", "category": "coverage", "input": "Need SR-22 filing proof for DMV suspension clearance, what should client bring?", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y27", "category": "coverage", "input": "客户问 liability 100/300 够不够，要不要加 umbrella", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y28", "category": "coverage", "input": "Does comprehensive cover windshield replacement? 2022 Tesla", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+
+    {"id": "Y29", "category": "underwriting", "input": "Underwriting needs clarification on prior claims. Please respond within 10 days.", "expected_category": "underwriting_followup", "expected_urgency": "high", "multi_turn": false, "expected_deadline": true},
+    {"id": "Y30", "category": "underwriting", "input": "UW questionnaire incomplete — need signed form by 3/15/2026", "expected_category": "underwriting_followup", "expected_urgency": "high", "multi_turn": false, "expected_deadline": true},
+    {"id": "Y31", "category": "underwriting", "input": "核保说之前事故记录对不上，要我补说明，deadline Friday", "expected_category": "underwriting_followup", "expected_urgency": "high", "multi_turn": false, "expected_deadline": true},
+
+    {"id": "Y32", "category": "renewal", "input": "Renewal reminder: Your policy renews in 45 days. No action needed at this time.", "expected_category": "renewal_reminder", "expected_urgency": "low", "multi_turn": false},
+    {"id": "Y33", "category": "renewal", "input": "续保通知到了，保费涨了30%，客户很生气", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y34", "category": "renewal", "input": "Policy #CA-8829101 renews March 15 — client wants to shop around first", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_policy_number": true},
+
+    {"id": "Y35", "category": "claims", "input": "刚出事故了，对方追尾我，现在要报claim吗？保单号8829101", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_intent_hint": "claim"},
+    {"id": "Y36", "category": "claims", "input": "Rear-ended yesterday on 101, other driver has no insurance. What do I do?", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_intent_hint": "claim"},
+    {"id": "Y37", "category": "claims", "input": "玻璃裂了，走保险还是自己修？deductible 500", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false},
+
+    {"id": "Y38", "category": "multi_turn", "input": "客户发来一张截图 上面是dmv的信 看不懂", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_still_any": ["notice_image"], "expected_draft_zh": true},
+    {"id": "Y39", "category": "multi_turn", "input": "这个英文 notice 看不懂", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": false, "expected_draft_zh": true},
+    {"id": "Y40", "category": "multi_turn", "input": "客户发来截图：保单申请需要签名，但客户说「我签了呀，怎么还说要签？」", "expected_category": "missing_signature", "expected_urgency": "medium", "multi_turn": false},
+
+    {"id": "Y41", "category": "multi_turn", "turns": [{"role": "customer", "text": "Payment failed notice from carrier"}, {"role": "customer", "text": "I paid yesterday with new card, here's screenshot"}], "input": "When will coverage be restored?", "expected_category": "payment_lapse_expiration", "expected_urgency": "high", "multi_turn": true, "expected_collected_any": ["already_paid_claimed", "screenshot_sent"]},
+    {"id": "Y42", "category": "multi_turn", "turns": [{"role": "customer", "text": "想加2021 Camry"}], "input": "VIN 4T1B11HK5KU123456 zip 91765", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": true, "expected_intent_hint": "add car"},
+    {"id": "Y43", "category": "multi_turn", "turns": [{"role": "customer", "text": "UW need DL copy"}], "input": "客户说驾照正反面都发你微信了", "expected_category": "missing_document", "expected_urgency": "medium", "multi_turn": true, "expected_collected_any": ["customer_says_sent_driver_license"]},
+    {"id": "Y44", "category": "multi_turn", "turns": [{"role": "customer", "text": "保单要cancel了"}], "input": "不是payment问题，是地址不对被UW退回了", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": true},
+    {"id": "Y45", "category": "multi_turn", "turns": [{"role": "customer", "text": "续保费太高"}], "input": "我发你账单了，你看能不能换便宜点的coverage", "expected_category": "customer_question", "expected_urgency": "medium", "multi_turn": true},
+
+    {"id": "Y46", "category": "edge", "input": "[Forwarded email, subject: \"Important - Action Required\" but body is just a generic marketing footer]", "expected_category": "unclear", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y47", "category": "edge", "input": "Your policy is pending issuance. We will notify you within 5-7 business days.", "expected_category": "policy_delay_pending", "expected_urgency": "low", "multi_turn": false},
+    {"id": "Y48", "category": "edge", "input": "Lienholder requests certificate of insurance. Policy number and effective dates needed.", "expected_category": "informational", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y49", "category": "edge", "input": "联系人工", "expected_category": "customer_requested_human", "expected_urgency": "medium", "multi_turn": false},
+    {"id": "Y50", "category": "edge", "input": "Your proof of insurance has been emailed to the DMV. No further action required.", "expected_category": "informational", "expected_urgency": "low", "multi_turn": false}
+  ]
+}

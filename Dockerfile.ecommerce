@@ -1,3 +1,8 @@
+# =============================================================================
+# LAB ONLY — SearchForge Ecommerce Agent API (not Unified Intake paid pilot)
+# Product path: bash scripts/run_demo_local.sh  (port 8001)
+# Lab index: docs/archive/platform/README_LAB_INFRA.md
+# =============================================================================
 # Dockerfile for Ecommerce Agent API
 # FastAPI app with ecommerce agent endpoint
 # Build: docker build -f Dockerfile.ecommerce -t searchforge-ecommerce-api .

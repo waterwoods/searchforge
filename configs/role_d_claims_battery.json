@@ -1,0 +1,106 @@
+{
+  "version": "P16-Z7",
+  "description": "10 difficult claims multi-turn stress cases",
+  "cases": [
+    {
+      "id": "CL01",
+      "title": "Hit-and-run then plate correction",
+      "turns": [
+        "Someone hit my parked car and left. Need to file claim.",
+        "Plate was 7XYZ999 not 7XYZ99 — typo in last message.",
+        "Police report #LA-2026-4412 uploaded."
+      ],
+      "memory_keywords": ["hit", "parked", "7XYZ999", "police", "LA-2026"]
+    },
+    {
+      "id": "CL02",
+      "title": "Total loss correction",
+      "turns": [
+        "Insurer said total loss on my 2019 Accord.",
+        "不是全损，只是bumper和灯坏了，还能开。",
+        "Shop estimate $4,200 attached."
+      ],
+      "memory_keywords": ["total", "Accord", "bumper", "4200", "全损"]
+    },
+    {
+      "id": "CL03",
+      "title": "Photo reference chain",
+      "turns": [
+        "追尾对方车牌8KLM442，要开claim",
+        "照片1是车尾，照片2是对方驾照",
+        "还缺什么材料？adjuster还没联系我"
+      ],
+      "memory_keywords": ["8KLM442", "photo", "adjuster", "claim"]
+    },
+    {
+      "id": "CL04",
+      "title": "Carrier delay anxiety",
+      "turns": [
+        "Filed claim #CLM-8821 last week for hail damage.",
+        "Carrier still no adjuster — roof leaking.",
+        "Can you escalate? Policy 9901234."
+      ],
+      "memory_keywords": ["CLM-8821", "hail", "adjuster", "9901234", "escalate"]
+    },
+    {
+      "id": "CL05",
+      "title": "Mixed claim + payment pivot",
+      "turns": [
+        "Accident 2/28, other driver at fault, claim open.",
+        "不是payment问题，是对方保险拖进度。",
+        "Their adjuster finally emailed — need help replying."
+      ],
+      "memory_keywords": ["accident", "2/28", "payment", "adjuster", "fault"]
+    },
+    {
+      "id": "CL06",
+      "title": "Injury + claim complexity",
+      "turns": [
+        "Rear-ended on 101, neck pain, ambulance.",
+        "MRI scheduled; employer asking for incident report.",
+        "Carrier wants recorded statement — what should I say?"
+      ],
+      "memory_keywords": ["rear", "neck", "MRI", "statement", "101"]
+    },
+    {
+      "id": "CL07",
+      "title": "Uninsured motorist",
+      "turns": [
+        "Uninsured driver hit me, only got partial plate 4AB",
+        "Full plate now 4AB2291 from witness photo",
+        "Do I use UM coverage? Deductible?"
+      ],
+      "memory_keywords": ["uninsured", "4AB2291", "UM", "deductible"]
+    },
+    {
+      "id": "CL08",
+      "title": "Glass only then full claim",
+      "turns": [
+        "Windshield cracked on freeway — glass claim?",
+        "Actually hood dent too from same rock — full claim.",
+        "Photos sent; VIN ends 88219."
+      ],
+      "memory_keywords": ["windshield", "hood", "VIN", "88219", "glass"]
+    },
+    {
+      "id": "CL09",
+      "title": "Correction chain (not accident)",
+      "turns": [
+        "要报事故，刚撞了护栏",
+        "不是事故，是停车刮蹭柱子",
+        "Damage photos + location mall parking P2."
+      ],
+      "memory_keywords": ["事故", "刮蹭", "Prior", "parking", "photo"]
+    },
+    {
+      "id": "CL10",
+      "title": "Rental + total loss dispute",
+      "turns": [
+        "Car in shop 3 weeks, need rental extension.",
+        "Carrier says total loss — I disagree, want repair.",
+        "Second shop bid $18k — not total loss."
+      ],
+      "memory_keywords": ["rental", "total", "18000", "repair", "shop"]
+    }
+  ]
+}

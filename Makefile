@@ -57,6 +57,11 @@ volumes-ok:
 
 help: ## 显示所有可用命令（默认命令）
 	@echo "=================================================="
+	@echo "  LAB ONLY — SearchForge Makefile (not paid pilot)"
+	@echo "  Product: bash scripts/run_demo_local.sh  (:8001)"
+	@echo "  Deploy:  bash scripts/deploy_paid_pilot.sh"
+	@echo "  Index:   docs/archive/platform/README_LAB_INFRA.md"
+	@echo "=================================================="
 	@echo "  SearchForge Makefile 命令帮助"
 	@echo "=================================================="
 

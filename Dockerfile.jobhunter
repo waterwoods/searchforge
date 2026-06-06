@@ -1,3 +1,8 @@
+# =============================================================================
+# LAB ONLY — SearchForge JobHunter API (not Unified Intake paid pilot)
+# Product path: bash scripts/run_demo_local.sh  (port 8001)
+# Lab index: docs/archive/platform/README_LAB_INFRA.md
+# =============================================================================
 # Dockerfile for JobHunter API
 # FastAPI app with jobhunter agent endpoint
 # Build: docker build -f Dockerfile.jobhunter -t searchforge-jobhunter-api:latest .

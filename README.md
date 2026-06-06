@@ -10,12 +10,14 @@
 
 | Role | Read (in order) | Run |
 |------|-----------------|-----|
-| **Founder** | This file → [`docs/CURRENT_PRODUCT_SHAPE.md`](docs/CURRENT_PRODUCT_SHAPE.md) → [`docs/ANDY_QUICK_START.md`](docs/ANDY_QUICK_START.md) | `bash scripts/run_demo_local.sh` |
+| **Founder** | This file → [`docs/CURRENT_PRODUCT_SHAPE.md`](docs/CURRENT_PRODUCT_SHAPE.md) → [`docs/FOUNDER_ONE_PATH.md`](docs/FOUNDER_ONE_PATH.md) | `bash scripts/run_demo_local.sh` |
+| **Broker** | [`docs/BROKER_ONE_PAGER.md`](docs/BROKER_ONE_PAGER.md) → [`docs/BROKER_TRIAL_PLAYBOOK.md`](docs/BROKER_TRIAL_PLAYBOOK.md) | Open workbench URL |
 | **Operator** | [`docs/runbooks/OPERATOR_CHEAT_SHEET.md`](docs/runbooks/OPERATOR_CHEAT_SHEET.md) → [`docs/runbooks/OPERATOR_IGNORE_LIST.md`](docs/runbooks/OPERATOR_IGNORE_LIST.md) | `bash scripts/trial_launch_check.sh` |
 | **Support** | [`docs/runbooks/SUPPORT_TRUTH_MAP.md`](docs/runbooks/SUPPORT_TRUTH_MAP.md) → cheat sheet | `bash scripts/summarize_support_posture.sh <URL>` |
-| **Engineer** | [`AGENTS.md`](AGENTS.md) → [`docs/CURRENT_PRODUCT_SHAPE.md`](docs/CURRENT_PRODUCT_SHAPE.md) | `bash scripts/guardrail_inbox_triage.sh` |
+| **Engineer** | [`AGENTS.md`](AGENTS.md) → [`docs/15_MINUTE_ENGINEER_ONBOARDING.md`](docs/15_MINUTE_ENGINEER_ONBOARDING.md) | `bash scripts/guardrail_inbox_triage.sh` |
 
-**Full operator surface (10 scripts, 10 docs, 5 endpoints):** [`docs/runbooks/OPERATOR_SURFACE.md`](docs/runbooks/OPERATOR_SURFACE.md)
+**Full operator surface (10 scripts, 10 docs, 5 endpoints):** [`docs/runbooks/OPERATOR_SURFACE.md`](docs/runbooks/OPERATOR_SURFACE.md)  
+**New engineers (15 min):** [`docs/15_MINUTE_ENGINEER_ONBOARDING.md`](docs/15_MINUTE_ENGINEER_ONBOARDING.md)
 
 ---
 
@@ -85,6 +87,7 @@ Details: [`docs/runbooks/DEPLOY_TRUTH_MAP.md`](docs/runbooks/DEPLOY_TRUTH_MAP.md
 |--------|-----|
 | Qdrant red / vectors down | Optional for core triage; notice/knowledge wedge only |
 | `docs/sprints/*` | Historical execution notes — not wiring truth |
+| `docs/archive/sprints/*` | Archived sprint dirs (P8) — not wiring truth |
 | Sidebar lab routes (RAG Lab, Agent Studio, …) | Hidden when `VITE_UNIFIED_INTAKE_PRODUCT_ONLY=1` |
 | `/demo` RAG page | Separate wedge — not the intake workbench |
 | Platform blueprints (`TRUSTED_ASSISTANT_*`, FUTURE_SAAS) | Investor framing — not deploy truth |
@@ -100,6 +103,7 @@ Details: [`docs/runbooks/DEPLOY_TRUTH_MAP.md`](docs/runbooks/DEPLOY_TRUTH_MAP.md
 |------|------|
 | `RUN_DEMO_LAB=1 bash scripts/run_demo_local.sh` | Full SearchForge API surface locally |
 | `docker compose -f docker-compose.lab.yml up rag-api` on port **8000** | Legacy container stack |
+| `docker compose -f docker-compose.product.yml up rag-api` | Minimal product-only stack |
 | `make -f Makefile.lab help` | SearchForge lab targets (GPU, CI, Qdrant) |
 | `POST /api/query` | RAG retrieval lab |
 | http://localhost:5173/demo | RAG Q&A wedge |
