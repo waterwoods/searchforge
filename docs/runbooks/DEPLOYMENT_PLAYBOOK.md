@@ -85,16 +85,23 @@ bash scripts/deploy_paid_pilot.sh
 
 ### What `/readyz` means
 
-| `ok` | Meaning |
-|------|---------|
-| `true` | Qdrant + embedding ready (full RAG path) |
-| `false` | Qdrant or embedding not ready |
+| Field | Meaning |
+|-------|---------|
+| `intake_path_ready: true` | **Intake SaaS can run** — check this first on paid pilot |
+| `readiness_mode: intake_core` | Qdrant/embedding optional (set by `deploy_paid_pilot.sh`) |
+| `ok: true` | All dependencies for current mode are healthy |
+| `ok: false` + `intake_path_ready: true` | Vectors down — triage still works; notice/knowledge RAG may not |
+
+| `readiness_mode` | `ok: false` usually means |
+|------------------|---------------------------|
+| `intake_core` | Postgres or API-key posture issue — run `summarize_readiness_posture.sh --probe <URL>` |
+| `full_stack` | Qdrant or embedding not ready (RAG lab path) |
 
 ### What `/readyz` does NOT mean
 
-- **In DEMO_MODE:** Qdrant and embedding are optional. Inbox triage (rule/LLM path) works even when `/readyz` is `not_ready`.
-- **Triage path:** `POST /api/inbox/triage` does not require Qdrant. If `/readyz` fails but liveness (`/health/live`) passes, triage may still work.
-- **Do not trust `/readyz` alone** to decide if the intake path is usable. Run one triage API check.
+- **`ok: false` alone is not an intake outage** when `intake_path_ready: true` — vectors optional.
+- **Triage path:** `POST /api/inbox/triage` does not require Qdrant. If liveness passes, run one triage API check.
+- **Ignore `/ready`** for intake — it requires Qdrant+embed (legacy full-stack probe).
 
 ### When triage path works
 

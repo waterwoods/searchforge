@@ -23,7 +23,7 @@
 - **Frontend:** `npm run build` works; `VITE_API_BASE_URL` configurable for production
 - **Backend:** `Dockerfile.cloudrun` exists; `deploy_paid_pilot.sh` (paid) / `deploy_demo_cloud_smoke.sh` (demo only)
 - **CORS:** Backend supports `ALLOWED_ORIGINS` for Vercel (unset = allow-all for demo)
-- **Health:** `/healthz`, `/readyz` endpoints
+- **Health:** `/health/live` (liveness), `/readyz` (readiness — see [`docs/runbooks/OPERATOR_CHEAT_SHEET.md`](./runbooks/OPERATOR_CHEAT_SHEET.md))
 - **Vercel:** `vercel.json` has SPA rewrites for `/workbench/*`
 
 ---
@@ -68,8 +68,8 @@ vercel --prod
 
 ## 5. Post-Deploy Checks
 
-- [ ] `curl <Cloud Run URL>/healthz` → 200
-- [ ] `curl <Cloud Run URL>/readyz` — inspect (ok:false OK for triage-only; see runbooks/KNOWN_DEPLOYMENT_GOTCHAS.md)
+- [ ] `curl <Cloud Run URL>/health/live` → 200 (**not** bare `/healthz` — Cloud Run edge often 404)
+- [ ] `curl <Cloud Run URL>/readyz` — check `intake_path_ready:true` (ok:false OK without Qdrant on paid pilot)
 - [ ] Open `https://<vercel>.vercel.app/workbench/unified-intake`
 - [ ] Paste "Notice: Policy will be cancelled in 7 days" → triage works
 - [ ] No CORS errors in browser console
@@ -100,6 +100,7 @@ vercel --prod
 
 ## 8. Gaps / Risks
 
-- **Case persistence:** In-memory/SQLite; not shared across Cloud Run instances. Acceptable for demo.
-- **Qdrant collection:** Must be seeded with `auto_insurance_demo_core` for retrieval flows.
+- **Case persistence (paid pilot):** Postgres via `SERVICE_RECORD_DATABASE_URL` — required; JSON path is dev-only.
+- **Qdrant collection:** Only needed for notice/knowledge retrieval — optional for core intake triage when `UNIFIED_INTAKE_INTAKE_CORE_READINESS=1`.
 - **CORS:** If frontend URL changes, update `ALLOWED_ORIGINS` on Cloud Run.
+- **Operator docs:** [`docs/runbooks/OPERATOR_CHEAT_SHEET.md`](./runbooks/OPERATOR_CHEAT_SHEET.md), [`DEPLOY_TRUTH_MAP.md`](./runbooks/DEPLOY_TRUTH_MAP.md)

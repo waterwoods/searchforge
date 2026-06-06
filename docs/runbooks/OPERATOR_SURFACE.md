@@ -31,7 +31,9 @@
 | 9 | `bash scripts/restore_8001_readiness.sh` | Recovery from 503 / embedding_warming |
 | 10 | `bash scripts/demo_pre_checklist.sh` | Pre-demo founder checklist |
 
-**Not operator entries:** `deploy_rag_demo.sh`, `deploy_cloud_run_core.sh`, `deploy_cloud_run.sh`, ~190 other `.sh` files — see [`scripts/README_OPERATOR.md`](../../scripts/README_OPERATOR.md).
+**Not operator entries:** `deploy_rag_demo.sh`, `deploy_cloud_run_core.sh`, `deploy_cloud_run.sh`, ~190 other `.sh` files — see [`scripts/README_OPERATOR.md`](../../scripts/README_OPERATOR.md), [`scripts/LAB_SCRIPT_INDEX.md`](../../scripts/LAB_SCRIPT_INDEX.md).
+
+**Tiered discovery:** `scripts/operator/` (product), `scripts/founder/` (demo/trial), `scripts/lab/` (R&D wrappers — print LAB banner).
 
 ---
 
@@ -43,11 +45,11 @@
 | 2 | [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) | Everyone — runtime truth |
 | 3 | [`docs/runbooks/OPERATOR_CHEAT_SHEET.md`](./OPERATOR_CHEAT_SHEET.md) | Operators — 2am |
 | 4 | [`docs/runbooks/OPERATOR_IGNORE_LIST.md`](./OPERATOR_IGNORE_LIST.md) | Operators — cognitive load |
-| 5 | [`docs/runbooks/DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md) | Which deploy script |
-| 6 | [`docs/runbooks/SUPPORT_TRUTH_MAP.md`](./SUPPORT_TRUTH_MAP.md) | Support manifest keys |
-| 7 | [`docs/ANDY_QUICK_START.md`](../ANDY_QUICK_START.md) | Founders — local demo |
-| 8 | [`docs/goals/insurance_paid_pilot_goal.md`](../goals/insurance_paid_pilot_goal.md) | Scope in/out |
-| 9 | [`docs/runbooks/DEPLOYMENT_PLAYBOOK.md`](./DEPLOYMENT_PLAYBOOK.md) | Release steps |
+| 5 | [`docs/15_MINUTE_ENGINEER_ONBOARDING.md`](../15_MINUTE_ENGINEER_ONBOARDING.md) | Engineers — 15-min path |
+| 6 | [`docs/runbooks/DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md) | Which deploy script |
+| 7 | [`docs/runbooks/SUPPORT_TRUTH_MAP.md`](./SUPPORT_TRUTH_MAP.md) | Support manifest keys |
+| 8 | [`docs/ANDY_QUICK_START.md`](../ANDY_QUICK_START.md) | Founders — local demo |
+| 9 | [`docs/goals/insurance_paid_pilot_goal.md`](../goals/insurance_paid_pilot_goal.md) | Scope in/out |
 | 10 | [`docs/trial/INDEX.md`](../trial/INDEX.md) | Real broker trial package |
 
 **Macro blueprint (major sprints only):** [`docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md`](../UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md)
@@ -90,6 +92,8 @@ See [`OPERATOR_IGNORE_LIST.md`](./OPERATOR_IGNORE_LIST.md). Summary:
 | `POST /api/query` | RAG retrieval |
 | `/demo` page | RAG Q&A wedge |
 | GPU worker, AutoTuner, Metrics Hub | SearchForge R&D |
+| `scripts/lab/*` wrappers | R&D — print **LAB ONLY** banner |
+| [`scripts/LAB_SCRIPT_INDEX.md`](../../scripts/LAB_SCRIPT_INDEX.md) | Lab script catalog |
 | [`docs/archive/README_LEGACY_SEARCHFORGE_LAB.md`](../archive/README_LEGACY_SEARCHFORGE_LAB.md) | Old 1,500-line README |
 
 ---
@@ -131,10 +135,9 @@ See [`OPERATOR_IGNORE_LIST.md`](./OPERATOR_IGNORE_LIST.md). Summary:
 
 ### Engineer (~15 min)
 
-1. Read [`AGENTS.md`](../../AGENTS.md) — 3 min
-2. Read [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md) — 5 min
-3. Read [`docs/goals/insurance_paid_pilot_goal.md`](../goals/insurance_paid_pilot_goal.md) — 3 min
-4. Run `bash scripts/guardrail_inbox_triage.sh` — 4 min
+1. Read [`docs/15_MINUTE_ENGINEER_ONBOARDING.md`](../15_MINUTE_ENGINEER_ONBOARDING.md) — 10 min
+2. Read [`AGENTS.md`](../../AGENTS.md) — 2 min
+3. Run `bash scripts/guardrail_inbox_triage.sh` — 3 min
 
 ---
 

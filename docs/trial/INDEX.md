@@ -1,85 +1,59 @@
 # Real Broker Trial — Start Here
 
-**Product:** Unified Intake broker-office pilot (1 week)  
-**Single launch command:** `bash scripts/trial_launch_check.sh`
+**Product:** Unified Intake broker-office pilot (7 days)  
+**Single launch command:** `bash scripts/trial_launch_check.sh`  
+**Canonical paths:** [`docs/FOUNDER_ONE_PATH.md`](../FOUNDER_ONE_PATH.md) · [`docs/TRIAL_ONE_PATH.md`](../TRIAL_ONE_PATH.md)
 
 ---
 
-## Do this (founder launch path)
+## Do this (founder)
 
 | Step | What |
 |------|------|
 | 1 | Run `bash scripts/trial_launch_check.sh` — must PASS |
-| 2 | Read [`FOUNDER_LAUNCH_NOTES.md`](FOUNDER_LAUNCH_NOTES.md) — say, inspect, collect |
-| 3 | Bring [`BROKER_TRIAL_ONE_PAGER.md`](BROKER_TRIAL_ONE_PAGER.md) for broker |
-| 4 | Copy [`TRIAL_OBSERVATION_LOG_TEMPLATE.md`](TRIAL_OBSERVATION_LOG_TEMPLATE.md) |
-| 5 | Post-trial: [`FIX_NOW_QUEUE_TEMPLATE.md`](FIX_NOW_QUEUE_TEMPLATE.md) → `results/trial_logs/` |
+| 2 | Read [`TRIAL_ONE_PATH.md`](../TRIAL_ONE_PATH.md) — Day 0–7 |
+| 3 | Give broker [`BROKER_ONE_PAGER.md`](../BROKER_ONE_PAGER.md) + [`BROKER_TRIAL_PLAYBOOK.md`](../BROKER_TRIAL_PLAYBOOK.md) |
+| 4 | Copy [`TRIAL_OBSERVATION_LOG_TEMPLATE.md`](./TRIAL_OBSERVATION_LOG_TEMPLATE.md) |
+| 5 | Post-trial: [`FIX_NOW_QUEUE_TEMPLATE.md`](./FIX_NOW_QUEUE_TEMPLATE.md) → `results/trial_logs/` |
 
 **Support escalation:** [`docs/runbooks/SUPPORT_TRUTH_MAP.md`](../runbooks/SUPPORT_TRUTH_MAP.md) + `bash scripts/summarize_support_posture.sh <URL>`
 
 ---
 
-## Alternate entry (execution depth)
+## Do this (broker)
 
-`bash scripts/founder_pre_trial_checklist.sh` — runs readiness + prints pre-trial steps.  
-Use when rehearsing **before** launch; for **first broker trial**, prefer `trial_launch_check.sh` above.
-
-Deep execution notes: [`FOUNDER_FINAL_TRIAL_NOTES.md`](FOUNDER_FINAL_TRIAL_NOTES.md)
+Read [`BROKER_ONE_PAGER.md`](../BROKER_ONE_PAGER.md) → follow [`BROKER_TRIAL_PLAYBOOK.md`](../BROKER_TRIAL_PLAYBOOK.md).
 
 ---
 
-## Core specs (verified by `trial_readiness_check.sh`)
+## Alternate entry (depth rehearsal)
 
-These 12 docs must exist — reference when scoping or hardening; **not** day-one reading:
-
-| Doc | Purpose |
-|-----|---------|
-| [REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md](REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md) | Package rationale |
-| [TRIAL_SCOPE_DEFINITION_SPEC.md](TRIAL_SCOPE_DEFINITION_SPEC.md) | Duration, in/out |
-| [TRIAL_SCENARIO_PACK_SPEC.md](TRIAL_SCENARIO_PACK_SPEC.md) | 5 core + 2 extended scenarios |
-| [TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md](TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md) | Metrics + value questions |
-| [BROKER_TRIAL_WORKFLOW_SPEC.md](BROKER_TRIAL_WORKFLOW_SPEC.md) | Broker daily workflow |
-| [FOUNDER_TRIAL_NOTES.md](FOUNDER_TRIAL_NOTES.md) | Inspect, pitch, demo |
-| [TRIAL_EXECUTION_BLUEPRINT.md](TRIAL_EXECUTION_BLUEPRINT.md) | Last-mile hardening |
-| [LAST_MILE_RISK_SPEC.md](LAST_MILE_RISK_SPEC.md) | Trust-breaking risks |
-| [FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md](FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md) | Founder runbook spec |
-| [HANDOFF_OFFICE_NEXT_ACTION_SPEC.md](HANDOFF_OFFICE_NEXT_ACTION_SPEC.md) | Office handoff |
-| [TRIAL_OBSERVATION_TO_ITERATION_SPEC.md](TRIAL_OBSERVATION_TO_ITERATION_SPEC.md) | Observation → fix queue |
-| [FOUNDER_FINAL_TRIAL_NOTES.md](FOUNDER_FINAL_TRIAL_NOTES.md) | Inspect, run, say, watch |
+`bash scripts/founder_pre_trial_checklist.sh` — optional before launch; for **first broker trial**, prefer `trial_launch_check.sh`.
 
 ---
 
-## Launch specs (verified by `trial_launch_check.sh`)
+## Templates (live)
 
-| Doc | Purpose |
-|-----|---------|
-| [TRIAL_LAUNCH_BLUEPRINT.md](TRIAL_LAUNCH_BLUEPRINT.md) | Launch-readiness rationale |
-| [TRIAL_LAUNCH_CHECKLIST_SPEC.md](TRIAL_LAUNCH_CHECKLIST_SPEC.md) | Checklist spec |
-| [FOUNDER_LAUNCH_NOTES.md](FOUNDER_LAUNCH_NOTES.md) | **Single founder launch entry** |
-| [FIX_NOW_QUEUE_TEMPLATE.md](FIX_NOW_QUEUE_TEMPLATE.md) | Post-trial queue template |
-| [BROKER_TRIAL_ONE_PAGER.md](BROKER_TRIAL_ONE_PAGER.md) | Broker-facing one-pager |
-| [TRIAL_OBSERVATION_LOG_TEMPLATE.md](TRIAL_OBSERVATION_LOG_TEMPLATE.md) | Day-by-day log |
-
-Also: [FIX_NOW_QUEUE_SPEC.md](FIX_NOW_QUEUE_SPEC.md) — fix now/next/defer rules
+| Template | Purpose |
+|----------|---------|
+| [TRIAL_OBSERVATION_LOG_TEMPLATE.md](./TRIAL_OBSERVATION_LOG_TEMPLATE.md) | Day-by-day broker/founder notes |
+| [FIX_NOW_QUEUE_TEMPLATE.md](./FIX_NOW_QUEUE_TEMPLATE.md) | Post-trial fix now / next / defer |
 
 ---
 
-## Optional kickoff deep-dive
+## Archived trial specs
 
-[`kickoff/`](kickoff/) — kickoff flow, evidence capture, demo checklist (optional after launch path above).
+Pre-P9 trial blueprints and specs moved to [`docs/archive/p9_broker_surface/trial/`](../archive/p9_broker_surface/trial/) — **TRIAL_ONE_PATH replaces them**.
 
----
-
-## Archived specs (historical — ignore unless linked from a sprint)
-
-[`archive/specs/`](archive/specs/) — execution outlines, acceptance criteria duplicates, evidence pack templates, baseline audit.
+Kickoff deep-dive: [`docs/archive/p9_broker_surface/kickoff/`](../archive/p9_broker_surface/kickoff/)
 
 ---
 
 ## Related
 
+- [`docs/P9_BROKER_SURFACE_PLAN.md`](../P9_BROKER_SURFACE_PLAN.md)
+- [`docs/DEMO_STORY.md`](../DEMO_STORY.md)
 - [`docs/STANDARD_SCENARIO_PACKAGE.md`](../STANDARD_SCENARIO_PACKAGE.md)
-- [`docs/CHEN_KUI_TRIAL_PACK.md`](../CHEN_KUI_TRIAL_PACK.md)
 - [`docs/ANDY_QUICK_START.md`](../ANDY_QUICK_START.md)
 - [`docs/runbooks/OPERATOR_SURFACE.md`](../runbooks/OPERATOR_SURFACE.md)
 
