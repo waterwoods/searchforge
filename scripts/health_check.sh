@@ -12,7 +12,8 @@ FRONTEND=${FRONTEND:-5173}
 QDRANT=${QDRANT:-6333}
 REDIS=${REDIS:-6379}
 
-echo "🔍 Health Check for SearchForge Services"
+echo "LAB ONLY — health check for SearchForge lab stack (start_all.sh / :8011)"
+echo "  Product readiness: bash scripts/summarize_readiness_posture.sh --probe http://127.0.0.1:8001"
 echo "========================================"
 
 FAILED_CHECKS=0

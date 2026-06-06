@@ -2,7 +2,7 @@
 """
 Residual copy A/B — high-frequency stitched + reply template overlays
 
-Runs docs/sprints/HIGH_FREQUENCY_RESIDUAL_COPY_EXTERNALIZATION_SPRINT/residual_copy_ab_scenario_battery.json
+Runs docs/archive/sprints/prior_sprints_archive/p2_reply_flow_polish_sprints/HIGH_FREQUENCY_RESIDUAL_COPY_EXTERNALIZATION_SPRINT/residual_copy_ab_scenario_battery.json
 with explicit client_id (no reliance on CLIENT_ID env).
 
 Usage:
@@ -23,7 +23,10 @@ if str(REPO) not in sys.path:
 BATTERY = (
     REPO
     / "docs"
+    / "archive"
     / "sprints"
+    / "prior_sprints_archive"
+    / "p2_reply_flow_polish_sprints"
     / "HIGH_FREQUENCY_RESIDUAL_COPY_EXTERNALIZATION_SPRINT"
     / "residual_copy_ab_scenario_battery.json"
 )

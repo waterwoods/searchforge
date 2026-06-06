@@ -25,12 +25,12 @@ const FULL_MENU_ITEMS = [
     {
         key: '/',
         icon: <RocketOutlined />,
-        label: <Link to="/">Showtime</Link>,
+        label: <Link to="/">Showtime (lab)</Link>,
     },
     {
         key: '/workbench',
         icon: <ExperimentOutlined />,
-        label: <Link to="/workbench">Experiment Lab</Link>,
+        label: <Link to="/workbench">Experiment Lab (internal)</Link>,
     },
     {
         key: '/codemap',
@@ -45,7 +45,7 @@ const FULL_MENU_ITEMS = [
     {
         key: '/rag-lab-sub',
         icon: <ToolOutlined />,
-        label: 'RAG Lab',
+        label: 'RAG Lab (internal)',
         children: [
             {
                 key: '/rag-lab/run',
@@ -72,7 +72,7 @@ const FULL_MENU_ITEMS = [
     {
         key: '/workbench-sub',
         icon: <RobotOutlined />,
-        label: 'AI Workbench',
+        label: 'AI Workbench (internal)',
         children: [
             {
                 key: '/workbench/agent-studio',

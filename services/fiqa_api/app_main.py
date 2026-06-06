@@ -1,7 +1,9 @@
 """
-app_main.py - Clean Entry Point for SearchForge Main API
-==========================================================
+app_main.py - Unified Intake API entry (SearchForge lab stack when product-only off)
+==================================================================================
 Composed entry point with plugins, middlewares, and read-only routes.
+
+Paid pilot / broker SaaS: set ``UNIFIED_INTAKE_PRODUCT_ONLY=1`` (see ``deployment_profile.py``).
 
 Default port: 8000 (configurable via MAIN_PORT)
 Prefix: /v3 (optional, for path-based routing)
@@ -144,6 +146,7 @@ from services.fiqa_api.deployment_profile import (
     log_deployment_profile_banner,
     operator_runtime_hints,
     platform_inline_route_leak_count,
+    runtime_service_display_name,
 )
 from services.fiqa_api.security.request_identity import IntakeClientAssertionMiddleware, intake_tenant_truth
 from services.fiqa_api.security.support_export_gate import support_export_auth_posture_dict
@@ -268,7 +271,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup: Initialize all clients
     logger.info("=" * 60)
-    logger.info("SearchForge Main API - Starting Up")
+    logger.info("%s — starting", runtime_service_display_name())
     logger.info("=" * 60)
     try:
         from services.fiqa_api.db.service_record_settings import unified_intake_case_persistence_report
@@ -411,10 +414,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SearchForge Main",
-    description="Clean entry point with Force Override, Guardrails, and Watchdog",
+    title=runtime_service_display_name(),
+    description=(
+        "Unified Intake broker SaaS (inbox triage, cases, workbench) when "
+        "UNIFIED_INTAKE_PRODUCT_ONLY=1; legacy SearchForge lab/RAG surface otherwise."
+    ),
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 
@@ -657,11 +663,17 @@ app.add_middleware(
 async def get_version():
     """Get version information including git commit SHA."""
     from services.fiqa_api.utils.gitinfo import get_git_sha
+
     sha, source = get_git_sha()
     return {
         "commit": sha,
         "source": source,
-        "service": "SearchForge Main API"
+        "service": runtime_service_display_name(),
+        "deployment_profile": (
+            "unified_intake_product_only"
+            if is_unified_intake_product_only()
+            else "platform_full"
+        ),
     }
 
 @app.get("/healthz")
@@ -679,10 +691,9 @@ async def healthz():
     
     sha, source = get_git_sha()
     version = sha if sha != "unknown" else os.getenv("GIT_SHA", "unknown")
-    
     return {
         "status": "ok",
-        "service": "SearchForge Main API",
+        "service": runtime_service_display_name(),
         "version": version,
         "time": datetime.utcnow().isoformat() + "Z"
     }
@@ -695,12 +706,15 @@ async def root():
 
         sha, source = get_git_sha()
         return {
-            "service": "SearchForge Unified Intake API",
+            "service": runtime_service_display_name(),
             "deployment_profile": "unified_intake_product_only",
             "version": "1.0.0",
             "status": "operational",
             "git": {"commit": sha, "source": source},
-            "note": "Product-only surface. Platform/lab routes are not mounted.",
+            "note": (
+                "Unified Intake paid-pilot surface. Lab/RAG/tuner routes are not mounted. "
+                "Use /health/live for liveness and /readyz for intake readiness (not /ready)."
+            ),
             "endpoints": {
                 "version": "/version",
                 "liveness": "/health/live",
@@ -708,17 +722,22 @@ async def root():
                 "health_cloud_run": "/api/healthz",
                 "readiness": "/readyz",
                 "health_detailed": "/health",
-                "vector_ready": "/ready",
+                "vector_ready_legacy": "/ready",
                 "qdrant": "/api/health/qdrant",
                 "inbox": "/api/inbox/*",
                 "analytics_dashboard": "GET /api/analytics/dashboard",
+                "support_manifest": "GET /api/inbox/support/deployment-manifest",
             },
         }
     return {
-        "service": "SearchForge Main API",
+        "service": "SearchForge Main API (lab/dev)",
+        "deployment_profile": "platform_full",
         "version": "1.0.0",
         "status": "operational",
-        "note": "All API endpoints use /api prefix. Legacy /ops prefix has been removed (returns 410 Gone).",
+        "note": (
+            "OPTIONAL lab/RAG surface (platform_full). Set UNIFIED_INTAKE_PRODUCT_ONLY=1 for "
+            "Unified Intake SaaS / paid pilot. /ready requires vectors; intake uses /readyz."
+        ),
         "endpoints": {
             "liveness": "/health/live",
             "health": "/healthz",
@@ -918,8 +937,18 @@ async def health(request: Request):
 
 @app.get("/ready")
 async def ready():
-    """Readiness endpoint: returns 200 only when EMBED_READY and vector client are ready."""
+    """
+    Legacy full-stack readiness (Qdrant + embedding required).
+
+    Paid-pilot intake operators should use ``GET /readyz`` (``intake_path_ready``) instead.
+    """
     global _READINESS, _PHASE
+    legacy_note = None
+    if is_unified_intake_product_only():
+        legacy_note = (
+            "deprecated_for_intake_use_readyz_v1: /ready is legacy RAG/vector gate; "
+            "broker intake uses /readyz (intake_path_ready)."
+        )
     try:
         from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
         
@@ -930,19 +959,28 @@ async def ready():
                 _READINESS = True
                 if _PHASE != "ready":
                     _PHASE = "ready"
-                return {"ok": True, "phase": _PHASE}
+                body: dict = {"ok": True, "phase": _PHASE}
+                if legacy_note:
+                    body["operator_note"] = legacy_note
+                return body
         
         # Not ready
         _READINESS = False
         if _PHASE == "ready":
             _PHASE = "degraded"
-        raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE})
+        detail: dict = {"ok": False, "phase": _PHASE}
+        if legacy_note:
+            detail["operator_note"] = legacy_note
+        raise HTTPException(status_code=503, detail=detail)
     except HTTPException:
         raise
     except Exception as e:
         logger.debug(f"[READY] Check error: {e}")
         _READINESS = False
-        raise HTTPException(status_code=503, detail={"ok": False, "phase": _PHASE, "error": str(e)})
+        detail = {"ok": False, "phase": _PHASE, "error": str(e)}
+        if legacy_note:
+            detail["operator_note"] = legacy_note
+        raise HTTPException(status_code=503, detail=detail)
 
 # Unified Intake product core + founder analytics (always mounted)
 app.include_router(inbox_triage_router)  # /api/inbox/*

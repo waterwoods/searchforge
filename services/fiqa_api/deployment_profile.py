@@ -25,6 +25,7 @@ from typing import Any, Final
 _ENV_KEY: Final = "UNIFIED_INTAKE_PRODUCT_ONLY"
 _DEMO_MODE_KEYS: Final[tuple[str, ...]] = ("1", "true", "yes", "on")
 
+# Operator-visible **contract generation label** (not a DB migration id).
 # Bump when ``service_records`` / ``intake_sessions`` DDL, case document shape, or
 # triage HTTP contract changes in a way that breaks read compatibility or replay.
 # Surfaced on ``GET /health`` and ``GET /api/inbox/support/deployment-manifest``.
@@ -45,6 +46,14 @@ PLATFORM_INLINE_ROUTES_UNGATED_IN_APP_MAIN: Final[tuple[str, ...]] = ()
 def is_unified_intake_product_only() -> bool:
     raw = (os.environ.get(_ENV_KEY) or "").strip().lower()
     return raw in ("1", "true", "yes", "on")
+
+
+def runtime_service_display_name() -> str:
+    """Human-facing API name for logs, /version, and health JSON (keys unchanged)."""
+
+    if is_unified_intake_product_only():
+        return "Unified Intake API"
+    return "SearchForge Main API (lab/dev — set UNIFIED_INTAKE_PRODUCT_ONLY=1 for paid pilot)"
 
 
 def platform_inline_route_leak_count() -> int:
@@ -73,6 +82,59 @@ def pilot_safe_default_profile_v1() -> dict[str, str]:
         "UNIFIED_INTAKE_SUPPORT_API_KEY": "<required — 24+ char random>",
         "DEMO_MODE": "0",
     }
+
+
+OPERATOR_WARNING_HUMAN: Final[dict[str, str]] = {
+    "intake_api_key_equals_support_api_key_reduces_perimeter_separation_v1": (
+        "Intake and support API keys are the same — use two different keys"
+    ),
+    "env_prod_with_demo_mode_truthy_v1": (
+        "DEMO_MODE is on while ENV=prod — forbidden on paid pilot"
+    ),
+    "platform_full_api_surface_in_production_like_mode_v1": (
+        "Lab/RAG API is exposed — set UNIFIED_INTAKE_PRODUCT_ONLY=1 for broker pilot"
+    ),
+    "production_like_missing_service_record_database_url_v1": (
+        "Postgres URL missing — cases will not persist on paid pilot"
+    ),
+    "production_like_runtime_without_intake_api_key_v1": (
+        "Intake API key missing — broker-facing endpoints are anonymous"
+    ),
+    "production_like_runtime_without_support_api_key_v1": (
+        "Support API key missing — export/manifest endpoints are anonymous"
+    ),
+    "production_like_without_db_primary_writes_v1": (
+        "Postgres primary writes off — cases may not land in Postgres"
+    ),
+    "json_case_writes_enabled_in_production_like_mode_v1": (
+        "JSON case writes enabled — forbidden when ENV=prod or PG-primary"
+    ),
+    "dual_write_enabled_in_production_like_mode_v1": (
+        "Dual-write (JSON + Postgres) enabled — use one write path only"
+    ),
+    "inmemory_sessions_flag_on_while_db_url_configured_v1": (
+        "In-memory sessions with Postgres URL — unsafe for multi-instance Cloud Run"
+    ),
+    "inmemory_sessions_allowed_in_production_like_mode_v1": (
+        "In-memory sessions allowed in prod-like mode — sessions will not survive restarts"
+    ),
+    "office_enforcement_on_without_service_record_database_url_multi_instance_unsafe_v1": (
+        "Office enforcement on without Postgres — unsafe for multi-instance deploy"
+    ),
+    "broker_token_hmac_secret_shorter_than_recommended_v1": (
+        "Broker token HMAC secret is shorter than 24 chars — use a longer random secret"
+    ),
+    "broker_token_hmac_configured_but_deploy_binding_unbound_production_like_v1": (
+        "Broker token HMAC set but deploy binding unbound in prod-like mode"
+    ),
+}
+
+
+def humanize_operator_warnings(codes: list[str] | None = None) -> list[str]:
+    """Stable warning codes → short operator sentences (no secrets)."""
+
+    raw = codes if codes is not None else deployment_operator_warnings()
+    return [OPERATOR_WARNING_HUMAN.get(code, f"Review env: {code}") for code in raw]
 
 
 def deployment_operator_warnings() -> list[str]:
@@ -267,6 +329,7 @@ def operator_runtime_hints() -> dict[str, Any]:
         )
         inmem_allowed = False
 
+    warnings = deployment_operator_warnings()
     return {
         "demo_mode": demo_raw in _DEMO_MODE_KEYS,
         "env_label_raw": env_raw or "",
@@ -277,7 +340,8 @@ def operator_runtime_hints() -> dict[str, Any]:
         "intake_core_readiness": intake_core_readiness_enabled(),
         "intake_readiness_posture": intake_readiness_posture_dict(),
         "unified_intake_allow_inmemory_sessions_for_tests": inmem_allowed,
-        "operator_warnings": deployment_operator_warnings(),
+        "operator_warnings": warnings,
+        "operator_warnings_human": humanize_operator_warnings(warnings),
         "deployment_identity": deployment_identity_truth(),
     }
 
@@ -303,6 +367,6 @@ def log_deployment_profile_banner(log: logging.Logger) -> None:
             )
     else:
         log.info(
-            "deployment_profile=platform_full (set %s=1 for reduced Unified Intake API surface)",
+            "deployment_profile=platform_full (OPTIONAL lab/RAG — set %s=1 for Unified Intake SaaS / paid pilot)",
             _ENV_KEY,
         )

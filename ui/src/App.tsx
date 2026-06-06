@@ -1,40 +1,60 @@
 // frontend/src/App.tsx
-import { ConfigProvider, theme, App as AntdApp } from 'antd';
+import { ConfigProvider, theme, App as AntdApp, Spin } from 'antd';
+import { Suspense } from 'react';
 import { AppLayout } from './components/layout/AppLayout';
-import { Routes, Route } from 'react-router-dom';
-import { ShowtimePage } from './pages/ShowtimePage';
-import { WorkbenchPage } from './pages/WorkbenchPage';
-import { AgentStudioPage } from './pages/AgentStudioPage';
-import { RetrieverLabPage } from './pages/RetrieverLabPage';
-import { RankerLabPage } from './pages/RankerLabPage';
-import { IndexExplorerPage } from './pages/IndexExplorerPage';
-import { SLATunerLabPage } from './pages/SLATunerLabPage';
-import { SearchLabPage } from './pages/SearchLabPage';
-import { MortgageAssistantPage } from './pages/MortgageAssistantPage';
-import { SingleHomeStressPage } from './pages/SingleHomeStressPage';
-import { JobHunterPage } from './pages/JobHunterPage';
-import CodeLookupPage from './pages/CodeLookupPage';
-import MermaidTestPage from './pages/MermaidTestPage';
-import EdgesJsonTestPage from './pages/EdgesJsonTestPage';
-import FlowGraphTestPage from './pages/FlowGraphTestPage';
-import FlowGraphTestScenarios from './pages/FlowGraphTestScenarios';
-import SimpleMermaidPage from './pages/SimpleMermaidPage';
-import FlowGraphSelfTestPage from './pages/FlowGraphSelfTestPage';
-import GraphViewerPage from './pages/GraphViewerPage';
-import CodeMapPage from './pages/CodeMapPage';
-import { RagLabRunPage } from './pages/RagLabRunPage';
-import { RagLabHistoryPage } from './pages/RagLabHistoryPage';
-import { RagLabDetailPage } from './pages/RagLabDetailPage';
-import StewardDashboard from './pages/StewardDashboard';
-import { MetricsHub } from './pages/lab/MetricsHub';
-import VitalsDashboardPage from './pages/VitalsDashboardPage';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import UnifiedIntakePage from './pages/UnifiedIntakePage';
-import AddCarRulesPage from './pages/AddCarRulesPage';
-import ScenarioLogicCenterPage from './pages/ScenarioLogicCenterPage';
 import { DemoPage } from './pages/DemoPage';
-import { DemoRouteSmoke } from './pages/DemoRouteSmoke';
 import { ClientConfigProvider } from './context/ClientConfigContext';
+import { isUnifiedIntakeProductOnlyUi } from './config/productSurface';
+import * as Lab from './routes/labPages';
+
+const routeFallback = (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
+        <Spin size="large" />
+    </div>
+);
+
+function LabRoutes() {
+    return (
+        <>
+            <Route index element={<Lab.ShowtimePage />} />
+            <Route path="workbench" element={<Lab.WorkbenchPage />} />
+            <Route path="workbench/agent-studio" element={<Lab.AgentStudioPage />} />
+            <Route path="workbench/retriever-lab" element={<Lab.RetrieverLabPage />} />
+            <Route path="workbench/ranker-lab" element={<Lab.RankerLabPage />} />
+            <Route path="workbench/index-explorer" element={<Lab.IndexExplorerPage />} />
+            <Route path="workbench/sla-tuner-lab" element={<Lab.SLATunerLabPage />} />
+            <Route path="workbench/search-lab" element={<Lab.SearchLabPage />} />
+            <Route path="workbench/mortgage-assistant" element={<Lab.MortgageAssistantPage />} />
+            <Route path="workbench/single-home-stress" element={<Lab.SingleHomeStressPage />} />
+            <Route path="workbench/jobhunter" element={<Lab.JobHunterPage />} />
+            <Route path="jobhunter" element={<Lab.JobHunterPage />} />
+            <Route path="workbench/code-lookup-agent" element={<Lab.CodeLookupPage />} />
+            <Route path="mermaid-test" element={<Lab.MermaidTestPage />} />
+            <Route path="edges-test" element={<Lab.EdgesJsonTestPage />} />
+            <Route path="flowgraph-test" element={<Lab.FlowGraphTestPage />} />
+            <Route path="flowgraph-scenarios" element={<Lab.FlowGraphTestScenarios />} />
+            <Route path="simple-mermaid" element={<Lab.SimpleMermaidPage />} />
+            <Route path="fg-selftest" element={<Lab.FlowGraphSelfTestPage />} />
+            <Route path="graph-viewer" element={<Lab.GraphViewerPage />} />
+            <Route path="codemap" element={<Lab.CodeMapPage />} />
+            <Route path="rag-lab/run" element={<Lab.RagLabRunPage />} />
+            <Route path="rag-lab/history" element={<Lab.RagLabHistoryPage />} />
+            <Route path="rag-lab/history/:jobId" element={<Lab.RagLabDetailPage />} />
+            <Route path="rag-lab/steward" element={<Lab.StewardDashboard />} />
+            <Route path="rag-lab" element={<Lab.RagLabRunPage />} />
+            <Route path="lab/metrics" element={<Lab.MetricsHub />} />
+            <Route path="vitals" element={<Lab.VitalsDashboardPage />} />
+            <Route path="workbench/scenario-logic-center" element={<Lab.ScenarioLogicCenterPage />} />
+            <Route path="workbench/add-car-rules" element={<Lab.AddCarRulesPage />} />
+        </>
+    );
+}
+
 function App() {
+    const productOnlyUi = isUnifiedIntakeProductOnlyUi();
+
     return (
         <ConfigProvider
             theme={{
@@ -42,91 +62,35 @@ function App() {
             }}
         >
             <AntdApp>
-                <Routes>
-                    {/* All pages use the same AppLayout; ClientConfigProvider for Unified Intake client copy */}
-                    <Route path="/" element={<ClientConfigProvider><AppLayout /></ClientConfigProvider>}>
-                        {/* Default page is Showtime */}
-                        <Route index element={<ShowtimePage />} />
+                <Suspense fallback={routeFallback}>
+                    <Routes>
+                        <Route path="/" element={<ClientConfigProvider><AppLayout /></ClientConfigProvider>}>
+                            {productOnlyUi ? (
+                                <>
+                                    <Route index element={<Navigate to="/workbench/unified-intake" replace />} />
+                                    <Route path="workbench" element={<Navigate to="/workbench/unified-intake" replace />} />
+                                </>
+                            ) : (
+                                <LabRoutes />
+                            )}
+                            <Route path="workbench/unified-intake" element={
+                                <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                    <div style={{ minHeight: '100%', background: '#e8eaed' }}>
+                                        <UnifiedIntakePage />
+                                    </div>
+                                </ConfigProvider>
+                            } />
+                        </Route>
 
-                        {/* --- Workbench Routes --- */}
-                        {/* The base /workbench route still shows the Leaderboard */}
-                        <Route path="workbench" element={<WorkbenchPage />} />
-
-                        {/* Add the new sub-pages */}
-                        <Route path="workbench/agent-studio" element={<AgentStudioPage />} />
-                        <Route path="workbench/retriever-lab" element={<RetrieverLabPage />} />
-                        <Route path="workbench/ranker-lab" element={<RankerLabPage />} />
-                        <Route path="workbench/index-explorer" element={<IndexExplorerPage />} />
-                        <Route path="workbench/sla-tuner-lab" element={<SLATunerLabPage />} />
-                        <Route path="workbench/search-lab" element={<SearchLabPage />} />
-                        <Route path="workbench/mortgage-assistant" element={<MortgageAssistantPage />} />
-                        <Route path="workbench/single-home-stress" element={<SingleHomeStressPage />} />
-                        <Route path="workbench/jobhunter" element={<JobHunterPage />} />
-                        <Route path="jobhunter" element={<JobHunterPage />} />
-
-                        {/* Code Lookup Agent Route */}
-                        <Route path="workbench/code-lookup-agent" element={<CodeLookupPage />} />
-
-                        {/* Mermaid Test Route */}
-                        <Route path="mermaid-test" element={<MermaidTestPage />} />
-
-                        {/* Edges JSON Test Route */}
-                        <Route path="edges-test" element={<EdgesJsonTestPage />} />
-
-                        {/* FlowGraph Test Route */}
-                        <Route path="flowgraph-test" element={<FlowGraphTestPage />} />
-
-                        {/* FlowGraph Test Scenarios Route */}
-                        <Route path="flowgraph-scenarios" element={<FlowGraphTestScenarios />} />
-
-                        {/* Simple Mermaid Test Route */}
-                        <Route path="simple-mermaid" element={<SimpleMermaidPage />} />
-
-                        {/* FlowGraph Self-Test Route */}
-                        <Route path="fg-selftest" element={<FlowGraphSelfTestPage />} />
-
-                        {/* Graph Viewer Route */}
-                        <Route path="graph-viewer" element={<GraphViewerPage />} />
-
-                        {/* Code Map Route */}
-                        <Route path="codemap" element={<CodeMapPage />} />
-
-                        {/* RAG Lab Routes - V8 Three-Route Architecture */}
-                        <Route path="rag-lab/run" element={<RagLabRunPage />} />
-                        <Route path="rag-lab/history" element={<RagLabHistoryPage />} />
-                        <Route path="rag-lab/history/:jobId" element={<RagLabDetailPage />} />
-                        <Route path="rag-lab/steward" element={<StewardDashboard />} />
-                        <Route path="rag-lab" element={<RagLabRunPage />} />
-
-                        {/* Metrics Hub Route */}
-                        <Route path="lab/metrics" element={<MetricsHub />} />
-
-                        {/* Vitals Monitor Route */}
-                        <Route path="vitals" element={<VitalsDashboardPage />} />
-
-                        {/* Unified Intake MVP — Broker triage; light theme for readable cards */}
-                        <Route path="workbench/unified-intake" element={
+                        <Route path="/demo" element={
                             <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
-                                <div style={{ minHeight: '100%', background: '#e8eaed' }}>
-                                    <UnifiedIntakePage />
+                                <div style={{ minHeight: '100vh', background: '#fff', padding: '1rem' }}>
+                                    <DemoPage />
                                 </div>
                             </ConfigProvider>
                         } />
-                        {/* Scenario Logic Center — founder/broker review */}
-                        <Route path="workbench/scenario-logic-center" element={<ScenarioLogicCenterPage />} />
-                        {/* Add-Car Quote Rules Center */}
-                        <Route path="workbench/add-car-rules" element={<AddCarRulesPage />} />
-                    </Route>
-
-                    {/* Demo - TOP-LEVEL route (no AppLayout). Use DemoRouteSmoke for smoke test. */}
-                    <Route path="/demo" element={
-                        <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
-                            <div style={{ minHeight: '100vh', background: '#fff', padding: '1rem' }}>
-                                <DemoPage />
-                            </div>
-                        </ConfigProvider>
-                    } />
-                </Routes>
+                    </Routes>
+                </Suspense>
             </AntdApp>
         </ConfigProvider>
     );

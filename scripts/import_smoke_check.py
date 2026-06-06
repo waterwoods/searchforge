@@ -7,7 +7,6 @@ MODULES = [
     "services.fiqa_api.app_main",
     "services.fiqa_api.routes.inbox_triage",
     "services.fiqa_api.inbox_triage.triage",
-    "services.fiqa_api.inbox_triage.active_vehicle_resolver",
     "services.fiqa_api.inbox_triage.entity_repository",
     "services.fiqa_api.inbox_triage.case_truth_repository",
     "services.fiqa_api.inbox_triage.session_store",

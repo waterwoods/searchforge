@@ -15,25 +15,54 @@ if [[ "${1:-}" == "--probe" && -n "${2:-}" ]]; then
   PROBE_URL="${2%/}"
 fi
 
-echo "=== Readiness posture (from env) ==="
+echo "=== Unified Intake readiness (from env) ==="
 PYTHONPATH=. python3 - <<'PY'
-import json
-import os
-from services.fiqa_api.deployment_profile import intake_readiness_posture_dict
+from services.fiqa_api.deployment_profile import (
+    deployment_operator_warnings,
+    humanize_operator_warnings,
+    intake_readiness_posture_dict,
+    is_unified_intake_product_only,
+)
 
-print(json.dumps(intake_readiness_posture_dict(), indent=2))
+posture = intake_readiness_posture_dict()
+mode = posture.get("readiness_mode", "?")
+print(f"  Mode:           {mode}")
+print(f"  Product-only:   {'yes' if posture.get('product_only') else 'no (lab/dev — set UNIFIED_INTAKE_PRODUCT_ONLY=1 for pilot)'}")
+print(f"  Demo mode:      {'yes' if posture.get('demo_mode') else 'no'}")
+print(f"  Qdrant blocks /readyz: {'yes' if posture.get('qdrant_blocks_readyz') else 'no (vectors optional)'}")
+print(f"  Intake triage needs Qdrant: no")
+print(f"  Note: {posture.get('operator_note', '')}")
+
+warnings = deployment_operator_warnings()
+if warnings:
+    print("")
+    print(f"  Env warnings ({len(warnings)}):")
+    for line in humanize_operator_warnings(warnings):
+        print(f"    - {line}")
+else:
+    print("  Env warnings:   none")
 PY
 
 if [[ -n "$PROBE_URL" ]]; then
   echo ""
-  echo "=== Live /readyz probe: $PROBE_URL/readyz ==="
-  if curl -sf --max-time 5 "$PROBE_URL/readyz" | PYTHONPATH=. python3 -c "
+  echo "=== Live probe: $PROBE_URL ==="
+  if curl -sf --max-time 8 "$PROBE_URL/readyz" | PYTHONPATH=. python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-print('  ok:', d.get('ok'))
-print('  readiness_mode:', d.get('readiness_mode'))
-print('  intake_path_ready:', d.get('intake_path_ready'))
-print('  qdrant_connected:', (d.get('clients') or {}).get('qdrant_connected'))
+mode = d.get('readiness_mode', '?')
+ok = d.get('ok')
+ipr = d.get('intake_path_ready')
+qdrant = (d.get('clients') or {}).get('qdrant_connected')
+print(f'  /readyz ok:              {ok}')
+print(f'  intake_path_ready:       {ipr}')
+print(f'  readiness_mode:          {mode}')
+print(f'  qdrant_connected:        {qdrant}')
+if ipr is True:
+    print('  → Intake can run (vectors optional when intake_core)')
+elif ok is True:
+    print('  → Full-stack ready')
+else:
+    print('  → Check Postgres + API keys; see OPERATOR_CHEAT_SHEET.md')
 "; then
     :
   else
@@ -42,8 +71,13 @@ print('  qdrant_connected:', (d.get('clients') or {}).get('qdrant_connected'))
 fi
 
 echo ""
-echo "Modes:"
-echo "  intake_core — triage SaaS OK without Qdrant (DEMO_MODE or UNIFIED_INTAKE_INTAKE_CORE_READINESS=1 + PRODUCT_ONLY)"
-echo "  full_stack  — /readyz requires Qdrant + embedding (RAG lab path)"
-echo "Paid pilot: deploy_paid_pilot.sh sets INTAKE_CORE_READINESS — Qdrant optional for deploy + /readyz."
-echo "Full-stack RAG: unset INTAKE_CORE_READINESS and set QDRANT_URL before deploy."
+echo "=== What to check (operators) ==="
+echo "  Liveness:  GET /health/live     (NOT bare /healthz on Cloud Run)"
+echo "  Intake:    GET /readyz           → intake_path_ready matters more than ok"
+echo "  Support:   GET /api/inbox/support/deployment-manifest  (support API key)"
+echo "  Ignore:    GET /ready           (legacy RAG — needs Qdrant)"
+echo "  Ignore list: docs/runbooks/OPERATOR_IGNORE_LIST.md"
+echo ""
+echo "  Paid pilot deploy: bash scripts/deploy_paid_pilot.sh"
+echo "  Local pilot posture: UNIFIED_INTAKE_PRODUCT_ONLY=1 (see demo.env.example)"
+echo "  More: docs/runbooks/OPERATOR_CHEAT_SHEET.md"

@@ -11,6 +11,9 @@ interface ImportMetaEnv {
     readonly VITE_APP_ENV?: string;
     /** When 1/true: hide lab sidebar + simulation tab (paid-pilot Vercel UI). */
     readonly VITE_UNIFIED_INTAKE_PRODUCT_ONLY?: string;
+    /** When 1/true with product_only: customer-first 3-tab preview; 我的办理 as secondary action in 客户报送. */
+    readonly VITE_UNIFIED_INTAKE_SUPERVISED_DEMO?: string;
+    readonly VITE_UNIFIED_INTAKE_INTAKE_API_KEY?: string;
 }
 
 interface ImportMeta {

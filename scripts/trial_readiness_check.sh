@@ -19,27 +19,23 @@ if [ -z "${SKIP_NVM_NODE22_FOR_UI:-}" ]; then
 fi
 
 echo "=== Real Broker Trial Package — Readiness Check ==="
+echo "  Product: Unified Intake workbench (not SearchForge lab default)"
+echo "  Workbench: http://localhost:5173/workbench/unified-intake"
 echo ""
 
-echo "[1] Trial package docs exist..."
-for f in docs/trial/REAL_BROKER_TRIAL_PACKAGE_BLUEPRINT.md \
-         docs/trial/TRIAL_SCOPE_DEFINITION_SPEC.md \
-         docs/trial/TRIAL_SCENARIO_PACK_SPEC.md \
-         docs/trial/TRIAL_METRICS_SUCCESS_CRITERIA_SPEC.md \
-         docs/trial/BROKER_TRIAL_WORKFLOW_SPEC.md \
-         docs/trial/FOUNDER_TRIAL_NOTES.md \
-         docs/trial/TRIAL_EXECUTION_BLUEPRINT.md \
-         docs/trial/LAST_MILE_RISK_SPEC.md \
-         docs/trial/FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md \
-         docs/trial/HANDOFF_OFFICE_NEXT_ACTION_SPEC.md \
-         docs/trial/TRIAL_OBSERVATION_TO_ITERATION_SPEC.md \
-         docs/trial/FOUNDER_FINAL_TRIAL_NOTES.md; do
+echo "[1] Trial package docs exist (P9 collapsed)..."
+for f in docs/TRIAL_ONE_PATH.md \
+         docs/BROKER_TRIAL_PLAYBOOK.md \
+         docs/BROKER_ONE_PAGER.md \
+         docs/FOUNDER_ONE_PATH.md \
+         docs/trial/TRIAL_OBSERVATION_LOG_TEMPLATE.md \
+         docs/trial/FIX_NOW_QUEUE_TEMPLATE.md; do
   if [ ! -f "$f" ]; then
     echo "  FAIL: $f not found"
     exit 1
   fi
 done
-echo "  OK (12 core docs)"
+echo "  OK (6 P9 trial docs)"
 
 echo "[2] Standard Scenario Package defined..."
 if ! grep -q "Broker Standard Package" "docs/STANDARD_SCENARIO_PACKAGE.md" 2>/dev/null; then
@@ -128,10 +124,11 @@ else
 fi
 
 echo "[9] Intake-core vs full-stack readiness (posture)..."
-if ! bash "$SCRIPT_DIR/summarize_readiness_posture.sh" 2>&1 | head -20; then
+if ! bash "$SCRIPT_DIR/summarize_readiness_posture.sh" >/dev/null 2>&1; then
   echo "  FAIL: readiness posture summary"
   exit 1
 fi
+bash "$SCRIPT_DIR/summarize_readiness_posture.sh" 2>&1 | head -30 || true
 if curl -sf --max-time 3 "http://127.0.0.1:8001/readyz" >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/summarize_readiness_posture.sh" --probe "http://127.0.0.1:8001" 2>&1 | tail -8 || true
   echo "  OK (local API probed)"
@@ -142,7 +139,7 @@ fi
 echo ""
 echo "=== Trial Readiness: PASS ==="
 echo ""
-echo "Next: Read docs/trial/FOUNDER_TRIAL_NOTES.md and docs/trial/BROKER_TRIAL_WORKFLOW_SPEC.md"
+echo "Next: Read docs/TRIAL_ONE_PATH.md and docs/BROKER_TRIAL_PLAYBOOK.md"
 echo "      Run: bash scripts/run_demo_local.sh"
 echo "      Open: http://localhost:5173/workbench/unified-intake"
 echo ""

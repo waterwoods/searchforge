@@ -21,7 +21,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}🚀 Starting SearchForge Local Development${NC}"
+echo -e "${GREEN}LAB ONLY — SearchForge local dev (port ${BACKEND_PORT})${NC}"
+echo -e "${YELLOW}  Product path: bash scripts/run_demo_local.sh → :8001 Unified Intake workbench${NC}"
 echo ""
 
 # Check dependencies
@@ -161,7 +162,8 @@ fi
 if start_backend && start_frontend; then
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}✅ SearchForge is running!${NC}"
+    echo -e "${GREEN}LAB ONLY — SearchForge dev stack running (not Unified Intake default path)${NC}"
+    echo -e "${YELLOW}  Product demo: bash scripts/run_demo_local.sh → :8001${NC}"
     echo ""
     echo -e "   Backend:  ${GREEN}http://localhost:$BACKEND_PORT${NC}"
     echo -e "   Frontend: ${GREEN}http://localhost:$FRONTEND_PORT${NC}"

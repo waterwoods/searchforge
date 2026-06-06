@@ -1,7 +1,8 @@
 #!/bin/bash
-# Restore 8001 live readiness when embedding_warming never clears.
-# ================================================================
+# Restore 8001 RAG/vector readiness (legacy lab path — NOT intake SaaS gate)
+# ========================================================================
 # Use when: /api/query returns 503 embedding_warming (Qdrant Cloud paused or unreachable).
+# Intake workbench uses /readyz (intake_path_ready) — vectors optional with product_only.
 # Fix: Restart backend with USE_LOCAL_QDRANT=1 (requires local Qdrant + seeded collection).
 #
 # Prerequisites:

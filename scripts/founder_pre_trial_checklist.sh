@@ -1,6 +1,7 @@
 #!/bin/bash
 # Founder Pre-Trial Checklist — Execution Rehearsal (depth path)
 # ==============================================================
+# CANONICAL FOUNDER LAUNCH: docs/FOUNDER_ONE_PATH.md
 # For FIRST BROKER TRIAL LAUNCH prefer: bash scripts/trial_launch_check.sh
 # This script runs trial readiness + prints pre-trial execution steps.
 # Usage: bash scripts/founder_pre_trial_checklist.sh
@@ -17,7 +18,7 @@ cd "$REPO_DIR"
 echo "=== Founder Pre-Trial Checklist (execution rehearsal) ==="
 echo ""
 echo "  Tip: For first broker trial LAUNCH, use: bash scripts/trial_launch_check.sh"
-echo "       Then read docs/trial/FOUNDER_LAUNCH_NOTES.md"
+echo "       Then read docs/TRIAL_ONE_PATH.md"
 echo ""
 
 # Run full trial readiness check
@@ -36,8 +37,8 @@ echo "  2. Open: http://localhost:5173/workbench/unified-intake"
 echo "  3. Click: Load founder demo queue (13 cases; cancellation opens first)"
 echo "  4. Run SIM1, SIM2, SIM3 in Simulation Assistant"
 echo "  5. Copy docs/trial/TRIAL_OBSERVATION_LOG_TEMPLATE.md for broker"
-echo "  6. Read docs/trial/BROKER_TRIAL_WORKFLOW_SPEC.md"
-echo "  7. Read docs/trial/FOUNDER_FINAL_TRIAL_NOTES.md (inspect, say, watch for)"
+echo "  6. Read docs/BROKER_TRIAL_PLAYBOOK.md"
+echo "  7. Read docs/TRIAL_ONE_PATH.md (Day 0–7, inspect, say, watch for)"
 echo ""
 echo "  What to say (first 30 sec):"
 echo "  \"这是一个加州汽车保险经纪助手。客户发来messy消息——系统会整理成结构化case："
@@ -45,8 +46,8 @@ echo "  有 urgency、下一步动作、收集了什么、还缺什么、草稿�
 echo ""
 echo "  Demo path: Load founder demo queue → Cancellation risk → Missing doc → Add-car → SIM1–SIM3"
 echo ""
-echo "  Docs: docs/trial/FOUNDER_BROKER_TRIAL_RUNBOOK_SPEC.md"
-echo "       docs/trial/FOUNDER_FINAL_TRIAL_NOTES.md (inspect, say, watch for)"
+echo "  Docs: docs/FOUNDER_ONE_PATH.md"
+echo "       docs/TRIAL_ONE_PATH.md (inspect, say, watch for)"
 echo ""
 echo "  Handoff check: Verify 'Your next move' appears first (before Recent customer messages)"
 echo ""

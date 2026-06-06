@@ -205,10 +205,10 @@ export const CASE_STATUS_OPTIONS: Array<{ value: CaseStatus; label: string }> = 
 
 export const WAITING_ON_OPTIONS: Array<{ value: WaitingOn; label: string }> = [
     { value: 'none', label: '无阻塞' },
-    { value: 'client', label: '客户' },
-    { value: 'broker', label: '经纪人 / 办公室' },
-    { value: 'carrier', label: '保险公司' },
-    { value: 'underwriting', label: '核保' },
+    { value: 'client', label: '客户补充资料' },
+    { value: 'broker', label: '办公室处理' },
+    { value: 'carrier', label: '保险公司回复' },
+    { value: 'underwriting', label: '核保部门回复' },
 ];
 /** Quote-ready status labels (ADD_CAR_REAL_INTAKE_LITE) */
 export const QUOTE_READY_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -296,13 +296,27 @@ export const CATEGORY_DISPLAY_LABELS: Record<string, string> = {
 /** Case focus display labels (broker-facing Chinese) — maps internal focus keys to office Chinese */
 export const CASE_FOCUS_DISPLAY_ZH: Record<string, string> = {
     '联系人工': '联系人工',
-    'Add car quote': '加车报价',
-    'Remove car': '删车',
-    'Premium review': '保费复查',
-    'Claim intake': '事故报险',
+    'Add car quote': '客户咨询加车报价',
+    'Remove car': '客户卖车，需要从保单移除车辆',
+    'Premium review': '客户咨询保费/续保',
+    'Claim intake': '客户发生事故，正在进入理赔流程',
     'DMV / SR-22 help': 'DMV / SR-22 协助',
-    'Missing document': '材料补交',
-    'Payment / cancellation risk': '付款/取消风险',
+    'Missing document': '客户需补交材料',
+    'Payment / cancellation risk': '客户保费未成功扣款，存在保单失效风险',
+};
+
+/** Service type → office Chinese (never show raw API tokens) */
+export const SERVICE_TYPE_OFFICE_ZH: Record<string, string> = {
+    add_car: '客户咨询加车报价',
+    'add-car': '客户咨询加车报价',
+    remove_car: '客户卖车，需要从保单移除车辆',
+    claim_intake: '客户发生事故，正在进入理赔流程',
+    billing: '客户保费未成功扣款，存在保单失效风险',
+    missing_document: '客户需补交材料',
+    renewal_premium: '客户咨询保费/续保',
+    general_inquiry: '客户咨询（待分类）',
+    underwriting: '核保跟进中',
+    cancellation: '保单取消风险',
 };
 
 export const ADD_CAR_TRIAGE_FIELD_IDS = new Set([
@@ -338,4 +352,8 @@ export const CUSTOMER_FIELD_LABELS_ZH: Record<string, string> = {
     injuries: '受伤情况',
     other_driver_insurance_license: '对方保险/驾照',
     police_report_if_applicable: '报警记录（如适用）',
+    sale_date: '卖车日期',
+    transfer_proof: '销售证明',
+    vehicle: '车辆信息',
+    payment_proof_or_screenshot: '付款凭证/截图',
 };

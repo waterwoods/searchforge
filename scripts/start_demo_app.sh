@@ -1,14 +1,9 @@
 #!/bin/bash
 
 ###############################################################################
-# Start SearchForge Demo App on Port 8001
-# 
-# This script starts the app_v2.py server specifically for:
-# - Black Swan Demo
-# - Auto-RCA Kit testing
-# - Live Tap Mode
-# 
-# Default port: 8001 (as required by Black Swan Demo)
+# LAB ONLY — legacy SearchForge demo app (Black Swan / Auto-RCA / Live Tap)
+# Product path: bash scripts/run_demo_local.sh → Unified Intake workbench :8001
+# See: docs/FOUNDER_ONE_PATH.md
 ###############################################################################
 
 set -e
@@ -34,7 +29,8 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     SearchForge Demo App - Starting on Port 8001              ║${NC}"
+echo -e "${BLUE}║  LAB ONLY — SearchForge Demo App (not default product launcher)  ║${NC}"
+echo -e "${BLUE}║  Product: bash scripts/run_demo_local.sh → Unified Intake :8001   ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

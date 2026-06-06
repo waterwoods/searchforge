@@ -9,6 +9,7 @@ from services.fiqa_api.deployment_profile import (
     is_unified_intake_product_only,
     operator_runtime_hints,
     platform_inline_route_leak_count,
+    runtime_service_display_name,
 )
 from services.fiqa_api.app_main import app
 
@@ -28,6 +29,13 @@ def test_is_product_only_default_off(monkeypatch):
     assert is_unified_intake_product_only() is False
     monkeypatch.setenv("UNIFIED_INTAKE_PRODUCT_ONLY", "1")
     assert is_unified_intake_product_only() is True
+
+
+def test_runtime_service_display_name_follows_profile(monkeypatch):
+    monkeypatch.delenv("UNIFIED_INTAKE_PRODUCT_ONLY", raising=False)
+    assert "Unified Intake" not in runtime_service_display_name()
+    monkeypatch.setenv("UNIFIED_INTAKE_PRODUCT_ONLY", "1")
+    assert runtime_service_display_name() == "Unified Intake API"
 
 
 def test_health_exposes_deployment_profile_operational_truth():
@@ -122,6 +130,23 @@ def test_deployment_operator_warnings_duplicate_intake_support_keys(monkeypatch)
     monkeypatch.setenv("UNIFIED_INTAKE_SUPPORT_API_KEY", "same-secret-not-recommended-123456789012")
     w = deployment_operator_warnings()
     assert "intake_api_key_equals_support_api_key_reduces_perimeter_separation_v1" in w
+
+
+def test_humanize_operator_warnings_maps_known_codes():
+    from services.fiqa_api.deployment_profile import humanize_operator_warnings
+
+    human = humanize_operator_warnings(["env_prod_with_demo_mode_truthy_v1"])
+    assert "DEMO_MODE" in human[0]
+    assert "env_prod_with_demo_mode_truthy_v1" not in human[0]
+
+
+def test_operator_runtime_hints_includes_human_warnings(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.setenv("DEMO_MODE", "1")
+    h = operator_runtime_hints()
+    assert isinstance(h.get("operator_warnings_human"), list)
+    assert h["operator_warnings_human"]
+    assert "DEMO_MODE" in h["operator_warnings_human"][0]
 
 
 def test_deployment_operator_warnings_platform_full_in_prod_like(monkeypatch):

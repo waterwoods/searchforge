@@ -1,7 +1,9 @@
 #!/bin/bash
+# LAB ONLY — stops legacy SearchForge multi-service stack (paired with start_all.sh)
+# Product path: bash scripts/run_demo_local.sh (Ctrl+C stops its own processes)
 set -euo pipefail
 
-echo "Stopping SearchForge services..."
+echo "LAB ONLY — stopping SearchForge lab services..."
 
 # Stop backend processes
 if [ -f "logs/backend.pid" ]; then

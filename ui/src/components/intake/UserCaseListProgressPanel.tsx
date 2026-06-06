@@ -3,8 +3,8 @@
  * Uses persisted case payloads from GET /api/inbox/cases (SavedCase / CASE_CONTRACT_V1 fields).
  */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Button, Card, Col, Empty, Row, Space, Spin, Tag, Typography } from 'antd';
-import { FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Collapse, Empty, Row, Space, Spin, Tag, Typography } from 'antd';
+import { FileTextOutlined } from '@ant-design/icons';
 import { listRecentCasesPage, type SavedCase } from '../../api/inboxTriage';
 import { useClientConfig } from '../../context/ClientConfigContext';
 import { groupAddCarRailFields, railFieldLabel } from './addCarRecordRailLabels';
@@ -71,7 +71,7 @@ function filterUserVisibleCases(cases: SavedCase[], clientId: string): SavedCase
 }
 
 export type UserCaseListProgressPanelProps = {
-    onContinueInCustomerPortal?: () => void;
+    onContinueInCustomerPortal?: (caseId: string) => void;
 };
 
 export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCaseListProgressPanelProps) {
@@ -119,6 +119,12 @@ export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCa
 
     useEffect(() => {
         void load();
+    }, [load]);
+
+    useEffect(() => {
+        const onFocus = () => void load();
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
     }, [load]);
 
     useEffect(() => {
@@ -178,21 +184,15 @@ export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCa
                 }}
             >
                 <Space direction="vertical" size={20} style={{ width: '100%' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                         <Space align="start" size={10}>
                             <FileTextOutlined style={{ fontSize: 22, color: '#1677ff', marginTop: 2 }} />
                             <div style={{ minWidth: 0 }}>
                                 <Title level={2} style={{ margin: 0, fontWeight: 600, color: '#262626', fontSize: 22 }}>
                                     {heroTitle}
                                 </Title>
-                                <Paragraph style={{ margin: '8px 0 0', fontSize: 14, lineHeight: 1.6, color: '#595959', maxWidth: 720 }}>
-                                    {heroSubtitle}
-                                </Paragraph>
                             </div>
                         </Space>
-                        <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>
-                            刷新
-                        </Button>
                     </div>
 
                     <Row gutter={[16, 16]}>
@@ -208,9 +208,6 @@ export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCa
                                     <Empty description={emptyHint} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                                 ) : (
                                     <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                                        <Text type="secondary" style={{ fontSize: 12 }}>
-                                            共 {visible.length} 条（本页最多 {LIST_PAGE_SIZE} 条）
-                                        </Text>
                                         {visible.map((c) => {
                                             const active = c.case_id === selectedId;
                                             return (
@@ -240,9 +237,6 @@ export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCa
                                                             {shortStatusHint(c)}
                                                         </Text>
                                                     </Space>
-                                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
-                                                        更新 {formatLocalTime(c.updated_at)}
-                                                    </Text>
                                                 </button>
                                             );
                                         })}
@@ -276,31 +270,43 @@ export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCa
                                             }}
                                         >
                                             <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                                                {formalLabel}
-                                            </Text>
-                                            <Text style={{ fontSize: 13 }}>{formatLocalTime(selected.formal_submitted_at)}</Text>
-                                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 10 }}>
                                                 {updatedLabel}
                                             </Text>
                                             <Text style={{ fontSize: 13 }}>{formatLocalTime(selected.updated_at)}</Text>
                                         </div>
 
-                                        <div>
-                                            <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                                                {collectedHeading}
-                                            </Text>
-                                            {renderFieldChips(selected.collected_fields?.filter(Boolean) ?? [])}
-                                        </div>
-                                        <div>
-                                            <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                                                {missingHeading}
-                                            </Text>
-                                            {(selected.still_needed_fields?.filter(Boolean).length ?? 0) === 0 ? (
-                                                <Text type="success">当前没有待补充项（以系统整理为准）。</Text>
-                                            ) : (
-                                                renderFieldChips(selected.still_needed_fields?.filter(Boolean) ?? [])
-                                            )}
-                                        </div>
+                                        {(selected.collected_fields?.filter(Boolean).length ?? 0) > 0 && (
+                                            <Collapse
+                                                bordered={false}
+                                                style={{ background: 'transparent' }}
+                                                defaultActiveKey={[]}
+                                                items={[
+                                                    {
+                                                        key: 'collected',
+                                                        label: (
+                                                            <Text style={{ fontSize: 13 }}>
+                                                                {collectedHeading}（{selected.collected_fields!.filter(Boolean).length} 项）
+                                                            </Text>
+                                                        ),
+                                                        children: renderFieldChips(selected.collected_fields?.filter(Boolean) ?? []),
+                                                    },
+                                                ]}
+                                            />
+                                        )}
+                                        {(selected.still_needed_fields?.filter(Boolean).length ?? 0) > 0 && (
+                                            <div>
+                                                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                                                    {missingHeading}
+                                                </Text>
+                                                <Space size={[4, 4]} wrap>
+                                                    {selected.still_needed_fields!.filter(Boolean).slice(0, 4).map((id) => (
+                                                        <Tag key={id} color="orange" style={{ margin: 0 }}>
+                                                            {railFieldLabel(id)}
+                                                        </Tag>
+                                                    ))}
+                                                </Space>
+                                            </div>
+                                        )}
                                         <div
                                             style={{
                                                 padding: '12px 14px',
@@ -317,8 +323,11 @@ export function UserCaseListProgressPanel({ onContinueInCustomerPortal }: UserCa
                                             </Paragraph>
                                         </div>
 
-                                        {onContinueInCustomerPortal ? (
-                                            <Button type="primary" onClick={onContinueInCustomerPortal}>
+                                        {onContinueInCustomerPortal && selected ? (
+                                            <Button
+                                                type="primary"
+                                                onClick={() => onContinueInCustomerPortal(selected.case_id)}
+                                            >
                                                 {goChatCta}
                                             </Button>
                                         ) : null}

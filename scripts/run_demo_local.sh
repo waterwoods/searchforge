@@ -1,13 +1,18 @@
 #!/bin/bash
-# One-command local demo launcher for ChenKui
+# Unified Intake — local founder demo launcher
 # ===========================================
-# Default demo path: backend 8001, UI 5173. Vite proxy targets 8001.
-# (Docker rag-api uses 8000; use --port 8000 for validation scripts when using Docker.)
-# Starts backend (8001) + UI dev server. Prints Demo URL even if backend fails.
-# If backend is down, DemoPage uses Offline Fallback (pre-saved answers).
+# Product: inbox triage + workbench (Unified Intake SaaS), not SearchForge lab.
+# Default path: backend 8001, UI 5173. Vite proxy targets 8001.
+# (Docker rag-api uses 8000 — legacy lab stack; see docs/runbooks/RUNTIME_PATH_STANDARD.md)
+# Starts backend (8001) + UI dev server. Prints URLs even if backend fails.
 # Ctrl+C stops both gracefully.
 #
+# Default: Unified Intake SaaS posture (matches paid pilot / trial prep).
+# Lab/RAG stack: RUN_DEMO_LAB=1 bash scripts/run_demo_local.sh
+#   → platform_full API (SearchForge lab routers, /api/query, etc.)
+#
 # Usage: bash scripts/run_demo_local.sh
+#        RUN_DEMO_LAB=1 bash scripts/run_demo_local.sh   # explicit lab opt-in
 
 set -euo pipefail
 
@@ -42,9 +47,21 @@ if [ "${USE_LOCAL_QDRANT:-0}" = "1" ]; then
 fi
 
 echo "=========================================="
-echo "Demo Launcher (Backend 8001 + UI 5173)"
+echo "Unified Intake — Local Demo (8001 + UI 5173)"
 echo "=========================================="
-echo ""
+
+# Default to paid-pilot parity unless explicit lab opt-in (RUN_DEMO_LAB=1).
+if [ "${RUN_DEMO_LAB:-0}" = "1" ]; then
+  echo "[MODE] Lab opt-in (RUN_DEMO_LAB=1): platform_full API — SearchForge/RAG routers."
+  echo "       Workbench intake still works; /api/query and lab routes available."
+  echo ""
+else
+  export UNIFIED_INTAKE_PRODUCT_ONLY="${UNIFIED_INTAKE_PRODUCT_ONLY:-1}"
+  export UNIFIED_INTAKE_INTAKE_CORE_READINESS="${UNIFIED_INTAKE_INTAKE_CORE_READINESS:-1}"
+  echo "[MODE] Unified Intake SaaS (default). Lab stack: RUN_DEMO_LAB=1 bash scripts/run_demo_local.sh"
+  echo "       product_only=${UNIFIED_INTAKE_PRODUCT_ONLY} intake_core_readiness=${UNIFIED_INTAKE_INTAKE_CORE_READINESS}"
+  echo ""
+fi
 
 # Cleanup on exit
 BACKEND_PID=""
@@ -86,8 +103,12 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
   echo "  ... waiting (${ELAPSED}s)"
 done
 if [ "$BACKEND_OK" = false ]; then
-  echo "  NOTE: Backend did not become healthy. Demo will use Offline Fallback."
-  echo "        Click the 5 sample questions to load pre-saved answers."
+  echo "  NOTE: Backend did not become healthy."
+  if [ "${RUN_DEMO_LAB:-0}" = "1" ]; then
+    echo "        RAG /demo page can use Offline Fallback (5 sample questions)."
+  else
+    echo "        Workbench needs backend — check logs; bash scripts/trial_launch_check.sh"
+  fi
   kill "$BACKEND_PID" 2>/dev/null || true
   BACKEND_PID=""
 fi
@@ -121,16 +142,22 @@ echo ""
 # Give UI a moment to bind
 sleep 3
 echo "=========================================="
-echo "Demo ready"
+echo "Unified Intake local — ready"
 echo "=========================================="
 echo ""
-echo "  Demo URL: $DEMO_URL"
+echo "  Workbench (product): http://localhost:5173/workbench/unified-intake"
+echo "  RAG demo page (optional wedge): $DEMO_URL"
 echo ""
 if [ "$BACKEND_OK" = true ]; then
   echo "  Mode: Live (backend connected)"
+  echo "  Posture: bash scripts/summarize_readiness_posture.sh --probe http://127.0.0.1:8001"
+  echo "  Validate: bash scripts/guardrail_inbox_triage.sh"
 else
-  echo "  Mode: Offline (backend down - use 5 sample questions for pre-saved answers)"
+  echo "  Mode: Backend down — start failed or still warming"
 fi
+echo ""
+echo "  Before broker trial: bash scripts/trial_launch_check.sh"
+echo "  Safe to ignore: docs/runbooks/OPERATOR_IGNORE_LIST.md"
 echo ""
 echo "  Press Ctrl+C to stop."
 echo ""

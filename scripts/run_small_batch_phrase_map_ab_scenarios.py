@@ -2,7 +2,7 @@
 """
 Small-batch phrase-map A/B scenarios.
 
-Runs docs/sprints/SMALL_BATCH_PHRASE_MAP_EXTERNALIZATION_SPRINT/small_batch_ab_scenario_battery.json
+Runs docs/archive/sprints/SMALL_BATCH_PHRASE_MAP_EXTERNALIZATION_SPRINT/small_batch_ab_scenario_battery.json
 with explicit client_id (no reliance on CLIENT_ID env).
 
 Usage:
@@ -23,6 +23,7 @@ if str(REPO) not in sys.path:
 BATTERY = (
     REPO
     / "docs"
+    / "archive"
     / "sprints"
     / "SMALL_BATCH_PHRASE_MAP_EXTERNALIZATION_SPRINT"
     / "small_batch_ab_scenario_battery.json"

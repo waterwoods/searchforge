@@ -108,9 +108,14 @@ for code in (
     "production_like_without_db_primary_writes_v1",
 ):
     if code in ow:
-        print(f"❌ unsafe operator warning present: {code}")
+        from services.fiqa_api.deployment_profile import humanize_operator_warnings
+        human = humanize_operator_warnings([code])[0]
+        print(f"❌ unsafe: {human}")
         raise SystemExit(1)
 print("✅ deployment_profile product_only + keyed perimeters OK")
+print("")
+print("Operator reminder: intake liveness = /health/live; intake readiness = /readyz (intake_path_ready).")
+print("Ignore /ready for broker SaaS (legacy vector stack).")
 PY
 
 SERVICE_NAME="${SERVICE_NAME:-fiqa-api}"

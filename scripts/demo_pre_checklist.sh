@@ -1,7 +1,8 @@
 #!/bin/bash
-# Pre-demo checklist for 陈魁 broker demo
-# =========================================
-# Run before a live broker demo to verify both Live and Offline paths.
+# Pre-demo checklist — Unified Intake workbench (product) + optional RAG lab
+# CANONICAL FOUNDER PATH: docs/FOUNDER_ONE_PATH.md (§ local run)
+# ===========================================================================
+# Run before a live broker demo to verify workbench path; RAG /demo is optional lab wedge.
 # Runtime path: default 8001, recovery restore_8001_readiness.sh. See docs/runbooks/RUNTIME_PATH_STANDARD.md.
 #
 # Usage: bash scripts/demo_pre_checklist.sh [--strict]
@@ -28,7 +29,7 @@ cd "$REPO_DIR"
 mkdir -p "$OUT_DIR"
 
 echo "=========================================="
-echo "Pre-Demo Checklist (Insurance Broker)"
+echo "Pre-Demo Checklist (Unified Intake Workbench)"
 echo "=========================================="
 echo ""
 
@@ -41,15 +42,17 @@ if ! bash "$SCRIPT_DIR/guardrail_broker_demo.sh" 2>&1 | tee "$OUT_DIR/guardrail_
 fi
 echo ""
 
-# 1. Env check
+# 1. Env check (Qdrant optional for intake — required only for RAG /demo lab)
 echo "[1] Environment..."
 QDRANT_OK=false
+PRODUCT_ONLY=false
 for f in .env .env.cloudrun; do
   [ -f "$f" ] && set -a && source "$f" 2>/dev/null && set +a
 done
+case "${UNIFIED_INTAKE_PRODUCT_ONLY:-1}" in 1|true|yes|on) PRODUCT_ONLY=true ;; esac
 [ -n "${QDRANT_URL:-}" ] && [ -n "${QDRANT_API_KEY:-}" ] && QDRANT_OK=true
-echo "  QDRANT_URL set: $([ -n "${QDRANT_URL:-}" ] && echo 'yes' || echo 'no')"
-echo "  QDRANT_API_KEY set: $([ -n "${QDRANT_API_KEY:-}" ] && echo 'yes' || echo 'no')"
+echo "  Product-only posture: $([ "$PRODUCT_ONLY" = true ] && echo 'yes (intake SaaS)' || echo 'no (lab/platform_full)')"
+echo "  QDRANT (optional for intake): $([ -n "${QDRANT_URL:-}" ] && echo 'configured' || echo 'not set — OK for workbench triage')"
 echo ""
 
 # 2. Offline pack check
@@ -124,7 +127,8 @@ echo "[5] Writing checklist..."
   echo ""
   echo "| Check | Status |"
   echo "|-------|--------|"
-  echo "| Qdrant env | $([ "$QDRANT_OK" = true ] && echo '✅ Set' || echo '❌ Missing') |"
+  echo "| Product posture | $([ "$PRODUCT_ONLY" = true ] && echo '✅ Intake SaaS' || echo '⚠️ Lab (platform_full)') |"
+  echo "| Qdrant (RAG lab only) | $([ "$QDRANT_OK" = true ] && echo '✅ Set' || echo '⏭ Optional for intake') |"
   echo "| Offline pack | $([ "$FALLBACK_OK" = true ] && echo '✅ Ready' || echo '❌ Missing') |"
   echo "| Workflow hints (Q1–Q5) | $([ "$WORKFLOW_OK" = "5" ] 2>/dev/null && echo '✅ Aligned' || echo '⚠️ Run demo_quick_validate to refresh') |"
   echo "| Copy-to-client boundary | $(python3 "$SCRIPT_DIR/verify_copy_to_client_guardrail.py" >/dev/null 2>&1 && echo '✅ Clean' || echo '❌ Check guardrail') |"
@@ -134,18 +138,21 @@ echo "[5] Writing checklist..."
   echo "## Which path to use"
   echo ""
   if [ "$VALIDATE_PASS" = true ]; then
-    echo "**→ Use Live path.** Ask any of the 5 questions or type custom questions."
+    echo "**→ Use Live workbench.** http://localhost:5173/workbench/unified-intake"
+  elif [ "$PRODUCT_ONLY" = true ]; then
+    echo "**→ Start backend** (\`bash scripts/run_demo_local.sh\`) then open workbench."
   else
-    echo "**→ Use Offline path.** Click only the 5 recommended questions. Do not type custom questions."
+    echo "**→ Lab RAG offline:** http://localhost:5173/demo — click 5 sample questions only."
   fi
   echo ""
   echo "## Demo commands"
   echo ""
-  echo "1. Start: \`bash scripts/run_demo_local.sh\`"
-  echo "2. URL: http://localhost:5173/demo"
-  echo "3. If Live fails mid-demo: Refresh page, click 5 sample questions (Offline mode)"
+  echo "1. Start: \`bash scripts/run_demo_local.sh\` (default: Unified Intake SaaS)"
+  echo "2. Workbench (product): http://localhost:5173/workbench/unified-intake"
+  echo "3. RAG lab wedge (optional): http://localhost:5173/demo — needs Qdrant + RUN_DEMO_LAB=1 for /api/query"
+  echo "4. Before broker trial: \`bash scripts/trial_launch_check.sh\`"
   echo ""
-  echo "## Recommended 5 questions (in order)"
+  echo "## RAG lab sample questions (optional /demo page only — not intake workbench)"
   echo ""
   echo "1. 我刚买了辆新车（加州），最低需要买哪些保险？大概怎么配比较合理？"
   echo "2. 我的车注册被暂停了（可能是保险问题），我该怎么恢复？需要交多少钱/提交什么材料？"

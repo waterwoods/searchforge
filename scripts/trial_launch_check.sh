@@ -1,6 +1,7 @@
 #!/bin/bash
 # Trial Launch Check — Single Entry Point for Real Broker Trial
 # ==============================================================
+# CANONICAL FOUNDER PATH: docs/FOUNDER_ONE_PATH.md
 # Runs trial readiness + prints founder launch checklist.
 # One command before launching the first broker trial.
 #
@@ -25,13 +26,13 @@ if ! bash "$SCRIPT_DIR/trial_readiness_check.sh" 2>/dev/null; then
   exit 1
 fi
 
-# Verify launch-specific docs exist
+# Verify launch-specific docs exist (P9 collapsed surface)
 echo "[Launch] Launch docs exist..."
-for f in docs/trial/TRIAL_LAUNCH_BLUEPRINT.md \
-         docs/trial/TRIAL_LAUNCH_CHECKLIST_SPEC.md \
-         docs/trial/FOUNDER_LAUNCH_NOTES.md \
+for f in docs/FOUNDER_ONE_PATH.md \
+         docs/TRIAL_ONE_PATH.md \
+         docs/BROKER_ONE_PAGER.md \
+         docs/BROKER_TRIAL_PLAYBOOK.md \
          docs/trial/FIX_NOW_QUEUE_TEMPLATE.md \
-         docs/trial/BROKER_TRIAL_ONE_PAGER.md \
          docs/trial/TRIAL_OBSERVATION_LOG_TEMPLATE.md; do
   if [ ! -f "$f" ]; then
     echo "  FAIL: $f not found"
@@ -57,11 +58,10 @@ echo "  2. Open: http://localhost:5173/workbench/unified-intake"
 echo "  3. Click: Load founder demo queue (13 cases; cancellation opens first)"
 echo "  4. Run SIM1, SIM2, SIM3 in Simulation Assistant"
 echo "  5. Copy docs/trial/TRIAL_OBSERVATION_LOG_TEMPLATE.md for broker"
-echo "  6. Bring docs/trial/BROKER_TRIAL_ONE_PAGER.md"
-echo "  7. Read docs/trial/FOUNDER_LAUNCH_NOTES.md"
-echo "  8. (Optional) docs/trial/kickoff/FOUNDER_FINAL_KICKOFF_NOTES.md — inspect, say, do after first 3–5 conversations"
+echo "  6. Bring docs/BROKER_ONE_PAGER.md + docs/BROKER_TRIAL_PLAYBOOK.md"
+echo "  7. Read docs/TRIAL_ONE_PATH.md + docs/FOUNDER_ONE_PATH.md"
 echo ""
-echo "  Kickoff docs: docs/trial/kickoff/ (Blueprint, Flow, Evidence/Issue, Demo/Checklist)"
+echo "  Archived kickoff specs: docs/archive/p9_broker_surface/kickoff/ (optional depth)"
 echo ""
 echo "  What to say (first 30 sec):"
 echo "  \"这是一个加州汽车保险经纪助手。客户发来messy消息——系统会整理成结构化case："

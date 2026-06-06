@@ -18,7 +18,9 @@ FRONTEND=${FRONTEND:-5173}
 QDRANT=${QDRANT:-6333}
 REDIS=${REDIS:-6379}
 
-echo "Starting SearchForge with ports: Backend=$BACKEND, Frontend=$FRONTEND, Qdrant=$QDRANT, Redis=$REDIS"
+echo "LAB ONLY — legacy SearchForge multi-service (not Unified Intake default)"
+echo "  Product path: bash scripts/run_demo_local.sh → :8001"
+echo "Starting SearchForge lab stack with ports: Backend=$BACKEND, Frontend=$FRONTEND, Qdrant=$QDRANT, Redis=$REDIS"
 
 # Create logs directory
 mkdir -p logs
@@ -117,7 +119,8 @@ echo $FRONTEND_PID > logs/frontend.pid
 
 # Print summary
 echo ""
-echo "✅ SearchForge started successfully!"
+echo "LAB ONLY — SearchForge lab stack started (port $BACKEND)"
+echo "  Product path: bash scripts/run_demo_local.sh → :8001 Unified Intake workbench"
 echo "🌐 Frontend: http://localhost:$FRONTEND"
 echo "🔧 Backend API: http://localhost:$BACKEND"
 echo "📊 Qdrant Dashboard: http://localhost:$QDRANT/dashboard"

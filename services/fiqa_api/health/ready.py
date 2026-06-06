@@ -45,7 +45,11 @@ router = APIRouter()
 @router.get("/readyz")
 async def readiness_check():
     """
-    Fast readiness check - returns immediately based on client initialization status.
+    Intake readiness (paid pilot): prefer ``intake_path_ready`` over top-level ``ok``.
+
+    When ``UNIFIED_INTAKE_INTAKE_CORE_READINESS=1`` (with product-only) or ``DEMO_MODE``,
+    Qdrant/embedding are optional — inbox triage still runs. Legacy full-stack mode treats
+    vectors as required. Do not confuse with ``GET /ready`` (RAG/vector legacy gate).
     
     This is designed for Kubernetes probes and should complete in <30ms.
     Performs lightweight connection health checks with auto-reconnect.
@@ -163,12 +167,19 @@ async def readiness_check():
         status = "ready"
         intake_path_ready = True
 
+    try:
+        from services.fiqa_api.deployment_profile import runtime_service_display_name
+
+        service_label = runtime_service_display_name()
+    except Exception:
+        service_label = "app_main"
+
     payload = {
         "ok": ok,
         "status": status,
         "clients_ready": clients_ready,
         "clients": clients_status,
-        "service": "app_main",
+        "service": service_label,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     if vectors_optional:

@@ -2,7 +2,7 @@
 """
 Cross-client A/B isolation — Unified Intake stitched + handoff copy
 
-Runs docs/sprints/CROSS_CLIENT_COMPATIBILITY_ISOLATION_SPRINT/cross_client_ab_scenario_battery.json
+Runs docs/archive/sprints/CROSS_CLIENT_COMPATIBILITY_ISOLATION_SPRINT/cross_client_ab_scenario_battery.json
 against triage_conversation / triage_for_append with explicit client_id (no reliance on CLIENT_ID).
 
 Usage:
@@ -24,6 +24,7 @@ if str(REPO) not in sys.path:
 BATTERY = (
     REPO
     / "docs"
+    / "archive"
     / "sprints"
     / "CROSS_CLIENT_COMPATIBILITY_ISOLATION_SPRINT"
     / "cross_client_ab_scenario_battery.json"

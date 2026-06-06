@@ -2,7 +2,7 @@
 """
 Append / boundary A/B scenario battery — client_reply_draft + case_boundary isolation.
 
-Runs docs/sprints/APPEND_BOUNDARY_STRINGS_EXTERNALIZATION_SPRINT/append_boundary_ab_scenario_battery.json
+Runs docs/archive/sprints/prior_sprints_archive/p2_reply_flow_polish_sprints/APPEND_BOUNDARY_STRINGS_EXTERNALIZATION_SPRINT/append_boundary_ab_scenario_battery.json
 via triage_for_append(..., client_id=...).
 
 Usage:
@@ -23,7 +23,10 @@ if str(REPO) not in sys.path:
 BATTERY = (
     REPO
     / "docs"
+    / "archive"
     / "sprints"
+    / "prior_sprints_archive"
+    / "p2_reply_flow_polish_sprints"
     / "APPEND_BOUNDARY_STRINGS_EXTERNALIZATION_SPRINT"
     / "append_boundary_ab_scenario_battery.json"
 )

@@ -47,6 +47,9 @@ export type CustomerEntryTabProps = {
     onOpenScenarioSimulation?: () => void;
     /** Optional: switch to「我的办理」when multiple in-progress cases need disambiguation */
     onOpenMyRequests?: () => void;
+    /** My Requests → Continue: hydrate this persisted case on entry */
+    continueCaseId?: string | null;
+    onContinueCaseHandled?: () => void;
 };
 
 export type WorkbenchListFilter =
@@ -60,12 +63,20 @@ export type WorkbenchListFilter =
 
 export type OfficeGlanceLines = {
     contactLine: string;
+    /** P16-Z11: office headline (what is this case?) */
+    headline: string;
     matterLine: string;
     stageLine: string;
     vehicleLine: string | null;
     /** Add-Car: quote_ready_status in operator Chinese (optional). */
     quotePrepLine: string | null;
     missingLine: string | null;
+    /** P16-Z11: structured missing field labels for checklist display */
+    missingFields: string[];
+    /** P16-Z11: waiting-on surface (who is waiting on whom?) */
+    waitingOnLine: string | null;
+    /** P16-Z11: classification evidence signals */
+    classificationSignals: string[];
     latestCustomerLine: string | null;
     nextStep: string;
 };
