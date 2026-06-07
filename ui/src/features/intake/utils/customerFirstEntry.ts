@@ -3,6 +3,7 @@
  */
 import type { TriageResult } from '@/api/inboxTriage';
 import { isFormalSubmissionToOfficeComplete } from '@/components/intake/AddCarRecordSummaryRail';
+import { ADD_CAR_FIELD_LABELS } from '@/features/intake/constants';
 
 export type CustomerSubmitState = 'saved' | 'submitted';
 
