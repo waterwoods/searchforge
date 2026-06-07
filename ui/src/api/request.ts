@@ -23,7 +23,11 @@ const request: AxiosInstance = axios.create({
  */
 request.interceptors.request.use(
   (config) => {
-    // Add any auth tokens or headers here if needed
+    const intakeKey = (import.meta.env.VITE_UNIFIED_INTAKE_INTAKE_API_KEY || '').trim();
+    if (intakeKey) {
+      config.headers = config.headers ?? {};
+      config.headers['X-Unified-Intake-Api-Key'] = intakeKey;
+    }
     return config;
   },
   (error) => {

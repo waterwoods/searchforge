@@ -436,6 +436,66 @@ export async function listRecentCases(limit = 8): Promise<SavedCase[]> {
     return r.cases;
 }
 
+/** P16 Customer First — active add-car case summary from phone lookup */
+export interface CustomerActiveCaseSummary {
+    case_id: string;
+    vehicle_display: string;
+    missing_fields: string[];
+    missing_fields_display?: string[];
+    is_formal_submitted: boolean;
+    submit_state: 'submitted' | 'not_yet';
+    /** Customer-facing submit dimension */
+    status_label?: 'saved_not_yet_submitted' | 'submitted_to_office';
+    /** Customer-visible contact state derived from waiting_on + still_needed */
+    contact_state?: 'waiting_for_customer' | 'office_reviewing' | 'broker_reviewing';
+    /** Single customer-visible business state (four states only) */
+    business_state?: 'awaiting_customer' | 'submitted_to_office' | 'office_processing' | 'closed';
+    waiting_on?: string;
+    primary_vehicle_summary?: string | null;
+    still_needed_fields?: string[];
+    lifecycle_status?: string;
+    formal_submitted_at?: string;
+    customer_name?: string;
+    updated_at?: string;
+}
+
+export interface CustomerActiveCaseLookupResponse {
+    has_active_case: boolean;
+    phone_normalized: string;
+    active_case: CustomerActiveCaseSummary | null;
+}
+
+export async function lookupActiveCaseByPhone(
+    phone: string,
+    clientId?: string | null,
+): Promise<CustomerActiveCaseLookupResponse> {
+    const response = await request.get<CustomerActiveCaseLookupResponse>('/api/inbox/customer/active-case', {
+        params: {
+            phone: phone.trim(),
+            ...(clientId?.trim() ? { client_id: clientId.trim() } : {}),
+        },
+    });
+    return response.data;
+}
+
+export async function startCustomerAddCarDraft(params: {
+    phone: string;
+    customerName?: string;
+    clientId?: string | null;
+    sessionId?: string | null;
+}): Promise<{ ok: boolean; case_id: string; case: CustomerActiveCaseSummary }> {
+    const response = await request.post<{ ok: boolean; case_id: string; case: CustomerActiveCaseSummary }>(
+        '/api/inbox/customer/start-add-car',
+        {
+            phone: params.phone.trim(),
+            customer_name: params.customerName?.trim() || undefined,
+            client_id: params.clientId?.trim() || undefined,
+            session_id: params.sessionId?.trim() || undefined,
+        },
+    );
+    return response.data;
+}
+
 /** DELETE — only allowed when case is marked workbench_test (server-enforced). */
 export async function deleteTestCase(caseId: string): Promise<void> {
     await request.delete(`/api/inbox/cases/${encodeURIComponent(caseId)}`);

@@ -4245,6 +4245,7 @@ def _extract_contact_fields(merged_text: str) -> tuple[str | None, str | None]:
 
     # Name: 我是X, 我姓X, 我叫X, 姓名/名字 labeled (with or without :), call me X, I'm X, — X at end
     name_patterns = [
+        (r"(?i)\bname\s*[:：]\s*([a-zA-Z][a-zA-Z\s.'-]{1,30})", 1, 2),
         (r"(?:姓名|名字)\s*[:：]?\s*([^\s,，.。手机电话\d:：]{2,24})", 1, 2),
         (r"我是\s*([^\s,，.。]+)", 1, 2),
         (r"我姓\s*([^\s,，.。]+)", 1, 1),
@@ -6839,6 +6840,7 @@ def triage_conversation(
         and not handoff
         and str(_pc_ls.get("formal_submitted_at") or "").strip()
         and _pc_ls.get("formal_submit_this_turn") is not True
+        and str(_pc_ls.get("lifecycle_status") or "").strip() not in ("collecting", "handoff_pending")
     ):
         _ols = str(_pc_ls.get("lifecycle_status") or "").strip()
         if _ols in ("office_followup", "handed_off"):

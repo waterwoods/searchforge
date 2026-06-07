@@ -6,6 +6,10 @@ import {
     caseLifecycleUserLabel,
     resolveCaseLifecycle,
 } from '../../../components/intake/caseLifecycleDisplay';
+import {
+    customerBusinessStateDisplay,
+    resolveCustomerBusinessStateFromTriage,
+} from '../utils/customerFirstEntry';
 import { getOfficeCaseBoundaryPreviewSuffix } from '../../../components/workbench/officeCaseBoundary';
 import type { AttentionKind, FollowUpDueKind, OfficeGlanceLines, WorkbenchListFilter } from '../types';
 import {
@@ -21,7 +25,9 @@ import {
     MISSING_DOC_FIELD_LABELS,
     QUOTE_READY_STATUS_LABELS,
     RENEWAL_FIELD_LABELS,
+    SERVICE_TYPE_OFFICE_ZH,
     WAITING_ON_OPTIONS,
+    FOUNDER_DEMO_QUEUE,
 } from '../constants';
 
 export function getQuickStartButtons(uiCopy: UiCopy): Array<{ id: SoftRouteIntent; label: string; shortLabel: string; starterMessage: string }> {
@@ -112,18 +118,11 @@ export function buildAddCarStatusStripChips(
     const out: Array<{ label: string; color: string }> = [{ label: '加车报价', color: 'blue' }];
     if (!triage) return out;
 
-    const cl = resolveCaseLifecycle(triage);
-    if (phase === 'submitted' || cl === 'submitted') {
-        out.push({
-            label: caseLifecycleUserLabel('submitted'),
-            color: caseLifecycleTagColor('submitted'),
-        });
-        return out;
-    }
-
+    const businessState = resolveCustomerBusinessStateFromTriage(triage as TriageResult);
+    const copy = customerBusinessStateDisplay(businessState);
     out.push({
-        label: caseLifecycleUserLabel(cl),
-        color: caseLifecycleTagColor(cl),
+        label: copy.zh,
+        color: copy.tagColor,
     });
     return out;
 }
@@ -168,19 +167,87 @@ export function inferCaseFocusFromText(text: string): string | null {
     if (/\b(加|加一台|加一辆|新车|提车|报价|先出报价|买了|保费多少钱)\b/.test(t) && /\b(车|vin|tesla|toyota|honda|model|bmw|宝马|x5)\b/i.test(t)) {
         return 'Add car quote';
     }
-    if (/\b(拿掉|删掉|去掉|卖掉|卖车|卖掉了)\b/.test(t) && /\b(车|honda|accord|vehicle)\b/i.test(t)) {
+    if (/\b(拿掉|删掉|去掉|卖掉|卖车|卖掉了)\b/.test(t) && /\b(车|honda|accord|vehicle|camry|toyota|bmw|tesla)\b/i.test(t)) {
         return 'Remove car';
     }
     if (/\b(保费|太贵|太高|怎么降|降一点|续保)\b/.test(t)) {
         return 'Premium review';
     }
-    if (/\b(事故|出险|理赔|撞车|撞了|accident|claim)\b/.test(t)) {
+    if (/\b(事故|出险|理赔|撞车|撞了|accident|claim|追尾|全损)\b/.test(t)) {
         return 'Claim intake';
     }
     if (/\b(dmv|sr-22|sr22|suspension|clearance|带什么)\b/i.test(t)) {
         return 'DMV / SR-22 help';
     }
     return null;
+}
+
+type CaseThreadSource = Pick<TriageResult, 'case_messages' | 'source_text'>;
+
+function allCaseThreadMessages(caseItem: CaseThreadSource): Array<{ role: string; text: string; label: string }> {
+    const msgs = caseItem.case_messages;
+    if (Array.isArray(msgs) && msgs.length > 0) {
+        const sorted = [...msgs].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+        return sorted.map((m) => {
+            const role = (m.role || '').toLowerCase();
+            const label = role === 'customer' ? '客户' : role === 'system' ? '系统' : role || '—';
+            return { role, text: (m.text || '').trim(), label };
+        });
+    }
+    const src = caseItem.source_text ?? '';
+    if (!src.includes('[客户]')) {
+        const t = src.trim();
+        return t ? [{ role: 'customer', text: t, label: '客户' }] : [];
+    }
+    const out: Array<{ role: string; text: string; label: string }> = [];
+    for (const m of src.matchAll(/\[(客户|系统)\]\s*([^[]+)/g)) {
+        out.push({
+            role: m[1] === '客户' ? 'customer' : 'system',
+            text: m[2].trim(),
+            label: m[1],
+        });
+    }
+    return out;
+}
+
+/** Broker glance: labeled thread lines from case_messages (newest last). */
+export function formatCaseMessagesForThread(
+    caseItem: CaseThreadSource,
+    maxMessages = 5,
+): Array<{ role: string; text: string; label: string }> {
+    return allCaseThreadMessages(caseItem).slice(-maxMessages);
+}
+
+/** Rebuild customer-entry turns from a persisted case (return loop / My Requests continue). */
+export function customerEntryTurnsFromSavedCase(
+    saved: CaseThreadSource &
+        Pick<TriageResult, 'client_reply_draft' | 'case_id' | 'formal_submitted_at' | 'lifecycle_status'>,
+): Array<{ role: 'customer' | 'system'; content: string; triageResult?: TriageResult }> {
+    const thread = allCaseThreadMessages(saved);
+    const systemReply = (saved.client_reply_draft ?? '').trim() || '办公室已整理您的报送。';
+    if (!thread.length) {
+        const src = (saved.source_text ?? '').trim();
+        if (!src) return [];
+        return [
+            { role: 'customer', content: src },
+            { role: 'system', content: systemReply, triageResult: saved as TriageResult },
+        ];
+    }
+    const turns: Array<{ role: 'customer' | 'system'; content: string; triageResult?: TriageResult }> = [];
+    for (const m of thread) {
+        const role = m.role === 'customer' ? 'customer' : 'system';
+        turns.push({ role, content: m.text });
+    }
+    const last = turns[turns.length - 1];
+    if (last?.role === 'customer') {
+        turns.push({ role: 'system', content: systemReply, triageResult: saved as TriageResult });
+    } else if (last?.role === 'system') {
+        last.triageResult = saved as TriageResult;
+        if (!last.content.trim()) {
+            last.content = systemReply;
+        }
+    }
+    return turns;
 }
 
 /** Extract last 2–3 customer messages for handoff visibility. Uses case_messages when available, else parses source_text. */
@@ -584,6 +651,15 @@ export function getQueueReadinessLabel(caseItem: SavedCase): { label: string; co
 
 /** Compact flow-specific preview for queue cards — not full case card (office Chinese) */
 export function getCompactQueuePreview(caseItem: SavedCase): string {
+    const headline = buildOfficeCaseHeadline(caseItem, caseItem.source_text ?? '');
+    const waiting = buildWaitingOnSurface(caseItem);
+    const next = buildOfficeNextAction(caseItem);
+    const parts: string[] = [headline];
+    if (waiting) parts.push(waiting);
+    if (next && next !== '—（系统未生成下一步，请阅原文或备注）') {
+        parts.push(`下一步：${getPreviewText(next, 48)}`);
+    }
+    const officeLead = parts.join(' · ');
     const collected = (caseItem.collected_fields ?? []).map(humanizeStructuredField);
     const stillNeeded = (caseItem.still_needed_fields ?? []).map(humanizeStructuredField);
     const focus = inferCaseFocusFromText(caseItem.source_text ?? '');
@@ -631,11 +707,13 @@ export function getCompactQueuePreview(caseItem: SavedCase): string {
         }
         return '保费关注 · 待复核选项';
     }
-    if (focus === 'Claim intake' || /accident|事故|claim/i.test((caseItem.source_text ?? '').toLowerCase())) {
-        if (collected.length > 0 || stillNeeded.length > 0) {
-            return `已报事故${collected.length > 0 ? ` · ${collected.slice(0, 2).join('、')}` : ''}${stillNeeded.length > 0 ? ` · 还缺：${stillNeeded.slice(0, 2).join('、')}` : ''}`;
-        }
-        return '已报事故 · 收集现场照片和对方信息';
+    if (focus === 'Remove car' || caseItem.service_type === 'remove_car') {
+        const missing = stillNeeded.length > 0 ? ` · 缺少：${stillNeeded.slice(0, 2).join('、')}` : '';
+        return `${officeLead}${missing}`;
+    }
+    if (focus === 'Claim intake' || /accident|事故|claim|追尾|全损/i.test((caseItem.source_text ?? '').toLowerCase())) {
+        const missing = stillNeeded.length > 0 ? ` · 缺少：${stillNeeded.slice(0, 2).join('、')}` : '';
+        return `${officeLead}${missing}`;
     }
     if (cat === 'missing_document' || cat === 'underwriting_followup') {
         const hasSent = (caseItem.collected_fields ?? []).some((f) => f.includes('customer_says_sent') || f.includes('already_sent'));
@@ -648,26 +726,101 @@ export function getCompactQueuePreview(caseItem: SavedCase): string {
         return '材料补交 · 需核实';
     }
     if (cat === 'cancellation_warning' || cat === 'payment_lapse_expiration') {
-        return '当日处理 · 确认应付余额';
+        const missing = stillNeeded.length > 0 ? ` · 缺少：${stillNeeded.slice(0, 2).join('、')}` : '';
+        return `${officeLead}${missing}`;
+    }
+    if (officeLead && officeLead !== headline) {
+        return officeLead;
     }
     return getPreviewText(caseItem.broker_next_step ?? '', 72);
 }
 
-export function getCaseWorkbenchScore(
-    caseItem: Pick<TriageResult, 'urgency' | 'manual_followup_needed' | 'waiting_on' | 'next_contact_by' | 'case_status'>,
+/** Temporary boost so recent customer formal submits outrank founder demo noise (P16 office visibility). */
+export const RECENT_FORMAL_SUBMISSION_VISIBILITY_BOOST = 165;
+
+/** Deprioritize known founder demo seed text in workbench sort (product pilot queue scope). */
+export const FOUNDER_DEMO_SEED_WORKBENCH_PENALTY = 300;
+
+type WorkbenchScoreCase = Pick<
+    SavedCase,
+    | 'urgency'
+    | 'manual_followup_needed'
+    | 'waiting_on'
+    | 'next_contact_by'
+    | 'case_status'
+    | 'formal_submitted_at'
+    | 'lifecycle_status'
+    | 'source_text'
+    | 'workbench_test'
+>;
+
+export function getRecentFormalSubmissionVisibilityBoost(
+    caseItem: Pick<SavedCase, 'formal_submitted_at' | 'lifecycle_status' | 'workbench_test'>,
 ): number {
+    if (caseItem.workbench_test) return 0;
+    const ls = (caseItem.lifecycle_status ?? '').trim();
+    if (ls !== 'handed_off' && ls !== 'office_followup') return 0;
+    if (!isWithinLast24Hours(caseItem.formal_submitted_at)) return 0;
+    return RECENT_FORMAL_SUBMISSION_VISIBILITY_BOOST;
+}
+
+export function isFounderDemoSeedSourceText(sourceText: string | undefined): boolean {
+    const norm = normalizeCaseSourceText(sourceText ?? '');
+    if (!norm) return false;
+    return FOUNDER_DEMO_QUEUE.some((seed) => normalizeCaseSourceText(seed.text) === norm);
+}
+
+export function getFounderDemoSeedWorkbenchPenalty(
+    caseItem: Pick<SavedCase, 'source_text' | 'workbench_test'>,
+): number {
+    if (caseItem.workbench_test) return 0;
+    return isFounderDemoSeedSourceText(caseItem.source_text) ? FOUNDER_DEMO_SEED_WORKBENCH_PENALTY : 0;
+}
+
+export function explainCaseWorkbenchScore(caseItem: WorkbenchScoreCase): {
+    total: number;
+    attention_base: number;
+    attention_kind: AttentionKind;
+    attention_section: 'action' | 'tracking';
+    urgency_bonus: number;
+    done_penalty: number;
+    recent_formal_submission_boost: number;
+    founder_demo_seed_penalty: number;
+} {
     const attention = getCaseAttentionState(caseItem);
-    let score = attention.section === 'action' ? 100 : 0;
-    if (attention.kind === 'overdue') score += 70;
-    else if (attention.kind === 'due_today') score += 60;
-    else if (attention.kind === 'wait_broker') score += 50;
-    else if (attention.kind === 'urgent_manual') score += 40;
-    else if (attention.kind === 'manual_followup') score += 25;
-    if (caseItem.urgency === 'critical') score += 20;
-    else if (caseItem.urgency === 'high') score += 15;
-    else if (caseItem.urgency === 'medium') score += 8;
-    if (caseItem.case_status === 'done') score -= 100;
-    return score;
+    let attentionBase = attention.section === 'action' ? 100 : 0;
+    if (attention.kind === 'overdue') attentionBase += 70;
+    else if (attention.kind === 'due_today') attentionBase += 60;
+    else if (attention.kind === 'wait_broker') attentionBase += 50;
+    else if (attention.kind === 'urgent_manual') attentionBase += 40;
+    else if (attention.kind === 'manual_followup') attentionBase += 25;
+    let urgencyBonus = 0;
+    if (caseItem.urgency === 'critical') urgencyBonus = 20;
+    else if (caseItem.urgency === 'high') urgencyBonus = 15;
+    else if (caseItem.urgency === 'medium') urgencyBonus = 8;
+    const donePenalty = caseItem.case_status === 'done' ? 100 : 0;
+    const recentFormalSubmissionBoost = getRecentFormalSubmissionVisibilityBoost(caseItem);
+    const founderDemoSeedPenalty = getFounderDemoSeedWorkbenchPenalty(caseItem);
+    const total =
+        attentionBase
+        + urgencyBonus
+        - donePenalty
+        + recentFormalSubmissionBoost
+        - founderDemoSeedPenalty;
+    return {
+        total,
+        attention_base: attentionBase,
+        attention_kind: attention.kind,
+        attention_section: attention.section,
+        urgency_bonus: urgencyBonus,
+        done_penalty: donePenalty,
+        recent_formal_submission_boost: recentFormalSubmissionBoost,
+        founder_demo_seed_penalty: founderDemoSeedPenalty,
+    };
+}
+
+export function getCaseWorkbenchScore(caseItem: WorkbenchScoreCase): number {
+    return explainCaseWorkbenchScore(caseItem).total;
 }
 
 export function orderCasesForWorkbench<T extends SavedCase>(cases: T[]): T[] {
@@ -766,8 +919,133 @@ export function workbenchLaneLabel(lane: SavedCase['workbench_lane_kind']): stri
 export function humanizeServiceLaneOffice(sl?: string | null): string | null {
     const s = (sl || '').trim().toLowerCase();
     if (!s) return null;
-    if (s === 'add_car' || s === 'add-car') return '加车报价';
-    return s.replace(/_/g, ' ');
+    return SERVICE_TYPE_OFFICE_ZH[s] ?? null;
+}
+
+/** P16-Z11: effective waiting_on — saved value wins, else suggested inference */
+export function getEffectiveWaitingOn(
+    caseItem: Pick<TriageResult, 'waiting_on' | 'suggested_waiting_on'>,
+): WaitingOn {
+    const saved = (caseItem.waiting_on ?? 'none') as WaitingOn;
+    if (saved && saved !== 'none') return saved;
+    const suggested = (caseItem.suggested_waiting_on ?? 'none') as WaitingOn;
+    return suggested || 'none';
+}
+
+/** P16-Z11: "当前等待：保险公司回复" */
+export function buildWaitingOnSurface(
+    caseItem: Pick<TriageResult, 'waiting_on' | 'suggested_waiting_on'>,
+): string | null {
+    const wo = getEffectiveWaitingOn(caseItem);
+    if (!wo || wo === 'none') return null;
+    return `当前等待：${humanizeWaitingOn(wo)}`;
+}
+
+/** P16-Z11: derive classification signals from backend or source text */
+export function buildClassificationSignals(
+    triage: Pick<TriageResult, 'classification_signals' | 'source_text' | 'collected_fields'>,
+    inputFallback: string,
+): string[] {
+    const fromApi = triage.classification_signals?.filter(Boolean) ?? [];
+    if (fromApi.length > 0) return fromApi;
+    const raw = (triage.source_text ?? inputFallback) || '';
+    const t = raw.toLowerCase();
+    const out: string[] = [];
+    if (/追尾|rear.?end/i.test(raw)) out.push('提到追尾');
+    if (/理赔员|adjuster/i.test(raw)) out.push('提到理赔员');
+    const amt = raw.match(/(\d{3,5})\s*(?:美元|美金)/) ?? raw.match(/\$(\d{3,5})/);
+    if (amt) out.push(`提到${amt[1]}美元`);
+    if (/全损|total\s*loss/i.test(raw)) out.push('提到全损');
+    if (/没扣|扣款失败|payment failed|declined/i.test(raw)) out.push('提到扣款失败');
+    if (/卖掉|卖车|sold/i.test(raw) && /camry|accord|honda|车/i.test(raw)) out.push('提到卖车');
+    if (/camry|accord|tesla|bmw|honda|toyota/i.test(t)) out.push('提到具体车型');
+    const collected = triage.collected_fields ?? [];
+    if (collected.includes('accident_reported') && !out.some((s) => s.includes('事故'))) {
+        out.push('识别为事故相关');
+    }
+    return out.slice(0, 8);
+}
+
+/** P16-Z11: office headline — backend field or derived */
+export function buildOfficeCaseHeadline(
+    triage: Pick<
+        TriageResult,
+        'office_case_title' | 'issue_category' | 'service_type' | 'collected_fields' | 'still_needed_fields' | 'source_text'
+    >,
+    inputFallback: string,
+): string {
+    const fromApi = (triage.office_case_title ?? '').trim();
+    if (fromApi) return fromApi;
+    const focus =
+        inferCaseFocusFromStructuredFields(
+            triage.collected_fields,
+            triage.still_needed_fields,
+            triage.issue_category,
+        ) ?? inferCaseFocusFromText(triage.source_text ?? inputFallback);
+    if (focus) {
+        const zh = getCaseFocusDisplayLabel(focus);
+        if (zh) return zh;
+    }
+    const st = humanizeServiceLaneOffice(triage.service_type);
+    if (st) return st;
+    const cat = humanizeCategory(triage.issue_category, triage.source_text ?? inputFallback);
+    if (cat && cat !== triage.issue_category) return cat;
+    return '客户消息（待分类）';
+}
+
+/** P16-Z11: synthesize Chinese office step when API omitted office_broker_next_step (legacy cases). */
+export function synthesizeAddCarOfficeNextStep(
+    triage: Pick<
+        TriageResult,
+        | 'service_type'
+        | 'still_needed_fields'
+        | 'handoff_ready'
+        | 'action_ready'
+        | 'primary_vehicle_summary'
+        | 'collected_fields'
+    >,
+): string {
+    if (!triageResultLooksLikeAddCar(triage as TriageResult)) return '';
+    const still = (triage.still_needed_fields ?? []).filter(Boolean);
+    if (still.length > 0) {
+        const labels = still
+            .slice(0, 4)
+            .map((f) => humanizeStructuredField(f))
+            .filter(Boolean)
+            .join('、');
+        if (labels) return `联系客户补齐${labels}，然后出报价`;
+    }
+    if ((triage.handoff_ready || triage.action_ready) && (triage.primary_vehicle_summary ?? '').trim()) {
+        return `信息齐全，可直接为${triage.primary_vehicle_summary!.trim()}出报价`;
+    }
+    if ((triage.handoff_ready || triage.action_ready) && (triage.collected_fields?.length ?? 0) > 0) {
+        return '信息齐全，可直接出报价';
+    }
+    const vehicle = (triage.primary_vehicle_summary ?? '').trim();
+    return vehicle ? `核实${vehicle}信息并出报价` : '核实车辆信息并出报价';
+}
+
+/** P16-Z11: office next action — backend field or broker_next_step */
+export function buildOfficeNextAction(
+    triage: Pick<
+        TriageResult,
+        | 'office_broker_next_step'
+        | 'broker_next_step'
+        | 'service_type'
+        | 'still_needed_fields'
+        | 'handoff_ready'
+        | 'action_ready'
+        | 'primary_vehicle_summary'
+        | 'collected_fields'
+    >,
+): string {
+    const office = (triage.office_broker_next_step ?? '').trim();
+    if (office) return office;
+    const synthesized = synthesizeAddCarOfficeNextStep(triage);
+    if (synthesized) return synthesized;
+    const bns = (triage.broker_next_step ?? '').trim();
+    if (bns) return bns;
+    return '—（系统未生成下一步，请阅原文或备注）';
 }
 
 /** Add-Car: which vehicle-related slots are already captured (values live in thread; we only show field coverage) */
@@ -786,6 +1064,7 @@ export function buildOfficeWorkbenchGlance(
     triage: TriageResult & { customer_name?: string | null; customer_phone?: string | null },
     inputFallback: string,
 ): OfficeGlanceLines {
+    const headline = buildOfficeCaseHeadline(triage, inputFallback);
     const focus =
         inferCaseFocusFromStructuredFields(
             triage.collected_fields,
@@ -796,8 +1075,8 @@ export function buildOfficeWorkbenchGlance(
         (getCaseFocusDisplayLabel(focus) ?? focus)?.trim()
         || humanizeCategory(triage.issue_category, triage.source_text ?? inputFallback);
     const stRaw = (triage.service_type || '').trim();
-    const stZh = humanizeServiceLaneOffice(stRaw) ?? stRaw;
-    const matterExtra = stZh && !matter.includes(stZh) && stZh !== matter ? `（${stZh}）` : '';
+    const stZh = humanizeServiceLaneOffice(stRaw);
+    const matterExtra = stZh && stZh !== headline && stZh !== matter ? '' : '';
 
     const name = triage.customer_name?.trim();
     const phone = triage.customer_phone?.trim();
@@ -822,15 +1101,16 @@ export function buildOfficeWorkbenchGlance(
     }
 
     const still = triage.still_needed_fields?.filter(Boolean) ?? [];
+    const missingFieldLabels = still.slice(0, 8).map((f) => humanizeStructuredField(f));
     const missingLine =
         still.length > 0
             ? formalDelivered
-                ? `待补问（结构化）：${still
-                      .slice(0, 6)
-                      .map((f) => humanizeStructuredField(f))
-                      .join('、')}${still.length > 6 ? '…' : ''} — 记录已送达办公室，建议先向客户补齐再深报价`
-                : `还缺：${still.slice(0, 6).map((f) => humanizeStructuredField(f)).join('、')}${still.length > 6 ? '…' : ''}`
+                ? `缺少资料：${missingFieldLabels.join('、')}${still.length > 8 ? '…' : ''} — 记录已送达，建议先补齐再深报价`
+                : `缺少资料：${missingFieldLabels.join('、')}${still.length > 8 ? '…' : ''}`
             : null;
+
+    const waitingOnLine = buildWaitingOnSurface(triage);
+    const classificationSignals = buildClassificationSignals(triage, inputFallback);
 
     const qrs = triage.quote_ready_status;
     const quotePrepLine =
@@ -845,13 +1125,17 @@ export function buildOfficeWorkbenchGlance(
 
     return {
         contactLine,
-        matterLine: `事项：${matter}${matterExtra}`,
+        headline,
+        matterLine: matterExtra ? `事项：${matter}` : `事项：${headline}`,
         stageLine,
         vehicleLine,
         quotePrepLine,
         missingLine,
+        missingFields: missingFieldLabels,
+        waitingOnLine,
+        classificationSignals,
         latestCustomerLine,
-        nextStep: (triage.broker_next_step ?? '').trim() || '—（系统未生成下一步，请阅原文或备注）',
+        nextStep: buildOfficeNextAction(triage),
     };
 }
 

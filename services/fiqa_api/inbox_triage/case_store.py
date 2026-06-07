@@ -329,9 +329,11 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
     if "v6_ocr_signals" in normalized and not isinstance(normalized.get("v6_ocr_signals"), dict):
         normalized["v6_ocr_signals"] = {}
 
-    # Formal submit observability: backfill for legacy JSON before formal_submitted_at existed
+    # Formal submit observability: backfill for legacy JSON before formal_submitted_at existed.
+    # Never backfill collecting/handoff_pending drafts — would falsely mark Saved as Submitted.
     fsa = str(normalized.get("formal_submitted_at") or "").strip()
-    if not fsa:
+    lc_for_backfill = str(normalized.get("lifecycle_status") or "").strip()
+    if not fsa and lc_for_backfill not in ("collecting", "handoff_pending"):
         ca = str(normalized.get("created_at") or "").strip()
         if ca:
             normalized["formal_submitted_at"] = ca
@@ -726,13 +728,23 @@ def save_case(
         case["collection_stage"] = cs
     if (ft := (triage_result.get("follow_up_type") or "").strip()):
         case["follow_up_type"] = ft
-    # Phase 2: lifecycle_status for new case
-    case["lifecycle_status"] = "handed_off"
+    # Phase 2: lifecycle_status for new case (respect collecting drafts from Customer First entry)
+    ls_in = str(triage_result.get("lifecycle_status") or "").strip()
+    if ls_in in ("collecting", "handoff_pending", "handed_off", "office_followup"):
+        case["lifecycle_status"] = ls_in
+    else:
+        case["lifecycle_status"] = "handed_off"
+    if case["lifecycle_status"] == "collecting":
+        case["formal_submitted_at"] = ""
     # Minimal Production Backbone: optional traceability from case to pre-handoff session
     if origin_session_id and (sid := str(origin_session_id or "").strip()):
         case["origin_session_id"] = sid
     if (nbq := (triage_result.get("next_best_question") or "").strip()):
         case["next_best_question"] = nbq
+    if (oct := (triage_result.get("office_case_title") or "").strip()):
+        case["office_case_title"] = oct
+    if (obs := (triage_result.get("office_broker_next_step") or "").strip()):
+        case["office_broker_next_step"] = obs
     tm_save = str(triage_result.get("triage_mode") or "").strip().lower()
     case["triage_mode"] = tm_save if tm_save in ("greenfield", "append") else "greenfield"
     # Client Identity Persistence: store client_id for append/reopen lifecycle
@@ -1095,6 +1107,73 @@ def add_case_note(case_id: str, note_text: str) -> dict[str, Any] | None:
     return updated_case
 
 
+def _merge_append_field_lists(
+    existing_case: dict[str, Any],
+    triage_result: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """
+    Append is additive memory: union prior collected_fields with fresh triage extraction.
+    Never drop a previously captured slot unless triage marks an explicit correction invalidation.
+    """
+    from services.fiqa_api.inbox_triage.add_car_field_contract import dedupe_preserve_order
+
+    prev_collected = [str(x) for x in (existing_case.get("collected_fields") or []) if str(x).strip()]
+    prev_still = [str(x) for x in (existing_case.get("still_needed_fields") or []) if str(x).strip()]
+    new_collected = [str(x) for x in (triage_result.get("collected_fields") or []) if str(x).strip()]
+    new_still = [str(x) for x in (triage_result.get("still_needed_fields") or []) if str(x).strip()]
+
+    invalidated: set[str] = set()
+    merge_meta = triage_result.get("add_car_merge")
+    if isinstance(merge_meta, dict) and merge_meta.get("correction_turn"):
+        invalidated = {str(x).lower() for x in (merge_meta.get("invalidated_slots") or []) if str(x).strip()}
+
+    preserved = [x for x in prev_collected if x.lower() not in invalidated]
+    coll_seen = {x.lower() for x in preserved}
+    merged_collected = list(preserved)
+    for field in new_collected:
+        fl = field.lower()
+        if fl and fl not in coll_seen:
+            merged_collected.append(field)
+            coll_seen.add(fl)
+
+    merged_still = [x for x in new_still if x.lower() not in coll_seen]
+    prev_collected_l = {x.lower() for x in prev_collected if x.lower() not in invalidated}
+    merged_still = [x for x in merged_still if x.lower() not in prev_collected_l]
+
+    return dedupe_preserve_order(merged_collected), dedupe_preserve_order(merged_still)
+
+
+_ADD_CAR_OFFICE_STILL_ZH: dict[str, str] = {
+    "year": "年份",
+    "make_model": "车型",
+    "vin": "车架号",
+    "zip": "邮编",
+    "delivery_date": "提车日期",
+    "primary_driver": "主驾驶人",
+    "name": "姓名",
+    "phone": "电话",
+    "notice_image": "notice_image",
+}
+
+
+def _office_broker_next_step_from_still(
+    still_needed: list[str],
+    *,
+    primary_vehicle_summary: str | None = None,
+    handoff_ready: bool = False,
+) -> str:
+    still = [str(x) for x in still_needed if str(x).strip()]
+    if still:
+        labels = "、".join(_ADD_CAR_OFFICE_STILL_ZH.get(s, s) for s in still[:4])
+        return f"联系客户补齐{labels}，然后出报价"
+    vehicle = (primary_vehicle_summary or "").strip()
+    if handoff_ready and vehicle:
+        return f"信息齐全，可直接为{vehicle}出报价"
+    if handoff_ready:
+        return "信息齐全，可直接出报价"
+    return f"核实{vehicle}信息并出报价" if vehicle else "核实车辆信息并出报价"
+
+
 def append_follow_up_message(
     case_id: str,
     new_message_text: str,
@@ -1157,10 +1236,9 @@ def append_follow_up_message(
         normalized_case["conversation_summary"] = summary
     if (sec := (triage_result.get("secondary_issue_note") or "").strip()):
         normalized_case["secondary_issue_note"] = sec
-    if (collected := triage_result.get("collected_fields")) is not None and isinstance(collected, list):
-        normalized_case["collected_fields"] = [str(x) for x in collected]
-    if (still_needed := triage_result.get("still_needed_fields")) is not None and isinstance(still_needed, list):
-        normalized_case["still_needed_fields"] = [str(x) for x in still_needed]
+    merged_collected, merged_still = _merge_append_field_lists(normalized_case, triage_result)
+    normalized_case["collected_fields"] = merged_collected
+    normalized_case["still_needed_fields"] = merged_still
     if (qrs := (triage_result.get("quote_ready_status") or "").strip()) in ("quote_ready", "almost_ready", "need_more"):
         normalized_case["quote_ready_status"] = qrs
 
@@ -1199,6 +1277,18 @@ def append_follow_up_message(
         normalized_case["boundary_reason"] = br
     if (svc := str(triage_result.get("service_type") or "").strip()):
         normalized_case["service_type"] = svc
+    if (oct := (triage_result.get("office_case_title") or "").strip()):
+        normalized_case["office_case_title"] = oct
+    triage_still = [str(x).lower() for x in (triage_result.get("still_needed_fields") or []) if str(x).strip()]
+    merged_still_l = [str(x).lower() for x in merged_still]
+    if triage_still != merged_still_l and str(triage_result.get("service_type") or "").strip() == "add_car":
+        normalized_case["office_broker_next_step"] = _office_broker_next_step_from_still(
+            merged_still,
+            primary_vehicle_summary=str(triage_result.get("primary_vehicle_summary") or "").strip() or None,
+            handoff_ready=bool(triage_result.get("handoff_ready")),
+        )
+    elif (obs := (triage_result.get("office_broker_next_step") or "").strip()):
+        normalized_case["office_broker_next_step"] = obs
     normalized_case["vehicle_key"] = triage_result.get("vehicle_key")
     normalized_case["additional_vehicle_mentioned"] = triage_result.get("additional_vehicle_mentioned")
     _pvs_a = triage_result.get("primary_vehicle_summary")
@@ -1209,8 +1299,18 @@ def append_follow_up_message(
         normalized_case["customer_name"] = _truncate(en, MAX_CUSTOMER_NAME_LENGTH)
     if (ep := (triage_result.get("extracted_contact_phone") or "").strip()):
         normalized_case["customer_phone"] = _truncate(ep, MAX_CUSTOMER_PHONE_LENGTH)
-    # Minimal Production Backbone: append = office follow-up flow
-    normalized_case["lifecycle_status"] = "office_followup"
+    # Collecting-phase Case Memory must stay collecting; post-formal-submit append → office_followup.
+    triage_lc = str(triage_result.get("lifecycle_status") or "").strip()
+    existing_lc = str(normalized_case.get("lifecycle_status") or "").strip()
+    has_formal = bool(str(normalized_case.get("formal_submitted_at") or "").strip())
+    if triage_lc in ("collecting", "handoff_pending", "handed_off", "office_followup"):
+        normalized_case["lifecycle_status"] = triage_lc
+    elif has_formal:
+        normalized_case["lifecycle_status"] = "office_followup"
+    elif existing_lc in ("collecting", "handoff_pending"):
+        normalized_case["lifecycle_status"] = existing_lc
+    else:
+        normalized_case["lifecycle_status"] = triage_lc or existing_lc or "office_followup"
     # Client Identity Persistence: backfill client_id for legacy cases when provided
     if not normalized_case.get("client_id") and client_id and (cid := str(client_id or "").strip()):
         normalized_case["client_id"] = cid

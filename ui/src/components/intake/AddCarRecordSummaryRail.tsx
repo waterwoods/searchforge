@@ -31,6 +31,8 @@ function formatHandoffRailDateTime(iso?: string): string | null {
  */
 export function isFormalSubmissionToOfficeComplete(triage: TriageResult | undefined): boolean {
     if (!triage) return false;
+    const stillNeeded = triage.still_needed_fields?.filter(Boolean) ?? [];
+    if (stillNeeded.length > 0) return false;
     const ls = (triage.lifecycle_status ?? '').trim();
     if (ls === 'handoff_pending' || ls === 'collecting') return false;
     if ((triage.formal_submitted_at ?? '').toString().trim()) return true;

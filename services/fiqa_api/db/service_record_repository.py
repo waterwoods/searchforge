@@ -130,6 +130,8 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "person_link_key",
         "person_link_source",
         "person_link_confidence",
+        "office_case_title",
+        "office_broker_next_step",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -220,7 +222,11 @@ def persist_new_case(case: dict[str, Any]) -> None:
                         "waiting_on": _str(case.get("waiting_on")) or "none",
                         "next_contact_by": _str(case.get("next_contact_by")),
                         "current_owner": None,
-                        "current_next_action": _str(case.get("broker_next_step")) or None,
+                        "current_next_action": (
+                            _str(case.get("office_broker_next_step"))
+                            or _str(case.get("broker_next_step"))
+                            or None
+                        ),
                         "customer_name": _str(case.get("customer_name")),
                         "customer_phone": _str(case.get("customer_phone")),
                         "customer_email": _str(case.get("customer_email")),
@@ -358,7 +364,11 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         "lifecycle_status": _str(case.get("lifecycle_status")) or None,
                         "waiting_on": _str(case.get("waiting_on")) or "none",
                         "next_contact_by": _str(case.get("next_contact_by")),
-                        "current_next_action": _str(case.get("broker_next_step")) or None,
+                        "current_next_action": (
+                            _str(case.get("office_broker_next_step"))
+                            or _str(case.get("broker_next_step"))
+                            or None
+                        ),
                         "customer_name": _str(case.get("customer_name")),
                         "customer_phone": _str(case.get("customer_phone")),
                         "customer_email": _str(case.get("customer_email")),
@@ -662,8 +672,10 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
 
     if extra.get("formal_submitted_at"):
         case["formal_submitted_at"] = str(extra["formal_submitted_at"]).strip()
-    else:
+    elif str(case.get("lifecycle_status") or "").strip() not in ("collecting", "handoff_pending"):
         case["formal_submitted_at"] = case["created_at"]
+    else:
+        case["formal_submitted_at"] = ""
 
     if isinstance(extra.get("case_notes"), list):
         case["case_notes"] = extra["case_notes"]
@@ -797,6 +809,34 @@ def list_record_ids_office_scoped(
             return [str(r[0]) for r in cur.fetchall()]
 
 
+_PG_LIST_SELECT = """
+                SELECT
+                    sr.record_id,
+                    sr.client_id,
+                    sr.issue_category,
+                    sr.title_summary,
+                    sr.case_status,
+                    sr.lifecycle_status,
+                    sr.waiting_on,
+                    sr.next_contact_by,
+                    sr.current_next_action,
+                    sr.customer_name,
+                    sr.customer_phone,
+                    sr.customer_email,
+                    sr.policy_number,
+                    sr.contact_note,
+                    sr.origin_session_id,
+                    sr.created_at,
+                    sr.updated_at,
+                    sr.office_owner_org_id,
+                    sr.extra,
+                    srd.structured_payload,
+                    srd.quote_readiness
+                FROM service_records sr
+                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+"""
+
+
 def list_binding_stub_rows_recent(limit: int, offset: int = 0) -> list[dict[str, Any]]:
     """
     One round-trip: rows shaped for :func:`resolve_active_case` / :func:`is_case_open_for_binding`,
@@ -892,7 +932,10 @@ def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
     case["lifecycle_status"] = _str(row.get("lifecycle_status"))
     case["waiting_on"] = _str(row.get("waiting_on") or "none") or "none"
     case["next_contact_by"] = _str(row.get("next_contact_by"))
-    case["broker_next_step"] = _str(row.get("current_next_action"))
+    col_action = _str(row.get("current_next_action"))
+    case["broker_next_step"] = _str(structured.get("broker_next_step")) or col_action
+    if not _str(case.get("office_broker_next_step")) and col_action:
+        case["office_broker_next_step"] = col_action
     case["customer_name"] = _str(row.get("customer_name"))
     case["customer_phone"] = _str(row.get("customer_phone"))
     case["customer_email"] = _str(row.get("customer_email"))
@@ -906,8 +949,10 @@ def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
 
     if extra.get("formal_submitted_at"):
         case["formal_submitted_at"] = str(extra["formal_submitted_at"]).strip()
-    else:
+    elif str(case.get("lifecycle_status") or "").strip() not in ("collecting", "handoff_pending"):
         case["formal_submitted_at"] = case["created_at"]
+    else:
+        case["formal_submitted_at"] = ""
 
     if isinstance(extra.get("case_notes"), list):
         case["case_notes"] = extra["case_notes"]
@@ -929,32 +974,40 @@ def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
     return case
 
 
-_PG_LIST_SELECT = """
-                SELECT
-                    sr.record_id,
-                    sr.client_id,
-                    sr.issue_category,
-                    sr.title_summary,
-                    sr.case_status,
-                    sr.lifecycle_status,
-                    sr.waiting_on,
-                    sr.next_contact_by,
-                    sr.current_next_action,
-                    sr.customer_name,
-                    sr.customer_phone,
-                    sr.customer_email,
-                    sr.policy_number,
-                    sr.contact_note,
-                    sr.origin_session_id,
-                    sr.created_at,
-                    sr.updated_at,
-                    sr.office_owner_org_id,
-                    sr.extra,
-                    srd.structured_payload,
-                    srd.quote_readiness
-                FROM service_records sr
-                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
-"""
+def list_binding_stub_rows_by_phone_digits(phone_digits: str, limit: int = 24) -> list[dict[str, Any]]:
+    """
+    Postgres stub rows whose customer_phone normalizes to the given 10-digit US number.
+    """
+    from psycopg.rows import dict_row
+
+    digits = "".join(ch for ch in (phone_digits or "") if ch.isdigit())
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        return []
+
+    safe = max(1, min(int(limit or 24), 50))
+    eleven = f"1{digits}"
+    out: list[dict[str, Any]] = []
+    with service_record_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            _ensure_office_owner_org_schema(cur)
+            cur.execute(
+                _PG_LIST_SELECT
+                + """
+                WHERE regexp_replace(coalesce(sr.customer_phone, ''), '[^0-9]', '', 'g') IN (%s, %s)
+                ORDER BY sr.updated_at DESC
+                LIMIT %s
+                """,
+                (digits, eleven, safe),
+            )
+            for row in cur.fetchall():
+                case = _case_dict_from_pg_join_dict_row(row)
+                case["source_text"] = ""
+                rid = str(case.get("case_id") or "").strip()
+                if rid:
+                    out.append(case)
+    return out
 
 
 def load_workbench_queue_cases_from_postgres(record_ids: list[str]) -> list[dict[str, Any]]:

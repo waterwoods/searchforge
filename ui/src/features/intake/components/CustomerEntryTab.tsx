@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
     Alert,
     Button,
@@ -33,19 +32,17 @@ import {
 import {
     appendFollowUpMessage,
     clearSessionId,
-    clearStoredActiveCaseId,
     fetchWeChatBindingStart,
     getInProgressSession,
     getOrCreateSessionId,
     getSavedCase,
     getSessionId,
-    getStoredActiveCaseId,
     listRecentCasesPage,
     postWeChatBindingSimulateComplete,
-    setStoredActiveCaseId,
+    startCustomerAddCarDraft,
     triageMessage,
+    updateSavedCaseCustomer,
     type IdentityBindingState,
-    type SavedCase,
     type SoftRouteIntent,
     type TriageResult,
 } from "@/api/inboxTriage";
@@ -56,7 +53,10 @@ import {
     isAddCarReadyForFormalSubmit,
     resolveCaseLifecycle,
 } from "@/components/intake/caseLifecycleDisplay";
-import type { ConversationTurn, CustomerEntryTabProps } from "@/features/intake/types";
+import {
+    customerBusinessStateDisplay,
+    resolveCustomerBusinessStateFromTriage,
+} from "@/features/intake/utils/customerFirstEntry";
 import {
     DEFAULT_QUICK_START_BUTTONS,
     QUOTE_READY_STATUS_LABELS,
@@ -77,26 +77,22 @@ import {
     triageResultLooksLikeAddCar,
 } from "@/features/intake/utils";
 import { AddCarCaseStatusStrip, GenericIntakeStatusStrip, IntakeFlowStepTrack } from "@/features/intake/components/StatusStrips";
-import { resolveBuilderEvolutionPath } from '@/features/intake/prototypes/p16z21/evolutionPaths';
-import { PathGuidedRail } from '@/features/intake/prototypes/p16z21/PathGuidedRail';
-import { PathTimelineFirstBanner } from '@/features/intake/prototypes/p16z21/PathTimelineFirstBanner';
+import {
+    CustomerFirstEntryScreen,
+    type CustomerFirstEntryResult,
+} from "@/features/intake/components/CustomerFirstEntryScreen";
+import {
+    loadStoredCustomerName,
+    loadStoredCustomerPhone,
+    saveStoredCustomerName,
+    saveStoredCustomerPhone,
+} from "@/features/intake/utils/customerFirstEntry";
 
 const { TextArea } = Input;
 const { Title, Text, Paragraph } = Typography;
 
-export function CustomerEntryTab({
-    onSwitchToBroker,
-    onOpenScenarioSimulation,
-    onOpenMyRequests,
-    continueCaseId,
-    onContinueCaseHandled,
-}: CustomerEntryTabProps) {
+export function CustomerEntryTab({ onSwitchToBroker, onOpenScenarioSimulation, onOpenMyRequests, continueCaseId, onContinueCaseHandled }: CustomerEntryTabProps) {
     const { uiCopy, clientId } = useClientConfig();
-    const [searchParams] = useSearchParams();
-    const builderEvolution = resolveBuilderEvolutionPath(searchParams);
-    const isMinimalBuilder = builderEvolution === 'minimal';
-    const isGuidedBuilder = builderEvolution === 'guided';
-    const isTimelineFirstBuilder = builderEvolution === 'timeline';
     const quickStartButtons = useMemo(
         () => (uiCopy.quick_start_buttons ? getQuickStartButtons(uiCopy) : DEFAULT_QUICK_START_BUTTONS),
         [uiCopy.quick_start_buttons],
@@ -188,17 +184,10 @@ export function CustomerEntryTab({
     const [showStructuredAddCar, setShowStructuredAddCar] = useState(false);
     const [lastCaseId, setLastCaseId] = useState<string | undefined>();
     const [resumePortalHint, setResumePortalHint] = useState<{
-        mode: 'none' | 'multi';
+        mode: 'none' | 'single' | 'multi';
+        caseId?: string;
         title?: string;
     }>({ mode: 'none' });
-    /** P16 demo UX: when an active case exists, gate entry until user chooses continue vs start new. */
-    const [activeCaseChoice, setActiveCaseChoice] = useState<{
-        loading: boolean;
-        dismissed: boolean;
-        caseData: SavedCase | null;
-    }>({ loading: true, dismissed: false, caseData: null });
-    /** Session draft turns held until user chooses continue vs start new (pre-persist add-car). */
-    const [pendingSessionTurns, setPendingSessionTurns] = useState<ConversationTurn[] | null>(null);
     const [selectedButtonIntent, setSelectedButtonIntent] = useState<SoftRouteIntent | null>(null);
     /** Optional structured first turn for add-car (hybrid intake). */
     const [addCarQuickFields, setAddCarQuickFields] = useState({
@@ -224,55 +213,115 @@ export function CustomerEntryTab({
     const [identityStripDismissed, setIdentityStripDismissed] = useState(false);
     const loadingPlaceholderRef = useRef<HTMLDivElement>(null);
     const wechatBindingLive = uiCopy.light_identity?.wechat_binding_mode === 'live';
-    const returnHydrateStartedRef = useRef(false);
 
-    const hydrateActiveCase = useCallback(
-        async (caseId: string, showToast = true) => {
-            const cid = caseId.trim();
-            if (!cid) return false;
-            try {
-                const saved = await getSavedCase(cid);
-                if (saved.workbench_test || saved.workbench_archived) return false;
-                const savedClient = (saved.client_id || '').trim();
-                if (savedClient && clientId && savedClient !== clientId) return false;
+    /** P16 Customer First — gate intake until phone entry + active-case check complete */
+    const [customerFirstUnlocked, setCustomerFirstUnlocked] = useState(false);
+    const [claimedPhone, setClaimedPhone] = useState('');
+    const [claimedName, setClaimedName] = useState('');
+    const [hydratingCase, setHydratingCase] = useState(false);
 
-                setLastCaseId(saved.case_id);
-                setStoredActiveCaseId(clientId, saved.case_id);
-                setTurns(customerEntryTurnsFromSavedCase(saved));
-                if (triageResultLooksLikeAddCar(saved)) {
-                    setSelectedButtonIntent('add_car');
-                }
-                setPendingSessionTurns(null);
-                setActiveCaseChoice((prev) => ({ ...prev, dismissed: true, caseData: null }));
-                if (showToast) {
-                    message.success(portalSessionRestored, 2);
-                }
-                return true;
-            } catch {
-                clearStoredActiveCaseId(clientId);
-                return false;
+    const persistClaimedContact = (phone: string, name: string) => {
+        setClaimedPhone(phone);
+        setClaimedName(name);
+        saveStoredCustomerPhone(phone);
+        saveStoredCustomerName(name);
+    };
+
+    const hydrateFromSavedCase = async (caseId: string, phone?: string, name?: string) => {
+        setHydratingCase(true);
+        try {
+            const saved = await getSavedCase(caseId);
+            if (phone) persistClaimedContact(phone, name ?? '');
+            else if (saved.customer_phone?.trim()) {
+                persistClaimedContact(saved.customer_phone.trim(), saved.customer_name?.trim() ?? '');
             }
-        },
-        [clientId, portalSessionRestored],
-    );
-
-    const resolvePendingActiveCase = useCallback(
-        async (caseId: string): Promise<SavedCase | null> => {
-            const cid = caseId.trim();
-            if (!cid) return null;
-            try {
-                const saved = await getSavedCase(cid);
-                if (saved.workbench_test || saved.workbench_archived) return null;
-                const savedClient = (saved.client_id || '').trim();
-                if (savedClient && clientId && savedClient !== clientId) return null;
-                if (saved.case_status === 'done') return null;
-                return saved;
-            } catch {
-                return null;
+            const restored = customerEntryTurnsFromSavedCase(saved);
+            if (restored.length) {
+                setTurns(restored);
+                setLastCaseId(caseId);
+                setSelectedButtonIntent('add_car');
+                setCustomerFirstUnlocked(true);
+                message.success(portalSessionRestored, 2);
             }
-        },
-        [clientId],
-    );
+        } catch {
+            message.error('无法加载您的申请，请重试或联系经纪人。');
+        } finally {
+            setHydratingCase(false);
+        }
+    };
+
+    const handleCustomerFirstComplete = async (result: CustomerFirstEntryResult) => {
+        persistClaimedContact(result.phone, result.name);
+        if (result.action === 'continue_existing') {
+            await hydrateFromSavedCase(result.caseId, result.phone, result.name);
+            return;
+        }
+        if (result.action === 'contact_broker') {
+            setCustomerFirstUnlocked(true);
+            const talkBtn =
+                quickStartButtons.find((b) => b.id === 'talk_to_agent') ??
+                DEFAULT_QUICK_START_BUTTONS.find((b) => b.id === 'talk_to_agent')!;
+            setSelectedButtonIntent('talk_to_agent');
+            const brokerLine =
+                result.name.trim().length > 0
+                    ? `我是 ${result.name.trim()}，手机号 ${result.phone}。我想联系经纪人协助我的加车申请。`
+                    : `我的手机号是 ${result.phone}，我想联系经纪人协助加车申请。`;
+            await submitMessageRef.current(brokerLine, 'talk_to_agent');
+            return;
+        }
+        setCustomerFirstUnlocked(true);
+        try {
+            const sid = getOrCreateSessionId();
+            const draft = await startCustomerAddCarDraft({
+                phone: result.phone,
+                customerName: result.name || undefined,
+                clientId,
+                sessionId: sid,
+            });
+            setLastCaseId(draft.case_id);
+            setSelectedButtonIntent('add_car');
+            const addCarBtn =
+                quickStartButtons.find((b) => b.id === 'add_car') ??
+                DEFAULT_QUICK_START_BUTTONS.find((b) => b.id === 'add_car')!;
+            await submitMessageRef.current(addCarBtn.starterMessage, 'add_car');
+        } catch (e: unknown) {
+            const status = (e as { response?: { status?: number } })?.response?.status;
+            if (status === 409) {
+                message.warning('您已有进行中的申请，请从上方继续现有申请或联系经纪人。');
+                setCustomerFirstUnlocked(false);
+                return;
+            }
+            setSelectedButtonIntent('add_car');
+            await submitMessageRef.current(
+                quickStartButtons.find((b) => b.id === 'add_car')?.starterMessage ??
+                    DEFAULT_QUICK_START_BUTTONS.find((b) => b.id === 'add_car')!.starterMessage,
+                'add_car',
+            );
+        }
+    };
+
+    const submitMessageRef = useRef<
+        (messageText: string, softRoute?: SoftRouteIntent) => Promise<void>
+    >(async () => {});
+
+    useEffect(() => {
+        if (!continueCaseId?.trim()) return;
+        void hydrateFromSavedCase(continueCaseId.trim()).finally(() => onContinueCaseHandled?.());
+    }, [continueCaseId]);
+
+    useEffect(() => {
+        if (customerFirstUnlocked || turns.length > 0) return;
+        const storedPhone = loadStoredCustomerPhone();
+        if (storedPhone && isValidStoredPhone(storedPhone)) {
+            setClaimedPhone(storedPhone);
+            setClaimedName(loadStoredCustomerName());
+        }
+    }, [customerFirstUnlocked, turns.length]);
+
+    function isValidStoredPhone(p: string): boolean {
+        const digits = p.replace(/\D/g, '');
+        return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
+    }
 
     useEffect(() => {
         try {
@@ -282,9 +331,9 @@ export function CustomerEntryTab({
         }
     }, [clientId]);
 
-    /** Empty-state: multiple in-progress Add-Car cases → point to「我的办理」. */
+    /** Empty-state: suggest continuing an in-progress Add-Car case (no forced modal). */
     useEffect(() => {
-        if (turns.length > 0 || activeCaseChoice.caseData || pendingSessionTurns?.length) {
+        if (turns.length > 0) {
             setResumePortalHint({ mode: 'none' });
             return;
         }
@@ -298,14 +347,18 @@ export function CustomerEntryTab({
                     if (cid && clientId && cid !== clientId) return false;
                     return true;
                 });
-                const ongoing = visible.filter((c) => {
-                    if (!triageResultLooksLikeAddCar(c)) return false;
-                    if (c.case_status === 'done') return false;
-                    return true;
-                });
+                const ongoing = visible.filter(
+                    (c) => triageResultLooksLikeAddCar(c) && resolveCaseLifecycle(c) !== 'submitted',
+                );
                 if (cancelled) return;
                 if (ongoing.length >= 2) {
                     setResumePortalHint({ mode: 'multi', title: userFacingCaseTitle(ongoing[0]) });
+                } else if (ongoing.length === 1) {
+                    setResumePortalHint({
+                        mode: 'single',
+                        caseId: ongoing[0].case_id,
+                        title: userFacingCaseTitle(ongoing[0]),
+                    });
                 } else {
                     setResumePortalHint({ mode: 'none' });
                 }
@@ -316,7 +369,7 @@ export function CustomerEntryTab({
         return () => {
             cancelled = true;
         };
-    }, [turns.length, clientId, activeCaseChoice.caseData, pendingSessionTurns?.length]);
+    }, [turns.length, clientId]);
 
     const lastSystemTurnForFlowStep = useMemo(
         () => [...turns].reverse().find((t) => t.role === 'system'),
@@ -509,101 +562,25 @@ export function CustomerEntryTab({
         }
     }, []);
 
-    /** In-progress persistence on mount; active case → choice gate (P16 demo UX). */
+    /** In-progress persistence: restore conversation on mount when session_id exists */
     useEffect(() => {
-        if (returnHydrateStartedRef.current) return;
-        returnHydrateStartedRef.current = true;
-        let cancelled = false;
-        void (async () => {
-            const finishChoiceProbe = (caseData: SavedCase | null) => {
-                if (cancelled) return;
-                setActiveCaseChoice({ loading: false, dismissed: false, caseData });
-            };
-            const sid = getSessionId();
-            if (sid) {
-                const data = await getInProgressSession(sid);
-                if (cancelled) return;
-                if (data?.light_identity_binding?.identity_binding_state === 'linked') {
-                    setIdentityBindingState('linked');
-                }
-                if (data?.turns?.length) {
-                    const sessionCaseId = (data?.active_case_id ?? '').trim();
-                    const turnCaseId =
-                        [...data.turns]
-                            .reverse()
-                            .map((t) => (t.triageResult?.case_id ?? '').trim())
-                            .find(Boolean) ?? '';
-                    const caseIdToProbe = sessionCaseId || turnCaseId;
-                    if (caseIdToProbe) {
-                        finishChoiceProbe(await resolvePendingActiveCase(caseIdToProbe));
-                        return;
-                    }
-                    const restored: ConversationTurn[] = data.turns.map((t) => ({
-                        role: t.role as 'customer' | 'system',
-                        content: t.text,
-                        triageResult: t.triageResult,
-                    }));
-                    const lastSystemTurn = [...restored].reverse().find((t) => t.role === 'system');
-                    const sessionTriage = lastSystemTurn?.triageResult;
-                    if (
-                        sessionTriage &&
-                        triageResultLooksLikeAddCar(sessionTriage) &&
-                        !isFormalSubmissionToOfficeComplete(sessionTriage)
-                    ) {
-                        if (cancelled) return;
-                        setPendingSessionTurns(restored);
-                        finishChoiceProbe(null);
-                        return;
-                    }
-                }
-                const sessionCaseId = (data?.active_case_id ?? '').trim();
-                if (sessionCaseId) {
-                    finishChoiceProbe(await resolvePendingActiveCase(sessionCaseId));
-                    return;
-                }
+        const sid = getSessionId();
+        if (!sid) return;
+        getInProgressSession(sid).then((data) => {
+            if (data?.light_identity_binding?.identity_binding_state === 'linked') {
+                setIdentityBindingState('linked');
             }
-            const storedCaseId = getStoredActiveCaseId(clientId);
-            if (storedCaseId) {
-                finishChoiceProbe(await resolvePendingActiveCase(storedCaseId));
-                return;
-            }
-            try {
-                const { cases } = await listRecentCasesPage({ limit: 15, offset: 0 });
-                const visible = cases.filter((c) => {
-                    if (c.workbench_test || c.workbench_archived) return false;
-                    const cid = (c.client_id || '').trim();
-                    if (cid && clientId && cid !== clientId) return false;
-                    return true;
-                });
-                const ongoing = visible.filter((c) => {
-                    if (!triageResultLooksLikeAddCar(c)) return false;
-                    if (c.case_status === 'done') return false;
-                    return true;
-                });
-                if (ongoing.length === 1) {
-                    finishChoiceProbe(await resolvePendingActiveCase(ongoing[0].case_id));
-                    return;
-                }
-            } catch {
-                /* fall through */
-            }
-            finishChoiceProbe(null);
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [clientId, portalSessionRestored, resolvePendingActiveCase]);
-
-    /** My Requests → Continue: hydrate selected case when parent passes continueCaseId. */
-    useEffect(() => {
-        const cid = (continueCaseId ?? '').trim();
-        if (!cid) return;
-        setPendingSessionTurns(null);
-        setActiveCaseChoice({ loading: false, dismissed: true, caseData: null });
-        void hydrateActiveCase(cid, true).finally(() => {
-            onContinueCaseHandled?.();
+            if (!data?.turns?.length) return;
+            setCustomerFirstUnlocked(true);
+            const restored: ConversationTurn[] = data.turns.map((t) => ({
+                role: t.role as 'customer' | 'system',
+                content: t.text,
+                triageResult: t.triageResult,
+            }));
+            setTurns(restored);
+            message.success(portalSessionRestored, 2);
         });
-    }, [continueCaseId, hydrateActiveCase, onContinueCaseHandled]);
+    }, []);
 
     useEffect(() => {
         if (loading && loadingPlaceholderRef.current) {
@@ -680,7 +657,13 @@ export function CustomerEntryTab({
             const addCarFlow = triageResultLooksLikeAddCar(data);
             if (data.case_id) {
                 setLastCaseId(data.case_id);
-                setStoredActiveCaseId(clientId, data.case_id);
+                if (claimedPhone.trim()) {
+                    void updateSavedCaseCustomer(data.case_id, {
+                        customer_phone: claimedPhone.trim(),
+                        ...(claimedName.trim() ? { customer_name: claimedName.trim() } : {}),
+                    }).catch(() => undefined);
+                }
+                clearSessionId(); // Phase 2: new session for next conversation
                 message.success(addCarFlow ? addCarHandoffToast : '已收到您的请求');
             } else if (data.handoff_ready) {
                 const suppressReadyToast =
@@ -700,6 +683,7 @@ export function CustomerEntryTab({
             setLoading(false);
         }
     };
+    submitMessageRef.current = submitMessage;
 
     const handleSubmit = () => {
         const addCarLaneActive = customerEntryIsAddCarActive(turns, selectedButtonIntent);
@@ -745,43 +729,9 @@ export function CustomerEntryTab({
         setPostHandoffAppendKeys([]);
         setPostHandoffAppendDraft('');
         setPostHandoffBoundaryBlocked(null);
-        clearStoredActiveCaseId(clientId);
-        clearSessionId();
+        setCustomerFirstUnlocked(false);
+        clearSessionId(); // Phase 2: fresh session for new conversation
     };
-
-    /** Clear UI/session context only — persisted case remains in「我的办理」. */
-    const handleStartNewAddCarCase = () => {
-        handleNewConversation();
-        setPendingSessionTurns(null);
-        setActiveCaseChoice({ loading: false, dismissed: true, caseData: null });
-    };
-
-    const handleContinueActiveCase = () => {
-        if (pendingSessionTurns?.length) {
-            setTurns(pendingSessionTurns);
-            setPendingSessionTurns(null);
-            setSelectedButtonIntent('add_car');
-            setActiveCaseChoice({ loading: false, dismissed: true, caseData: null });
-            message.success(portalSessionRestored, 2);
-            return;
-        }
-        const cid = activeCaseChoice.caseData?.case_id;
-        if (!cid) return;
-        void hydrateActiveCase(cid, true);
-    };
-
-    const pendingSessionChoiceTriage = useMemo(() => {
-        if (!pendingSessionTurns?.length) return null;
-        return [...pendingSessionTurns].reverse().find((t) => t.role === 'system')?.triageResult ?? null;
-    }, [pendingSessionTurns]);
-
-    const showActiveCaseChoiceGate =
-        turns.length === 0 &&
-        !activeCaseChoice.dismissed &&
-        !activeCaseChoice.loading &&
-        (activeCaseChoice.caseData !== null || (pendingSessionTurns?.length ?? 0) > 0);
-    const showActiveCaseChoiceLoading =
-        turns.length === 0 && activeCaseChoice.loading && !activeCaseChoice.dismissed;
 
     const handlePostHandoffAppendSameCase = async () => {
         const tid = lastCaseId;
@@ -869,125 +819,29 @@ export function CustomerEntryTab({
                 }}
             >
             <Space direction="vertical" size={24} style={{ width: '100%' }}>
-                {isTimelineFirstBuilder && (
-                    <PathTimelineFirstBanner
-                        caseId={lastCaseId}
-                        turnCount={turns.length}
-                        lifecycleLabel={
-                            lastSystemTurnForFlowStep?.triageResult
-                                ? caseLifecycleUserLabel(resolveCaseLifecycle(lastSystemTurnForFlowStep.triageResult))
-                                : undefined
-                        }
-                        lifecycleColor={
-                            lastSystemTurnForFlowStep?.triageResult
-                                ? caseLifecycleTagColor(resolveCaseLifecycle(lastSystemTurnForFlowStep.triageResult))
-                                : undefined
-                        }
-                    />
-                )}
-                {/* P16-O: Message-first empty state — headline, textarea, send, trust only */}
-                {showActiveCaseChoiceLoading ? (
-                    <Card size="small" style={cardStyle}>
-                        <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-                            <Spin />
-                            <Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 14 }}>
-                                正在查看是否有未完成的办理…
-                            </Text>
-                        </div>
-                    </Card>
-                ) : null}
-                {showActiveCaseChoiceGate ? (
-                    <Card
-                        size="small"
-                        style={{
-                            ...cardStyle,
-                            borderColor: '#91caff',
-                            background: '#f0f7ff',
-                        }}
-                    >
-                        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                            <div>
-                                <Title level={4} style={{ margin: 0, fontWeight: 600, color: '#0958d9' }}>
-                                    当前有未完成记录
-                                </Title>
-                                <Paragraph style={{ margin: '8px 0 0', fontSize: 14, lineHeight: 1.6, color: '#434343' }}>
-                                    您上次的加车报价申请尚未完成。
-                                </Paragraph>
+                {/* P16 Phase 1 — Customer First entry (phone return key) */}
+                {!customerFirstUnlocked && turns.length === 0 ? (
+                    hydratingCase ? (
+                        <Card size="small" style={cardStyle}>
+                            <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+                                <Spin size="large" />
+                                <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
+                                    正在加载您的申请…
+                                </Text>
                             </div>
-                            <div
-                                style={{
-                                    padding: '12px 14px',
-                                    background: '#fff',
-                                    borderRadius: 8,
-                                    border: '1px solid #d6e4ff',
-                                }}
-                            >
-                                <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                                    <Text style={{ fontSize: 14, display: 'block' }}>
-                                        <Text type="secondary">车辆：</Text>
-                                        {activeCaseChoice.caseData
-                                            ? userFacingCaseTitle(activeCaseChoice.caseData)
-                                            : getCaseFocusDisplayLabel(
-                                                  inferCaseFocusFromStructuredFields(
-                                                      pendingSessionChoiceTriage?.collected_fields,
-                                                      pendingSessionChoiceTriage?.still_needed_fields,
-                                                      pendingSessionChoiceTriage?.issue_category,
-                                                  ) ??
-                                                      inferCaseFocusFromText(
-                                                          pendingSessionTurns?.find((t) => t.role === 'customer')?.content ?? '',
-                                                      ),
-                                              ) || '加车报价（进行中）'}
-                                    </Text>
-                                    <Text style={{ fontSize: 14, display: 'block' }}>
-                                        <Text type="secondary">状态：</Text>
-                                        <Tag
-                                            color={caseLifecycleTagColor(
-                                                activeCaseChoice.caseData
-                                                    ? resolveCaseLifecycle(activeCaseChoice.caseData)
-                                                    : resolveCaseLifecycle(pendingSessionChoiceTriage ?? undefined),
-                                            )}
-                                            style={{ marginInlineStart: 4 }}
-                                        >
-                                            {caseLifecycleUserLabel(
-                                                activeCaseChoice.caseData
-                                                    ? resolveCaseLifecycle(activeCaseChoice.caseData)
-                                                    : resolveCaseLifecycle(pendingSessionChoiceTriage ?? undefined),
-                                            )}
-                                        </Tag>
-                                    </Text>
-                                    {activeCaseChoice.caseData &&
-                                    formatPortalLocalDateTime(activeCaseChoice.caseData.updated_at) ? (
-                                        <Text style={{ fontSize: 14, display: 'block' }}>
-                                            <Text type="secondary">最后更新：</Text>
-                                            {formatPortalLocalDateTime(activeCaseChoice.caseData.updated_at)}
-                                        </Text>
-                                    ) : null}
-                                </Space>
-                            </div>
-                            <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                                <Button type="primary" size="large" block onClick={handleContinueActiveCase}>
-                                    继续办理
-                                </Button>
-                                <Button type="default" size="large" block onClick={handleStartNewAddCarCase}>
-                                    开始新的加车报价
-                                </Button>
-                            </Space>
-                            {onOpenMyRequests ? (
-                                <div style={{ textAlign: 'center' }}>
-                                    <Button
-                                        type="link"
-                                        size="small"
-                                        style={{ padding: 0, height: 'auto', fontSize: 13 }}
-                                        onClick={() => onOpenMyRequests()}
-                                    >
-                                        查看我的办理
-                                    </Button>
-                                </div>
-                            ) : null}
-                        </Space>
-                    </Card>
+                        </Card>
+                    ) : (
+                        <CustomerFirstEntryScreen
+                            clientId={clientId}
+                            initialPhone={claimedPhone}
+                            initialName={claimedName}
+                            onComplete={(r) => void handleCustomerFirstComplete(r)}
+                        />
+                    )
                 ) : null}
-                {turns.length === 0 && !showActiveCaseChoiceGate && !showActiveCaseChoiceLoading ? (
+
+                {/* Legacy message-first empty state — only after Customer First gate passed */}
+                {customerFirstUnlocked && turns.length === 0 ? (
                     <Card size="small" style={cardStyle}>
                         <Space direction="vertical" size={20} style={{ width: '100%' }}>
                             <div>
@@ -998,6 +852,31 @@ export function CustomerEntryTab({
                                     {portalMessageFirstSubline}
                                 </Text>
                             </div>
+                            {resumePortalHint.mode === 'single' && resumePortalHint.caseId && (
+                                <div
+                                    style={{
+                                        padding: '10px 12px',
+                                        background: '#fafafa',
+                                        borderRadius: 8,
+                                        border: '1px solid #f0f0f0',
+                                    }}
+                                >
+                                    <Text type="secondary" style={{ fontSize: 13, display: 'block', lineHeight: 1.55 }}>
+                                        继续上次的申请：{resumePortalHint.title}
+                                    </Text>
+                                    <Button
+                                        type="link"
+                                        size="small"
+                                        style={{ padding: 0, height: 'auto', marginTop: 4 }}
+                                        onClick={() => {
+                                            setLastCaseId(resumePortalHint.caseId);
+                                            setSelectedButtonIntent('add_car');
+                                        }}
+                                    >
+                                        用这条记录继续
+                                    </Button>
+                                </div>
+                            )}
                             {resumePortalHint.mode === 'multi' && (
                                 <div
                                     style={{
@@ -1017,7 +896,7 @@ export function CustomerEntryTab({
                                             style={{ padding: 0, height: 'auto', marginTop: 4 }}
                                             onClick={() => onOpenMyRequests()}
                                         >
-                                            查看我的办理
+                                            打开我的办理
                                         </Button>
                                     ) : null}
                                 </div>
@@ -1044,19 +923,6 @@ export function CustomerEntryTab({
                             <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55, textAlign: 'center', display: 'block' }}>
                                 {portalTrustLine}
                             </Text>
-                            {onOpenMyRequests ? (
-                                <div style={{ textAlign: 'center' }}>
-                                    <Button
-                                        type="link"
-                                        size="small"
-                                        style={{ padding: 0, height: 'auto', fontSize: 13 }}
-                                        onClick={() => onOpenMyRequests()}
-                                    >
-                                        查看我的办理
-                                    </Button>
-                                </div>
-                            ) : null}
-                            {!isMinimalBuilder && (
                             <Space wrap size={[8, 4]} style={{ justifyContent: 'center', width: '100%' }}>
                                 <Button
                                     type="link"
@@ -1102,8 +968,7 @@ export function CustomerEntryTab({
                                     {portalHumanHelpLink}
                                 </Button>
                             </Space>
-                            )}
-                            {!isMinimalBuilder && showStructuredAddCar && (
+                            {showStructuredAddCar && (
                                 <div style={{ paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
                                     <Space direction="vertical" size="small" style={{ width: '100%' }}>
                                         <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
@@ -1166,14 +1031,7 @@ export function CustomerEntryTab({
                     </Card>
                 ) : null}
 
-                {turns.length > 0 && isGuidedBuilder && customerEntryIsAddCarActive(turns, selectedButtonIntent) && (
-                    <PathGuidedRail
-                        collectedFields={lastSystemTurnForFlowStep?.triageResult?.collected_fields}
-                        stillNeededFields={lastSystemTurnForFlowStep?.triageResult?.still_needed_fields}
-                    />
-                )}
-
-                {turns.length > 0 && !isTimelineFirstBuilder && (
+                {turns.length > 0 && (
                 <IntakeFlowStepTrack
                     flowStep={intakeFlowStep}
                     trackLabel={
@@ -1233,14 +1091,18 @@ export function CustomerEntryTab({
                                                         {getCustomerUrgencyNote(turn.triageResult.urgency)}
                                                     </Tag>
                                                 )}
-                                                {turn.triageResult && (
+                                                {turn.triageResult && (() => {
+                                                    const bs = resolveCustomerBusinessStateFromTriage(turn.triageResult);
+                                                    const copy = customerBusinessStateDisplay(bs);
+                                                    return (
                                                     <Tag
-                                                        color={caseLifecycleTagColor(resolveCaseLifecycle(turn.triageResult))}
+                                                        color={copy.tagColor}
                                                         style={{ fontSize: 11 }}
                                                     >
-                                                        {caseLifecycleUserLabel(resolveCaseLifecycle(turn.triageResult))}
+                                                        {copy.zh}
                                                     </Tag>
-                                                )}
+                                                    );
+                                                })()}
                                                 {turn.triageResult.follow_up_type && turn.triageResult.follow_up_type !== 'new_info' && (
                                                     <Tag color="blue" style={{ fontSize: 11 }}>
                                                         跟进：{turn.triageResult.follow_up_type === 'correction' ? '客户更正' : turn.triageResult.follow_up_type === 'already_sent' ? '称已发送' : turn.triageResult.follow_up_type}
@@ -1636,7 +1498,7 @@ export function CustomerEntryTab({
                                 <Space size="middle" wrap>
                                     {onOpenMyRequests ? (
                                         <Button type="default" onClick={() => onOpenMyRequests()}>
-                                            查看我的办理
+                                            查看办理进度
                                         </Button>
                                     ) : null}
                                     <Button type="primary" ghost onClick={handleNewConversation}>
