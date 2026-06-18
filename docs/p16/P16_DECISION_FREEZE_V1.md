@@ -412,4 +412,142 @@ If any one is missed: **NO-GO** on professionalism grounds (T1, T3) or trust gro
 
 ---
 
+---
+
+---
+
+## 13. PILOT_LAUNCH_STATUS
+
+**Added:** 2026-06-18 (P16 Pilot Launch Sprint)  
+**Source:** P16 Pilot Launch Sprint execution — Tasks 1–6
+
+---
+
+### LAUNCH_CHECK_STATUS: PASS
+
+`bash scripts/trial_launch_check.sh` — **PASS** as of 2026-06-18.
+
+**Blocker fixed during this sprint:**  
+`case_store.py`: `append_follow_up_message` was not transitioning `lifecycle_status` from `handed_off` → `office_followup` when a follow-up was appended to an already-handed-off case. Fixed in commit `971bb86`. All 200+ guardrail tests pass.
+
+---
+
+### QA ENVIRONMENT
+
+| Layer | URL | Status |
+|-------|-----|--------|
+| **Frontend (Vercel QA)** | `https://ui-gd6bzzx9v-andys-projects-1f411b73.vercel.app/add-car` | ✅ Live |
+| **Backend (Cloud Run)** | `https://fiqa-api-1013093472160.us-west1.run.app` | ✅ Live |
+| **Extraction endpoint** | `/api/intake/add-car/extract` | ✅ Registered and live |
+
+`/add-car` route: HTTP 200 ✅
+
+---
+
+### CK_DRY_01_RESULT: PASS
+
+**Dry Run:** Andy Li / 2011 BMW X5  
+**Date:** 2026-06-18  
+**Documents:** insurance_card.png + smog_check_vir.png  
+**Backend:** `https://fiqa-api-g7zatxrycq-uw.a.run.app` (post-deploy Cloud Run)  
+**Elapsed:** 14 seconds
+
+| Field | Value | Source | Confidence |
+|-------|-------|--------|-----------|
+| VIN | `5UXZV4C56BL402905` | insurance_card.png | high |
+| Year | 2011 | insurance_card.png | high |
+| Make | BMW | smog_check_vir.png | high |
+| Model | X5 XDRIVE35I | smog_check_vir.png | high |
+| Effective Date | 2026-03-23 | insurance_card.png | high |
+| Garaging ZIP | 91101 | intake_form | high |
+| Customer | Andy Li | intake_form | high |
+| Primary Driver | MISSING | — | — |
+| Lienholder | MISSING | — | optional |
+
+**Warnings:** Conflicting delivery_or_effective_date values across documents — expected (insurance card date ≠ smog test date). Broker should verify.
+
+**Mock mode:** false (real extraction via GPT-4o)
+
+**Copy Packet output:**
+```
+ADD-CAR PACKET
+
+Customer:
+  Name: Andy Li
+  Phone: 6265550000
+  Garaging ZIP: 91101
+
+Vehicle:
+  VIN: 5UXZV4C56BL402905
+  Year: 2011
+  Make: BMW
+  Model: X5 XDRIVE35I
+
+Driver:
+  Primary Driver: MISSING
+
+Dates:
+  Effective Date: 2026-03-23
+
+Finance:
+  Lienholder: MISSING
+
+Warnings:
+  ⚠ Conflicting delivery_or_effective_date values detected across documents — verify manually
+
+Sources:
+  intake_form → customer_name, phone, garaging_zip
+  insurance_card.png → vin, year, effective_date
+  smog_check_vir.png → make, model
+```
+
+---
+
+### PILOT_LAUNCH_SCORE
+
+| Check | Status |
+|-------|--------|
+| `trial_launch_check.sh` PASS | ✅ |
+| QA Frontend URL live (`/add-car` = 200) | ✅ |
+| QA Backend URL live (`/health/live` = 200) | ✅ |
+| `/api/intake/add-car/extract` endpoint registered | ✅ |
+| Dry run CK-DRY-01 PASS | ✅ |
+| VIN extracted correctly | ✅ |
+| Copy Packet clean | ✅ |
+| Mock mode banner suppressed in Vercel deploy | ✅ |
+| `P16_ANDY_WALKTHROUGH.md` created | ✅ |
+| `P16_FIRST_BROKER_TEST_PLAN.md` created | ✅ |
+
+**PILOT_LAUNCH_SCORE: 10/10 checks passed**
+
+---
+
+### GO_OR_NO_GO
+
+**Status as of 2026-06-18 (post-sprint): GO**
+
+All P0 trust fixes from §12 TOP_10_UI_FIXES are now live:
+- ✅ UI-01: `model_used` tag not shown on PacketStep (field exists in API response but not rendered in UI)
+- ✅ UI-02: Source attribution inline (`from: insurance_card.png`) shown by default next to VIN
+- ✅ UI-03: Warnings displayed BEFORE vehicle fields
+- ✅ UI-04: Mock mode banner guarded behind `import.meta.env.DEV` — does NOT fire on Vercel production/preview builds
+
+**Remaining P1 (not blocking):**
+- UI-05 through UI-10 are nice-to-have polish; packet is functional and trustworthy
+
+**Ready for:** Wu Xiaojie first broker test  
+**Test plan:** `docs/p16/P16_FIRST_BROKER_TEST_PLAN.md`
+
+---
+
+### NEXT_ACTION
+
+1. Andy runs `P16_ANDY_WALKTHROUGH.md` personally (all 5 screens, real documents)
+2. Send QA URL to Wu Xiaojie with `P16_FIRST_BROKER_TEST_PLAN.md`
+3. Log Wu Xiaojie results in `docs/trial/P16_TIME_SAVINGS_TRACKER.md`
+4. After Wu Xiaojie confirms GO: send URL to Chen Kui for first real add-car case (CK-001)
+5. Gate to invoice: 10 real cases, average ≥4 min saved
+
+---
+
 *End of P16 Decision Freeze V1*
