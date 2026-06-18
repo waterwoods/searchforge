@@ -22,7 +22,7 @@ You don't need to read through WeChat. You don't need to re-ask the customer for
 **Open this on your computer or phone:**
 
 ```
-https://ui-gd6bzzx9v-andys-projects-1f411b73.vercel.app/add-car
+https://ui-9twka59sy-andys-projects-1f411b73.vercel.app/add-car
 ```
 
 This is the QA test link. Share it with the customer when they need to add a car.

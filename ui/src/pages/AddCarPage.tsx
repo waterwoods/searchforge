@@ -36,6 +36,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
+import { API_BASE_URL } from '../api/config';
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -782,7 +783,7 @@ export default function AddCarPage() {
       for (const file of files) {
         fd.append('files', file);
       }
-      const res = await fetch('/api/intake/add-car/extract', {
+      const res = await fetch(`${API_BASE_URL}/api/intake/add-car/extract`, {
         method: 'POST',
         body: fd,
       });
