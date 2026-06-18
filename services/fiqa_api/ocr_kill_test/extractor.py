@@ -96,12 +96,17 @@ def _load_image_b64(path: Path) -> tuple[str, str]:
             buf = io.BytesIO()
             img.convert("RGB").save(buf, format="JPEG", quality=92)
             data = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
+            logger.info(f"HEIC converted to JPEG for {path.name}: {len(buf.getvalue())} bytes")
             return data, "image/jpeg"
         except Exception as e:
-            logger.warning(f"HEIC conversion failed for {path.name}: {e} — sending raw bytes")
-            with open(path, "rb") as f:
-                data = base64.standard_b64encode(f.read()).decode("utf-8")
-            return data, "image/jpeg"
+            # pillow_heif unavailable or conversion failed.
+            # Do NOT send raw HEIC bytes as image/jpeg — OpenAI/Gemini will reject with 400.
+            # Raise so the caller can surface a clear warning rather than silently corrupt.
+            logger.error(f"HEIC conversion failed for {path.name}: {e} — pillow-heif may not be installed")
+            raise RuntimeError(
+                f"Cannot process HEIC file '{path.name}': pillow-heif conversion failed ({e}). "
+                "Install pillow-heif or convert the photo to JPG before uploading."
+            ) from e
 
     mime = mime_map.get(suffix, "image/jpeg")
     with open(path, "rb") as f:

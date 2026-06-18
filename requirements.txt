@@ -45,3 +45,6 @@ langchain-core>=1.0.0 ; python_version >= "3.11" and python_version < "4.0"
 google-cloud-pubsub==2.18.4 ; python_version >= "3.11" and python_version < "4.0"
 # Stage-1 Postgres dual-write mirror (Neon / pilot); required on Cloud Run when SERVICE_RECORD_DATABASE_URL is set
 psycopg[binary]>=3.1.0 ; python_version >= "3.11" and python_version < "4.0"
+# P16 HEIC: iPhone photo conversion to JPEG before sending to OpenAI/Gemini
+pillow-heif>=0.18.0 ; python_version >= "3.11" and python_version < "4.0"
+Pillow>=10.0.0 ; python_version >= "3.11" and python_version < "4.0"
