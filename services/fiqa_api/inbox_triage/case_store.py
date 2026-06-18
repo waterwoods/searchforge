@@ -1300,13 +1300,14 @@ def append_follow_up_message(
     if (ep := (triage_result.get("extracted_contact_phone") or "").strip()):
         normalized_case["customer_phone"] = _truncate(ep, MAX_CUSTOMER_PHONE_LENGTH)
     # Collecting-phase Case Memory must stay collecting; post-formal-submit append → office_followup.
+    # A case already in handed_off state receiving a follow-up append → office_followup.
     triage_lc = str(triage_result.get("lifecycle_status") or "").strip()
     existing_lc = str(normalized_case.get("lifecycle_status") or "").strip()
     has_formal = bool(str(normalized_case.get("formal_submitted_at") or "").strip())
-    if triage_lc in ("collecting", "handoff_pending", "handed_off", "office_followup"):
-        normalized_case["lifecycle_status"] = triage_lc
-    elif has_formal:
+    if has_formal or existing_lc == "handed_off":
         normalized_case["lifecycle_status"] = "office_followup"
+    elif triage_lc in ("collecting", "handoff_pending", "handed_off", "office_followup"):
+        normalized_case["lifecycle_status"] = triage_lc
     elif existing_lc in ("collecting", "handoff_pending"):
         normalized_case["lifecycle_status"] = existing_lc
     else:

@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { AppLayout } from './components/layout/AppLayout';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import UnifiedIntakePage from './pages/UnifiedIntakePage';
+import AddCarPage from './pages/AddCarPage';
 import { DemoPage } from './pages/DemoPage';
 import { ClientConfigProvider } from './context/ClientConfigContext';
 import { isUnifiedIntakeProductOnlyUi } from './config/productSurface';
@@ -81,6 +82,12 @@ function App() {
                                 </ConfigProvider>
                             } />
                         </Route>
+
+                        <Route path="/add-car" element={
+                            <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                <AddCarPage />
+                            </ConfigProvider>
+                        } />
 
                         <Route path="/demo" element={
                             <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>

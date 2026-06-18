@@ -14,7 +14,28 @@ from .schema import (
     CORE_FIELDS,
     REQUIRED_FOR_PACKET_READY,
 )
-from .normalizers import apply_normalizations
+from .normalizers import apply_normalizations, make_model_same
+
+
+def _resolve_make_model_values(all_values: list) -> list[str]:
+    """Group make_model extraction entries by same-base-vehicle (word-prefix rule).
+
+    Returns one canonical string per distinct vehicle group — the most detailed
+    (longest) value in each group, so 'BMW X5 XDRIVE35I' beats 'BMW X5'.
+    A list length > 1 means a genuine make/model conflict (different base vehicles).
+    """
+    groups: list[list] = []
+    for entry in all_values:
+        val = entry[0]
+        placed = False
+        for group in groups:
+            if make_model_same(val, group[0][0]):
+                group.append(entry)
+                placed = True
+                break
+        if not placed:
+            groups.append([entry])
+    return [max(group, key=lambda e: len(e[0]))[0] for group in groups]
 
 
 def _merge_extractions(per_file_results: list[dict], file_names: list[str]) -> dict:
@@ -64,8 +85,26 @@ def _merge_extractions(per_file_results: list[dict], file_names: list[str]) -> d
                 notes=fdata.get("notes", ""),
             )
 
-        # Check for conflicts
-        unique_vals = list({v[0].upper() if field in ("vin",) else v[0] for v in all_values})
+        # Check for conflicts — make_model uses prefix-aware grouping to avoid
+        # false positives like 'BMW X5' vs 'BMW X5 XDRIVE35I'.
+        if field == "make_model":
+            unique_vals = _resolve_make_model_values(all_values)
+            # Promote the most-detailed value for display when no real conflict
+            if len(unique_vals) == 1 and len(all_values) > 1 and best is not None:
+                most_detailed = max(all_values, key=lambda v: len(v[0]))
+                if len(most_detailed[0]) > len(best[0]):
+                    fdata_d = most_detailed[3]
+                    merged[field] = ExtractedField(
+                        value=most_detailed[0],
+                        confidence=most_detailed[1],
+                        source_file=most_detailed[2],
+                        source_quote=fdata_d.get("source_quote", ""),
+                        needs_confirmation=fdata_d.get("needs_confirmation", True),
+                        notes=fdata_d.get("notes", ""),
+                    )
+        else:
+            unique_vals = list({v[0].upper() if field in ("vin",) else v[0] for v in all_values})
+
         if len(unique_vals) > 1:
             conflicts.append(ConflictRecord(
                 field=field,

@@ -40,6 +40,12 @@ CRITICAL RULES:
 4. VIN must be exactly 17 characters (A-Z, 0-9, excluding I/O/Q). Report raw if unsure.
 5. If the document appears to be unrelated to auto insurance or vehicle purchase, set document_type to "unrelated".
 6. If a second vehicle is detected, set second_vehicle_detected to true.
+7. INSURANCE CARD RULE: If the document is an insurance card (document_type == insurance_card):
+   - Leave garaging_zip EMPTY (""). Insurance cards show the agent or insurer address, never the garaging ZIP. Garaging ZIP comes from the intake form only.
+   - Leave phone EMPTY (""). Any phone on an insurance card belongs to the agent or insurer, not the customer.
+   - Do NOT use agency address, insurer address, or any P.O. Box as customer address or garaging ZIP.
+   - Named insured(s) listed on the card ARE valid for customer_name.
+   - VIN, year, make/model, and effective date on the card ARE valid fields to extract.
 
 Also identify:
 - document_type: one of [dealer_paperwork, purchase_contract, vin_photo, registration, insurance_card, dealer_email, mixed_pdf, blurry_photo, unrelated, unknown]
@@ -72,9 +78,31 @@ Confidence scale: 0.0 = not present, 0.5 = uncertain, 0.9 = high confidence, 1.0
 # ─────────────────────────────────────────────
 
 def _load_image_b64(path: Path) -> tuple[str, str]:
-    """Return (base64_data, mime_type) for an image file."""
+    """Return (base64_data, mime_type) for an image file.
+
+    HEIC files are converted to JPEG via pillow-heif before encoding.
+    Falls back to raw bytes if conversion fails (model will attempt to parse).
+    """
     suffix = path.suffix.lower()
     mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+    if suffix in (".heic", ".heif"):
+        try:
+            import io
+            import pillow_heif
+            from PIL import Image
+            pillow_heif.register_heif_opener()
+            img = Image.open(path)
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=92)
+            data = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
+            return data, "image/jpeg"
+        except Exception as e:
+            logger.warning(f"HEIC conversion failed for {path.name}: {e} — sending raw bytes")
+            with open(path, "rb") as f:
+                data = base64.standard_b64encode(f.read()).decode("utf-8")
+            return data, "image/jpeg"
+
     mime = mime_map.get(suffix, "image/jpeg")
     with open(path, "rb") as f:
         data = base64.standard_b64encode(f.read()).decode("utf-8")

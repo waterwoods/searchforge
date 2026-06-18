@@ -74,10 +74,52 @@ def normalize_year(raw: str) -> str:
     return raw
 
 
+def make_model_same(val_a: str, val_b: str) -> bool:
+    """Return True if two make/model strings refer to the same base vehicle.
+
+    Uses word-by-word prefix matching — one value must be a prefix of the other:
+      Same:      'BMW X5' vs 'BMW X5 XDRIVE35I'
+                 'Toyota Camry' vs 'Toyota Camry LE'
+                 'Tesla Model Y' vs 'Tesla Model Y Long Range'
+                 'Honda Civic' vs 'Honda Civic EX'
+      Different: 'BMW X5' vs 'BMW X3'
+                 'Toyota Camry' vs 'Toyota Corolla'
+                 'Tesla Model 3' vs 'Tesla Model Y'
+    """
+    if not val_a or not val_b:
+        return val_a == val_b
+    a_words = val_a.upper().split()
+    b_words = val_b.upper().split()
+    shorter = a_words if len(a_words) <= len(b_words) else b_words
+    longer = b_words if len(a_words) <= len(b_words) else a_words
+    return longer[: len(shorter)] == shorter
+
+
+_VIN_INVALID_CHARS = re.compile(r"[IOQ]")
+_VIN_VALID_PATTERN = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
+
+
+def _vin_warning(cleaned: str) -> str | None:
+    """Return a human-readable warning if the cleaned VIN is malformed, else None."""
+    if not cleaned:
+        return "VIN is empty"
+    if len(cleaned) != 17:
+        return f"VIN must be 17 characters (got {len(cleaned)})"
+    bad_chars = sorted(set(cleaned) & {"I", "O", "Q"})
+    if bad_chars:
+        return f"VIN contains invalid characters: {', '.join(bad_chars)}"
+    if not _VIN_VALID_PATTERN.match(cleaned):
+        return "VIN contains non-alphanumeric characters"
+    return None
+
+
 def apply_normalizations(fields: dict) -> dict:
     """
     Apply field-specific normalizations to a raw extraction dict.
     Returns the same dict with values normalized in-place.
+
+    For VIN: if the cleaned value fails structural checks, sets
+    needs_confirmation=True and appends a warning to notes.
     """
     normalizers = {
         "vin": normalize_vin,
@@ -96,4 +138,15 @@ def apply_normalizations(fields: dict) -> dict:
                 fields[field_name]["notes"] = (
                     f"Normalized from '{original}'. {existing_notes}".strip()
                 )
+
+    # VIN structural validation — flag malformed VINs for confirmation
+    if "vin" in fields and fields["vin"].get("value"):
+        warning = _vin_warning(fields["vin"]["value"])
+        if warning:
+            fields["vin"]["needs_confirmation"] = True
+            existing_notes = fields["vin"].get("notes", "")
+            fields["vin"]["notes"] = (
+                f"VIN warning: {warning}. {existing_notes}".strip()
+            )
+
     return fields

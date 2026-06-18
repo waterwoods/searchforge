@@ -256,4 +256,160 @@ Chen Kui Pilot  →  10 Real Cases  →  Average ≥4 min saved  →  First $49 
 
 ---
 
+---
+
+## 11. Pilot Demo Execution Plan
+
+**Status as of 2026-06-18:** PILOT_DECISION = GO
+
+**Remaining P0 items before first Chen Kui case:**
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | HEIC real iPhone validation (end-to-end with live extraction API) | Open |
+| 2 | Screen 4 Trusted Packet above-fold hierarchy | Open |
+
+**Remaining P1 items:**
+
+| # | Item | Status |
+|---|------|--------|
+| 3 | Garaging ZIP label audit (UI must say "Garaging ZIP") | Open |
+| 4 | Copy All format verification (clean paste into AMS/clipboard) | Open |
+
+**Execution documents:**
+
+| Doc | Purpose |
+|-----|---------|
+| `docs/p16/P16_72_HOUR_BUILD_PLAN.md` | Day-by-day tasks, acceptance criteria, stop criteria |
+| `docs/p16/P16_PILOT_GO_LIVE_CHECKLIST.md` | Pre-launch checklist — all boxes must be checked before Go |
+| `docs/p16/P16_CHEN_KUI_3_CASE_SOFT_PILOT.md` | Case-by-case pilot instructions for Chen Kui and Wu Xiaojie |
+
+**Revenue chain reminder (§9):** Chen Kui Pilot → 10 Real Cases → Average ≥4 min saved → First $49 payment.
+
+---
+
+---
+
+## 12. Pilot Demo Readiness
+
+**Added:** 2026-06-18 (P16 Polish Sprint audit)  
+**Source:** Full 5-screen Add-Car flow audit — `docs/p16/P16_PILOT_UI_REVIEW.md`, `docs/p16/P16_PILOT_DEMO_BLUEPRINT_V2.md`
+
+---
+
+### PILOT_DEMO_SCORE: 6.2 / 10
+
+| Screen | Avg Score |
+|--------|-----------|
+| Screen 1 — Entry Gate (CustomerFirstEntryScreen) | 7.5 / 10 |
+| Screen 2 — Customer Info (InfoStep) | 6.25 / 10 |
+| Screen 3 — Upload (UploadStep) | 5.75 / 10 |
+| Screen 4 — Extracting (ExtractingStep) | 5.5 / 10 |
+| Screen 5 — Trusted Packet (PacketStep) | 5.75 / 10 |
+| **Overall** | **6.2 / 10** |
+
+The product is functionally correct. The trust and professionalism gaps are specific and fixable in < 2 hours.
+
+---
+
+### TOP_10_FINDINGS
+
+| # | Finding | Screen | Priority |
+|---|---------|--------|----------|
+| 1 | `model_used` technical tag visible on Trusted Packet header | 5 | P0 |
+| 2 | Mock mode orange banner fires if Gemini key absent — destroys demo trust | 5 | P0 |
+| 3 | Source attribution hidden behind "Show details" toggle (Decision Freeze §3 violation) | 5 | P0 |
+| 4 | Warnings render AFTER vehicle fields — wrong order per 72-hour build plan | 5 | P0 |
+| 5 | Screen 4 loading state is a bare Ant Design spinner — looks like a crash | 4 | P1 |
+| 6 | "Customer Information" title is broker-voice on customer-facing Screen 2 | 2 | P1 |
+| 7 | InboxOutlined (email icon) on file upload dragger sends wrong signal | 3 | P1 |
+| 8 | "Read Documents" CTA is backend-developer language | 3 | P1 |
+| 9 | No case ID or timestamp displayed on Trusted Packet | 5 | P1 |
+| 10 | Customer name + garaging ZIP not visible above fold on Trusted Packet | 5 | P1 |
+
+---
+
+### TOP_10_UI_FIXES
+
+| # | Fix | File | Est. Time |
+|---|-----|------|-----------|
+| UI-01 | Remove `model_used` Tag from PacketStep header | `ui/src/pages/AddCarPage.tsx` | 5 min |
+| UI-02 | Add `from: [source_file]` inline with VIN and vehicle fields | `ui/src/pages/AddCarPage.tsx` | 20 min |
+| UI-03 | Reorder PacketStep: warnings before vehicle fields | `ui/src/pages/AddCarPage.tsx` | 10 min |
+| UI-04 | Guard mock mode Alert behind dev-only check | `ui/src/pages/AddCarPage.tsx` | 5 min |
+| UI-05 | Add timestamp to Trusted Packet header | `ui/src/pages/AddCarPage.tsx` | 10 min |
+| UI-06 | Change "Customer Information" → "Your Information" | `ui/src/pages/AddCarPage.tsx` | 2 min |
+| UI-07 | Replace InboxOutlined with CloudUploadOutlined on Dragger | `ui/src/pages/AddCarPage.tsx` | 5 min |
+| UI-08 | Change "Read Documents" CTA → "Continue →" | `ui/src/pages/AddCarPage.tsx` | 2 min |
+| UI-09 | Add animated loading steps to ExtractingStep | `ui/src/pages/AddCarPage.tsx` | 30 min |
+| UI-10 | Add customer name + garaging ZIP to PacketStep above-fold | `ui/src/pages/AddCarPage.tsx` | 15 min |
+
+**Total estimated time for UI-01 through UI-10: ~1 hr 44 min**
+
+---
+
+### TOP_5_TRUST_IMPROVEMENTS
+
+| # | Improvement | Why It Matters for Chen Kui Pilot |
+|---|------------|----------------------------------|
+| T1 | Source attribution visible by default on VIN | Wu Xiaojie must see "from: purchase_agreement.pdf" without clicking anything — it's the proof the data is real |
+| T2 | Warnings before vehicle fields | If a VIN warning exists, broker must see it before they see the VIN value — current order hides the warning below the data |
+| T3 | Remove model_used tag | "gemini-1.5-flash" on the Trusted Packet header is confusing to non-technical brokers and makes the product feel like a prototype |
+| T4 | Guard mock mode | If Gemini key is not set and the orange "MOCK extraction only" banner fires during the pilot, Chen Kui will not trust any data in the packet |
+| T5 | Case ID + timestamp | "Trusted Packet — Jun 18, 2026, 2:51 PM" makes the product feel like a record, not a live prototype — crucial for broker adoption |
+
+---
+
+### TOP_5_BROKER_REACTIONS (predicted)
+
+Based on the current flow state, if Wu Xiaojie sees the product today:
+
+| # | Reaction | Trigger | Impact |
+|---|---------|---------|--------|
+| B1 | "What is gemini-1.5-flash?" | `model_used` tag on packet header | Confusion; erodes professionalism |
+| B2 | "Where does the VIN come from?" | Source file not visible above fold | Broker must scroll or click to verify — friction on key trust step |
+| B3 | "It's loading forever — did it crash?" | Bare spinner on Screen 4 for 20–30 seconds | Abandonment risk on first use |
+| B4 | "This feels like a demo, not a real product" | No case ID, no timestamp, no brokerage branding | Pilot adoption risk |
+| B5 | "Actually this is great — I don't have to read WeChat" | The copy-paste-into-AMS result after clicking Copy All | This is the money moment — make sure it's reached |
+
+---
+
+### GO_OR_NO_GO
+
+**Status as of 2026-06-18: CONDITIONAL GO**
+
+Required before first Chen Kui case:
+- [ ] UI-01: Remove `model_used` tag (5 min)
+- [ ] UI-02: Source attribution inline on VIN/vehicle (20 min)
+- [ ] UI-03: Reorder warnings before vehicle fields (10 min)
+- [ ] UI-04: Guard mock mode banner (5 min)
+
+If these four fixes are deployed: **GO**  
+If any one is missed: **NO-GO** on professionalism grounds (T1, T3) or trust grounds (T2, T4)
+
+---
+
+### NEXT_48_HOURS_PLAN
+
+**Today (Jun 18) — Hours 1–4:**
+1. Apply UI-01 through UI-04 (the 4 P0 trust fixes) — ~40 min combined
+2. Apply UI-05 through UI-10 (P1 polish) — ~60 min combined
+3. Run full end-to-end flow: info → upload 3 files → extract → packet → copy → paste into Google Docs
+4. Confirm: no mock banner, source attribution visible, warnings before fields, clean copy text
+5. Verify: HEIC upload from real iPhone (P16_72_HOUR_BUILD_PLAN.md task 1.1)
+
+**Tomorrow (Jun 19) — Hours 5–24:**
+1. Run `trial_launch_check.sh` clean
+2. Run `demo_quick_validate.sh` clean
+3. Dry-run CK-001 case with real documents
+4. Send intake URL to Chen Kui with walkthrough doc
+5. Log dry-run in `docs/trial/P16_TIME_SAVINGS_TRACKER.md` as CK-DRY-01
+
+**Detailed docs:**
+- Build plan: `docs/p16/P16_72_HOUR_BUILD_PLAN.md`
+- UI fixes: `docs/p16/P16_PILOT_DEMO_BLUEPRINT_V2.md` Part 7
+- Pilot instructions: `docs/p16/P16_CHEN_KUI_3_CASE_SOFT_PILOT.md`
+
+---
+
 *End of P16 Decision Freeze V1*
