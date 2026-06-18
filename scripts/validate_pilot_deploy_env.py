@@ -165,12 +165,17 @@ def main() -> int:
         return 1
 
     print(f"OK pilot deploy env ({label})")
-    if _truthy(env.get("UNIFIED_INTAKE_PRODUCT_ONLY")):
-        print("  product_only=1")
+    print("  Unified Intake SaaS posture (product_only + Postgres-primary)")
+    print("  Postgres cases enabled (when SERVICE_RECORD_DATABASE_URL set)")
+    print("  Product-only API surface — lab/RAG routers not mounted")
+    print("  Intake + support API keys required")
+    print("  Intake triage does not require Qdrant (vectors = optional wedge)")
     if _truthy(env.get("UNIFIED_INTAKE_INTAKE_CORE_READINESS")) or _truthy(
         os.environ.get("UNIFIED_INTAKE_INTAKE_CORE_READINESS")
     ):
-        print("  intake_core_readiness=1 (Qdrant optional for deploy + /readyz)")
+        print("  Vectors optional in intake mode (QDRANT_* not required for deploy)")
+    else:
+        print("  Full-stack mode — QDRANT_URL expected for /readyz")
     return 0
 
 

@@ -71,7 +71,7 @@ function App() {
                                     <Route path="workbench" element={<Navigate to="/workbench/unified-intake" replace />} />
                                 </>
                             ) : (
-                                <LabRoutes />
+                                LabRoutes()
                             )}
                             <Route path="workbench/unified-intake" element={
                                 <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>

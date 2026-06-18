@@ -49,11 +49,29 @@ We are not building:
 
 We are building:
 
-**An Add-Car-first intake and handoff assistant for broker teams that uses state-driven flow to turn messy, fragmented customer input into a formal service record the office can receive, continue, and process.**
+**A Customer First Add-Car intake and handoff system for broker teams that uses state-driven flow to turn messy, fragmented customer input into a formal service record the office can receive, continue, and process.**
 
 The first commercial / monetizable wedge and highest-priority flagship path today is:
 
 **Add-Car / add vehicle quote intake**
+
+**Customer First constitution (P16):** `docs/product_constitution/P16_CUSTOMER_FIRST_CONSTITUTION.md` — phone is the return key; customer never logs in; one active add-car case per phone; formal submit requires phone; progress = missing fields; broker confirms identity and closes/reopens cases.
+
+---
+
+## 2B. Customer First North Star (2026-06-07)
+
+The customer must be able to answer:
+
+1. **Did I submit it?**
+2. **What is still missing?**
+3. **When will someone contact me?**
+
+**Role timing goals:** Customer **3 min** to submit · Office **10 sec** to understand · Broker **30 sec** to confirm.
+
+**Implementation phase order:** See Customer First Phase Order in `P16Z25_90_DAY_ROADMAP.md`, `ROADMAP_FROM_CONSTITUTION.md`, and `P16_CUSTOMER_FIRST_P0_SUMMARY.md`.
+
+**Out of scope for now:** SMS OTP, WeChat OAuth (required), WeChat bot, OCR-first intake, multi-case customer picker, CRM, payment integration.
 
 ---
 
@@ -206,9 +224,11 @@ For North American Chinese users, **WeChat binding is a strong optional candidat
 
 **Case opening and merge policy (record by matter, not person)**
 
-Stage 1 should not assume one person equals one record.
+**Add-Car wedge override (Customer First constitution):** For the flagship add-car path, **one customer (normalized phone) = one active case**. Returning customers resume via phone lookup. Historical closed cases may exist; only one **active** add-car case at a time. Broker closes or reopens before a new active matter. See `P16_CUSTOMER_FIRST_CONSTITUTION.md` Rule 7.
 
-- One person may have multiple service records.
+For non–add-car lanes and long-horizon CRM direction, Stage 1 still does not assume full CRM identity:
+
+- One person may have multiple service records (when broker explicitly opens separate matters or lanes differ).
 - One service record corresponds to one relatively coherent service matter/service unit.
 - Repeated submissions should append only when **same matter evidence is strong at the same time**:
   - identity linkage is sufficient for operational continuity

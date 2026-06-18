@@ -46,11 +46,18 @@ from services.fiqa_api.inbox_triage.case_truth_repository import (
     count_cases_for_read,
     get_case_for_read,
     get_case_triage_stub_for_read,
+    list_cases_for_phone_lookup,
     list_cases_for_office_enforcement_read,
     list_recent_cases_for_binding,
     list_recent_cases_for_read,
     triage_stub_read_cache_scope,
 )
+from services.fiqa_api.inbox_triage.active_case_lookup import (
+    active_add_car_case_summary,
+    create_customer_first_add_car_draft,
+    find_active_add_car_case_by_phone,
+)
+from services.fiqa_api.inbox_triage.phone_normalization import is_valid_customer_phone, normalize_phone_digits
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
 from services.fiqa_api.inbox_triage import session_repository as intake_session_repository
 from services.fiqa_api.inbox_triage.session_store import (
@@ -521,6 +528,53 @@ def _finalize_triage_http_contract(
     _attach_case_lifecycle(result, persisted_case=persisted_case)
     _finalize_triage_api_result(result)
     _apply_pg_active_vehicle_identity_last(result, session_id)
+
+
+def _collecting_case_memory_target(
+    *,
+    existing_case: dict[str, Any] | None,
+    result: dict[str, Any],
+    text: str,
+    effective_case_id: str | None,
+) -> str | None:
+    """
+    When triage runs against a bound open case, return case_id if the customer turn
+    should append to Case Memory (case_messages + field lists).
+    """
+    if not existing_case or not (text or "").strip():
+        return None
+    bound_id = str(
+        result.get("case_id") or effective_case_id or existing_case.get("case_id") or ""
+    ).strip()
+    if not bound_id:
+        return None
+    if result.get("append_allowed") is False:
+        return None
+    if str(result.get("case_boundary") or "").strip() == "new_issue":
+        return None
+    return bound_id
+
+
+def _persist_collecting_case_memory(
+    *,
+    case_id: str,
+    text: str,
+    result: dict[str, Any],
+    existing_case: dict[str, Any],
+    client_id: str | None,
+) -> dict[str, Any] | None:
+    """Append customer turn to bound case; merge triage fields into persisted record."""
+    case_client_id = (
+        str(existing_case.get("client_id") or "").strip()
+        or (client_id or "").strip()
+        or None
+    )
+    return append_follow_up_message(
+        case_id=case_id,
+        new_message_text=text,
+        triage_result=result,
+        client_id=case_client_id,
+    )
 
 
 def _user_identity_hint_from_triage(result: dict[str, Any]) -> dict[str, str] | None:
@@ -1514,7 +1568,41 @@ async def triage_inbox(
         else:
             result["case_persisted"] = False
 
-    _finalize_triage_http_contract(result, request.session_id, persisted_case=existing_case)
+    collecting_memory_case: dict[str, Any] | None = None
+    memory_target = _collecting_case_memory_target(
+        existing_case=existing_case,
+        result=result,
+        text=text,
+        effective_case_id=effective_case_id,
+    )
+    if memory_target:
+        try:
+            _t_cm0 = time.perf_counter()
+            updated = _persist_collecting_case_memory(
+                case_id=memory_target,
+                text=text,
+                result=result,
+                existing_case=existing_case or {},
+                client_id=client_id,
+            )
+            case_persist_ms_total += (time.perf_counter() - _t_cm0) * 1000.0
+            if updated is not None:
+                assist_snap = result.get("assist")
+                result.update(updated)
+                if assist_snap is not None:
+                    result["assist"] = assist_snap
+                collecting_memory_case = updated
+                logger.info("collecting_case_memory_appended case_id=%s", memory_target)
+        except ValueError:
+            pass
+        except Exception as exc:
+            logger.warning("Failed to persist collecting case memory: %s", exc)
+
+    _finalize_triage_http_contract(
+        result,
+        request.session_id,
+        persisted_case=collecting_memory_case or existing_case,
+    )
     postprocess_finalize_ms = _route_mark()
     _schedule_route_analytics(
         result,
@@ -1618,6 +1706,85 @@ async def get_recent_cases(
         "limit": limit,
         "offset": offset,
         "has_more": offset + len(enriched) < total,
+    }
+
+
+@router.get("/customer/active-case")
+async def get_customer_active_case_by_phone(
+    phone: str = Query(..., min_length=1, max_length=32),
+    client_id: str | None = Query(default=None, max_length=128),
+) -> dict[str, Any]:
+    """
+    P16 Customer First — phone return-key lookup for one active add-car case.
+
+    No auth; customer-facing. Returns has_active_case=false when none or phone invalid.
+    """
+    if not is_valid_customer_phone(phone):
+        raise HTTPException(status_code=400, detail="invalid_phone")
+    normalized = normalize_phone_digits(phone)
+    cid = (client_id or "").strip() or None
+    candidates = list_cases_for_phone_lookup(normalized, client_id=cid)
+    match = find_active_add_car_case_by_phone(normalized, candidates, client_id=cid)
+    if match is None:
+        return {
+            "has_active_case": False,
+            "phone_normalized": normalized,
+            "active_case": None,
+        }
+    return {
+        "has_active_case": True,
+        "phone_normalized": normalized,
+        "active_case": active_add_car_case_summary(match),
+    }
+
+
+class CustomerStartAddCarRequest(BaseModel):
+    """P16 Customer First — start new add-car draft after phone entry (Rule 7 enforced)."""
+
+    phone: str = Field(..., min_length=1, max_length=32)
+    customer_name: str | None = Field(default=None, max_length=128)
+    client_id: str | None = Field(default=None, max_length=128)
+    session_id: str | None = Field(default=None, max_length=128)
+
+
+@router.post("/customer/start-add-car")
+async def post_customer_start_add_car(body: CustomerStartAddCarRequest) -> dict[str, Any]:
+    """
+    Create a collecting-phase add-car draft with claimed phone, or reject when active case exists.
+    """
+    if not is_valid_customer_phone(body.phone):
+        raise HTTPException(status_code=400, detail="invalid_phone")
+    normalized = normalize_phone_digits(body.phone)
+    cid = (body.client_id or "").strip() or None
+    sid = (body.session_id or "").strip() or None
+    candidates = list_cases_for_phone_lookup(normalized, client_id=cid)
+    existing = find_active_add_car_case_by_phone(normalized, candidates, client_id=cid)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "active_case_exists",
+                "active_case": active_add_car_case_summary(existing),
+            },
+        )
+    try:
+        saved = create_customer_first_add_car_draft(
+            normalized,
+            customer_name=body.customer_name,
+            client_id=cid,
+            origin_session_id=sid,
+        )
+    except ValueError as exc:
+        if str(exc) == "active_case_exists":
+            raise HTTPException(status_code=409, detail="active_case_exists") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if sid:
+        vk = saved.get("vehicle_key") if isinstance(saved.get("vehicle_key"), str) else None
+        save_session_binding_after_case_created(sid, str(saved.get("case_id") or ""), vk)
+    return {
+        "ok": True,
+        "case_id": saved.get("case_id"),
+        "case": active_add_car_case_summary(saved),
     }
 
 

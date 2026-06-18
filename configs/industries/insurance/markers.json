@@ -34,10 +34,13 @@
     "取消",
     "要取消"
   ],
-  "payment": [
+    "payment": [
     "payment failed",
     "auto pay failed",
     "autopay failed",
+    "autopay",
+    "policy lapse",
+    "lapse",
     "declined",
     "update payment",
     "update card",
@@ -49,7 +52,15 @@
     "付款问题",
     "付款失败",
     "账单",
-    "账单问题"
+    "账单问题",
+    "分期",
+    "恢复",
+    "没扣",
+    "没扣成功",
+    "未扣款",
+    "未成功扣款",
+    "扣款失败",
+    "扣款未成功"
   ],
   "payment_risk": [
     "overdue",
@@ -197,6 +208,7 @@
     "去掉",
     "卖掉旧车",
     "卖掉了",
+    "卖掉",
     "卖车",
     "sold"
   ],

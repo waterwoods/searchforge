@@ -28,9 +28,11 @@ unset DEMO_MODE
 export DEPLOY_ENTRY=paid_pilot
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Paid-pilot Cloud Run deploy (product_only + Postgres-primary, no DEMO_MODE)"
-echo "Intake-core readiness ON — Qdrant optional (triage does not require vectors)"
+echo "Unified Intake SaaS — paid-pilot Cloud Run deploy"
+echo "  product_only + Postgres-primary, no DEMO_MODE"
+echo "  Intake-core readiness ON — Qdrant optional (triage does not require vectors)"
 echo "Authority: docs/CURRENT_PRODUCT_SHAPE.md"
+echo "Ignore: docs/runbooks/OPERATOR_IGNORE_LIST.md"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

@@ -251,4 +251,23 @@ Week 3: 70% observation-log-driven fixes · 30% customer tab if requested
 
 ---
 
+## Customer First Phase Order (2026-06-07)
+
+**Constitution:** `P16_CUSTOMER_FIRST_CONSTITUTION.md`
+
+| Phase | Focus |
+|-------|-------|
+| **0** | Constitution first ✅ |
+| **1** | Customer first screen — name + phone |
+| **2** | Phone lookup returns active case |
+| **3** | Formal submit requires valid phone |
+| **4** | Postgres pilot data cleanup (after 1–3) |
+| **5** | Chen Kui real pilot on customer-first path |
+
+**Out of scope for now:** SMS OTP · WeChat OAuth · WeChat bot · OCR · multi-case customer picker · CRM · payment integration
+
+**Next implementation sprint:** Phase 1 — customer first screen (see `P16_CUSTOMER_FIRST_P0_SUMMARY.md`).
+
+---
+
 *End of P16-Z2.5 30-Day Roadmap*

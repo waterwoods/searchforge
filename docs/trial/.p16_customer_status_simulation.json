@@ -1,0 +1,2157 @@
+{
+  "base": "https://fiqa-api-g7zatxrycq-uw.a.run.app",
+  "scenarios": [
+    {
+      "name": "A — New customer",
+      "checks": {
+        "http_ok": true,
+        "no_active": true
+      },
+      "pass": true,
+      "notes": "No active case on fresh phone.",
+      "http_status": 200
+    },
+    {
+      "name": "B — Return customer",
+      "checks": {
+        "has_active": true,
+        "business_state_valid": true,
+        "awaiting": true
+      },
+      "pass": true,
+      "notes": "business_state=awaiting_customer",
+      "active_case": {
+        "case_id": "case_b1cc938ba4da",
+        "vehicle_display": "2027 BMW X5",
+        "missing_fields": [
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "missing_fields_display": [
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "is_formal_submitted": false,
+        "submit_state": "not_yet",
+        "business_state": "awaiting_customer",
+        "status_label": "saved_not_yet_submitted",
+        "contact_state": "waiting_for_customer",
+        "waiting_on": "none",
+        "primary_vehicle_summary": "2027 BMW X5",
+        "still_needed_fields": [
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "lifecycle_status": "collecting",
+        "formal_submitted_at": "",
+        "customer_name": "",
+        "updated_at": "2026-06-07T15:18:02Z"
+      }
+    },
+    {
+      "name": "C — Wrong phone digit",
+      "checks": {
+        "http_ok": true,
+        "no_active": true
+      },
+      "pass": true,
+      "notes": "",
+      "http_status": 200
+    },
+    {
+      "name": "D — BMW X5 full lifecycle",
+      "pass": true,
+      "steps": [
+        {
+          "name": "BMW — draft seeded",
+          "checks": {
+            "case_id": true,
+            "awaiting": true
+          },
+          "pass": true,
+          "notes": "",
+          "active_case": {
+            "case_id": "case_93a584df9e69",
+            "vehicle_display": "加车申请（车辆信息待补充）",
+            "missing_fields": [
+              "year",
+              "make_model",
+              "zip",
+              "delivery_date",
+              "primary_driver",
+              "vin"
+            ],
+            "missing_fields_display": [
+              "year",
+              "make_model",
+              "zip",
+              "delivery_date",
+              "primary_driver",
+              "vin"
+            ],
+            "is_formal_submitted": false,
+            "submit_state": "not_yet",
+            "business_state": "awaiting_customer",
+            "status_label": "saved_not_yet_submitted",
+            "contact_state": "waiting_for_customer",
+            "waiting_on": "none",
+            "primary_vehicle_summary": null,
+            "still_needed_fields": [
+              "year",
+              "make_model",
+              "zip",
+              "delivery_date",
+              "primary_driver",
+              "vin"
+            ],
+            "lifecycle_status": "collecting",
+            "formal_submitted_at": "",
+            "customer_name": "",
+            "updated_at": "2026-06-07T15:40:17Z"
+          }
+        },
+        {
+          "name": "BMW — 宝马X5",
+          "checks": {
+            "triage_ok": true,
+            "not_formal": true,
+            "has_gaps": true
+          },
+          "pass": true,
+          "notes": "",
+          "triage": {
+            "issue_category": "unclear",
+            "urgency": "medium",
+            "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+            "client_prep": "Any additional context or the full original message if it was forwarded.",
+            "client_reply_draft": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+            "manual_followup_needed": true,
+            "triage_path": "llm",
+            "add_car_turn_intent": {
+              "intent_family": "generic_followup",
+              "handoff_base_key": "add_car",
+              "truth_notes": [],
+              "phrase_storage_key": "add_car"
+            },
+            "handoff_ready": false,
+            "follow_up_type": "new_info",
+            "collection_stage": "collecting",
+            "next_best_question": "我先根据你的留言整理了一版，请你看一下对不对：\n• 车型: BMW X5\n• 邮编: (待补充)\n• 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver\n如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+            "lifecycle_status": "collecting",
+            "case_creation_suggested": false,
+            "conversation_summary": "1 customer message(s). Latest: 宝马X5...",
+            "collected_fields": [
+              "make_model"
+            ],
+            "still_needed_fields": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "add_car_llm_slot_layer": {
+              "called": false,
+              "accepted_slots": [],
+              "certainty": null,
+              "skip_reason": "disabled"
+            },
+            "quote_ready_status": "need_more",
+            "human_confirmation_fields": [],
+            "human_confirmation_required": false,
+            "service_type": "add_car",
+            "vehicle_key": null,
+            "additional_vehicle_mentioned": false,
+            "primary_vehicle_summary": "BMW X5",
+            "additional_vehicle_count_hint": null,
+            "triage_mode": "greenfield",
+            "case_lifecycle": "collecting",
+            "intake_next_best_ask": "请提供年份。",
+            "conversion_layer_active": false,
+            "conversion_flow_version": "",
+            "post_quote_followup_intent": "",
+            "conversion_stage": "not_ready",
+            "intake_evolution_variant": "A",
+            "v6_auto_input_variant": "A",
+            "case_draft": {
+              "lane": "add_car",
+              "intent": "general",
+              "known_fields": {
+                "make_model": {
+                  "confidence": 0.92,
+                  "source": "session_extract_or_persisted"
+                }
+              },
+              "inferred_fields": {
+                "vehicle_guess": {
+                  "hint": "BMW X5",
+                  "confidence": 0.55,
+                  "needs_confirmation": true
+                },
+                "vehicle_from_summary": {
+                  "hint": "BMW X5",
+                  "confidence": 0.55,
+                  "tier": "medium",
+                  "needs_confirmation": true,
+                  "source": "primary_vehicle_summary",
+                  "field_strategy_id": "vehicle_from_summary",
+                  "confidence_policy": "prefer_inference",
+                  "default_engine": {
+                    "fallback_order": [
+                      "primary_vehicle_summary"
+                    ],
+                    "rule_id": "vehicle_from_summary_hint"
+                  }
+                }
+              },
+              "missing_fields": [
+                "year",
+                "make_model",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver"
+              ],
+              "confidence_map": {
+                "make_model": 0.92,
+                "inferred:vehicle_guess": 0.55,
+                "inferred:vehicle_from_summary": 0.55
+              },
+              "needs_confirmation": [
+                "vehicle_guess"
+              ],
+              "quote_ready_status": "need_more",
+              "completion_message": "还差 6 项要点；按上方提示一次补一项即可。",
+              "completion_fraction": 0.0,
+              "collected_fields": [
+                "make_model"
+              ],
+              "still_needed_fields": [
+                "year",
+                "make_model",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver"
+              ],
+              "confirm_priority_fields": [
+                "vehicle_guess",
+                "vehicle_from_summary"
+              ],
+              "v4_completeness_score": 0.12,
+              "v5_handoff_completeness_score": 0.24,
+              "v5_completeness_threshold": 0.6,
+              "v5_tier1_vehicle_ok": true,
+              "case_usable": false,
+              "v4_partial_handoff_eligible": false,
+              "v4_flow": true,
+              "merged_text_for_v6": "[客户] 宝马X5",
+              "v6_auto_input_variant": "A",
+              "confidence_tier_policy": {
+                "high_auto": "high",
+                "medium_confirm": "medium",
+                "low_defer": "low"
+              },
+              "v6_confirmation": {
+                "headline": "我已为你整理好关键项，请确认或一条消息内修改：",
+                "lines": [
+                  "我已为你整理好关键项，请确认或一条消息内修改：",
+                  "🚗 车辆: BMW X5",
+                  "📍 邮编: (待补充)",
+                  "👤 1 位驾驶人",
+                  "回复「好」或 OK 确认。"
+                ],
+                "ocr_highlight_field_keys": [],
+                "single_confirmation_step": true
+              },
+              "field_strategy": {
+                "version": 2,
+                "lane": "add_car",
+                "fields": {
+                  "year": {
+                    "purpose": "Model year for rating and vehicle identity.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "ocr_structured_wins_over_empty"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "make_model": {
+                    "purpose": "Make and model for vehicle identity.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "ocr_structured_wins_over_empty",
+                      "primary_vehicle_summary_hint_non_blocking"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "zip": {
+                    "purpose": "Garaging ZIP for territory rating.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "garaging_area_hint_does_not_replace_zip"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "delivery_date": {
+                    "purpose": "Delivery or effective date for policy timing.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "primary_driver": {
+                    "purpose": "Primary operator for driver assignment.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "vin": {
+                    "purpose": "VIN for definitive vehicle identity and formal quote.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "name": {
+                    "purpose": "Named insured contact for follow-up.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate_identity",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "phone": {
+                    "purpose": "Contact phone for follow-up.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate_identity",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "usage_guess": {
+                    "purpose": "Vehicle usage class for rating classification.",
+                    "default_value": "daily_commute",
+                    "confidence_score": 0.35,
+                    "inference_sources": [
+                      "text",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "default_low",
+                    "confirmation_required_when": "medium_confidence_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "keyword_inference_over_default",
+                      "user_explicit_overrides"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "garaging_area_hint": {
+                    "purpose": "Rough area label when ZIP is missing or ambiguous.",
+                    "default_value": null,
+                    "confidence_score": 0.48,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "weak_hint",
+                    "confirmation_required_when": "when_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "zip_prefix_derived",
+                      "area_code_weak_hint",
+                      "broker_verifies"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "make_keyword_hint": {
+                    "purpose": "Weak make token from chatter; never replaces make_model.",
+                    "default_value": null,
+                    "confidence_score": 0.33,
+                    "inference_sources": [
+                      "text"
+                    ],
+                    "priority_tier": 3,
+                    "blocking": false,
+                    "confidence_policy": "weak_hint",
+                    "confirmation_required_when": "never_for_tier3",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "weak_token_only",
+                      "does_not_replace_make_model"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "vehicle_from_summary": {
+                    "purpose": "Vehicle line from summary when structured slots incomplete.",
+                    "default_value": null,
+                    "confidence_score": 0.55,
+                    "inference_sources": [
+                      "history",
+                      "text"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "prefer_inference",
+                    "confirmation_required_when": "always_when_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "needs_confirmation",
+                      "partial_credit_for_handoff_completeness"
+                    ],
+                    "session_status": "inferred"
+                  }
+                },
+                "tier1_blocking_missing": [
+                  "year",
+                  "make_model",
+                  "zip",
+                  "delivery_date",
+                  "primary_driver"
+                ],
+                "still_needed_user_flow": [
+                  "delivery_date",
+                  "make_model",
+                  "primary_driver",
+                  "year",
+                  "zip"
+                ],
+                "deferred_to_broker_fields": [
+                  "vin"
+                ],
+                "deferred_reasons": {
+                  "year": "user_flow_blocking_or_tier1",
+                  "make_model": "user_flow_blocking_or_tier1",
+                  "vin": "defer_to_broker",
+                  "zip": "user_flow_blocking_or_tier1",
+                  "delivery_date": "user_flow_blocking_or_tier1",
+                  "primary_driver": "user_flow_blocking_or_tier1"
+                }
+              },
+              "still_needed_user_flow": [
+                "delivery_date",
+                "make_model",
+                "primary_driver",
+                "year",
+                "zip"
+              ],
+              "deferred_to_broker_fields": [
+                "vin"
+              ],
+              "broker_completion": {
+                "broker_usable_case": false,
+                "deferred_fields": [
+                  "vin"
+                ],
+                "full_missing_fields": [
+                  "year",
+                  "make_model",
+                  "vin",
+                  "zip",
+                  "delivery_date",
+                  "primary_driver"
+                ],
+                "office_completes_summary": "Office completes later: vin."
+              },
+              "v6_error_tolerance": {
+                "low_confidence_field_keys": [],
+                "submission_blocked": false,
+                "quote_ready_status": "need_more",
+                "policy_note": "OCR/low-confidence items are advisory; office verifies before bind."
+              }
+            },
+            "case_usable": false,
+            "still_needed_user_flow": [
+              "delivery_date",
+              "make_model",
+              "primary_driver",
+              "year",
+              "zip"
+            ],
+            "deferred_to_broker_fields": [
+              "vin"
+            ],
+            "broker_completion": {
+              "broker_usable_case": false,
+              "deferred_fields": [
+                "vin"
+              ],
+              "full_missing_fields": [
+                "year",
+                "make_model",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver"
+              ],
+              "office_completes_summary": "Office completes later: vin."
+            },
+            "v4_error_risk_score": 0.27,
+            "v5_handoff_risk_score": 0.27,
+            "zero_question_intake": true,
+            "action_ready": false,
+            "intake_flow_milestone": "collecting",
+            "classification_signals": [
+              "提到具体车型"
+            ],
+            "office_case_title": "客户咨询加车报价",
+            "office_broker_next_step": "联系客户补齐年份、车架号、邮编、提车日期，然后出报价",
+            "case_id": "case_93a584df9e69",
+            "assist": {
+              "clarification_needed": false,
+              "clarification_reason": "none",
+              "suggested_question": "none",
+              "candidate_interpretation": "none",
+              "broker_note": "none",
+              "customer_facing_rephrase": "none"
+            },
+            "case_persisted": false,
+            "service_lane": "add_car",
+            "case_status": "new",
+            "waiting_on": "none",
+            "next_contact_by": "",
+            "customer_name": "",
+            "customer_phone": "6265558001",
+            "customer_email": "",
+            "policy_number": "",
+            "contact_note": "",
+            "created_at": "2026-06-07T15:40:17Z",
+            "updated_at": "2026-06-07T15:40:21Z",
+            "formal_submitted_at": "",
+            "case_notes": [],
+            "case_attachments": [],
+            "case_messages": [
+              {
+                "message_id": "msg_f7d37621ee4b",
+                "role": "customer",
+                "text": "开始加车申请（Customer First 入口）",
+                "created_at": "2026-06-07T15:40:17Z",
+                "sequence": 1
+              },
+              {
+                "message_id": "msg_5231ab3f98c3",
+                "role": "customer",
+                "text": "宝马X5",
+                "created_at": "2026-06-07T15:40:21Z",
+                "sequence": 2
+              },
+              {
+                "message_id": "msg_d5e6b2823a20",
+                "role": "system",
+                "text": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+                "created_at": "2026-06-07T15:40:21Z",
+                "sequence": 3
+              }
+            ],
+            "case_activity": [
+              {
+                "activity_id": "act_3ef3bf9bf22e",
+                "activity_type": "follow_up_added",
+                "message": "Customer follow-up added: 宝马X5",
+                "created_at": "2026-06-07T15:40:21Z"
+              },
+              {
+                "activity_id": "act_pg_1353e450f9394955",
+                "activity_type": "case_created",
+                "message": "Case record created.",
+                "created_at": "2026-06-07T15:40:17Z"
+              }
+            ],
+            "source_text": "[客户] 开始加车申请（Customer First 入口）\n\n[客户] 宝马X5\n\n[系统] 我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+            "workbench_test": false,
+            "workbench_archived": false,
+            "identity_binding_state": null,
+            "person_link_key": null,
+            "person_link_source": null,
+            "person_link_confidence": null,
+            "client_id": "chen_kui",
+            "append_allowed": true
+          }
+        },
+        {
+          "name": "BMW — after 宝马X5 lookup",
+          "checks": {
+            "awaiting": true,
+            "not_submitted_label": true
+          },
+          "pass": true,
+          "notes": "",
+          "active_case": {
+            "case_id": "case_93a584df9e69",
+            "vehicle_display": "BMW X5",
+            "missing_fields": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "missing_fields_display": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "is_formal_submitted": false,
+            "submit_state": "not_yet",
+            "business_state": "awaiting_customer",
+            "status_label": "saved_not_yet_submitted",
+            "contact_state": "waiting_for_customer",
+            "waiting_on": "none",
+            "primary_vehicle_summary": "BMW X5",
+            "still_needed_fields": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "lifecycle_status": "collecting",
+            "formal_submitted_at": "",
+            "customer_name": "",
+            "updated_at": "2026-06-07T15:40:21Z"
+          }
+        },
+        {
+          "name": "BMW — after 2027",
+          "checks": {
+            "awaiting": true,
+            "triage_ok": true
+          },
+          "pass": true,
+          "notes": "",
+          "active_case": {
+            "case_id": "case_93a584df9e69",
+            "vehicle_display": "2027",
+            "missing_fields": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "missing_fields_display": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "is_formal_submitted": false,
+            "submit_state": "not_yet",
+            "business_state": "awaiting_customer",
+            "status_label": "saved_not_yet_submitted",
+            "contact_state": "waiting_for_customer",
+            "waiting_on": "none",
+            "primary_vehicle_summary": "2027",
+            "still_needed_fields": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "lifecycle_status": "collecting",
+            "formal_submitted_at": "",
+            "customer_name": "",
+            "updated_at": "2026-06-07T15:40:23Z"
+          },
+          "triage": {
+            "issue_category": "unclear",
+            "urgency": "medium",
+            "broker_next_step": "Ask for the missing part of the message so you can confirm whether this is routine, underwriting, or payment-related.",
+            "client_prep": "Any additional context or the full original message if it was forwarded.",
+            "client_reply_draft": "Here's what I have from your message—does this look right? • Vehicle: 2027 • ZIP: (add ZIP) • Office may still need: year, vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+            "manual_followup_needed": true,
+            "triage_path": "llm",
+            "add_car_turn_intent": {
+              "intent_family": "generic_followup",
+              "handoff_base_key": "add_car",
+              "truth_notes": [],
+              "phrase_storage_key": "add_car"
+            },
+            "handoff_ready": false,
+            "follow_up_type": "new_info",
+            "collection_stage": "collecting",
+            "next_best_question": "Here's what I have from your message—does this look right?\n• Vehicle: 2027\n• ZIP: (add ZIP)\n• Office may still need: year, vin, zip, delivery_date, primary_driver\nIf it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+            "lifecycle_status": "collecting",
+            "case_creation_suggested": false,
+            "conversation_summary": "1 customer message(s). Latest: 2027...",
+            "collected_fields": [
+              "make_model"
+            ],
+            "still_needed_fields": [
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "add_car_llm_slot_layer": {
+              "called": false,
+              "accepted_slots": [],
+              "certainty": null,
+              "skip_reason": "disabled"
+            },
+            "quote_ready_status": "need_more",
+            "human_confirmation_fields": [],
+            "human_confirmation_required": false,
+            "service_type": "add_car",
+            "vehicle_key": null,
+            "additional_vehicle_mentioned": false,
+            "primary_vehicle_summary": "2027",
+            "additional_vehicle_count_hint": null,
+            "triage_mode": "greenfield",
+            "case_lifecycle": "collecting",
+            "intake_next_best_ask": "Please provide your 年份.",
+            "conversion_layer_active": false,
+            "conversion_flow_version": "",
+            "post_quote_followup_intent": "",
+            "conversion_stage": "not_ready",
+            "intake_evolution_variant": "A",
+            "v6_auto_input_variant": "A",
+            "case_draft": {
+              "lane": "add_car",
+              "intent": "general",
+              "known_fields": {
+                "make_model": {
+                  "confidence": 0.92,
+                  "source": "session_extract_or_persisted"
+                }
+              },
+              "inferred_fields": {
+                "vehicle_guess": {
+                  "hint": "2027",
+                  "confidence": 0.55,
+                  "needs_confirmation": true
+                },
+                "vehicle_from_summary": {
+                  "hint": "2027",
+                  "confidence": 0.55,
+                  "tier": "medium",
+                  "needs_confirmation": true,
+                  "source": "primary_vehicle_summary",
+                  "field_strategy_id": "vehicle_from_summary",
+                  "confidence_policy": "prefer_inference",
+                  "default_engine": {
+                    "fallback_order": [
+                      "primary_vehicle_summary"
+                    ],
+                    "rule_id": "vehicle_from_summary_hint"
+                  }
+                }
+              },
+              "missing_fields": [
+                "year",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver"
+              ],
+              "confidence_map": {
+                "make_model": 0.92,
+                "inferred:vehicle_guess": 0.55,
+                "inferred:vehicle_from_summary": 0.55
+              },
+              "needs_confirmation": [
+                "vehicle_guess"
+              ],
+              "quote_ready_status": "need_more",
+              "completion_message": "还差 5 项要点；按上方提示一次补一项即可。",
+              "completion_fraction": 0.167,
+              "collected_fields": [
+                "make_model"
+              ],
+              "still_needed_fields": [
+                "year",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver"
+              ],
+              "confirm_priority_fields": [
+                "vehicle_guess",
+                "vehicle_from_summary"
+              ],
+              "v4_completeness_score": 0.12,
+              "v5_handoff_completeness_score": 0.24,
+              "v5_completeness_threshold": 0.6,
+              "v5_tier1_vehicle_ok": false,
+              "case_usable": false,
+              "v4_partial_handoff_eligible": false,
+              "v4_flow": true,
+              "merged_text_for_v6": "[客户] 2027",
+              "v6_auto_input_variant": "A",
+              "confidence_tier_policy": {
+                "high_auto": "high",
+                "medium_confirm": "medium",
+                "low_defer": "low"
+              },
+              "v6_confirmation": {
+                "headline": "我已为你整理好关键项，请确认或一条消息内修改：",
+                "lines": [
+                  "我已为你整理好关键项，请确认或一条消息内修改：",
+                  "🚗 车辆: 2027",
+                  "📍 邮编: (待补充)",
+                  "👤 1 位驾驶人",
+                  "回复「好」或 OK 确认。"
+                ],
+                "ocr_highlight_field_keys": [],
+                "single_confirmation_step": true
+              },
+              "field_strategy": {
+                "version": 2,
+                "lane": "add_car",
+                "fields": {
+                  "year": {
+                    "purpose": "Model year for rating and vehicle identity.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "ocr_structured_wins_over_empty"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "make_model": {
+                    "purpose": "Make and model for vehicle identity.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "ocr_structured_wins_over_empty",
+                      "primary_vehicle_summary_hint_non_blocking"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "zip": {
+                    "purpose": "Garaging ZIP for territory rating.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "garaging_area_hint_does_not_replace_zip"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "delivery_date": {
+                    "purpose": "Delivery or effective date for policy timing.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "primary_driver": {
+                    "purpose": "Primary operator for driver assignment.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "vin": {
+                    "purpose": "VIN for definitive vehicle identity and formal quote.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "name": {
+                    "purpose": "Named insured contact for follow-up.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate_identity",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "phone": {
+                    "purpose": "Contact phone for follow-up.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate_identity",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "usage_guess": {
+                    "purpose": "Vehicle usage class for rating classification.",
+                    "default_value": "daily_commute",
+                    "confidence_score": 0.35,
+                    "inference_sources": [
+                      "text",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "default_low",
+                    "confirmation_required_when": "medium_confidence_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "keyword_inference_over_default",
+                      "user_explicit_overrides"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "garaging_area_hint": {
+                    "purpose": "Rough area label when ZIP is missing or ambiguous.",
+                    "default_value": null,
+                    "confidence_score": 0.48,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "weak_hint",
+                    "confirmation_required_when": "when_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "zip_prefix_derived",
+                      "area_code_weak_hint",
+                      "broker_verifies"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "make_keyword_hint": {
+                    "purpose": "Weak make token from chatter; never replaces make_model.",
+                    "default_value": null,
+                    "confidence_score": 0.33,
+                    "inference_sources": [
+                      "text"
+                    ],
+                    "priority_tier": 3,
+                    "blocking": false,
+                    "confidence_policy": "weak_hint",
+                    "confirmation_required_when": "never_for_tier3",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "weak_token_only",
+                      "does_not_replace_make_model"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "vehicle_from_summary": {
+                    "purpose": "Vehicle line from summary when structured slots incomplete.",
+                    "default_value": null,
+                    "confidence_score": 0.55,
+                    "inference_sources": [
+                      "history",
+                      "text"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "prefer_inference",
+                    "confirmation_required_when": "always_when_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "needs_confirmation",
+                      "partial_credit_for_handoff_completeness"
+                    ],
+                    "session_status": "inferred"
+                  }
+                },
+                "tier1_blocking_missing": [
+                  "year",
+                  "zip",
+                  "delivery_date",
+                  "primary_driver"
+                ],
+                "still_needed_user_flow": [
+                  "delivery_date",
+                  "primary_driver",
+                  "year",
+                  "zip"
+                ],
+                "deferred_to_broker_fields": [
+                  "vin"
+                ],
+                "deferred_reasons": {
+                  "year": "user_flow_blocking_or_tier1",
+                  "vin": "defer_to_broker",
+                  "zip": "user_flow_blocking_or_tier1",
+                  "delivery_date": "user_flow_blocking_or_tier1",
+                  "primary_driver": "user_flow_blocking_or_tier1"
+                }
+              },
+              "still_needed_user_flow": [
+                "delivery_date",
+                "primary_driver",
+                "year",
+                "zip"
+              ],
+              "deferred_to_broker_fields": [
+                "vin"
+              ],
+              "broker_completion": {
+                "broker_usable_case": false,
+                "deferred_fields": [
+                  "vin"
+                ],
+                "full_missing_fields": [
+                  "year",
+                  "vin",
+                  "zip",
+                  "delivery_date",
+                  "primary_driver"
+                ],
+                "office_completes_summary": "Office completes later: vin."
+              },
+              "v6_error_tolerance": {
+                "low_confidence_field_keys": [],
+                "submission_blocked": false,
+                "quote_ready_status": "need_more",
+                "policy_note": "OCR/low-confidence items are advisory; office verifies before bind."
+              }
+            },
+            "case_usable": false,
+            "still_needed_user_flow": [
+              "delivery_date",
+              "primary_driver",
+              "year",
+              "zip"
+            ],
+            "deferred_to_broker_fields": [
+              "vin"
+            ],
+            "broker_completion": {
+              "broker_usable_case": false,
+              "deferred_fields": [
+                "vin"
+              ],
+              "full_missing_fields": [
+                "year",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver"
+              ],
+              "office_completes_summary": "Office completes later: vin."
+            },
+            "v4_error_risk_score": 0.27,
+            "v5_handoff_risk_score": 0.27,
+            "zero_question_intake": true,
+            "action_ready": false,
+            "intake_flow_milestone": "collecting",
+            "classification_signals": [],
+            "office_case_title": "客户咨询加车报价",
+            "office_broker_next_step": "联系客户补齐年份、车架号、邮编、提车日期，然后出报价",
+            "case_id": "case_93a584df9e69",
+            "assist": {
+              "clarification_needed": false,
+              "clarification_reason": "none",
+              "suggested_question": "none",
+              "candidate_interpretation": "none",
+              "broker_note": "none",
+              "customer_facing_rephrase": "none"
+            },
+            "case_persisted": false,
+            "service_lane": "add_car",
+            "person_link_key": null,
+            "person_link_source": null,
+            "identity_binding_state": null,
+            "person_link_confidence": null,
+            "client_id": "chen_kui",
+            "case_status": "new",
+            "waiting_on": "none",
+            "next_contact_by": "",
+            "customer_name": "",
+            "customer_phone": "6265558001",
+            "customer_email": "",
+            "policy_number": "",
+            "contact_note": "",
+            "created_at": "2026-06-07T15:40:17Z",
+            "updated_at": "2026-06-07T15:40:23Z",
+            "formal_submitted_at": "",
+            "case_notes": [],
+            "case_attachments": [],
+            "workbench_test": false,
+            "workbench_archived": false,
+            "case_messages": [
+              {
+                "message_id": "msg_f7d37621ee4b",
+                "role": "customer",
+                "text": "开始加车申请（Customer First 入口）",
+                "created_at": "2026-06-07T15:40:17Z",
+                "sequence": 1
+              },
+              {
+                "message_id": "msg_5231ab3f98c3",
+                "role": "customer",
+                "text": "宝马X5",
+                "created_at": "2026-06-07T15:40:21Z",
+                "sequence": 2
+              },
+              {
+                "message_id": "msg_d5e6b2823a20",
+                "role": "system",
+                "text": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+                "created_at": "2026-06-07T15:40:21Z",
+                "sequence": 3
+              },
+              {
+                "message_id": "msg_ab56af264c55",
+                "role": "customer",
+                "text": "2027",
+                "created_at": "2026-06-07T15:40:23Z",
+                "sequence": 4
+              },
+              {
+                "message_id": "msg_4f4f09a20c2c",
+                "role": "system",
+                "text": "Here's what I have from your message—does this look right? • Vehicle: 2027 • ZIP: (add ZIP) • Office may still need: year, vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+                "created_at": "2026-06-07T15:40:23Z",
+                "sequence": 5
+              }
+            ],
+            "case_activity": [
+              {
+                "activity_id": "act_6eaefa968591",
+                "activity_type": "follow_up_added",
+                "message": "Customer follow-up added: 2027",
+                "created_at": "2026-06-07T15:40:24Z"
+              },
+              {
+                "activity_id": "act_pg_8d4bae389f714b46",
+                "activity_type": "conversation_appended",
+                "message": "Conversation updated (lifecycle: collecting).",
+                "created_at": "2026-06-07T15:40:21Z"
+              },
+              {
+                "activity_id": "act_pg_1353e450f9394955",
+                "activity_type": "case_created",
+                "message": "Case record created.",
+                "created_at": "2026-06-07T15:40:17Z"
+              }
+            ],
+            "source_text": "[客户] 开始加车申请（Customer First 入口）\n\n[客户] 宝马X5\n\n[系统] 我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。\n\n[客户] 2027\n\n[系统] Here's what I have from your message—does this look right? • Vehicle: 2027 • ZIP: (add ZIP) • Office may still need: year, vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+            "append_allowed": true
+          }
+        },
+        {
+          "name": "BMW — all fields (pre-formal)",
+          "checks": {
+            "triage_ok": true,
+            "still_awaiting_or_ready": true
+          },
+          "pass": true,
+          "notes": "",
+          "active_case": {
+            "case_id": "case_93a584df9e69",
+            "vehicle_display": "2027",
+            "missing_fields": [],
+            "missing_fields_display": [],
+            "is_formal_submitted": false,
+            "submit_state": "not_yet",
+            "business_state": "awaiting_customer",
+            "status_label": "saved_not_yet_submitted",
+            "contact_state": "waiting_for_customer",
+            "waiting_on": "none",
+            "primary_vehicle_summary": "2027",
+            "still_needed_fields": [],
+            "lifecycle_status": "handoff_pending",
+            "formal_submitted_at": "",
+            "customer_name": "",
+            "updated_at": "2026-06-07T15:40:26Z"
+          },
+          "triage": {
+            "issue_category": "customer_question",
+            "urgency": "medium",
+            "broker_next_step": "Confirm any missing driver, ZIP, or VIN if needed; then quote or add same day.",
+            "client_prep": "Year, make/model, VIN if available, delivery date, zip or address, lienholder if any, and primary driver details.",
+            "client_reply_draft": "Please provide your 姓名.",
+            "manual_followup_needed": true,
+            "triage_path": "fast",
+            "add_car_turn_intent": {
+              "intent_family": "generic_followup",
+              "handoff_base_key": "add_car",
+              "truth_notes": [],
+              "phrase_storage_key": "add_car"
+            },
+            "handoff_ready": false,
+            "follow_up_type": "new_info",
+            "collection_stage": "collecting",
+            "next_best_question": "Please provide your 姓名.",
+            "lifecycle_status": "collecting",
+            "case_creation_suggested": false,
+            "conversation_summary": "New quote / new vehicle.  Collected: 2027, VIN, zip, delivery, driver. 1 customer message(s). Latest: year 2027 zip 91748 vin 5UXCR6C04L9B12345 delivery 2027-06-01 driver B1234567 na...",
+            "collected_fields": [
+              "make_model",
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "still_needed_fields": [
+              "name"
+            ],
+            "add_car_llm_slot_layer": {
+              "called": false,
+              "accepted_slots": [],
+              "certainty": null,
+              "skip_reason": "disabled"
+            },
+            "quote_ready_status": "quote_ready",
+            "human_confirmation_fields": [
+              "vin",
+              "primary_driver"
+            ],
+            "human_confirmation_required": true,
+            "service_type": "add_car",
+            "vehicle_key": "vin:5UXCR6C04L9B12345",
+            "additional_vehicle_mentioned": false,
+            "primary_vehicle_summary": "2027",
+            "additional_vehicle_count_hint": null,
+            "triage_mode": "greenfield",
+            "case_lifecycle": "collecting",
+            "intake_next_best_ask": "Please provide your 姓名.",
+            "conversion_layer_active": false,
+            "conversion_flow_version": "",
+            "post_quote_followup_intent": "",
+            "conversion_stage": "not_ready",
+            "intake_evolution_variant": "A",
+            "v6_auto_input_variant": "A",
+            "case_draft": {
+              "lane": "add_car",
+              "intent": "general",
+              "known_fields": {
+                "year": {
+                  "confidence": 0.92,
+                  "source": "session_extract_or_persisted"
+                },
+                "vin": {
+                  "confidence": 0.78,
+                  "source": "session_extract_or_persisted"
+                },
+                "zip": {
+                  "confidence": 0.78,
+                  "source": "session_extract_or_persisted"
+                },
+                "delivery_date": {
+                  "confidence": 0.78,
+                  "source": "session_extract_or_persisted"
+                },
+                "primary_driver": {
+                  "confidence": 0.78,
+                  "source": "session_extract_or_persisted"
+                },
+                "make_model": {
+                  "confidence": 0.92,
+                  "source": "session_extract_or_persisted"
+                }
+              },
+              "inferred_fields": {},
+              "missing_fields": [
+                "name"
+              ],
+              "confidence_map": {
+                "year": 0.92,
+                "vin": 0.78,
+                "zip": 0.78,
+                "delivery_date": 0.78,
+                "primary_driver": 0.78,
+                "make_model": 0.92
+              },
+              "needs_confirmation": [
+                "vin",
+                "primary_driver"
+              ],
+              "quote_ready_status": "quote_ready",
+              "completion_message": "还差 1 项（name），补完即可进入下一步。",
+              "completion_fraction": 0.857,
+              "collected_fields": [
+                "year",
+                "vin",
+                "zip",
+                "delivery_date",
+                "primary_driver",
+                "make_model"
+              ],
+              "still_needed_fields": [
+                "name"
+              ],
+              "confirm_priority_fields": [],
+              "v4_completeness_score": 0.78,
+              "v5_handoff_completeness_score": 1.0,
+              "v5_completeness_threshold": 0.6,
+              "v5_tier1_vehicle_ok": true,
+              "case_usable": true,
+              "v4_partial_handoff_eligible": true,
+              "v4_flow": true,
+              "merged_text_for_v6": "[客户] year 2027 zip 91748 vin 5UXCR6C04L9B12345 delivery 2027-06-01 driver B1234567 name Test User",
+              "v6_auto_input_variant": "A",
+              "confidence_tier_policy": {
+                "high_auto": "high",
+                "medium_confirm": "medium",
+                "low_defer": "low"
+              },
+              "v6_confirmation": {
+                "headline": "我已为你整理好关键项，请确认或一条消息内修改：",
+                "lines": [
+                  "我已为你整理好关键项，请确认或一条消息内修改：",
+                  "🚗 车辆: 2027",
+                  "📍 邮编: 91748",
+                  "👤 1 位驾驶人",
+                  "回复「好」或 OK 确认。"
+                ],
+                "ocr_highlight_field_keys": [],
+                "single_confirmation_step": true
+              },
+              "field_strategy": {
+                "version": 2,
+                "lane": "add_car",
+                "fields": {
+                  "year": {
+                    "purpose": "Model year for rating and vehicle identity.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "ocr_structured_wins_over_empty"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "make_model": {
+                    "purpose": "Make and model for vehicle identity.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "ocr_structured_wins_over_empty",
+                      "primary_vehicle_summary_hint_non_blocking"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "zip": {
+                    "purpose": "Garaging ZIP for territory rating.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing_or_low_confidence",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins",
+                      "garaging_area_hint_does_not_replace_zip"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "delivery_date": {
+                    "purpose": "Delivery or effective date for policy timing.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "primary_driver": {
+                    "purpose": "Primary operator for driver assignment.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 1,
+                    "blocking": true,
+                    "confidence_policy": "truth_required",
+                    "confirmation_required_when": "when_missing",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "user_explicit_wins"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "vin": {
+                    "purpose": "VIN for definitive vehicle identity and formal quote.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "collected"
+                  },
+                  "name": {
+                    "purpose": "Named insured contact for follow-up.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate_identity",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "missing"
+                  },
+                  "phone": {
+                    "purpose": "Contact phone for follow-up.",
+                    "default_value": null,
+                    "confidence_score": 0.0,
+                    "inference_sources": [
+                      "text",
+                      "OCR",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "truth_required_when_present",
+                    "confirmation_required_when": "when_extracted",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "never_fabricate_identity",
+                      "broker_completes_if_missing"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "usage_guess": {
+                    "purpose": "Vehicle usage class for rating classification.",
+                    "default_value": "daily_commute",
+                    "confidence_score": 0.35,
+                    "inference_sources": [
+                      "text",
+                      "history"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "default_low",
+                    "confirmation_required_when": "medium_confidence_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "keyword_inference_over_default",
+                      "user_explicit_overrides"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "garaging_area_hint": {
+                    "purpose": "Rough area label when ZIP is missing or ambiguous.",
+                    "default_value": null,
+                    "confidence_score": 0.48,
+                    "inference_sources": [
+                      "text",
+                      "OCR"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "weak_hint",
+                    "confirmation_required_when": "when_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "zip_prefix_derived",
+                      "area_code_weak_hint",
+                      "broker_verifies"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "make_keyword_hint": {
+                    "purpose": "Weak make token from chatter; never replaces make_model.",
+                    "default_value": null,
+                    "confidence_score": 0.33,
+                    "inference_sources": [
+                      "text"
+                    ],
+                    "priority_tier": 3,
+                    "blocking": false,
+                    "confidence_policy": "weak_hint",
+                    "confirmation_required_when": "never_for_tier3",
+                    "defer_to_broker": true,
+                    "override_rules": [
+                      "weak_token_only",
+                      "does_not_replace_make_model"
+                    ],
+                    "session_status": "not_seen"
+                  },
+                  "vehicle_from_summary": {
+                    "purpose": "Vehicle line from summary when structured slots incomplete.",
+                    "default_value": null,
+                    "confidence_score": 0.55,
+                    "inference_sources": [
+                      "history",
+                      "text"
+                    ],
+                    "priority_tier": 2,
+                    "blocking": false,
+                    "confidence_policy": "prefer_inference",
+                    "confirmation_required_when": "always_when_inferred",
+                    "defer_to_broker": false,
+                    "override_rules": [
+                      "needs_confirmation",
+                      "partial_credit_for_handoff_completeness"
+                    ],
+                    "session_status": "not_seen"
+                  }
+                },
+                "tier1_blocking_missing": [],
+                "still_needed_user_flow": [],
+                "deferred_to_broker_fields": [
+                  "name"
+                ],
+                "deferred_reasons": {
+                  "name": "defer_to_broker"
+                }
+              },
+              "still_needed_user_flow": [],
+              "deferred_to_broker_fields": [
+                "name"
+              ],
+              "broker_completion": {
+                "broker_usable_case": true,
+                "deferred_fields": [
+                  "name"
+                ],
+                "full_missing_fields": [
+                  "name"
+                ],
+                "office_completes_summary": "Office completes later: name."
+              },
+              "v6_error_tolerance": {
+                "low_confidence_field_keys": [],
+                "submission_blocked": false,
+                "quote_ready_status": "quote_ready",
+                "policy_note": "OCR/low-confidence items are advisory; office verifies before bind."
+              }
+            },
+            "case_usable": true,
+            "still_needed_user_flow": [],
+            "deferred_to_broker_fields": [
+              "name"
+            ],
+            "broker_completion": {
+              "broker_usable_case": true,
+              "deferred_fields": [
+                "name"
+              ],
+              "full_missing_fields": [
+                "name"
+              ],
+              "office_completes_summary": "Office completes later: name."
+            },
+            "v4_error_risk_score": 0.17,
+            "v5_handoff_risk_score": 0.17,
+            "zero_question_intake": true,
+            "action_ready": false,
+            "intake_flow_milestone": "collecting",
+            "classification_signals": [],
+            "office_case_title": "客户咨询加车报价",
+            "office_broker_next_step": "联系客户补齐姓名，然后出报价",
+            "case_id": "case_93a584df9e69",
+            "assist": {
+              "clarification_needed": false,
+              "clarification_reason": "none",
+              "suggested_question": "none",
+              "candidate_interpretation": "none",
+              "broker_note": "none",
+              "customer_facing_rephrase": "none"
+            },
+            "case_persisted": false,
+            "service_lane": "add_car",
+            "person_link_key": null,
+            "person_link_source": null,
+            "identity_binding_state": null,
+            "person_link_confidence": null,
+            "client_id": "chen_kui",
+            "case_status": "new",
+            "waiting_on": "none",
+            "next_contact_by": "",
+            "customer_name": "",
+            "customer_phone": "6265558001",
+            "customer_email": "",
+            "policy_number": "",
+            "contact_note": "",
+            "created_at": "2026-06-07T15:40:17Z",
+            "updated_at": "2026-06-07T15:40:24Z",
+            "formal_submitted_at": "",
+            "case_notes": [],
+            "case_attachments": [],
+            "workbench_test": false,
+            "workbench_archived": false,
+            "case_messages": [
+              {
+                "message_id": "msg_f7d37621ee4b",
+                "role": "customer",
+                "text": "开始加车申请（Customer First 入口）",
+                "created_at": "2026-06-07T15:40:17Z",
+                "sequence": 1
+              },
+              {
+                "message_id": "msg_5231ab3f98c3",
+                "role": "customer",
+                "text": "宝马X5",
+                "created_at": "2026-06-07T15:40:21Z",
+                "sequence": 2
+              },
+              {
+                "message_id": "msg_d5e6b2823a20",
+                "role": "system",
+                "text": "我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。",
+                "created_at": "2026-06-07T15:40:21Z",
+                "sequence": 3
+              },
+              {
+                "message_id": "msg_ab56af264c55",
+                "role": "customer",
+                "text": "2027",
+                "created_at": "2026-06-07T15:40:23Z",
+                "sequence": 4
+              },
+              {
+                "message_id": "msg_4f4f09a20c2c",
+                "role": "system",
+                "text": "Here's what I have from your message—does this look right? • Vehicle: 2027 • ZIP: (add ZIP) • Office may still need: year, vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.",
+                "created_at": "2026-06-07T15:40:23Z",
+                "sequence": 5
+              },
+              {
+                "message_id": "msg_2b029af3fb3e",
+                "role": "customer",
+                "text": "year 2027 zip 91748 vin 5UXCR6C04L9B12345 delivery 2027-06-01 driver B1234567 name Test User",
+                "created_at": "2026-06-07T15:40:24Z",
+                "sequence": 6
+              },
+              {
+                "message_id": "msg_c2cb706e4d83",
+                "role": "system",
+                "text": "Please provide your 姓名.",
+                "created_at": "2026-06-07T15:40:24Z",
+                "sequence": 7
+              }
+            ],
+            "case_activity": [
+              {
+                "activity_id": "act_a17b4c3390e0",
+                "activity_type": "follow_up_added",
+                "message": "Customer follow-up added: year 2027 zip 91748 vin 5UXCR6C04L9B12345 delivery 2027-06-01 d...",
+                "created_at": "2026-06-07T15:40:24Z"
+              },
+              {
+                "activity_id": "act_pg_4a9f321ef9f64dc5",
+                "activity_type": "conversation_appended",
+                "message": "Conversation updated (lifecycle: collecting).",
+                "created_at": "2026-06-07T15:40:23Z"
+              },
+              {
+                "activity_id": "act_pg_8d4bae389f714b46",
+                "activity_type": "conversation_appended",
+                "message": "Conversation updated (lifecycle: collecting).",
+                "created_at": "2026-06-07T15:40:21Z"
+              },
+              {
+                "activity_id": "act_pg_1353e450f9394955",
+                "activity_type": "case_created",
+                "message": "Case record created.",
+                "created_at": "2026-06-07T15:40:17Z"
+              }
+            ],
+            "source_text": "[客户] 开始加车申请（Customer First 入口）\n\n[客户] 宝马X5\n\n[系统] 我先根据你的留言整理了一版，请你看一下对不对： • 车型: BMW X5 • 邮编: (待补充) • 待办公室补齐: year, make_model, vin, zip, delivery_date, primary_driver 如果都对，回复「好」或 OK；不对请直接改在一条消息里。\n\n[客户] 2027\n\n[系统] Here's what I have from your message—does this look right? • Vehicle: 2027 • ZIP: (add ZIP) • Office may still need: year, vin, zip, delivery_date, primary_driver If it looks right, reply \"OK\" or \"yes\". If anything is wrong, send corrections in one message.\n\n[客户] year 2027 zip 91748 vin 5UXCR6C04L9B12345 delivery 2027-06-01 driver B1234567 name Test User\n\n[系统] Please provide your 姓名.",
+            "append_allowed": true
+          }
+        },
+        {
+          "name": "BMW — formal submit",
+          "checks": {
+            "triage_ok": true,
+            "submitted": true,
+            "formal_flag": true
+          },
+          "pass": true,
+          "notes": "",
+          "active_case": {
+            "case_id": "case_93a584df9e69",
+            "vehicle_display": "2027",
+            "missing_fields": [],
+            "missing_fields_display": [],
+            "is_formal_submitted": true,
+            "submit_state": "submitted",
+            "business_state": "submitted_to_office",
+            "status_label": "submitted_to_office",
+            "contact_state": "office_reviewing",
+            "waiting_on": "none",
+            "primary_vehicle_summary": "2027",
+            "still_needed_fields": [],
+            "lifecycle_status": "handed_off",
+            "formal_submitted_at": "2026-06-07T15:40:27Z",
+            "customer_name": "",
+            "updated_at": "2026-06-07T15:40:28Z"
+          },
+          "triage": {
+            "case_id": "case_7bdec399f126",
+            "case_status": "new",
+            "created_at": "2026-06-07T15:40:27Z",
+            "updated_at": "2026-06-07T15:40:27Z",
+            "formal_submitted_at": "2026-06-07T15:40:27Z",
+            "source_text": "【正式提交办公室】请按系统已整理要点将本条加车记录交办公室处理；暂无额外备注。",
+            "case_messages": [
+              {
+                "message_id": "msg_106bd02f22f9",
+                "role": "customer",
+                "text": "【正式提交办公室】请按系统已整理要点将本条加车记录交办公室处理；暂无额外备注。",
+                "created_at": "2026-06-07T15:40:27Z",
+                "sequence": 1
+              }
+            ],
+            "waiting_on": "none",
+            "next_contact_by": "",
+            "customer_name": "",
+            "customer_phone": "",
+            "customer_email": "",
+            "policy_number": "",
+            "contact_note": "",
+            "case_notes": [],
+            "case_activity": [
+              {
+                "activity_id": "act_9f4b65255dab",
+                "activity_type": "case_created",
+                "message": "Case created with status new.",
+                "created_at": "2026-06-07T15:40:27Z"
+              }
+            ],
+            "case_attachments": [],
+            "issue_category": "customer_question",
+            "urgency": "medium",
+            "broker_next_step": "Run quote for collected vehicle details (year, model, zip). Confirm delivery date and driver with client before binding. Confirm name and phone for follow-up.",
+            "client_prep": "Year, make/model, VIN if available, delivery date, zip or address, lienholder if any, and primary driver details.",
+            "client_reply_draft": "这条记录已正式送达办公室；办公室会按当前记录继续核对与处理。",
+            "manual_followup_needed": true,
+            "add_car_turn_intent": {
+              "intent_family": "generic_followup",
+              "handoff_base_key": "add_car",
+              "truth_notes": [],
+              "phrase_storage_key": "add_car_submitted"
+            },
+            "conversation_summary": "Add car to existing policy. 1 customer message(s). Latest: 【正式提交办公室】请按系统已整理要点将本条加车记录交办公室处理；暂无额外备注。...",
+            "collected_fields": [
+              "insurance_status_add_to_existing",
+              "make_model",
+              "year",
+              "vin",
+              "zip",
+              "delivery_date",
+              "primary_driver"
+            ],
+            "still_needed_fields": [],
+            "quote_ready_status": "quote_ready",
+            "service_type": "add_car",
+            "vehicle_key": null,
+            "additional_vehicle_mentioned": false,
+            "primary_vehicle_summary": null,
+            "additional_vehicle_count_hint": null,
+            "handoff_ready": true,
+            "case_creation_suggested": false,
+            "human_confirmation_required": true,
+            "human_confirmation_fields": [
+              "vin",
+              "primary_driver"
+            ],
+            "collection_stage": "enough_for_handoff",
+            "follow_up_type": "new_info",
+            "lifecycle_status": "handed_off",
+            "office_case_title": "客户咨询加车报价",
+            "office_broker_next_step": "信息齐全，可直接出报价",
+            "triage_mode": "greenfield",
+            "client_id": "chen_kui",
+            "service_lane": "add_car",
+            "assist": {
+              "clarification_needed": false,
+              "clarification_reason": "none",
+              "suggested_question": "none",
+              "candidate_interpretation": "none",
+              "broker_note": "none",
+              "customer_facing_rephrase": "none"
+            },
+            "case_lifecycle": "submitted",
+            "append_allowed": true,
+            "next_best_question": "",
+            "conversion_layer_active": false,
+            "conversion_flow_version": ""
+          }
+        },
+        {
+          "name": "BMW — office pickup",
+          "checks": {
+            "processing": true
+          },
+          "pass": true,
+          "notes": "",
+          "active_case": {
+            "case_id": "case_93a584df9e69",
+            "vehicle_display": "2027",
+            "missing_fields": [],
+            "missing_fields_display": [],
+            "is_formal_submitted": true,
+            "submit_state": "submitted",
+            "business_state": "office_processing",
+            "status_label": "submitted_to_office",
+            "contact_state": "office_reviewing",
+            "waiting_on": "carrier",
+            "primary_vehicle_summary": "2027",
+            "still_needed_fields": [],
+            "lifecycle_status": "office_followup",
+            "formal_submitted_at": "2026-06-07T12:00:00Z",
+            "customer_name": "",
+            "updated_at": "2026-06-07T15:40:29Z"
+          }
+        },
+        {
+          "name": "BMW — broker close",
+          "checks": {
+            "closed": true
+          },
+          "pass": true,
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "name": "E — Case close",
+      "checks": {
+        "closed_state": true,
+        "no_active_lookup": true
+      },
+      "pass": true,
+      "notes": ""
+    },
+    {
+      "name": "F — Re-open validation",
+      "checks": {
+        "closed_hidden": true,
+        "new_start_allowed": true,
+        "fresh_awaiting": true
+      },
+      "pass": true,
+      "notes": "",
+      "http_status": 200,
+      "detail": {
+        "ok": true,
+        "case_id": "case_d8233f5475a0",
+        "case": {
+          "case_id": "case_d8233f5475a0",
+          "vehicle_display": "加车申请（车辆信息待补充）",
+          "missing_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "vin"
+          ],
+          "missing_fields_display": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "vin"
+          ],
+          "is_formal_submitted": false,
+          "submit_state": "not_yet",
+          "business_state": "awaiting_customer",
+          "status_label": "saved_not_yet_submitted",
+          "contact_state": "waiting_for_customer",
+          "waiting_on": "none",
+          "primary_vehicle_summary": null,
+          "still_needed_fields": [
+            "year",
+            "make_model",
+            "zip",
+            "delivery_date",
+            "primary_driver",
+            "vin"
+          ],
+          "lifecycle_status": "collecting",
+          "formal_submitted_at": "",
+          "customer_name": "",
+          "updated_at": "2026-06-07T15:40:37Z"
+        }
+      }
+    },
+    {
+      "name": "Phone return — 6265558002",
+      "checks": {
+        "same_case": true,
+        "chat_fields": true,
+        "business_state": true,
+        "vehicle_hint": true
+      },
+      "pass": true,
+      "notes": "",
+      "active_case": {
+        "case_id": "case_b1cc938ba4da",
+        "vehicle_display": "2027 BMW X5",
+        "missing_fields": [
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "missing_fields_display": [
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "is_formal_submitted": false,
+        "submit_state": "not_yet",
+        "business_state": "awaiting_customer",
+        "status_label": "saved_not_yet_submitted",
+        "contact_state": "waiting_for_customer",
+        "waiting_on": "none",
+        "primary_vehicle_summary": "2027 BMW X5",
+        "still_needed_fields": [
+          "vin",
+          "zip",
+          "delivery_date",
+          "primary_driver"
+        ],
+        "lifecycle_status": "collecting",
+        "formal_submitted_at": "",
+        "customer_name": "",
+        "updated_at": "2026-06-07T15:40:40Z"
+      },
+      "triage_case_id": "case_b1cc938ba4da"
+    }
+  ],
+  "passed": 7,
+  "total": 7
+}

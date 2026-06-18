@@ -1,0 +1,439 @@
+{
+  "version": 1,
+  "description": "P16 Pre-Pilot Stress Test — 33 SoCal Chinese add-car scenarios",
+  "scenarios": [
+    {
+      "id": "ST01",
+      "title": "新 Tesla 买家 · Irvine",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "陈哥在吗？刚在 Tesla 提了台 2024 Model Y，想加到现有保单",
+        "VIN 7SAYGDEE5PA123456 邮编92618 下周五3月22号提车 主驾我本人",
+        "王明 626-555-0188 够报价了吗"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver", "name", "phone"],
+      "completeness": "complete"
+    },
+    {
+      "id": "ST02",
+      "title": "Honda Accord · VIN 缺失",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "你好 新买了2022 Honda Accord想加保",
+        "邮编91789 这周六提车 主驾是我 VIN我晚点拍给你可以吗"
+      ],
+      "expected_still": ["vin"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "ST03",
+      "title": "Teen driver · Rowland Heights",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "帮我儿子加一台2021 Honda Civic 他17岁刚拿驾照",
+        "他是主驾 VIN 2HGFC2F59MH123456 邮编91748 车已经在车库了"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST04",
+      "title": "中英混合 · Toyota RAV4",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "刚订了2024 Toyota RAV4 hybrid 想add to policy",
+        "VIN JTMB1RFV0RD123456 ZIP 92801 delivery next Thursday 我drive"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST05",
+      "title": "保险卡已发 · Tesla Model 3",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "买了台2024 Tesla Model 3 想加到保单",
+        "刚才微信发了现有保险卡照片 你们收到了吗",
+        "VIN 5YJ3E1EA1KF123456 邮编90024 下周三提车 我开"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST06",
+      "title": "有 ZIP 无 driver · BMW X5",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "新买了2023 BMW X5 邮编92614 想加险",
+        "VIN 5UXCR6C03P9P123456 下周一提车 主驾还没定 可能是我也可能是我老婆"
+      ],
+      "expected_still": ["primary_driver"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "ST07",
+      "title": "有 driver 无 ZIP · Lexus RX",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "帮我加一台2023 Lexus RX 350 主驾是我老婆",
+        "VIN 2T2BZMCA8PC123456 下周提车 邮编我回家查一下发你"
+      ],
+      "expected_still": ["zip"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "ST08",
+      "title": "两台车 · 先报一台",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "陈哥 我买了两台车 一台Model Y一台Camry 都要加",
+        "先报Model Y吧 2024 Tesla Model Y VIN 7SAYGDEE5PA999888 邮编91765 我开 下周五提车"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST09",
+      "title": "改提车日期 · Honda CR-V",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "2024 Honda CR-V 想加保 VIN 7FARW2H89RE123456 邮编92101 主驾本人",
+        "不好意思 提车改到下下周了 不是这周五了",
+        "Jennifer Wu 858-555-0199"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver", "name", "phone"],
+      "preserve_across_turns": ["vin", "zip", "year", "make_model"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST10",
+      "title": "换车了 · 从 Camry 改 RAV4",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "想加一台2024 Toyota Camry VIN 4T1B11HK5KU111111 邮编90210",
+        "不好意思 dealer说Camry没货了 我改成RAV4了 VIN JTMB1RFV0RD222222 还是90210 我开"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["zip"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST11",
+      "title": "家庭共用 · Subaru Outback",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "买了台2023 Subaru Outback 家里几个人都开 主要是我和我老公轮流",
+        "VIN 4S4BTAFC5P3123456 邮编92620 下周六提车"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST12",
+      "title": "退休父母主驾 · Toyota Corolla",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "帮我爸加一台2022 Toyota Corolla 他退休了我给他买的 主驾是他",
+        "VIN 5YFB4MDE8NP123456 邮编91770 已经提车了"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST13",
+      "title": "大学生 · Mazda CX-5",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "我女儿UC Irvine上学 买了台2023 Mazda CX-5 她主驾",
+        "VIN JM3KFBDM5P0123456 邮编92612 下月初提车 我叫李芳 949-555-0123"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver", "name", "phone"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST14",
+      "title": "VIN 不确定 · 要查",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "刚买了2024 Kia Telluride 想加保 邮编92833 主驾我",
+        "VIN我不太确定 可能在车上 我晚点拍dashboard给你 这周五提车"
+      ],
+      "expected_still": ["vin"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "ST15",
+      "title": "只发了部分信息",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "新车 insurance 多少钱",
+        "2024 Tesla Model Y"
+      ],
+      "expected_still": ["vin", "zip", "primary_driver"],
+      "completeness": "incomplete"
+    },
+    {
+      "id": "ST16",
+      "title": "2天后回来补 VIN",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "买了2023 Honda Pilot 邮编90631 主驾我 下周提车",
+        "VIN我找到了 5FNYF6H59PB123456"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["zip", "year", "make_model", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "ST17",
+      "title": "1周后回来补电话",
+      "category": "realistic",
+      "mode": "conversation",
+      "turns": [
+        "2024 Ford Mustang Mach-E 加保 VIN 3FMTK3SU8RMA12345 邮编90210 我开 已提车",
+        "我叫David Chen",
+        "电话310-555-0142"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver", "name", "phone"],
+      "preserve_across_turns": ["vin", "zip", "year", "make_model", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "ST18",
+      "title": "Append 只补电话",
+      "category": "realistic",
+      "mode": "append",
+      "base_turns": [
+        "买了2024 Tesla Model Y 想加保",
+        "VIN 7SAYGDEE5PA123456 邮编90024 下周三提车 我开"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "formal_still": ["name", "phone"],
+      "append_messages": ["电话949-555-1234"],
+      "must_preserve": ["vin", "zip", "delivery_date", "primary_driver", "year", "make_model"]
+    },
+    {
+      "id": "ST19",
+      "title": "Append 只补姓名",
+      "category": "realistic",
+      "mode": "append",
+      "base_turns": [
+        "2023 Toyota Camry 加险 VIN 4T1B11HK5KU123456 邮编92618 主驾我 下周五提车"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "formal_still": ["name", "phone"],
+      "append_messages": ["姓名：李华"],
+      "must_preserve": ["vin", "zip", "delivery_date", "primary_driver"]
+    },
+    {
+      "id": "ST20",
+      "title": "Append 多次补全",
+      "category": "realistic",
+      "mode": "append",
+      "base_turns": [
+        "2024 Honda CR-V 想加保 VIN 7FARW2H89RE123456 邮编92101 我开"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "formal_still": ["delivery_date", "name", "phone"],
+      "append_messages": [
+        "提车改到下周五了",
+        "我叫Jennifer Wu",
+        "858-555-0199"
+      ],
+      "must_preserve": ["vin", "zip", "primary_driver", "year", "make_model"]
+    },
+    {
+      "id": "EC01",
+      "title": "冲突信息 · 年份对不上",
+      "category": "edge",
+      "mode": "conversation",
+      "turns": [
+        "加一台2024 BMW 330i VIN WBA8E1C50NK123456 邮编90210 我开",
+        "等等 销售说其实是2023款的 你按2023报吧"
+      ],
+      "expected_collected": ["make_model", "vin", "zip", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "EC02",
+      "title": "改 ZIP · 搬家",
+      "category": "edge",
+      "mode": "conversation",
+      "turns": [
+        "2024 Tesla Model 3 加保 VIN 5YJ3E1EA1KF123456 邮编91789 主驾我 下周五提车",
+        "不好意思 我们刚搬到 Irvine 了 邮编改成92618"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["vin", "year", "make_model"],
+      "completeness": "partial"
+    },
+    {
+      "id": "EC03",
+      "title": "改主驾 · 从本人改配偶",
+      "category": "edge",
+      "mode": "conversation",
+      "turns": [
+        "2023 Lexus ES 350 加险 VIN 58ABZ1B10PU123456 邮编91765 主驾我本人 下周提车",
+        "改一下 主驾改成我老婆 Linda 她开比较多"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["vin", "zip", "year", "make_model"],
+      "completeness": "partial"
+    },
+    {
+      "id": "RL01",
+      "title": "Return-later · Day1→3→5→7",
+      "category": "return_later",
+      "mode": "conversation",
+      "turns": [
+        "买了2024 Tesla Model Y 想加保 邮编90024 主驾我",
+        "VIN 7SAYGDEE5PA123456",
+        "提车下周五3月22号",
+        "电话626-555-0188 我叫王明"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver", "name", "phone"],
+      "preserve_across_turns": ["vin", "zip", "year", "make_model", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "RL02",
+      "title": "Return-later · 先车型后VIN",
+      "category": "return_later",
+      "mode": "conversation",
+      "turns": [
+        "新车想加险 2023 Honda Accord",
+        "邮编92618 这周六提车",
+        "VIN 1HGCV1F34NA123456 主驾我"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["year", "make_model", "zip"],
+      "completeness": "partial"
+    },
+    {
+      "id": "RL03",
+      "title": "Return-later · 3天后补ZIP",
+      "category": "return_later",
+      "mode": "conversation",
+      "turns": [
+        "2024 Toyota RAV4 VIN JTMB1RFV0RD123456 主驾我 下周四提车",
+        "邮编94538"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["vin", "year", "make_model", "primary_driver"],
+      "completeness": "partial"
+    },
+    {
+      "id": "RL04",
+      "title": "Return-later · 5天后补driver",
+      "category": "return_later",
+      "mode": "conversation",
+      "turns": [
+        "2024 BMW X3 加保 VIN 5UX43DP09P9P123456 邮编90210 下周五提车",
+        "主驾确认是我老婆 她开比较多"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "preserve_across_turns": ["vin", "zip", "year", "make_model"],
+      "completeness": "partial"
+    },
+    {
+      "id": "RL05",
+      "title": "Return-later · 7天后补姓名电话",
+      "category": "return_later",
+      "mode": "conversation",
+      "turns": [
+        "2023 Subaru Outback 加险 VIN 4S4BTAFC5P3123456 邮编92620 主驾我 已提车",
+        "李芳",
+        "949-555-0123"
+      ],
+      "expected_collected": ["year", "make_model", "vin", "zip", "primary_driver", "name", "phone"],
+      "preserve_across_turns": ["vin", "zip", "year", "make_model", "primary_driver"],
+      "completeness": "complete"
+    },
+    {
+      "id": "AP01",
+      "title": "Append · 只补姓名",
+      "category": "append_battery",
+      "mode": "append",
+      "base_turns": [
+        "买了2024 Tesla Model Y 想加到保单",
+        "VIN 7SAYGDEE5PA123456 ZIP 90024 下周三提车 我开"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "zip", "delivery_date", "primary_driver"],
+      "formal_still": ["name", "phone"],
+      "append_messages": ["Name: Li Hua"],
+      "must_preserve": ["vin", "zip", "delivery_date", "primary_driver"]
+    },
+    {
+      "id": "AP02",
+      "title": "Append · 只补电话",
+      "category": "append_battery",
+      "mode": "append",
+      "base_turns": [
+        "2023 Toyota Camry 加险 VIN 4T1B11HK5KU123456 邮编92618 主驾我"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "formal_still": ["delivery_date", "name", "phone"],
+      "append_messages": ["Phone: 949-555-1234"],
+      "must_preserve": ["vin", "zip", "primary_driver", "year", "make_model"]
+    },
+    {
+      "id": "AP03",
+      "title": "Append · 补VIN",
+      "category": "append_battery",
+      "mode": "append",
+      "base_turns": [
+        "2022 Honda Accord 加保 邮编92618 主驾我 这周六提车"
+      ],
+      "formal_collected": ["year", "make_model", "zip", "primary_driver"],
+      "formal_still": ["vin", "delivery_date", "name", "phone"],
+      "append_messages": ["VIN 1HGCV1F34NA123456"],
+      "must_preserve": ["zip", "primary_driver", "year", "make_model"]
+    },
+    {
+      "id": "AP04",
+      "title": "Append · 补ZIP",
+      "category": "append_battery",
+      "mode": "append",
+      "base_turns": [
+        "2024 Lexus RX 350 加险 VIN 2T2BZMCA8PC123456 主驾我老婆 下周提车"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "primary_driver"],
+      "formal_still": ["zip", "delivery_date", "name", "phone"],
+      "append_messages": ["ZIP 91776"],
+      "must_preserve": ["vin", "primary_driver", "year", "make_model"]
+    },
+    {
+      "id": "AP05",
+      "title": "Append · 连续三次",
+      "category": "append_battery",
+      "mode": "append",
+      "base_turns": [
+        "2024 Honda CR-V 加保 VIN 7FARW2H89RE123456 邮编92101 我开"
+      ],
+      "formal_collected": ["year", "make_model", "vin", "zip", "primary_driver"],
+      "formal_still": ["delivery_date", "name", "phone"],
+      "append_messages": [
+        "Delivery next Friday",
+        "Jennifer Wu",
+        "858-555-0199"
+      ],
+      "must_preserve": ["vin", "zip", "primary_driver", "year", "make_model"]
+    }
+  ]
+}

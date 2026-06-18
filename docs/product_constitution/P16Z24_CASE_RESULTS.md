@@ -1,6 +1,6 @@
 # P16-Z24 Case Results (after improvements)
 
-**Run:** 2026-06-06T08:15:25.031086+00:00  
+**Run:** 2026-06-06T14:19:38.404706+00:00  
 **Scenarios:** 30
 
 ## AC01 — 完整客户 · Tesla · 中文

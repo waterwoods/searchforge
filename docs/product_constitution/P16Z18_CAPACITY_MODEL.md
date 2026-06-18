@@ -27,7 +27,7 @@ Scoring: 0 = missing · 100 = production-ready for first paying broker (supervis
 
 ## Capacity 1 — Customer Intake
 
-**Purpose:** Customer sends a message (text, multi-turn) and enters the office workflow — pre-submit session restore and post-submit case discovery.
+**Purpose:** Customer sends a message (text, multi-turn) and enters the office workflow — pre-submit session restore and post-submit case discovery. **Status visibility:** customer can answer **Did I submit?** · **What is missing?** · **What is the contact state?** without calling the office.
 
 | | |
 |---|---|
@@ -92,7 +92,7 @@ Scoring: 0 = missing · 100 = production-ready for first paying broker (supervis
 
 ## Capacity 4 — Timeline
 
-**Purpose:** Traceable record of what the customer said, what the office did, and when — for broker trust and customer status.
+**Purpose:** Traceable record of what the customer said, what the office did, and when — for broker trust and **customer status visibility** (submit state, missing fields, contact state).
 
 | | |
 |---|---|
@@ -133,7 +133,7 @@ Scoring: 0 = missing · 100 = production-ready for first paying broker (supervis
 
 ## Capacity 6 — Office Coordination
 
-**Purpose:** Office knows what's missing, who is waiting on whom, and the next action — in Chinese, scannable in 5 seconds.
+**Purpose:** Office knows what's missing, who is waiting on whom, and the next action — in Chinese, scannable in 5 seconds. **`waiting_on` maps to customer-visible contact state** (broker expectation language allowed; hard system SLA promises forbidden).
 
 | | |
 |---|---|
@@ -182,6 +182,74 @@ Scoring: 0 = missing · 100 = production-ready for first paying broker (supervis
 | **P2** | 3 | Tune only if batteries regress |
 
 **Do not open new capacity work** until Cap 1 ≥90 and Cap 7 deploy gate passes.
+
+---
+
+## Customer First interpretation (P16-CUSTOMER-FIRST-CONSTITUTION-P0)
+
+**Constitution:** `P16_CUSTOMER_FIRST_CONSTITUTION.md`  
+**North star umbrella:** **Customer Must Always Know The Status** — the customer answers submit state, missing fields, and contact state **without calling the office**.
+
+For each capacity: how it supports Customer First, Phone Is The Return Key, and One Customer = One Active Case.
+
+### 1 — Customer Intake
+
+| Lens | Support |
+|------|---------|
+| **Customer Must Always Know The Status** | Customer can answer without calling the office: **Did I submit?** (submit state on return) · **What is missing?** (`still_needed_fields`) · **What is the contact state?** (customer-visible waiting-on / next-step copy). |
+| **Customer First** | Anonymous entry; status copy and progress fields surface all three dimensions — not only missing fields. |
+| **Phone Is The Return Key** | Phase 2 target: phone lookup rehydrates active case — replaces session-only return (`P16Z17` blockers). |
+| **One Active Case** | Phase 1–2: collect phone early; Phase 2: lookup returns single active add-car case, not a picker. |
+
+### 2 — AI Draft Case Builder
+
+| Lens | Support |
+|------|---------|
+| **Customer First** | Turns messy messages into structured draft with explicit `still_needed_fields` — progress = missing fields. |
+| **Phone Is The Return Key** | Extracts phone into `customer_phone`; Phase 3 gates formal submit on valid phone. |
+| **One Active Case** | Append path merges into same `case_id` when phone + lane match; new vehicle while active → broker split (Rule 7). |
+
+### 3 — Case Memory
+
+| Lens | Support |
+|------|---------|
+| **Customer First** | Same case accumulates facts — customer sees merge proof after return (Cap 1+4 gap). |
+| **Phone Is The Return Key** | Phone keys durable record; session is ephemeral until phone binds case. |
+| **One Active Case** | Memory attaches to one active `case_id` per phone; closed cases read-only. |
+
+### 4 — Timeline Continuity
+
+| Lens | Support |
+|------|---------|
+| **Customer Must Always Know The Status** | Timeline and status surfaces support **status visibility**: submit milestones, field collection history, and contact-state changes — so return visits answer all three north-star questions without a phone call. |
+| **Customer First** | Customer sees what happened, what is missing, and current contact state — not only a message log. |
+| **Phone Is The Return Key** | Return visit loads same timeline via phone-linked case, not new session thread. |
+| **One Active Case** | Timeline is continuous within active case; fork only on broker close + new open. |
+
+### 5 — Broker Workbench
+
+| Lens | Support |
+|------|---------|
+| **Customer First** | Broker confirms draft — customer path feeds workbench; broker controls final action. |
+| **Phone Is The Return Key** | Workbench shows claimed phone; broker confirms identity before high-trust steps. |
+| **One Active Case** | Broker closes/reopens (Rule 5); prevents duplicate active queue entries for same phone. |
+
+### 6 — Office Coordination
+
+| Lens | Support |
+|------|---------|
+| **Customer Must Always Know The Status** | Internal `waiting_on` maps to **customer-visible contact state** (e.g. waiting on customer / office / broker) — same coordination truth, customer-safe wording. Broker expectation language allowed; hard system SLA promises forbidden. |
+| **Customer First** | Office answers “what’s missing?” in 10 seconds via glance + checklist; customer surface mirrors contact state derived from office coordination. |
+| **Phone Is The Return Key** | Every formal submit includes phone — office can callback without broker relay. |
+| **One Active Case** | One desk row per active add-car matter per phone — no duplicate handoffs. |
+
+### 7 — Reality Validation
+
+| Lens | Support |
+|------|---------|
+| **Customer First** | Browser E2E: customer submit → return via phone → see missing fields (Phase 2–3 proof). |
+| **Phone Is The Return Key** | Batteries must include phone lookup + rehydrate, not only `session_id` restore. |
+| **One Active Case** | Stress tests: second “start over” with same phone resumes or blocks per Rule 7 — no silent duplicate. |
 
 ---
 

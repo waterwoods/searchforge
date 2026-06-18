@@ -32,6 +32,26 @@ Read [`BROKER_ONE_PAGER.md`](../BROKER_ONE_PAGER.md) → follow [`BROKER_TRIAL_P
 
 ---
 
+## P16 Real Pilot (Chen Kui — active)
+
+**Start:** [`P16_REAL_PILOT_DASHBOARD.md`](./P16_REAL_PILOT_DASHBOARD.md) — track CK-001 … CK-010
+
+| Doc | Phase | Purpose |
+|-----|-------|---------|
+| [P16_REAL_PILOT_DASHBOARD.md](./P16_REAL_PILOT_DASHBOARD.md) | 0 | Case status + sprint progress |
+| [P16_REAL_CASE_WORKFLOW.md](./P16_REAL_CASE_WORKFLOW.md) | 1 | Human vs system steps, time savings |
+| [P16_CASE_EVIDENCE_LOG.md](./P16_CASE_EVIDENCE_LOG.md) | 2 | Per-case evidence |
+| [P16_TIME_SAVINGS_TRACKER.md](./P16_TIME_SAVINGS_TRACKER.md) | 3 | Savings metrics + projections |
+| [P16_BROKER_FEEDBACK.md](./P16_BROKER_FEEDBACK.md) | 4 | Broker experience by case |
+| [P16_OFFICE_FEEDBACK.md](./P16_OFFICE_FEEDBACK.md) | 5 | Office experience by case |
+| [P16_AI_PILOT_REVIEW.md](./P16_AI_PILOT_REVIEW.md) | 6 | 4-role review + mini simulation |
+| [P16_INVOICE_READINESS_TRACKER.md](./P16_INVOICE_READINESS_TRACKER.md) | 7 | NOT READY → READY gate |
+| [P16_CK010_CERTIFICATION.md](./P16_CK010_CERTIFICATION.md) | 8 | Final cert after 10 cases |
+
+Pre-pilot (simulation): [P16_CHEN_KUI_PILOT_PLAN.md](./P16_CHEN_KUI_PILOT_PLAN.md) · [P16_PILOT_CERTIFICATION.md](./P16_PILOT_CERTIFICATION.md)
+
+---
+
 ## Templates (live)
 
 | Template | Purpose |

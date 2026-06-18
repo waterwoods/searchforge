@@ -124,4 +124,23 @@ This is the highest-ROI cluster because P10/P11 agree: triage is ready; front do
 
 ---
 
+## Customer First Phase Order (2026-06-07)
+
+**Supersedes** “customer-first after retention” deferrals where they conflict. Full constitution: `P16_CUSTOMER_FIRST_CONSTITUTION.md`. North star umbrella: **Customer Must Always Know The Status** (`P16Z25_NORTH_STAR.md`).
+
+| Phase | Focus |
+|-------|-------|
+| **0** | Constitution first ✅ |
+| **1** | Customer first screen — name + phone |
+| **2** | Phone lookup returns active case |
+| **3** | Formal submit requires valid phone |
+| **4** | Postgres pilot data cleanup |
+| **5** | Chen Kui real pilot |
+
+**Status visibility (interpretation only — no new phase):** Existing phases already move toward the north-star umbrella. Rule 4 status includes submit state, missing fields, and contact state (`waiting_on` → customer-visible contact state). No additional roadmap row or implementation sprint is authorized by this alignment.
+
+**Out of scope for now:** SMS OTP · WeChat OAuth · WeChat bot · OCR · multi-case customer picker · CRM · payment integration · hard system SLA promises on customer surface
+
+---
+
 *End of Roadmap from Constitution V1*

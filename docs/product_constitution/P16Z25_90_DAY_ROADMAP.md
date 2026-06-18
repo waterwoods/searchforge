@@ -158,11 +158,36 @@ Days 1–30 closed the paid pilot loop. Days 31–90 convert **one paying office
 ## What 90 days explicitly rejects
 
 - Building before archaeology
-- Customer-first before broker retention proven
+- ~~Customer-first before broker retention proven~~ → **Superseded 2026-06-07:** Customer First constitution is now P16 direction; implement per phase order below
 - Platform/lab expansion (P17)
 - Stripe until 3+ paying offices
 - Feature sprints during any active trial window
 - Score inflation without deployed cold URL test
+
+---
+
+## Customer First Phase Order (2026-06-07)
+
+**Constitution:** `P16_CUSTOMER_FIRST_CONSTITUTION.md` · **Gap review:** `P16_CUSTOMER_FIRST_GAP_REVIEW.md`
+
+| Phase | Focus | Deliverable |
+|-------|-------|-------------|
+| **0** | Constitution first | Rules, north star, gap audit ✅ (P16-CUSTOMER-FIRST-CONSTITUTION-P0) |
+| **1** | Customer first screen | Name + phone on entry — no login |
+| **2** | Phone lookup | Normalized phone returns single active add-car case |
+| **3** | Formal submit gate | Valid phone required for formal submit |
+| **4** | Postgres pilot data cleanup | Dedupe phones, close stale actives — **after** Phases 1–3 rules frozen |
+| **5** | Chen Kui real pilot | Customer-first URL + broker confirm SOP |
+
+### Out of scope for now
+
+- SMS OTP
+- WeChat OAuth (required path)
+- WeChat bot
+- OCR
+- Multi-case customer picker
+- CRM
+- Payment integration
 
 ---
 

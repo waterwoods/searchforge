@@ -59,6 +59,8 @@ import {
 } from '@/components/workbench/officeCaseBoundary';
 import {
     addCarQueueStatusPhase,
+    buildOfficeCaseHeadline,
+    buildOfficeNextAction,
     buildOfficeWorkbenchGlance,
     formatDateLabel,
     formatPortalLocalDateTime,
@@ -77,6 +79,7 @@ import {
     getOfficeLifecycleTag,
     getPreviewText,
     getQueueReadinessLabel,
+    formatCaseMessagesForThread,
     getRecentCustomerMessages,
     getResponseWindow,
     getUrgencyColor,
@@ -191,6 +194,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     const [followUpSaving, setFollowUpSaving] = useState(false);
     const [appendMessageDraft, setAppendMessageDraft] = useState('');
     const [appendSaving, setAppendSaving] = useState(false);
+    const [postCopyContinuationHint, setPostCopyContinuationHint] = useState(false);
     const [attachmentUploading, setAttachmentUploading] = useState(false);
     const [demoQueueLoading, setDemoQueueLoading] = useState(false);
     const [demoQueueProgress, setDemoQueueProgress] = useState<{ done: number; total: number } | null>(null);
@@ -370,6 +374,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
         setCaseView('new');
         setCurrentCase(null);
         setNoteDraft('');
+        setPostCopyContinuationHint(false);
         setError(null);
     };
 
@@ -378,6 +383,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
         setCaseView('reopened');
         setNoteDraft('');
         setAppendMessageDraft('');
+        setPostCopyContinuationHint(false);
         setError(null);
         void (async () => {
             try {
@@ -446,8 +452,10 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
             return;
         }
         const ok = await copyToClipboard(draft);
-        if (ok) message.success('草稿已复制');
-        else message.error('复制失败');
+        if (ok) {
+            message.success('草稿已复制');
+            setPostCopyContinuationHint(true);
+        } else message.error('复制失败');
     };
 
     const handleCopyCaseSnapshot = async () => {
@@ -502,8 +510,10 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
         }
         const snapshot = lines.join('\n');
         const ok = await copyToClipboard(snapshot);
-        if (ok) message.success('摘要已复制');
-        else message.error('复制失败');
+        if (ok) {
+            message.success('摘要已复制');
+            setPostCopyContinuationHint(true);
+        } else message.error('复制失败');
     };
 
     const handleLoadFounderQueue = async () => {
@@ -638,6 +648,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
             setCurrentCase(updated);
             setInput('');
             setAppendMessageDraft('');
+            setPostCopyContinuationHint(false);
             setRecentCases((cases) => orderCasesForWorkbench([updated, ...cases.filter((item) => item.case_id !== updated.case_id)]));
             if (updated.case_boundary === 'borderline') {
                 message.info('已追加并落库。边界不够明确时，请在详情区查看「案件边界」建议。');
@@ -736,6 +747,12 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 savedCase.issue_category,
             ) ?? inferCaseFocusFromText(savedCase.source_text ?? '');
         if (productOnlyUi) {
+            const vehicleHeadline =
+                (savedCase.primary_vehicle_summary ?? '').trim()
+                || buildOfficeCaseHeadline(savedCase, savedCase.source_text ?? '');
+            const officeNext = buildOfficeNextAction(savedCase);
+            const formal = addCarQueueStatusPhase(savedCase) === 'submitted';
+            const stillNeeded = (savedCase.still_needed_fields ?? []).filter(Boolean);
             return (
                 <Card
                     key={savedCase.case_id}
@@ -752,12 +769,48 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 >
                     <Space direction="vertical" size={4} style={{ width: '100%' }}>
                         <Space wrap size={[4, 4]}>
-                            <UrgencyTag urgency={savedCase.urgency} />
+                            <Tag color={readiness.color}>{readiness.label}</Tag>
+                            {formal ? <Tag color="green">{officeQueueScanSubmitted}</Tag> : null}
                             {isActive ? <Tag color="blue">当前</Tag> : null}
                         </Space>
+                        {triageResultLooksLikeAddCar(savedCase) ? (
+                            <AddCarCaseStatusStrip
+                                triage={savedCase}
+                                phase={addCarQueueStatusPhase(savedCase)}
+                                caption={officeCaseStatusStripCaption}
+                            />
+                        ) : null}
                         <Text strong style={{ fontSize: 13, lineHeight: 1.4 }}>
-                            {getPreviewText(savedCase.source_text, 90)}
+                            {vehicleHeadline}
                         </Text>
+                        <Text
+                            type="secondary"
+                            style={{ fontSize: 11, fontFamily: 'monospace', display: 'block' }}
+                            copyable={{ text: savedCase.case_id }}
+                        >
+                            {officeCaseRecordLabel}：{formatQueueCaseIdShort(savedCase.case_id)}
+                        </Text>
+                        {stillNeeded.length > 0 ? (
+                            <Text style={{ fontSize: 12, color: '#d46b08', lineHeight: 1.5, display: 'block' }}>
+                                待补问：
+                                {stillNeeded
+                                    .slice(0, 4)
+                                    .map((f) => humanizeStructuredField(f))
+                                    .join('、')}
+                                {stillNeeded.length > 4 ? '…' : ''}
+                            </Text>
+                        ) : null}
+                        {officeNext ? (
+                            <Text style={{ fontSize: 12, color: '#262626', display: 'block' }}>
+                                {officeWorkbenchBrokerNextPreviewLabel}
+                                {getPreviewText(officeNext, 56)}
+                            </Text>
+                        ) : null}
+                        {!triageResultLooksLikeAddCar(savedCase) ? (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                {compactPreview}
+                            </Text>
+                        ) : null}
                     </Space>
                 </Card>
             );
@@ -1539,7 +1592,42 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 inputFallback={(input.trim() || currentCase.source_text || '').trim()}
                                 uiCopy={uiCopy}
                             />
-                            {caseView === 'reopened' && currentCase.case_id && (
+                            {postCopyContinuationHint && currentCase.case_id && (
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    closable
+                                    onClose={() => setPostCopyContinuationHint(false)}
+                                    message="已复制 — 客户若再发消息"
+                                    description="请在下方的「追加客户补充」粘贴新消息，系统会更新下一步与对话记录，无需新建案件。"
+                                />
+                            )}
+                            {(() => {
+                                const thread = formatCaseMessagesForThread(currentCase, 5);
+                                if (thread.length === 0) return null;
+                                return (
+                                    <Card
+                                        size="small"
+                                        title="对话记录"
+                                        styles={{ body: { padding: 12 } }}
+                                        style={{ borderRadius: 8, borderColor: '#d9d9d9' }}
+                                    >
+                                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                            {thread.map((line, idx) => (
+                                                <div key={`${line.role}-${idx}`}>
+                                                    <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>
+                                                        {line.label}
+                                                    </Text>
+                                                    <Text style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                                                        {getPreviewText(line.text, 240)}
+                                                    </Text>
+                                                </div>
+                                            ))}
+                                        </Space>
+                                    </Card>
+                                );
+                            })()}
+                            {currentCase.case_id && (
                                 <Card
                                     size="small"
                                     title="追加客户补充"
@@ -2315,7 +2403,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 ]}
                             />
 
-                            {caseView === 'reopened' && currentCase.case_id && !productOnlyUi && (
+                            {currentCase.case_id && !productOnlyUi && (
                                 <Card
                                     size="small"
                                     title="粘贴客户新消息"

@@ -8,7 +8,7 @@
 
 ## THE PRODUCT (≤5 bullets)
 
-1. **Unified Intake** — broker-office SaaS: paste → classify → case → workbench
+1. **Unified Intake** — broker-office SaaS: paste → classify → case → workbench; **Customer First Add-Car** — customer submits, office sees gaps, broker confirms (`docs/product_constitution/P16_CUSTOMER_FIRST_CONSTITUTION.md`)
 2. **Postgres** is persistence truth on paid pilot (`SERVICE_RECORD_DATABASE_URL`)
 3. **API keys** gate intake and support perimeters (coarse auth — not OAuth/SSO)
 4. **Vectors optional** — core triage runs without Qdrant; notice/knowledge wedge uses vectors when configured
@@ -51,6 +51,8 @@
 | 8 | [`docs/ANDY_QUICK_START.md`](../ANDY_QUICK_START.md) | Founders — local demo |
 | 9 | [`docs/goals/insurance_paid_pilot_goal.md`](../goals/insurance_paid_pilot_goal.md) | Scope in/out |
 | 10 | [`docs/trial/INDEX.md`](../trial/INDEX.md) | Real broker trial package |
+
+**Customer First constitution (P16 product law):** [`docs/product_constitution/P16_CUSTOMER_FIRST_CONSTITUTION.md`](../product_constitution/P16_CUSTOMER_FIRST_CONSTITUTION.md) · Phase order: [`P16_CUSTOMER_FIRST_P0_SUMMARY.md`](../product_constitution/P16_CUSTOMER_FIRST_P0_SUMMARY.md)
 
 **Macro blueprint (major sprints only):** [`docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md`](../UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md)
 

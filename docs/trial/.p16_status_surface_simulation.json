@@ -1,0 +1,366 @@
+[
+  {
+    "scenario": "A",
+    "name": "New customer",
+    "expected_behavior": "Scenario A — Start New Add-Car Request (no active case)",
+    "http_status": 200,
+    "has_active_case": false,
+    "active_case": null,
+    "checks": {
+      "no_active": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Customer sees Start New Add-Car Request; no status card.",
+    "pass": true
+  },
+  {
+    "scenario": "B",
+    "name": "Existing active case",
+    "expected_behavior": "Scenario B — Active card with Status, Still Needed, Contact State",
+    "http_status": 200,
+    "has_active_case": true,
+    "active_case": {
+      "case_id": "case_1d886ffb3505",
+      "vehicle_display": "加车申请（车辆信息待补充）",
+      "missing_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "missing_fields_display": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "is_formal_submitted": false,
+      "submit_state": "not_yet",
+      "status_label": "saved_not_yet_submitted",
+      "contact_state": "waiting_for_customer",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "lifecycle_status": "collecting",
+      "formal_submitted_at": "2026-06-07T10:58:51Z",
+      "customer_name": "李华",
+      "updated_at": "2026-06-07T10:58:51Z"
+    },
+    "checks": {
+      "has_active": true,
+      "status_label": true,
+      "contact_state": true,
+      "still_needed_list": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Customer answers: not submitted, sees field list, Waiting For Customer.",
+    "pass": true
+  },
+  {
+    "scenario": "C",
+    "name": "Missing VIN",
+    "expected_behavior": "Still Needed shows full list including VIN — never count-only",
+    "http_status": 200,
+    "has_active_case": true,
+    "active_case": {
+      "case_id": "case_1f820c92f4f5",
+      "vehicle_display": "加车申请（车辆信息待补充）",
+      "missing_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "missing_fields_display": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "is_formal_submitted": false,
+      "submit_state": "not_yet",
+      "status_label": "saved_not_yet_submitted",
+      "contact_state": "waiting_for_customer",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "lifecycle_status": "collecting",
+      "formal_submitted_at": "2026-06-07T10:58:54Z",
+      "customer_name": "李华",
+      "updated_at": "2026-06-07T10:58:54Z"
+    },
+    "checks": {
+      "vin_listed": true,
+      "contact_waiting": true,
+      "not_count_only": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Still Needed lists ['year', 'make_model', 'zip', 'delivery_date', 'primary_driver', 'vin']; contact state Waiting For Customer.",
+    "pass": true
+  },
+  {
+    "scenario": "D",
+    "name": "Submitted case",
+    "expected_behavior": "Status = Submitted To Office; Contact State = Office Reviewing",
+    "http_status": 200,
+    "has_active_case": true,
+    "active_case": {
+      "case_id": "case_61581f3a960e",
+      "vehicle_display": "加车申请（车辆信息待补充）",
+      "missing_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "missing_fields_display": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "is_formal_submitted": false,
+      "submit_state": "not_yet",
+      "status_label": "saved_not_yet_submitted",
+      "contact_state": "waiting_for_customer",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "lifecycle_status": "collecting",
+      "formal_submitted_at": "2026-06-07T10:58:58Z",
+      "customer_name": "李华",
+      "updated_at": "2026-06-07T10:58:58Z"
+    },
+    "logic_summary": {
+      "case_id": "case_61581f3a960e",
+      "vehicle_display": "加车申请",
+      "missing_fields": [],
+      "missing_fields_display": [],
+      "is_formal_submitted": true,
+      "submit_state": "submitted",
+      "status_label": "submitted_to_office",
+      "contact_state": "office_reviewing",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [],
+      "lifecycle_status": "handed_off",
+      "formal_submitted_at": "2026-06-07T12:00:00Z",
+      "customer_name": null,
+      "updated_at": null
+    },
+    "checks": {
+      "submitted": true,
+      "office_reviewing": true,
+      "api_live": false,
+      "logic_unit": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Customer can answer: yes I submitted; office is reviewing.",
+    "pass": true
+  },
+  {
+    "scenario": "E",
+    "name": "Wrong phone digit",
+    "expected_behavior": "No match — customer may start duplicate (documented risk)",
+    "http_status": 200,
+    "has_active_case": false,
+    "active_case": null,
+    "checks": {
+      "no_active": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Wrong digit → empty lookup; constitution Rule 2 phone-as-key risk documented.",
+    "pass": true
+  },
+  {
+    "scenario": "F",
+    "name": "Shared household phone",
+    "expected_behavior": "One active case — second start blocked (Rule 7)",
+    "http_status": 200,
+    "has_active_case": true,
+    "active_case": {
+      "case_id": "case_0727b5e29e4a",
+      "vehicle_display": "加车申请（车辆信息待补充）",
+      "missing_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "missing_fields_display": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "is_formal_submitted": false,
+      "submit_state": "not_yet",
+      "status_label": "saved_not_yet_submitted",
+      "contact_state": "waiting_for_customer",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "lifecycle_status": "collecting",
+      "formal_submitted_at": "2026-06-07T10:59:05Z",
+      "customer_name": "李华",
+      "updated_at": "2026-06-07T10:59:05Z"
+    },
+    "checks": {
+      "has_active": true,
+      "second_blocked": true,
+      "single_case": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Shared phone returns one case; second vehicle requires Contact Broker.",
+    "pass": true
+  },
+  {
+    "scenario": "G",
+    "name": "Customer returns on new device",
+    "expected_behavior": "Phone lookup rehydrates case without login/session",
+    "http_status": 200,
+    "has_active_case": true,
+    "active_case": {
+      "case_id": "case_d1e9b1a29849",
+      "vehicle_display": "加车申请（车辆信息待补充）",
+      "missing_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "missing_fields_display": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "is_formal_submitted": false,
+      "submit_state": "not_yet",
+      "status_label": "saved_not_yet_submitted",
+      "contact_state": "waiting_for_customer",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "lifecycle_status": "collecting",
+      "formal_submitted_at": "2026-06-07T10:59:10Z",
+      "customer_name": "李华",
+      "updated_at": "2026-06-07T10:59:10Z"
+    },
+    "checks": {
+      "rehydrated": true,
+      "status_fields": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "New device + same phone → full status card; no login required.",
+    "pass": true
+  },
+  {
+    "scenario": "H",
+    "name": "Phone normalization",
+    "expected_behavior": "All US formats resolve to same active case",
+    "http_status": 200,
+    "has_active_case": true,
+    "active_case": {
+      "case_id": "case_aba663f97571",
+      "vehicle_display": "加车申请（车辆信息待补充）",
+      "missing_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "missing_fields_display": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "is_formal_submitted": false,
+      "submit_state": "not_yet",
+      "status_label": "saved_not_yet_submitted",
+      "contact_state": "waiting_for_customer",
+      "waiting_on": "none",
+      "primary_vehicle_summary": null,
+      "still_needed_fields": [
+        "year",
+        "make_model",
+        "zip",
+        "delivery_date",
+        "primary_driver",
+        "vin"
+      ],
+      "lifecycle_status": "collecting",
+      "formal_submitted_at": "2026-06-07T10:59:13Z",
+      "customer_name": "李华",
+      "updated_at": "2026-06-07T10:59:13Z"
+    },
+    "checks": {
+      "match_(626) 555-0307": true,
+      "match_+1 626-555-0307": true,
+      "match_6265550307": true
+    },
+    "constitution_compliance": "PASS",
+    "customer_experience": "Parentheses, +1 prefix, and digits-only all match.",
+    "pass": true
+  }
+]

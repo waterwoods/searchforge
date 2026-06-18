@@ -1,0 +1,241 @@
+{
+  "total_scenarios": 28,
+  "passed": 28,
+  "failed": 0,
+  "pass_rate_pct": 100.0,
+  "certified": true,
+  "case_ea74d66fa3ba_rank": 7,
+  "top_5_case_ids": [
+    "case_cancel_1",
+    "case_cancel_5",
+    "case_cancel_2",
+    "case_cancel_3",
+    "case_pay_fail_1"
+  ],
+  "results": [
+    {
+      "scenario_id": "AC-TESLA-1",
+      "case_id": "case_tesla_submit_1",
+      "rank": 8,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-TESLA-2",
+      "case_id": "case_tesla_submit_2",
+      "rank": 9,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-TESLA-3",
+      "case_id": "case_tesla_submit_3",
+      "rank": 10,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-TESLA-4",
+      "case_id": "case_tesla_submit_4",
+      "rank": 11,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-TESLA-5",
+      "case_id": "case_tesla_submit_5",
+      "rank": 12,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-HONDA-1",
+      "case_id": "case_honda_submit_1",
+      "rank": 13,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-HONDA-2",
+      "case_id": "case_honda_submit_2",
+      "rank": 14,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-HONDA-3",
+      "case_id": "case_honda_submit_3",
+      "rank": 15,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-HONDA-4",
+      "case_id": "case_honda_submit_4",
+      "rank": 16,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-HONDA-5",
+      "case_id": "case_honda_submit_5",
+      "rank": 17,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "AC-CERTIFIED-EA74",
+      "case_id": "case_ea74d66fa3ba",
+      "rank": 7,
+      "score": 173,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "CANCEL-1",
+      "case_id": "case_cancel_1",
+      "rank": 1,
+      "score": 180,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "CANCEL-2",
+      "case_id": "case_cancel_2",
+      "rank": 3,
+      "score": 175,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "CANCEL-3",
+      "case_id": "case_cancel_3",
+      "rank": 4,
+      "score": 175,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "CANCEL-4",
+      "case_id": "case_cancel_4",
+      "rank": 18,
+      "score": 168,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "CANCEL-5",
+      "case_id": "case_cancel_5",
+      "rank": 2,
+      "score": 180,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "PAY-FAIL-1",
+      "case_id": "case_pay_fail_1",
+      "rank": 5,
+      "score": 175,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "PAY-FAIL-2",
+      "case_id": "case_pay_fail_2",
+      "rank": 6,
+      "score": 175,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "PAY-FAIL-3",
+      "case_id": "case_pay_fail_3",
+      "rank": 19,
+      "score": 168,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "PAY-FAIL-4",
+      "case_id": "case_pay_fail_4",
+      "rank": 20,
+      "score": 158,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "PAY-FAIL-5",
+      "case_id": "case_pay_fail_5",
+      "rank": 21,
+      "score": 158,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "MISSING-DOC",
+      "case_id": "case_missing_doc",
+      "rank": 22,
+      "score": 8,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "DEMO-SEED-1",
+      "case_id": "case_demo_seed_1",
+      "rank": 23,
+      "score": -125,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "DEMO-SEED-2",
+      "case_id": "case_demo_seed_2",
+      "rank": 28,
+      "score": -292,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "DEMO-SEED-3",
+      "case_id": "case_demo_seed_3",
+      "rank": 24,
+      "score": -125,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "DEMO-SEED-4",
+      "case_id": "case_demo_seed_4",
+      "rank": 27,
+      "score": -142,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "DEMO-SEED-5",
+      "case_id": "case_demo_seed_5",
+      "rank": 26,
+      "score": -132,
+      "pass": true,
+      "checks": []
+    },
+    {
+      "scenario_id": "DEMO-SEED-6",
+      "case_id": "case_demo_seed_6",
+      "rank": 25,
+      "score": -125,
+      "pass": true,
+      "checks": []
+    }
+  ]
+}

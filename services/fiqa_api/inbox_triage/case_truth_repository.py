@@ -35,6 +35,8 @@ from services.fiqa_api.inbox_triage.case_store import (
     list_recent_cases as json_list_recent_cases,
 )
 
+from services.fiqa_api.inbox_triage.phone_normalization import normalize_phone_digits
+
 logger = logging.getLogger(__name__)
 
 # Per HTTP request: dedupe get_case_triage_stub_for_read(case_id) (binding + reopen paths).
@@ -436,6 +438,36 @@ def get_case_triage_stub_for_read(case_id: str) -> dict[str, Any] | None:
     if bucket is not None:
         bucket[cid] = copy.deepcopy(resolved) if resolved is not None else None
     return resolved
+
+
+def list_cases_for_phone_lookup(phone: str, *, client_id: str | None = None) -> list[dict[str, Any]]:
+    """
+    Bounded candidate cases for Customer First phone return-key (indexed PG path when enabled).
+    """
+    digits = normalize_phone_digits(phone)
+    if len(digits) != 10:
+        return []
+
+    out: list[dict[str, Any]] = []
+    if db_primary_reads_enabled() and service_record_database_url():
+        try:
+            from services.fiqa_api.db.service_record_repository import list_binding_stub_rows_by_phone_digits
+
+            out = list_binding_stub_rows_by_phone_digits(digits, limit=24)
+        except Exception:
+            logger.exception("%s signal=PG_PHONE_LOOKUP_EXCEPTION", _OBS)
+
+    if not out and json_read_fallback_allowed():
+        for case in json_list_all_cases():
+            cp = normalize_phone_digits(str(case.get("customer_phone") or ""))
+            if cp != digits:
+                continue
+            cid = str(case.get("client_id") or "").strip()
+            if client_id and cid and cid != client_id.strip():
+                continue
+            out.append(_normalize_case(case))
+
+    return out
 
 
 def list_recent_cases_for_binding(
