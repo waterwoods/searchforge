@@ -83,6 +83,37 @@ def _conf_label(confidence: float) -> str:
 
 
 # ─────────────────────────────────────────────
+# Primary driver default rule (shared — runs for all extraction paths)
+# ─────────────────────────────────────────────
+
+def _apply_primary_driver_default(
+    packet: dict,
+    customer_name: str,
+    confirmation_notices: list[str],
+) -> None:
+    """
+    Business rule: if primary_driver is absent after extraction (real or mock)
+    but customer_name is present, default primary_driver to customer_name with
+    source_file="default_from_customer_name" and needs_confirmation=True.
+    Mutates packet and confirmation_notices in place.
+    """
+    pd = packet.get("primary_driver", {})
+    if not (pd.get("value") or "").strip() and customer_name:
+        packet["primary_driver"] = {
+            "value": customer_name,
+            "confidence": 1.0,
+            "confidence_label": "high",
+            "source_file": "default_from_customer_name",
+            "is_mock": False,
+            "needs_confirmation": True,
+        }
+        confirmation_notices.append(
+            "Primary driver defaulted to customer name — please confirm. "
+            "/ 主要驾驶人已默认使用客户姓名，请确认。"
+        )
+
+
+# ─────────────────────────────────────────────
 # Copy text builder
 # ─────────────────────────────────────────────
 
@@ -271,22 +302,7 @@ def _run_real_extraction(
     }
 
     confirmation_notices: list[str] = []
-
-    # Primary driver default — if not found in docs but customer_name is known,
-    # populate from customer_name with needs_confirmation=True (soft confirm, not hard missing).
-    if not packet["primary_driver"]["value"] and customer_name:
-        packet["primary_driver"] = {
-            "value": customer_name,
-            "confidence": 1.0,
-            "confidence_label": "high",
-            "source_file": "default_from_customer_name",
-            "is_mock": False,
-            "needs_confirmation": True,
-        }
-        confirmation_notices.append(
-            "Primary driver defaulted to customer name — please confirm. "
-            "/ 主要驾驶人已默认使用客户姓名，请确认。"
-        )
+    _apply_primary_driver_default(packet, customer_name, confirmation_notices)
 
     warnings: list[str] = []
 
@@ -401,6 +417,8 @@ async def extract_add_car(
             garaging_zip=garaging_zip,
             file_names=file_names,
         )
+        mock_confirmation_notices: list[str] = []
+        _apply_primary_driver_default(packet, customer_name, mock_confirmation_notices)
         copy_text = _build_copy_text(
             packet=packet,
             warnings=warnings,
@@ -414,7 +432,7 @@ async def extract_add_car(
             "copy_text": copy_text,
             "mock_mode": True,
             "model_used": "MOCK_EXTRACTION_ONLY",
-            "confirmation_notices": [],
+            "confirmation_notices": mock_confirmation_notices,
         }
 
     # Real extraction — save to temp dir and run
@@ -446,6 +464,8 @@ async def extract_add_car(
             warnings.insert(
                 0, f"Extraction error — falling back to mock mode: {str(exc)[:120]}"
             )
+            fallback_notices: list[str] = []
+            _apply_primary_driver_default(packet, customer_name, fallback_notices)
             copy_text = _build_copy_text(
                 packet=packet,
                 warnings=warnings,
@@ -459,7 +479,7 @@ async def extract_add_car(
                 "copy_text": copy_text,
                 "mock_mode": True,
                 "model_used": "MOCK_EXTRACTION_ONLY",
-                "confirmation_notices": [],
+                "confirmation_notices": fallback_notices,
             }
 
     copy_text = _build_copy_text(
