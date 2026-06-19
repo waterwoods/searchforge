@@ -540,13 +540,35 @@ All P0 trust fixes from §12 TOP_10_UI_FIXES are now live:
 
 ---
 
+### PRIMARY_DRIVER_FIX — 2026-06-19
+
+**Status:** DEPLOYED — revision `fiqa-api-00096-d2v`, GIT_SHA `aec2e0ee3`
+
+**Problem:** Insurance cards and smog reports do not list a primary driver. QA showed red `Missing: Primary Driver` for every real-document case.
+
+**Rule implemented:** If `primary_driver` is absent after extraction but `customer_name` is present:
+- `primary_driver.value = customer_name`
+- `primary_driver.source_file = "default_from_customer_name"`
+- `primary_driver.needs_confirmation = true`
+- Soft notice: "Primary driver defaulted to customer name — please confirm / 默认使用客户姓名，请确认"
+- NO red missing alert
+
+**UI:** Yellow "Needs confirmation" tag + bilingual soft prompt shown above-fold in Trusted Packet.
+
+**Copy Packet:** `Primary Driver: nanxin li (defaulted from customer name — confirm)`
+
+**Verified live:** All 5 assertions pass against `https://fiqa-api-g7zatxrycq-uw.a.run.app`.
+
+---
+
 ### NEXT_ACTION
 
 1. Andy runs `P16_ANDY_WALKTHROUGH.md` personally (all 5 screens, real documents)
-2. Send QA URL to Wu Xiaojie with `P16_FIRST_BROKER_TEST_PLAN.md`
-3. Log Wu Xiaojie results in `docs/trial/P16_TIME_SAVINGS_TRACKER.md`
-4. After Wu Xiaojie confirms GO: send URL to Chen Kui for first real add-car case (CK-001)
-5. Gate to invoice: 10 real cases, average ≥4 min saved
+2. Use QA URL: `https://ui-smoky-beta.vercel.app/add-car`
+3. Send QA URL to Wu Xiaojie with `P16_FIRST_BROKER_TEST_PLAN.md`
+4. Log Wu Xiaojie results in `docs/trial/P16_TIME_SAVINGS_TRACKER.md`
+5. After Wu Xiaojie confirms GO: send URL to Chen Kui for first real add-car case (CK-001)
+6. Gate to invoice: 10 real cases, average ≥4 min saved
 
 ---
 
