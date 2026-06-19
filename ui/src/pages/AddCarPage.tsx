@@ -31,6 +31,7 @@ import {
   CopyOutlined,
   EyeOutlined,
   FileTextOutlined,
+  InfoCircleOutlined,
   LoadingOutlined,
   ReloadOutlined,
   WarningOutlined,
@@ -49,6 +50,7 @@ type FieldData = {
   confidence_label: 'high' | 'medium' | 'low';
   source_file: string;
   is_mock: boolean;
+  needs_confirmation?: boolean;
 };
 
 type PacketResponse = {
@@ -58,6 +60,7 @@ type PacketResponse = {
   copy_text: string;
   mock_mode: boolean;
   model_used: string;
+  confirmation_notices?: string[];
 };
 
 type WizardStep = 'info' | 'upload' | 'extracting' | 'packet';
@@ -113,22 +116,29 @@ function buildCopyText(
   const vehicle = [get('year'), get('make'), get('model')].filter(Boolean).join(' ') || 'MISSING';
   const zip = get('garaging_zip') || 'MISSING';
   const customer = [get('customer_name'), get('phone')].filter(Boolean).join(' — ') || 'MISSING';
+  const primaryDriver = get('primary_driver');
+  const driverIsDefaulted = packet.primary_driver?.source_file === 'default_from_customer_name';
 
+  // Primary Driver is excluded from hard-missing: backend defaults it from customer_name.
   const REQUIRED_FIELDS: Array<[string, string]> = [
     ['VIN', 'vin'],
     ['Year', 'year'],
     ['Make', 'make'],
     ['Model', 'model'],
-    ['Primary Driver', 'primary_driver'],
     ['Effective Date', 'effective_date'],
   ];
   const missing = REQUIRED_FIELDS.filter(([, key]) => !get(key)).map(([label]) => label);
+
+  const driverLine = primaryDriver
+    ? `Primary Driver: ${primaryDriver}${driverIsDefaulted ? ' (defaulted from customer name — confirm)' : ''}`
+    : 'Primary Driver: MISSING';
 
   const lines = [
     `VIN: ${vin}`,
     `Vehicle: ${vehicle}`,
     `ZIP: ${zip}`,
     `Customer: ${customer}`,
+    driverLine,
     missing.length > 0 ? `Missing: ${missing.join(', ')}` : 'Missing: None',
     warnings.length > 0 ? `Warnings: ${warnings.join(' | ')}` : 'Warnings: None',
   ];
@@ -503,12 +513,12 @@ function PacketStep({
   const displayZip = get('garaging_zip') || garagingZip || '—';
   const displayName = get('customer_name') || customerName || '—';
 
+  // Primary Driver is excluded from hard-missing: backend defaults it from customer_name.
   const REQUIRED_FIELDS: Array<[string, string]> = [
     ['VIN', 'vin'],
     ['Year', 'year'],
     ['Make', 'make'],
     ['Model', 'model'],
-    ['Primary Driver', 'primary_driver'],
     ['Effective Date', 'effective_date'],
   ];
   const missingFields = REQUIRED_FIELDS.filter(([, key]) => !get(key)).map(([label]) => label);
@@ -631,7 +641,7 @@ function PacketStep({
         </div>
 
         {/* Garaging ZIP */}
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             Garaging ZIP / 停放邮编
           </Text>
@@ -639,6 +649,34 @@ function PacketStep({
             <Text strong style={{ fontSize: 16 }}>{displayZip}</Text>
           </div>
         </div>
+
+        {/* Primary Driver — soft confirm if defaulted, omit if truly absent */}
+        {(() => {
+          const pd = packet.primary_driver;
+          const pdValue = pd?.value || '';
+          const isDefaulted = pd?.source_file === 'default_from_customer_name';
+          if (!pdValue) return null;
+          return (
+            <div style={{ marginBottom: 20 }}>
+              <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Primary Driver / 主要驾驶人
+              </Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+                <Text strong style={{ fontSize: 16 }}>{pdValue}</Text>
+                {isDefaulted && (
+                  <Tag color="warning" icon={<InfoCircleOutlined />} style={{ fontSize: 11 }}>
+                    Needs confirmation
+                  </Tag>
+                )}
+              </div>
+              {isDefaulted && (
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 2 }}>
+                  Defaulted from customer name — please confirm / 默认使用客户姓名，请确认
+                </Text>
+              )}
+            </div>
+          );
+        })()}
 
         <Divider style={{ margin: '0 0 16px' }} />
 

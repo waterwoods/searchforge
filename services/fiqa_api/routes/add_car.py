@@ -201,7 +201,7 @@ def _run_real_extraction(
     garaging_zip: str,
     file_paths: list[Path],
     file_names: list[str],
-) -> tuple[dict, list[str], list[dict], str]:
+) -> tuple[dict, list[str], list[dict], str, list[str]]:
     """Run Gemini/OpenAI extraction via existing ocr_kill_test modules."""
     from services.fiqa_api.ocr_kill_test.extractor import get_extractor
     from services.fiqa_api.ocr_kill_test.packet_builder import process_case
@@ -270,6 +270,24 @@ def _run_real_extraction(
         },
     }
 
+    confirmation_notices: list[str] = []
+
+    # Primary driver default — if not found in docs but customer_name is known,
+    # populate from customer_name with needs_confirmation=True (soft confirm, not hard missing).
+    if not packet["primary_driver"]["value"] and customer_name:
+        packet["primary_driver"] = {
+            "value": customer_name,
+            "confidence": 1.0,
+            "confidence_label": "high",
+            "source_file": "default_from_customer_name",
+            "is_mock": False,
+            "needs_confirmation": True,
+        }
+        confirmation_notices.append(
+            "Primary driver defaulted to customer name — please confirm. "
+            "/ 主要驾驶人已默认使用客户姓名，请确认。"
+        )
+
     warnings: list[str] = []
 
     # VIN format validation (warn only — never block)
@@ -304,18 +322,19 @@ def _run_real_extraction(
     if result.error:
         warnings.append(f"Extraction error for one or more files: {result.error[:120]}")
 
-    # Build source map (file → extracted fields)
+    # Build source map (file → extracted fields); skip synthetic sources.
+    _synthetic_sources = {"intake_form", "default_from_customer_name"}
     source_map: dict[str, list[str]] = {}
     for key, field_data in packet.items():
         src = field_data.get("source_file", "")
-        if src and src != "intake_form" and field_data.get("value"):
+        if src and src not in _synthetic_sources and field_data.get("value"):
             source_map.setdefault(src, []).append(key)
 
     sources: list[dict] = [{"file": "intake_form", "fields": "customer_name, phone, garaging_zip"}]
     for src, flds in source_map.items():
         sources.append({"file": src, "fields": ", ".join(flds)})
 
-    return packet, warnings, sources, model_used
+    return packet, warnings, sources, model_used, confirmation_notices
 
 
 # ─────────────────────────────────────────────
@@ -395,6 +414,7 @@ async def extract_add_car(
             "copy_text": copy_text,
             "mock_mode": True,
             "model_used": "MOCK_EXTRACTION_ONLY",
+            "confirmation_notices": [],
         }
 
     # Real extraction — save to temp dir and run
@@ -408,7 +428,7 @@ async def extract_add_car(
             file_paths.append(dest)
 
         try:
-            packet, warnings, sources, model_used = _run_real_extraction(
+            packet, warnings, sources, model_used, confirmation_notices = _run_real_extraction(
                 customer_name=customer_name,
                 phone=phone,
                 garaging_zip=garaging_zip,
@@ -439,6 +459,7 @@ async def extract_add_car(
                 "copy_text": copy_text,
                 "mock_mode": True,
                 "model_used": "MOCK_EXTRACTION_ONLY",
+                "confirmation_notices": [],
             }
 
     copy_text = _build_copy_text(
@@ -455,4 +476,5 @@ async def extract_add_car(
         "copy_text": copy_text,
         "mock_mode": False,
         "model_used": model_used,
+        "confirmation_notices": confirmation_notices,
     }
