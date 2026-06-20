@@ -122,6 +122,9 @@ def _build_copy_text(
     warnings: list[str],
     sources: list[dict],
     mock_mode: bool,
+    request_type: str = "add_vehicle",
+    old_vehicle_vin: str = "",
+    old_vehicle_plate: str = "",
 ) -> str:
     def fv(key: str) -> str:
         field = packet.get(key, {})
@@ -136,7 +139,22 @@ def _build_copy_text(
         else "  (none)"
     )
 
-    return f"""{mock_label}ADD-CAR PACKET
+    packet_header = "REPLACE-VEHICLE PACKET" if request_type == "replace_vehicle" else "ADD-CAR PACKET"
+
+    old_vehicle_section = ""
+    if request_type == "replace_vehicle":
+        old_vin = old_vehicle_vin.strip() or "MISSING"
+        old_plate = old_vehicle_plate.strip() or "MISSING"
+        broker_note = ""
+        if old_vin == "MISSING" and old_plate == "MISSING":
+            broker_note = "\n  ⚠ Broker confirmation required — neither old VIN nor old plate provided"
+        old_vehicle_section = (
+            f"\nVehicle to Remove (Reference Only):\n"
+            f"  Old VIN: {old_vin}\n"
+            f"  Old Plate: {old_plate}{broker_note}"
+        )
+
+    return f"""{mock_label}{packet_header}
 
 Customer:
   Name: {fv('customer_name')}
@@ -157,12 +175,49 @@ Dates:
 
 Finance:
   Lienholder: {fv('finance_or_lienholder')}
-
+{old_vehicle_section}
 Warnings:
 {warning_lines}
 
 Sources:
 {source_lines}""".strip()
+
+
+# ─────────────────────────────────────────────
+# Old vehicle reference (Replace Vehicle V1 Safe)
+# ─────────────────────────────────────────────
+
+def _add_old_vehicle_to_packet(
+    packet: dict,
+    request_type: str,
+    old_vehicle_vin: str,
+    old_vehicle_plate: str,
+    warnings: list[str],
+) -> None:
+    """
+    Add old vehicle reference fields to the packet for replace_vehicle requests.
+    Never validates. Never blocks. Never downgraves readiness.
+    Mutates packet and warnings in place.
+    """
+    if request_type != "replace_vehicle":
+        return
+
+    def intake_field(value: str) -> dict:
+        return {
+            "value": value.strip(),
+            "confidence": 1.0,
+            "confidence_label": "high",
+            "source_file": "intake_form",
+            "is_mock": False,
+        }
+
+    packet["old_vehicle_vin"] = intake_field(old_vehicle_vin)
+    packet["old_vehicle_plate"] = intake_field(old_vehicle_plate)
+
+    if not old_vehicle_vin.strip() and not old_vehicle_plate.strip():
+        warnings.append(
+            "Old vehicle not identified — broker must verify existing vehicle in AMS before processing removal."
+        )
 
 
 # ─────────────────────────────────────────────
@@ -363,17 +418,27 @@ async def extract_add_car(
     customer_name: str = Form(...),
     phone: str = Form(...),
     garaging_zip: str = Form(...),
+    request_type: str = Form(default="add_vehicle"),
+    old_vehicle_vin: str = Form(default=""),
+    old_vehicle_plate: str = Form(default=""),
 ) -> dict:
     """
     Extract Trusted Packet fields from uploaded customer documents.
 
     Falls back to MOCK_EXTRACTION_ONLY if no AI API key is configured.
     Never claims real extraction when running in mock mode.
+
+    request_type: "add_vehicle" (default) or "replace_vehicle"
+    old_vehicle_vin: optional — old vehicle identifier for replace_vehicle
+    old_vehicle_plate: optional — old vehicle plate for replace_vehicle
     """
     # Validate required form fields
     customer_name = customer_name.strip()
     phone = phone.strip()
     garaging_zip = garaging_zip.strip()
+    request_type = request_type.strip() or "add_vehicle"
+    old_vehicle_vin = old_vehicle_vin.strip()
+    old_vehicle_plate = old_vehicle_plate.strip()
 
     if not customer_name:
         raise HTTPException(status_code=422, detail="customer_name is required")
@@ -419,11 +484,15 @@ async def extract_add_car(
         )
         mock_confirmation_notices: list[str] = []
         _apply_primary_driver_default(packet, customer_name, mock_confirmation_notices)
+        _add_old_vehicle_to_packet(packet, request_type, old_vehicle_vin, old_vehicle_plate, warnings)
         copy_text = _build_copy_text(
             packet=packet,
             warnings=warnings,
             sources=sources,
             mock_mode=True,
+            request_type=request_type,
+            old_vehicle_vin=old_vehicle_vin,
+            old_vehicle_plate=old_vehicle_plate,
         )
         return {
             "packet": packet,
@@ -466,11 +535,15 @@ async def extract_add_car(
             )
             fallback_notices: list[str] = []
             _apply_primary_driver_default(packet, customer_name, fallback_notices)
+            _add_old_vehicle_to_packet(packet, request_type, old_vehicle_vin, old_vehicle_plate, warnings)
             copy_text = _build_copy_text(
                 packet=packet,
                 warnings=warnings,
                 sources=sources,
                 mock_mode=True,
+                request_type=request_type,
+                old_vehicle_vin=old_vehicle_vin,
+                old_vehicle_plate=old_vehicle_plate,
             )
             return {
                 "packet": packet,
@@ -482,11 +555,15 @@ async def extract_add_car(
                 "confirmation_notices": fallback_notices,
             }
 
+    _add_old_vehicle_to_packet(packet, request_type, old_vehicle_vin, old_vehicle_plate, warnings)
     copy_text = _build_copy_text(
         packet=packet,
         warnings=warnings,
         sources=sources,
         mock_mode=False,
+        request_type=request_type,
+        old_vehicle_vin=old_vehicle_vin,
+        old_vehicle_plate=old_vehicle_plate,
     )
 
     return {
