@@ -27,16 +27,33 @@ https://ui-smoky-beta.vercel.app/add-car
 https://fiqa-api-1013093472160.us-west1.run.app
 ```
 
-**Rules:**
+---
 
-| Rule | Required |
-|------|----------|
-| All QA validation runs against the stable URL | Yes |
-| All pilot/broker/demo links use the stable URL | Yes |
-| Stable URL must be aliased after every frontend deploy | Yes |
-| Preview URLs go in release reports | No |
-| Preview URLs go in documentation | No |
-| Preview URLs go to pilot users | No |
+## Stable QA URL Only Rule — 冻结规则
+
+下列规则在 paid pilot 阶段冻结，不允许例外。
+
+1. Preview URL 仅限工程内部使用。
+2. Preview URL 不得作为最终 QA URL 返回给 Andy 或任何人。
+3. Preview URL 不得出现在：
+   - demo 脚本
+   - pilot 文档
+   - 截图说明
+   - 发给 broker 的消息
+   - 发给客户的消息
+   - 任何 release report
+4. 每次 Vercel 部署完成后，**立即**将新 deployment alias 到稳定域名：`ui-smoky-beta.vercel.app`
+5. 所有验证（CORS / 提取 / 功能 QA）必须针对稳定域名执行。
+6. 如果稳定 QA URL 失败但 preview URL 成功，**部署未完成**。必须先修好 alias，再报告结果。
+7. 不得将新 preview URL 添加到 Cloud Run `ALLOWED_ORIGINS`。
+8. 如果在 preview URL 上遇到 CORS 报错，**不要**通过白名单 preview URL 来修复。那是症状，不是原因。
+9. 正确修复路径：Deploy → Alias → 从稳定 QA URL 测试 → 验证 CORS。
+10. 最终部署报告只能包含：
+
+```
+QA URL:
+https://ui-smoky-beta.vercel.app/add-car
+```
 
 ---
 
@@ -120,36 +137,71 @@ complete intent → info → upload → extract → verify packet → copy packe
 
 ---
 
-## Required Release Report Format
+## Required Release Report Footer
 
-Every deployment must end with this block. No preview URLs.
+每次部署报告**必须**以下面这个格式结尾。不得出现 preview URL。
 
 ```
-DEPLOY_STATUS
-
-Frontend:   [deployed / skipped]
-Backend:    [revision name / skipped]
-Alias:      ui-smoky-beta.vercel.app → [preview URL it now points to]
-CORS:       [pass / fail]
-QA Validation: [pass / fail]
+DEPLOY_STATUS:
+Frontend:    [deployed / skipped]
+Backend:     [Cloud Run revision / skipped]
+Alias:       ui-smoky-beta.vercel.app updated → [yes / no]
+CORS:        [pass / fail]
+Functional QA: [pass / fail]
 
 QA URL:
 https://ui-smoky-beta.vercel.app/add-car
 ```
 
+如果 AI agent 在报告中输出了 preview URL 作为 QA URL，该报告无效，必须重新完成 alias 步骤后再报告。
+
 ---
 
 ## Preview URL Policy
 
-| Use | Allowed |
-|-----|---------|
-| Internal debugging | Yes |
-| Temporary deploy verification before aliasing | Yes |
-| Demo | No |
-| Pilot / broker testing | No |
-| Documentation | No |
-| Screenshots | No |
-| Release reports | No |
+| 场景 | 允许 |
+|------|------|
+| 工程内部调试 | ✅ |
+| 部署完成后 alias 之前的临时确认 | ✅ |
+| Demo / 演示 | ❌ |
+| Pilot / broker 测试 | ❌ |
+| 文档 | ❌ |
+| 截图说明 | ❌ |
+| Release report | ❌ |
+
+---
+
+## Cursor / AI Agent Rule
+
+当 Cursor 或任何 AI agent 执行 P16 部署时：
+
+1. **可以**在内部使用 preview URL 确认 Vercel 部署成功。
+2. **必须**在 QA 之前完成 alias（`vercel alias [preview] ui-smoky-beta.vercel.app`）。
+3. **必须**针对稳定 QA URL 运行所有验证。
+4. **不得**要求 Andy 去测试 preview URL。
+5. **不得**在最终报告中出现 preview URL。
+6. 如果遇到 preview URL 的 CORS 报错，不得通过白名单修复 — 必须执行 alias 步骤。
+
+违反以上规则的部署报告视为不完整，需重跑 alias + QA 流程。
+
+---
+
+## Reason — 为什么这套规则重要
+
+Preview URL 和稳定 QA URL 在 alias 完成后指向同一个 build，功能完全相同。  
+区别只有一个：Cloud Run 的 `ALLOWED_ORIGINS` 白名单只包含稳定域名，不包含 preview 域名。
+
+使用 preview URL 的后果：
+- CORS 报错 → `Extraction failed: Failed to fetch`
+- Pilot 用户页面无法使用
+- 文档链接失效（每次重新部署 preview URL 都会变）
+- 需要紧急修复（白名单 preview URL 或 alias）
+
+使用稳定 QA URL 的结果：
+- 零 CORS 问题
+- 文档链接永久有效
+- Pilot 用户始终访问最新 build
+- 部署流程可重复、可预期
 
 ---
 
