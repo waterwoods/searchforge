@@ -216,6 +216,8 @@ export interface SavedCase extends TriageResult {
     workbench_lane_kind?: WorkbenchLaneKind;
     /** Postgres mirror glance when DB configured */
     pg_mirror_state?: PgMirrorState;
+    /** P16 document-intake full packet blob for broker reopen */
+    p16_broker_packet?: Record<string, unknown>;
 }
 
 /** Soft-route intent from quick-start button (add_car, remove_car, claim_intake, cancellation_warning, missing_document, talk_to_agent) */

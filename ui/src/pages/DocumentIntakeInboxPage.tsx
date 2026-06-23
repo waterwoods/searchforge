@@ -1,0 +1,698 @@
+/**
+ * P16 Document Intake — broker office review queue for wizard-submitted cases.
+ * Chen Kui Insurance Office / CKS Insurance Agency
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Button,
+  Card,
+  Drawer,
+  Modal,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import {
+  CopyOutlined,
+  DeleteOutlined,
+  InboxOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
+import {
+  deleteTestCase,
+  getSavedCase,
+  listRecentCasesPage,
+  patchCaseWorkbench,
+  type SavedCase,
+} from '@/api/inboxTriage';
+import { humanizeStructuredField } from '@/features/intake/utils/intakePure';
+import { copyToClipboard } from '@/utils/demoCopy';
+
+const { Title, Text, Paragraph } = Typography;
+
+const OFFICE_NAME = 'Chen Kui Insurance Office';
+
+export type P16BrokerPacket = {
+  request_type?: string;
+  readiness_status?: string;
+  packet?: Record<string, { value?: string; source_file?: string }>;
+  vehicles?: Array<{ year?: string; make?: string; model?: string; vin?: string }>;
+  drivers?: Array<{ name?: string; relationship?: string }>;
+  copy_text?: string;
+  portal_copy_text?: string;
+  opportunity_signals?: Array<{ code: string; meaning: string }>;
+  broker_next_action?: { en?: string; zh?: string };
+  follow_up_message_zh?: string;
+  sources?: Array<{ file: string; fields: string }>;
+  warnings?: string[];
+};
+
+type QueueRow = {
+  key: string;
+  case_id: string;
+  customer_name: string;
+  lane: string;
+  status: string;
+  summary: string;
+  opportunity_badges: OpportunityBadge[];
+  updated_at: string;
+  raw: SavedCase;
+};
+
+type OpportunityBadge = {
+  key: string;
+  emoji: string;
+  label: string;
+};
+
+const ACTION_FALLBACK: Record<string, string> = {
+  READY: 'Ready for manual re-shop.',
+  NEED_INFO: 'Customer needs declaration page.',
+  BROKER_REVIEW: 'Broker review required.',
+};
+
+const ACTION_BANNER_STYLE: Record<string, { background: string; border: string; color: string }> = {
+  READY: { background: '#f6ffed', border: '#b7eb8f', color: '#389e0d' },
+  NEED_INFO: { background: '#fffbe6', border: '#ffe58f', color: '#d48806' },
+  BROKER_REVIEW: { background: '#e6f4ff', border: '#91caff', color: '#0958d9' },
+};
+
+function isP16DocumentCase(c: SavedCase): boolean {
+  const lane = (c.service_lane || '').trim();
+  if (lane === 'add_car' || lane === 'policy_review') return true;
+  const src = (c.source_text || '').toLowerCase();
+  return src.includes('p16 add-car') || src.includes('p16 policy review');
+}
+
+function laneLabel(c: SavedCase): string {
+  const lane = (c.service_lane || '').trim();
+  const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
+  const rt = blob?.request_type || '';
+  if (lane === 'policy_review' || rt === 'policy_review') return 'Policy Review';
+  if (rt === 'replace_vehicle') return 'Replace Vehicle';
+  if (lane === 'add_car' || rt === 'add_vehicle') return 'Add Car';
+  return 'Document Intake';
+}
+
+function laneTagColor(lane: string): string {
+  if (lane === 'Add Car') return 'blue';
+  if (lane === 'Policy Review') return 'purple';
+  if (lane === 'Replace Vehicle') return 'cyan';
+  return 'default';
+}
+
+function readinessFromCase(c: SavedCase): string {
+  const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
+  if (blob?.readiness_status) return blob.readiness_status;
+  const qrs = (c.quote_ready_status || '').trim();
+  if (qrs === 'quote_ready') return 'READY';
+  if (qrs === 'almost_ready') return 'BROKER_REVIEW';
+  if (qrs === 'need_more') return 'NEED_INFO';
+  return 'BROKER_REVIEW';
+}
+
+function statusTag(status: string) {
+  const s = status.toUpperCase();
+  if (s === 'READY') return <Tag color="success">READY</Tag>;
+  if (s === 'NEED_INFO') return <Tag color="warning">NEED_INFO</Tag>;
+  return <Tag color="processing">BROKER_REVIEW</Tag>;
+}
+
+function vehShortLabel(v: { year?: string; make?: string; model?: string }): string {
+  const ymm = [v.year, v.make, v.model].filter(Boolean).join(' ');
+  if (ymm) return ymm;
+  const mm = [v.make, v.model].filter(Boolean).join(' ');
+  return mm || v.model || v.make || '';
+}
+
+function isPolicyReviewCase(c: SavedCase): boolean {
+  const lane = (c.service_lane || '').trim();
+  const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
+  return lane === 'policy_review' || blob?.request_type === 'policy_review';
+}
+
+function hasHighLiabilityLimits(bodilyInjury: string): boolean {
+  const normalized = bodilyInjury.replace(/\//g, '');
+  return ['250', '300', '500'].some((x) => normalized.includes(x));
+}
+
+function buildOpportunityBadges(c: SavedCase): OpportunityBadge[] {
+  if (!isPolicyReviewCase(c) || readinessFromCase(c) !== 'READY') return [];
+
+  const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
+  if (!blob) return [];
+
+  const badges: OpportunityBadge[] = [];
+  const seen = new Set<string>();
+  const add = (key: string, emoji: string, label: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    badges.push({ key, emoji, label });
+  };
+
+  for (const signal of blob.opportunity_signals ?? []) {
+    if (signal.code === 'REQUOTE_RECOMMENDED') add('reshop', '💰', 'Re-Shop');
+    const meaning = (signal.meaning || '').toLowerCase();
+    if (meaning.includes('home') || meaning.includes('renters') || meaning.includes('property')) {
+      add('home', '🏠', 'Home');
+    }
+    if (meaning.includes('umbrella')) add('umbrella', '🛡', 'Umbrella');
+  }
+
+  if ((blob.vehicles?.length ?? 0) >= 2) add('multi_vehicle', '🚗', 'Multi-Vehicle');
+
+  const bi = blob.packet?.bodily_injury?.value || '';
+  if (bi && hasHighLiabilityLimits(bi)) add('umbrella', '🛡', 'Umbrella');
+
+  return badges;
+}
+
+function resolveTopActionText(caseItem: SavedCase, blob: P16BrokerPacket | null): string {
+  const fromBlob = blob?.broker_next_action?.en?.trim();
+  if (fromBlob) return fromBlob;
+  const fromCase = (caseItem.broker_next_step || caseItem.office_broker_next_step || '').trim();
+  if (fromCase) return fromCase;
+  return ACTION_FALLBACK[readinessFromCase(caseItem)] || ACTION_FALLBACK.BROKER_REVIEW;
+}
+
+function buildSummary(c: SavedCase): string {
+  const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
+
+  if (blob?.request_type === 'policy_review') {
+    const pkt = blob.packet || {};
+    const carrier = pkt.current_carrier?.value || '';
+    const premium = pkt.premium_amount?.value ? `$${pkt.premium_amount.value}` : '';
+    const vehicles = blob.vehicles || [];
+    let vehPart = '';
+    if (vehicles.length >= 2) {
+      const labels = vehicles.map(vehShortLabel).filter(Boolean);
+      vehPart = labels.join(' + ');
+    } else if (vehicles.length === 1) {
+      vehPart = vehShortLabel(vehicles[0]);
+    } else if (c.primary_vehicle_summary) {
+      vehPart = c.primary_vehicle_summary;
+    }
+    return [carrier, premium, vehPart].filter(Boolean).join(' · ') || 'Policy review';
+  }
+
+  if (c.primary_vehicle_summary) return c.primary_vehicle_summary;
+  const pkt = blob?.packet;
+  if (pkt) {
+    const ymm = [pkt.year?.value, pkt.make?.value, pkt.model?.value].filter(Boolean).join(' ');
+    if (ymm) return ymm;
+  }
+  const conv = (c.conversation_summary || '').trim();
+  if (readinessFromCase(c) === 'NEED_INFO' && c.still_needed_fields?.length) {
+    return `Needs ${c.still_needed_fields.slice(0, 3).join(', ')}`;
+  }
+  if (conv) {
+    return conv.replace(/^\[客户\]\s*P16\s+[^:]+:\s*/i, '').slice(0, 80) || '—';
+  }
+  return '—';
+}
+
+function formatUpdated(iso: string): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function OpportunityBadgeList({ badges }: { badges: OpportunityBadge[] }) {
+  if (!badges.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+      {badges.map((b) => (
+        <Tag
+          key={b.key}
+          style={{
+            margin: 0,
+            fontSize: 11,
+            lineHeight: '18px',
+            padding: '0 6px',
+            borderRadius: 4,
+          }}
+        >
+          {b.emoji} {b.label}
+        </Tag>
+      ))}
+    </div>
+  );
+}
+
+function TopActionBanner({ caseItem, blob }: { caseItem: SavedCase; blob: P16BrokerPacket | null }) {
+  const status = readinessFromCase(caseItem);
+  const style = ACTION_BANNER_STYLE[status] || ACTION_BANNER_STYLE.BROKER_REVIEW;
+  const text = resolveTopActionText(caseItem, blob);
+  return (
+    <div
+      style={{
+        background: style.background,
+        border: `1px solid ${style.border}`,
+        borderRadius: 8,
+        padding: '12px 14px',
+        marginBottom: 12,
+      }}
+    >
+      <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 4, color: style.color }}>
+        Next Step
+      </Text>
+      <Text style={{ fontSize: 14, lineHeight: 1.5, color: '#262626' }}>{text}</Text>
+    </div>
+  );
+}
+
+function MissingItemsCard({ fields }: { fields: string[] }) {
+  if (!fields.length) return null;
+  return (
+    <Card
+      size="small"
+      title="Missing Items"
+      style={{ marginBottom: 12 }}
+      styles={{ body: { padding: '10px 16px' } }}
+    >
+      {fields.map((field) => (
+        <div key={field} style={{ marginBottom: 6, fontSize: 14, lineHeight: 1.5 }}>
+          <Text>□ {humanizeStructuredField(field)}</Text>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+function PacketField({ label, value, source }: { label: string; value?: string; source?: string }) {
+  if (!value) return null;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>{label}</Text>
+      <Text style={{ fontSize: 14 }}>{value}</Text>
+      {source && <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>({source})</Text>}
+    </div>
+  );
+}
+
+function BrokerCaseDetail({
+  caseItem,
+  blob,
+  onCopyReport,
+  onCopyPortal,
+  onDelete,
+}: {
+  caseItem: SavedCase;
+  blob: P16BrokerPacket | null;
+  onCopyReport: () => void;
+  onCopyPortal: () => void;
+  onDelete: () => void;
+}) {
+  const hasFullPacket = Boolean(blob?.packet && Object.keys(blob.packet).length > 0);
+  const readiness = readinessFromCase(caseItem);
+  const missingFields = caseItem.still_needed_fields ?? [];
+
+  if (!hasFullPacket) {
+    return (
+      <div>
+        <Space style={{ marginBottom: 12 }} wrap>
+          {statusTag(readiness)}
+          <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
+        </Space>
+        <TopActionBanner caseItem={caseItem} blob={blob} />
+        {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
+          <MissingItemsCard fields={missingFields} />
+        ) : null}
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Full packet not stored for this case"
+          description={
+            <>
+              <Paragraph style={{ marginBottom: 8 }}>
+                This case was saved before full packet persistence. Summary fields only:
+              </Paragraph>
+              <Text>Customer: {caseItem.customer_name || '—'}</Text>
+              <br />
+              <Text>Phone: {caseItem.customer_phone || '—'}</Text>
+            </>
+          }
+        />
+        {blob?.copy_text ? (
+          <Button icon={<CopyOutlined />} onClick={onCopyReport} block style={{ marginBottom: 8 }}>
+            Copy Report (partial)
+          </Button>
+        ) : null}
+        <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 16 }}>
+          Delete demo case / 删除测试案件
+        </Button>
+      </div>
+    );
+  }
+
+  const pkt = blob!.packet!;
+  const get = (k: string) => pkt[k]?.value || '';
+
+  return (
+    <div>
+      <Space style={{ marginBottom: 12 }} wrap>
+        {statusTag(blob!.readiness_status || readiness)}
+        <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
+      </Space>
+
+      <TopActionBanner caseItem={caseItem} blob={blob} />
+      {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
+        <MissingItemsCard fields={missingFields} />
+      ) : null}
+
+      <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+        <PacketField label="Name" value={get('customer_name') || caseItem.customer_name} />
+        <PacketField label="Phone" value={get('phone') || caseItem.customer_phone} />
+        <PacketField label="Garaging ZIP" value={get('garaging_zip')} />
+      </Card>
+
+      {blob!.request_type === 'policy_review' ? (
+        <>
+          <Card size="small" title="Current Policy" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+            <PacketField label="Carrier" value={get('current_carrier')} source={pkt.current_carrier?.source_file} />
+            <PacketField label="Premium" value={get('premium_amount')} source={pkt.premium_amount?.source_file} />
+            <PacketField label="Policy Term" value={[get('policy_term_start'), get('policy_term_end')].filter(Boolean).join(' – ')} />
+          </Card>
+          {(blob!.vehicles?.length ?? 0) > 0 && (
+            <Card size="small" title="Vehicles" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+              {blob!.vehicles!.map((v, i) => (
+                <PacketField
+                  key={i}
+                  label={`Vehicle ${i + 1}`}
+                  value={[v.year, v.make, v.model, v.vin ? `VIN ${v.vin}` : ''].filter(Boolean).join(' ')}
+                />
+              ))}
+            </Card>
+          )}
+        </>
+      ) : (
+        <Card size="small" title="Vehicle" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+          <PacketField label="VIN" value={get('vin')} source={pkt.vin?.source_file} />
+          <PacketField label="Year / Make / Model" value={[get('year'), get('make'), get('model')].filter(Boolean).join(' ')} />
+        </Card>
+      )}
+
+      {blob!.follow_up_message_zh?.trim() && (
+        <Card size="small" title="Chinese Follow-Up" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+          <Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>{blob!.follow_up_message_zh}</Paragraph>
+        </Card>
+      )}
+
+      {(blob!.sources?.length ?? 0) > 0 && (
+        <Card size="small" title="Sources" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+          {blob!.sources!.map((s, i) => (
+            <div key={i} style={{ fontSize: 12, marginBottom: 4 }}>
+              <Text code>{s.file}</Text> → {s.fields}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {(blob!.warnings?.length ?? 0) > 0 && (
+        <Alert type="warning" showIcon message="Warnings" description={blob!.warnings!.join('; ')} style={{ marginBottom: 12 }} />
+      )}
+
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        <Button type="primary" icon={<CopyOutlined />} onClick={onCopyReport} block size="large">
+          Copy Report
+        </Button>
+        {blob!.portal_copy_text ? (
+          <Button icon={<CopyOutlined />} onClick={onCopyPortal} block>
+            Copy Portal Format
+          </Button>
+        ) : null}
+        <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
+          Delete demo case / 删除测试案件
+        </Button>
+      </Space>
+    </div>
+  );
+}
+
+function queueLoadErrorMessage(err: unknown): string {
+  const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
+  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+  if (status === 401 || detail === 'intake_api_unauthorized') {
+    return 'Office queue requires API authorization — redeploy frontend with VITE_UNIFIED_INTAKE_INTAKE_API_KEY or check Cloud Run intake key.';
+  }
+  if (status === 403) {
+    return 'Office queue blocked (403) — check X-Org-Id / office ownership settings.';
+  }
+  return 'Could not load office queue — check API connection and CORS.';
+}
+
+export default function DocumentIntakeInboxPage() {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<QueueRow[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SavedCase | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+
+  const loadQueue = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const resp = await listRecentCasesPage({ limit: 50, offset: 0 });
+      const filtered = (resp.cases || []).filter(isP16DocumentCase);
+      setRows(
+        filtered.map((c) => ({
+          key: c.case_id,
+          case_id: c.case_id,
+          customer_name: c.customer_name || '—',
+          lane: laneLabel(c),
+          status: readinessFromCase(c),
+          summary: buildSummary(c),
+          opportunity_badges: buildOpportunityBadges(c),
+          updated_at: c.updated_at || c.created_at || '',
+          raw: c,
+        })),
+      );
+    } catch (e) {
+      const msg = queueLoadErrorMessage(e);
+      setLoadError(msg);
+      messageApi.error(msg);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [messageApi]);
+
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue]);
+
+  const openCase = async (caseId: string) => {
+    setOpenId(caseId);
+    setDetailLoading(true);
+    try {
+      const full = await getSavedCase(caseId);
+      setDetail(full);
+    } catch {
+      messageApi.error('Could not open case');
+      setDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const confirmDeleteCase = (caseId: string) => {
+    Modal.confirm({
+      title: 'Delete demo case / 删除测试案件',
+      content: 'This will remove this demo/test case from the queue. Continue?',
+      okText: 'Delete / 删除',
+      okType: 'danger',
+      cancelText: 'Cancel / 取消',
+      onOk: async () => {
+        setDeleting(true);
+        try {
+          await patchCaseWorkbench(caseId, { is_test: true });
+          await deleteTestCase(caseId);
+          messageApi.success('Case removed from queue');
+          if (openId === caseId) {
+            setOpenId(null);
+            setDetail(null);
+          }
+          setRows((prev) => prev.filter((r) => r.case_id !== caseId));
+        } catch (e: unknown) {
+          const msg =
+            (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+            ?? 'Could not delete case';
+          messageApi.error(String(msg));
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  };
+
+  const detailBlob = useMemo((): P16BrokerPacket | null => {
+    if (!detail) return null;
+    const b = detail.p16_broker_packet;
+    return b && typeof b === 'object' ? (b as P16BrokerPacket) : null;
+  }, [detail]);
+
+  const columns: ColumnsType<QueueRow> = [
+    {
+      title: 'Customer',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      width: 150,
+      render: (name: string) => <Text strong>{name}</Text>,
+    },
+    {
+      title: 'Lane',
+      dataIndex: 'lane',
+      key: 'lane',
+      width: 130,
+      render: (lane: string) => <Tag color={laneTagColor(lane)}>{lane}</Tag>,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 130,
+      render: (s: string) => statusTag(s),
+    },
+    {
+      title: 'Summary',
+      dataIndex: 'summary',
+      key: 'summary',
+      ellipsis: true,
+      render: (s: string, row: QueueRow) => (
+        <div>
+          <Text type="secondary">{s}</Text>
+          <OpportunityBadgeList badges={row.opportunity_badges} />
+        </div>
+      ),
+    },
+    {
+      title: 'Updated',
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      width: 140,
+      render: (v: string) => <Text style={{ fontSize: 13 }}>{formatUpdated(v)}</Text>,
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 160,
+      render: (_, row) => (
+        <Space size={4}>
+          <Button type="primary" size="small" onClick={() => openCase(row.case_id)}>
+            Open
+          </Button>
+          <Button
+            type="text"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => confirmDeleteCase(row.case_id)}
+            title="Delete demo case / 删除测试案件"
+          />
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px 48px' }}>
+      {contextHolder}
+
+      <div style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: '0 0 6px' }}>
+          <InboxOutlined style={{ marginRight: 10, color: '#1677ff' }} />
+          Office Review Queue
+        </Title>
+        <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 14 }}>
+          {OFFICE_NAME} — customer document intake cases awaiting broker review
+        </Paragraph>
+      </div>
+
+      <Card
+        style={{ borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
+        styles={{ body: { padding: rows.length === 0 && !loading && !loadError ? 0 : undefined } }}
+        extra={
+          <Button icon={<ReloadOutlined />} onClick={loadQueue} loading={loading}>
+            Refresh
+          </Button>
+        }
+      >
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 64 }}><Spin size="large" /></div>
+        ) : loadError ? (
+          <Alert type="error" showIcon message="Could not load office queue" description={loadError} style={{ margin: 16 }} />
+        ) : rows.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '64px 24px' }}>
+            <InboxOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 16 }} />
+            <Title level={4} style={{ margin: '0 0 8px', fontWeight: 500 }}>No cases in queue</Title>
+            <Paragraph type="secondary" style={{ maxWidth: 400, margin: '0 auto' }}>
+              When a customer submits from the wizard, their case appears here for office review.
+            </Paragraph>
+          </div>
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={rows}
+            pagination={false}
+            size="middle"
+            rowClassName={() => 'office-queue-row'}
+          />
+        )}
+      </Card>
+
+      <Drawer
+        title={
+          detail
+            ? `${detail.customer_name || 'Case'} · ${laneLabel(detail)}`
+            : 'Case detail'
+        }
+        width={520}
+        open={Boolean(openId)}
+        onClose={() => { setOpenId(null); setDetail(null); }}
+        styles={{ body: { paddingTop: 12 } }}
+        destroyOnClose
+      >
+        {detailLoading ? (
+          <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
+        ) : detail ? (
+          <BrokerCaseDetail
+            caseItem={detail}
+            blob={detailBlob}
+            onCopyReport={async () => {
+              const text = detailBlob?.copy_text || '';
+              if (!text) { messageApi.warning('No copy text stored'); return; }
+              const ok = await copyToClipboard(text);
+              messageApi.success(ok ? 'Report copied' : 'Copy failed');
+            }}
+            onCopyPortal={async () => {
+              const text = detailBlob?.portal_copy_text || '';
+              if (!text) { messageApi.warning('No portal format stored'); return; }
+              const ok = await copyToClipboard(text);
+              messageApi.success(ok ? 'Portal format copied' : 'Copy failed');
+            }}
+            onDelete={() => confirmDeleteCase(detail.case_id)}
+          />
+        ) : null}
+        {deleting && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin />
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}

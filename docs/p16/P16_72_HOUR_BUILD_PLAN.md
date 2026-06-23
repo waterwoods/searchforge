@@ -1,5 +1,12 @@
 # P16 — 72-Hour Pilot Demo Build Plan
 
+> **STATUS: COMPLETED / HISTORICAL**  
+> Executed: 2026-06-18 to 2026-06-19.  
+> All tasks complete. CK-DRY-01 PASS. PILOT_LAUNCH_SCORE 10/10.  
+> **Superseded by:** `docs/p16/P16_4_DAY_BUILD_PLAN.md` (Jun 20–23)
+
+---
+
 **Date:** 2026-06-18  
 **Authority:** `docs/p16/P16_DECISION_FREEZE_V1.md`  
 **Goal:** Pilot Demo ready for Chen Kui and Wu Xiaojie — not a production platform.  

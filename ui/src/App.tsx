@@ -5,6 +5,8 @@ import { AppLayout } from './components/layout/AppLayout';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import UnifiedIntakePage from './pages/UnifiedIntakePage';
 import AddCarPage from './pages/AddCarPage';
+import DocumentIntakeInboxPage from './pages/DocumentIntakeInboxPage';
+import { OfficeReviewShell } from './components/layout/OfficeReviewShell';
 import { DemoPage } from './pages/DemoPage';
 import { ClientConfigProvider } from './context/ClientConfigContext';
 import { isUnifiedIntakeProductOnlyUi } from './config/productSurface';
@@ -82,6 +84,14 @@ function App() {
                                 </ConfigProvider>
                             } />
                         </Route>
+
+                        <Route path="/workbench/document-intake" element={
+                            <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                <OfficeReviewShell>
+                                    <DocumentIntakeInboxPage />
+                                </OfficeReviewShell>
+                            </ConfigProvider>
+                        } />
 
                         <Route path="/add-car" element={
                             <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>

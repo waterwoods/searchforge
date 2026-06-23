@@ -33,11 +33,14 @@ import {
   CloseCircleOutlined,
   CloudUploadOutlined,
   CopyOutlined,
+  ExclamationCircleOutlined,
   EyeOutlined,
   FileTextOutlined,
+  DollarOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   ReloadOutlined,
+  RiseOutlined,
   SendOutlined,
   SwapOutlined,
   UserOutlined,
@@ -65,17 +68,44 @@ type PacketResponse = {
   warnings: string[];
   sources: Array<{ file: string; fields: string }>;
   copy_text: string;
+  portal_copy_text?: string;
   mock_mode: boolean;
   model_used: string;
   confirmation_notices?: string[];
   case_id?: string;
+  document_guidance?: string | null;
+  extraction_failed?: boolean;
+  message?: string;
+  message_zh?: string;
+  /** Policy Review lane — backend-derived readiness */
+  readiness_status?: ReadinessStatus;
+  follow_up_message_zh?: string;
+  opportunity_signals?: Array<{ code: string; meaning: string }>;
+  broker_next_action?: { en: string; zh: string };
+  vehicles?: Array<{
+    year?: string;
+    make?: string;
+    model?: string;
+    vin?: string;
+    vehicle_premium?: string;
+    source_file?: string;
+  }>;
+  drivers?: Array<{
+    name?: string;
+    relationship?: string;
+    license_state?: string;
+    visible_violation_or_accident?: string;
+    source_file?: string;
+  }>;
+  document_types_detected?: string[];
+  request_type?: string;
 };
 
 /** All wizard screens including new Screen 0 (intent) and Screen 4 (sent). */
 type WizardStep = 'intent' | 'info' | 'upload' | 'extracting' | 'sent' | 'packet';
 
 /** Which request the customer selected on Screen 0. */
-type RequestType = 'add_vehicle' | 'replace_vehicle';
+type RequestType = 'add_vehicle' | 'replace_vehicle' | 'policy_review';
 
 type VinStatus = 'valid' | 'warning' | 'missing';
 
@@ -139,15 +169,297 @@ function getFieldStatus(field: FieldData | undefined): FieldStatus {
   return 'complete';
 }
 
+function isPolicyReview(requestType: RequestType): boolean {
+  return requestType === 'policy_review';
+}
+
 function computeReadinessStatus(
   packet: Record<string, FieldData>,
   vinStatus: VinStatus,
   warnings: string[],
+  documentGuidance?: string | null,
 ): ReadinessStatus {
+  // Document Relevance Gate: no vehicle info found at all → customer must re-upload
+  // NEED_INFO wins over broker_review for missing-document cases (ADR-001)
+  if (documentGuidance) return 'needs_info';
+  // Real broker-review conflicts: invalid VIN format when VIN exists, conflicting data, extraction errors
   if (vinStatus === 'warning' || warnings.length > 0) return 'broker_review';
+  // Critical fields missing after extraction (partial result)
   const criticalMissing = ['vin', 'year', 'make', 'model'].filter(k => !packet[k]?.value);
   if (criticalMissing.length > 0) return 'needs_info';
   return 'ready';
+}
+
+function resolveReadinessStatus(
+  response: PacketResponse,
+  packet: Record<string, FieldData>,
+  vinStatus: VinStatus,
+  warnings: string[],
+  documentGuidance?: string | null,
+): ReadinessStatus {
+  if (response.readiness_status) return response.readiness_status;
+  return computeReadinessStatus(packet, vinStatus, warnings, documentGuidance);
+}
+
+const EXTRACTION_FAILED_MESSAGE =
+  "We couldn't read these documents. Please try uploading clearer vehicle documents or contact your broker.";
+const EXTRACTION_FAILED_MESSAGE_ZH =
+  '系统未能读取这些文件。请重新上传更清晰的车辆资料，或联系您的保险经纪人。';
+
+function buildCriticalFollowUpKeys(
+  vinValue: string,
+  year: string,
+  make: string,
+  model: string,
+  displayZip: string,
+): string[] {
+  const keys: string[] = [];
+  if (!vinValue) keys.push('vin');
+  if (!year) keys.push('year');
+  if (!make) keys.push('make');
+  if (!model) keys.push('model');
+  if (!displayZip) keys.push('garaging_zip');
+  return keys;
+}
+
+function shouldShowAutoFollowUp(status: ReadinessStatus, criticalKeys: string[]): boolean {
+  if (criticalKeys.length === 0) return false;
+  return status === 'needs_info' || status === 'broker_review';
+}
+
+const NEXT_ACTION_COPY: Record<ReadinessStatus, { en: string; zh: string }> = {
+  ready: {
+    en: 'Copy packet into AMS / carrier portal and start quote.',
+    zh: '下一步：复制数据包到 AMS/保险公司系统并开始报价。',
+  },
+  needs_info: {
+    en: 'Send the follow-up message to the customer and wait for updated documents.',
+    zh: '下一步：发送下方跟进消息给客户，并等待补充资料。',
+  },
+  broker_review: {
+    en: 'Review warnings before quoting. Verify conflicting information first.',
+    zh: '下一步：报价前请先查看警告，并核实冲突信息。',
+  },
+};
+
+const POLICY_REVIEW_NEXT_ACTION: Record<ReadinessStatus, { en: string; zh: string }> = {
+  ready: {
+    en: 'Packet is substantially complete — broker can enter carrier portal for manual re-shop.',
+    zh: '资料基本齐全，可以进入 carrier portal 手动重新比价。',
+  },
+  needs_info: {
+    en: 'Send the Chinese follow-up below; ask customer for declaration page or renewal notice.',
+    zh: '请先发送下方中文跟进消息，让客户补充保单首页或续保通知。',
+  },
+  broker_review: {
+    en: 'Data has conflicts or uncertainty — verify premium, coverage, or violations before re-shopping.',
+    zh: '资料存在不确定或冲突，请先人工核对保费、保额或违章信息，再决定是否比价。',
+  },
+};
+
+const POLICY_REPORT_BROKER_ACTION_FALLBACK = {
+  en: 'Your broker should review the extracted policy information and confirm whether more documents are needed before re-shopping.',
+  zh: '经纪人应先核对已识别的保单信息，并确认是否需要更多资料后再进行比价。',
+};
+
+type PolicyOpportunityItem = {
+  key: string;
+  titleEn: string;
+  titleZh: string;
+  detailEn?: string;
+  detailZh?: string;
+};
+
+type PolicyVehicleSnapshotLine = {
+  primary: string;
+  secondary?: string;
+};
+
+function formatPolicyTerm(start?: string, end?: string): string {
+  if (start && end) return `${start} – ${end}`;
+  return start || end || '';
+}
+
+function buildPolicyVehicleSnapshotLines(
+  response: PacketResponse,
+  packet: Record<string, FieldData>,
+): PolicyVehicleSnapshotLine[] {
+  const fromVehicles = (response.vehicles ?? [])
+    .map((v) => {
+      const primary = [v.year, v.make, v.model].filter(Boolean).join(' ');
+      if (!primary) return null;
+      const secondaryParts: string[] = [];
+      if (v.vehicle_premium?.trim()) secondaryParts.push(v.vehicle_premium.trim());
+      if (v.vin?.trim()) secondaryParts.push(`VIN ${v.vin.trim()}`);
+      return {
+        primary,
+        secondary: secondaryParts.length ? secondaryParts.join(' · ') : undefined,
+      };
+    })
+    .filter((line): line is PolicyVehicleSnapshotLine => line !== null);
+
+  if (fromVehicles.length > 0) return fromVehicles;
+
+  const summary = [packet.year?.value, packet.make?.value, packet.model?.value]
+    .filter(Boolean)
+    .join(' ');
+  return summary ? [{ primary: summary }] : [];
+}
+
+function hasHighLiabilityLimits(bodilyInjury: string): boolean {
+  const compact = bodilyInjury.replace(/\s/g, '');
+  if (/100\/300|250\/500|300\/500|500\/500/.test(compact)) return true;
+  return /\b(250|300|500)\b/.test(bodilyInjury);
+}
+
+function policyHasCoreFields(
+  get: (key: string) => string,
+  vehicles: PacketResponse['vehicles'],
+  drivers: PacketResponse['drivers'],
+): boolean {
+  const hasVehicle = (vehicles ?? []).some((v) => v.vin || (v.year && v.make));
+  const hasDriver = (drivers ?? []).some((d) => d.name?.trim());
+  const coverageCount = [
+    'bodily_injury',
+    'property_damage',
+    'uninsured_motorist',
+    'comprehensive_deductible',
+    'collision_deductible',
+  ].filter((k) => get(k)).length;
+  return !!(
+    get('current_carrier')
+    && get('premium_amount')
+    && hasVehicle
+    && hasDriver
+    && coverageCount >= 2
+  );
+}
+
+function buildPolicyOpportunityItems(
+  response: PacketResponse,
+  packet: Record<string, FieldData>,
+  readinessStatus: ReadinessStatus,
+): PolicyOpportunityItem[] {
+  const items: PolicyOpportunityItem[] = [];
+  const seen = new Set<string>();
+  const get = (key: string) => packet[key]?.value || '';
+
+  const add = (item: PolicyOpportunityItem) => {
+    if (seen.has(item.key)) return;
+    seen.add(item.key);
+    items.push(item);
+  };
+
+  const premium = get('premium_amount');
+  if (premium) {
+    const period = get('premium_period');
+    add({
+      key: 'premium_recognized',
+      titleEn: 'Current premium recognized',
+      titleZh: '已识别当前保费',
+      detailEn: period ? `${premium} for ${period}` : `${premium} for current term`,
+      detailZh: period ? `当前周期保费 ${premium}（${period}）` : `当前周期保费 ${premium}`,
+    });
+  }
+
+  const vehicles = response.vehicles ?? [];
+  const drivers = response.drivers ?? [];
+
+  if (policyHasCoreFields(get, vehicles, drivers)) {
+    add({
+      key: 'reshop_review',
+      titleEn: 'Ready for broker re-shop review',
+      titleZh: '资料基本可用于经纪人重新比价',
+      detailEn: 'Carrier, premium, vehicles, drivers, and coverage were found.',
+      detailZh: '已识别保险公司、保费、车辆、驾驶员及保额信息。',
+    });
+  }
+
+  if (vehicles.length >= 2) {
+    add({
+      key: 'multi_vehicle',
+      titleEn: 'Multi-vehicle household',
+      titleZh: '多车家庭',
+      detailEn: `${vehicles.length} vehicles found — possible bundle / umbrella discussion.`,
+      detailZh: `发现 ${vehicles.length} 辆车 — 可讨论打包或 Umbrella 方案。`,
+    });
+  }
+
+  const bodilyInjury = get('bodily_injury');
+  if (hasHighLiabilityLimits(bodilyInjury)) {
+    add({
+      key: 'umbrella_review',
+      titleEn: 'Umbrella review opportunity',
+      titleZh: '可考虑 Umbrella 保护需求',
+      detailEn: 'High liability limits found; broker may review whether umbrella coverage is appropriate.',
+      detailZh: '保额限额较高；经纪人可评估是否需要 Umbrella 额外责任险。',
+    });
+  }
+
+  const missingPolicyNumber = !get('policy_number');
+  const missingDeductible = !get('comprehensive_deductible') && !get('collision_deductible');
+  if (missingPolicyNumber || missingDeductible) {
+    add({
+      key: 'missing_before_quote',
+      titleEn: 'Review missing details before quoting',
+      titleZh: '比价前请核对缺失资料',
+      detailEn: 'Policy number or deductible details were not found.',
+      detailZh: '未找到保单号或免赔额信息，比价前请核对。',
+    });
+  }
+
+  for (const signal of response.opportunity_signals ?? []) {
+    if (signal.code === 'VIOLATION_PRESENT') {
+      add({
+        key: 'VIOLATION_PRESENT',
+        titleEn: 'Violation or accident noted',
+        titleZh: '文件显示违章或事故记录',
+        detailEn: 'Broker should verify driver history before re-shopping.',
+        detailZh: '经纪人应先核实驾驶员记录，再决定是否比价。',
+      });
+    } else if (signal.code === 'DO_NOT_OVERPROMISE') {
+      add({
+        key: 'DO_NOT_OVERPROMISE',
+        titleEn: 'Verify before discussing options',
+        titleZh: '讨论方案前请先核实',
+        detailEn: 'Risk factors or unclear data present — broker should explain before discussing options.',
+        detailZh: '存在不确定因素或资料不完整，经纪人应先说明情况再讨论方案。',
+      });
+    }
+  }
+
+  if (readinessStatus === 'needs_info' && !seen.has('missing_before_quote')) {
+    add({
+      key: 'needs_info_followup',
+      titleEn: 'More policy details may be needed',
+      titleZh: '可能还需要补充保单资料',
+      detailEn: 'Declaration page, premium, vehicles, drivers, or coverage may be incomplete.',
+      detailZh: '保单首页、保费、车辆、驾驶员或保额信息可能尚不完整。',
+    });
+  }
+
+  return items.slice(0, 6);
+}
+
+function NextActionLine({ status, requestType, brokerNextAction }: { status: ReadinessStatus; requestType?: RequestType; brokerNextAction?: { en: string; zh: string } }) {
+  const copy = brokerNextAction ?? (isPolicyReview(requestType ?? 'add_vehicle') ? POLICY_REVIEW_NEXT_ACTION[status] : NEXT_ACTION_COPY[status]);
+  return (
+    <div style={{
+      background: '#fafafa',
+      border: '1px solid #e8e8e8',
+      borderRadius: 8,
+      padding: '12px 16px',
+      marginBottom: 16,
+    }}>
+      <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+        Next Action:
+      </Text>
+      <Text style={{ fontSize: 14, display: 'block', lineHeight: 1.6 }}>{copy.en}</Text>
+      <Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 4, lineHeight: 1.6 }}>
+        {copy.zh}
+      </Text>
+    </div>
+  );
 }
 
 // ─── Follow-up message (Chinese) ──────────────────────────────────────────────
@@ -410,6 +722,37 @@ function IntentStep({ onSelect }: { onSelect: (type: RequestType) => void }) {
           </Space>
         </Card>
 
+        {/* Tile 3: Policy Review */}
+        <Card
+          style={tileStyle('policy_review')}
+          bodyStyle={{ padding: '24px 28px' }}
+          onClick={() => onSelect('policy_review')}
+          onMouseEnter={() => setHovered('policy_review')}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <Space align="center" size={20}>
+            <div style={{
+              width: 60, height: 60, borderRadius: 14,
+              background: '#f6ffed',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <DollarOutlined style={{ fontSize: 30, color: '#52c41a' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Title level={4} style={{ margin: 0, marginBottom: 4 }}>
+                Review My Policy
+              </Title>
+              <Text style={{ fontSize: 14, color: 'rgba(0,0,0,0.55)', display: 'block', marginBottom: 4 }}>
+                I want to check if my current premium or coverage should be reviewed.
+              </Text>
+              <Text style={{ fontSize: 15, color: 'rgba(0,0,0,0.55)' }}>
+                帮我看看当前保单 — 我想检查现在的保费或保障是否值得重新比较。
+              </Text>
+            </div>
+          </Space>
+        </Card>
+
       </Space>
 
       <div style={{ textAlign: 'center', marginTop: 36 }}>
@@ -563,9 +906,13 @@ function UploadStep({
   return (
     <Card style={{ maxWidth: 560, margin: '0 auto' }}>
       {contextHolder}
-      <Title level={3} style={{ marginBottom: 2 }}>Upload New Car Paperwork</Title>
+      <Title level={3} style={{ marginBottom: 2 }}>
+        {isPolicyReview(requestType) ? 'Upload Policy Documents' : 'Upload New Car Paperwork'}
+      </Title>
       <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
-        上传新车资料 — for <Text strong>{customerName}</Text>
+        {isPolicyReview(requestType)
+          ? `上传保单资料 — for ${customerName}`
+          : `上传新车资料 — for ${customerName}`}
       </Paragraph>
       <Divider style={{ margin: '16px 0 12px' }} />
 
@@ -573,13 +920,25 @@ function UploadStep({
         Upload any of the following:
       </Paragraph>
       <ul style={{ color: 'rgba(0,0,0,0.45)', fontSize: 13, marginBottom: 20, paddingLeft: 20, lineHeight: '1.9' }}>
-        <li>Purchase Agreement / 购车合同</li>
-        <li>Window Sticker / 车窗贴纸</li>
-        <li>Registration / 车辆登记证</li>
-        <li>VIN photo / VIN 照片</li>
-        <li>Insurance card / 保险卡</li>
-        {requestType === 'replace_vehicle' && (
-          <li>Old insurance card (optional) / 旧保险卡（可选）</li>
+        {isPolicyReview(requestType) ? (
+          <>
+            <li>Declaration Page / 保单首页</li>
+            <li>Renewal Notice / 续保通知</li>
+            <li>Insurance Card / 保险卡</li>
+            <li>Current Policy PDF / 当前保单 PDF</li>
+            <li>Premium screenshot / 保费截图</li>
+          </>
+        ) : (
+          <>
+            <li>Purchase Agreement / 购车合同</li>
+            <li>Window Sticker / 车窗贴纸</li>
+            <li>Registration / 车辆登记证</li>
+            <li>VIN photo / VIN 照片</li>
+            <li>Insurance card / 保险卡</li>
+            {requestType === 'replace_vehicle' && (
+              <li>Old insurance card (optional) / 旧保险卡（可选）</li>
+            )}
+          </>
         )}
       </ul>
 
@@ -597,6 +956,12 @@ function UploadStep({
         <p className="ant-upload-text">Click or drag files here / 点击或拖拽文件</p>
         <p className="ant-upload-hint">PDF · JPG · PNG · HEIC &nbsp;|&nbsp; Up to 10 files</p>
       </Dragger>
+
+      <Paragraph type="secondary" style={{ marginBottom: 16, fontSize: 12, textAlign: 'center', lineHeight: 1.7 }}>
+        Files are used only to help your broker review this request.
+        <br />
+        文件仅用于帮助您的保险经纪人处理本次申请。
+      </Paragraph>
 
       {fileList.length === 0 && (
         <Alert
@@ -634,18 +999,26 @@ function UploadStep({
 
 // ─── Screen 3: Extracting ─────────────────────────────────────────────────────
 
-const LOADING_STEPS = [
+const LOADING_STEPS_ADD_CAR = [
   { label: 'Upload Complete', sublabel: '文件上传完成' },
   { label: 'Reading Documents', sublabel: '正在读取文件' },
   { label: 'Extracting Vehicle Data', sublabel: '提取车辆信息' },
-  { label: 'Building Trusted Packet', sublabel: '生成数据包' },
+  { label: 'Preparing your submission', sublabel: '正在准备您的申请' },
+];
+
+const LOADING_STEPS_POLICY_REVIEW = [
+  { label: 'Upload Complete', sublabel: '文件上传完成' },
+  { label: 'Reading Documents', sublabel: '正在读取文件' },
+  { label: 'Extracting Policy Snapshot', sublabel: '提取保单信息' },
+  { label: 'Preparing your submission', sublabel: '正在准备您的申请' },
 ];
 
 const STEP_DELAYS_MS = [0, 2000, 8000, 18000];
 
-function ExtractingStep() {
+function ExtractingStep({ requestType }: { requestType: RequestType }) {
   const [activeStep, setActiveStep] = useState(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const loadingSteps = isPolicyReview(requestType) ? LOADING_STEPS_POLICY_REVIEW : LOADING_STEPS_ADD_CAR;
 
   useEffect(() => {
     STEP_DELAYS_MS.forEach((delay, i) => {
@@ -663,7 +1036,7 @@ function ExtractingStep() {
       </div>
 
       <div style={{ padding: '0 16px 8px' }}>
-        {LOADING_STEPS.map((s, i) => {
+        {loadingSteps.map((s, i) => {
           const isDone = i < activeStep;
           const isActive = i === activeStep;
           const isPending = i > activeStep;
@@ -895,10 +1268,328 @@ function AutoFollowUpMessage({ missingKeys, uploadLink }: { missingKeys: string[
   );
 }
 
+// ─── Policy Review Follow-Up (Chinese, from backend) ─────────────────────────
+
+function PolicyReviewFollowUpMessage({ messageText }: { messageText: string }) {
+  const [messageApi, contextHolder] = message.useMessage();
+  const [copied, setCopied] = useState(false);
+
+  if (!messageText.trim()) return null;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(messageText);
+      setCopied(true);
+      messageApi.success('Follow-up message copied / 跟进信息已复制');
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      messageApi.error('Could not copy — please select and copy manually');
+    }
+  };
+
+  return (
+    <Card size="small" style={{ marginBottom: 16, borderColor: '#d9d9d9' }}>
+      {contextHolder}
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap' as const }}>
+        <Space>
+          <Text strong>Chinese Follow-Up / 中文跟进消息</Text>
+          <Tag color="orange">Broker reviews before sending</Tag>
+        </Space>
+        <Button size="small" icon={<CopyOutlined />} onClick={handleCopy} type={copied ? 'primary' : 'default'}>
+          {copied ? '✓ Copied' : 'Copy Message / 复制信息'}
+        </Button>
+      </Space>
+      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+        Broker reviews before sending. / 经纪人发送前请先确认。
+      </Text>
+      <div style={{
+        background: '#fafafa', border: '1px solid #e8e8e8', borderRadius: 6,
+        padding: '14px 18px', fontSize: 14, lineHeight: 1.9, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      }}>
+        {messageText}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Policy Opportunity Report (Policy Review final screen) ───────────────────
+
+function PolicySnapshotRow({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value?: string;
+  icon: ReactNode;
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: 12, padding: '10px 0',
+      borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start',
+    }}>
+      <span style={{ color: 'rgba(0,0,0,0.35)', marginTop: 3, flexShrink: 0, fontSize: 15 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>{label}</Text>
+        {value
+          ? <Text strong style={{ fontSize: 14 }}>{value}</Text>
+          : <Text type="secondary" style={{ fontSize: 13, fontStyle: 'italic' }}>Not found yet / 暂未找到</Text>
+        }
+      </div>
+    </div>
+  );
+}
+
+function PolicyVehicleSnapshotBlock({
+  lines,
+  icon,
+}: {
+  lines: PolicyVehicleSnapshotLine[];
+  icon: ReactNode;
+}) {
+  const label = lines.length > 1 ? 'Vehicles / 车辆' : 'Vehicle / 车辆';
+  return (
+    <div style={{
+      display: 'flex', gap: 12, padding: '10px 0',
+      borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start',
+    }}>
+      <span style={{ color: 'rgba(0,0,0,0.35)', marginTop: 3, flexShrink: 0, fontSize: 15 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>{label}</Text>
+        {lines.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 13, fontStyle: 'italic' }}>Not found yet / 暂未找到</Text>
+        ) : (
+          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            {lines.map((line, i) => (
+              <div key={i}>
+                <Text strong style={{ fontSize: 14, display: 'block' }}>{line.primary}</Text>
+                {line.secondary && (
+                  <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>{line.secondary}</Text>
+                )}
+              </div>
+            ))}
+          </Space>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PolicyOpportunityReportStep({
+  response,
+  customerName,
+  garagingZip,
+  submittedAt,
+  onStartOver,
+  onGoToUpload,
+}: {
+  response: PacketResponse;
+  customerName: string;
+  garagingZip: string;
+  submittedAt: string;
+  onStartOver: () => void;
+  onGoToUpload: () => void;
+}) {
+  const [messageApi, contextHolder] = message.useMessage();
+  const { packet, case_id, document_guidance } = response;
+
+  const get = (key: string) => packet[key]?.value || '';
+  const displayName = get('customer_name') || customerName || '';
+  const displayPhone = get('phone') || '';
+  const displayZip = get('garaging_zip') || garagingZip || '';
+  const vehicleSnapshotLines = buildPolicyVehicleSnapshotLines(response, packet);
+  const premiumDisplay = get('premium_amount')
+    ? `${get('premium_amount')}${get('premium_period') ? ` / ${get('premium_period')}` : ''}`
+    : '';
+  const policyTerm = formatPolicyTerm(get('policy_term_start'), get('policy_term_end'));
+
+  const vinValue = get('vin');
+  const vinValidation = vinValue ? validateVin(vinValue) : null;
+  const vinStatus: VinStatus = !vinValue ? 'missing' : vinValidation?.valid ? 'valid' : 'warning';
+  const readinessStatus = resolveReadinessStatus(response, packet, vinStatus, [], document_guidance);
+
+  const handleCopyReference = async () => {
+    if (!case_id) return;
+    try {
+      await navigator.clipboard.writeText(case_id);
+      messageApi.success('Reference copied / 参考编号已复制');
+    } catch {
+      messageApi.error('Could not copy — please select and copy manually / 无法复制，请手动选择复制');
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 600, margin: '0 auto' }}>
+      {contextHolder}
+
+      {/* Customer confirmation header — ADR-003; no broker tools on this screen */}
+      <Card
+        style={{
+          marginBottom: 16,
+          borderRadius: 14,
+          border: readinessStatus === 'needs_info' ? '2px solid #ffd591' : '2px solid #b7eb8f',
+          background: readinessStatus === 'needs_info' ? '#fffbe6' : 'linear-gradient(180deg, #f6ffed 0%, #ffffff 100%)',
+        }}
+        bodyStyle={{ padding: '28px 24px', textAlign: 'center' }}
+      >
+        <SendOutlined style={{ color: readinessStatus === 'needs_info' ? '#fa8c16' : '#52c41a', fontSize: 40, marginBottom: 12 }} />
+        <Title level={3} style={{ margin: 0, marginBottom: 4, color: '#237804' }}>
+          {readinessStatus === 'needs_info' ? 'Request received' : 'Submitted to your broker office'}
+        </Title>
+        <Title level={4} style={{ margin: 0, marginBottom: 14, color: '#389e0d', fontWeight: 400 }}>
+          {readinessStatus === 'needs_info' ? '已收到 · 需补充资料' : '已提交至陈奎保险办公室'}
+        </Title>
+        <Paragraph style={{ margin: 0, fontSize: 14, color: 'rgba(0,0,0,0.55)', lineHeight: 1.8 }}>
+          Your broker will review the details and contact you to confirm next steps.
+          <br />
+          您的经纪人将审核资料并与您确认后续步骤。
+        </Paragraph>
+      </Card>
+
+      {/* Reference # */}
+      {case_id && (
+        <div style={{
+          marginBottom: 16,
+          padding: '16px 20px',
+          background: '#fff',
+          border: '1.5px solid #d9d9d9',
+          borderRadius: 12,
+          textAlign: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+            Reference # / 参考编号
+          </Text>
+          <Space align="center" size={8}>
+            <Text strong style={{ fontSize: 20, fontFamily: 'monospace', letterSpacing: 0.8 }}>
+              {case_id}
+            </Text>
+            <Button type="default" size="small" icon={<CopyOutlined />} onClick={handleCopyReference}>
+              Copy
+            </Button>
+          </Space>
+        </div>
+      )}
+
+      {/* Current Policy Snapshot */}
+      <Card style={{ marginBottom: 16 }} title={
+        <Space>
+          <FileTextOutlined style={{ color: '#1677ff' }} />
+          <span>Current Policy Snapshot / 当前保单摘要</span>
+        </Space>
+      }>
+        <PolicySnapshotRow
+          label="Carrier / 保险公司"
+          value={get('current_carrier') || undefined}
+          icon={<FileTextOutlined />}
+        />
+        <PolicySnapshotRow
+          label="Current Premium / 当前保费"
+          value={premiumDisplay || undefined}
+          icon={<DollarOutlined />}
+        />
+        <PolicySnapshotRow
+          label="Policy Term / 保单期限"
+          value={policyTerm || undefined}
+          icon={<CalendarOutlined />}
+        />
+        <PolicyVehicleSnapshotBlock
+          lines={vehicleSnapshotLines}
+          icon={<CarOutlined />}
+        />
+        <PolicySnapshotRow
+          label="Garaging ZIP / 停放邮编"
+          value={displayZip || undefined}
+          icon={<InfoCircleOutlined />}
+        />
+        <PolicySnapshotRow
+          label="Customer / 客户"
+          value={displayName ? `${displayName}${displayPhone ? ` · ${displayPhone}` : ''}` : undefined}
+          icon={<UserOutlined />}
+        />
+        <div style={{
+          marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+        }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            <CalendarOutlined style={{ marginRight: 5 }} />
+            {submittedAt}
+          </Text>
+          {readinessStatus === 'ready' && (
+            <Tag color="success" icon={<CheckCircleOutlined />}>Ready for review / 可审核</Tag>
+          )}
+          {readinessStatus === 'needs_info' && (
+            <Tag color="warning" icon={<ExclamationCircleOutlined />}>More info needed / 需补充资料</Tag>
+          )}
+          {readinessStatus === 'broker_review' && (
+            <Tag color="processing" icon={<InfoCircleOutlined />}>Broker review / 经纪人核实</Tag>
+          )}
+        </div>
+      </Card>
+
+      {/* Document guidance */}
+      {document_guidance && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="We couldn't find complete policy information / 未找到完整保单信息"
+          description={<Text style={{ fontSize: 13, whiteSpace: 'pre-line' }}>{document_guidance}</Text>}
+        />
+      )}
+
+      {/* ADR-003 disclaimer */}
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="This does not mean your policy has already changed."
+        description={
+          <Text style={{ fontSize: 13 }}>
+            这不代表保险已经变更；请等待经纪人确认。
+            <br />
+            Your broker will confirm coverage, price, and effective date before any change takes effect.
+          </Text>
+        }
+      />
+
+      {/* Actions — customer only; broker tools live in office inbox */}
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        {readinessStatus === 'needs_info' && (
+          <Button
+            type="primary"
+            size="large"
+            block
+            icon={<CloudUploadOutlined />}
+            onClick={onGoToUpload}
+            style={{ height: 52, fontSize: 16, background: '#fa8c16', borderColor: '#fa8c16' }}
+          >
+            Upload Better Documents / 上传更合适的文件
+          </Button>
+        )}
+        <Button
+          size="large"
+          block
+          icon={<ReloadOutlined />}
+          onClick={onStartOver}
+          style={{ height: 52, fontSize: 16 }}
+        >
+          Start another request / 提交新申请
+        </Button>
+      </Space>
+    </div>
+  );
+}
+
 // ─── Screen 4: Sent to Broker (customer-facing completion) ────────────────────
 // ADR-003 language contract:
 //   ✅ "Sent to your broker" / "Broker will confirm"
 //   ❌ Never "insurance updated" / "policy changed" / "vehicle is now covered"
+// State-gate UX (P16 Stage-Gate fix):
+//   READY        → Green  + SendOutlined        — "Submitted to your broker"
+//   BROKER_REVIEW → Blue   + InfoCircleOutlined  — "Sent for broker review"
+//   NEED_INFO    → Orange + ExclamationCircle   — "Request received — additional info needed"
+//                  NEED_INFO must NOT say "sent to broker" or "broker received"
 
 function SentToBrokerStep({
   response,
@@ -907,7 +1598,7 @@ function SentToBrokerStep({
   requestType,
   submittedAt,
   onStartOver,
-  onViewBrokerPacket,
+  onGoToUpload,
 }: {
   response: PacketResponse;
   customerName: string;
@@ -915,9 +1606,20 @@ function SentToBrokerStep({
   requestType: RequestType;
   submittedAt: string;
   onStartOver: () => void;
-  onViewBrokerPacket: () => void;
+  onGoToUpload: () => void;
 }) {
-  const { packet, warnings, case_id } = response;
+  const [messageApi, contextHolder] = message.useMessage();
+  const { packet, warnings, case_id, document_guidance } = response;
+
+  const handleCopyReference = async () => {
+    if (!case_id) return;
+    try {
+      await navigator.clipboard.writeText(case_id);
+      messageApi.success('Reference copied / 参考编号已复制');
+    } catch {
+      messageApi.error('Could not copy — please select and copy manually / 无法复制，请手动选择复制');
+    }
+  };
   const get = (key: string) => packet[key]?.value || '';
 
   const displayName = get('customer_name') || customerName || '';
@@ -926,19 +1628,30 @@ function SentToBrokerStep({
   const year = get('year');
   const make = get('make');
   const model = get('model');
-  const vehicleLabel = [year, make, model].filter(Boolean).join(' ');
+  const policyFirstVehicle = response.vehicles?.[0];
+  const vehicleLabel = isPolicyReview(requestType)
+    ? [policyFirstVehicle?.year, policyFirstVehicle?.make, policyFirstVehicle?.model].filter(Boolean).join(' ')
+    : [year, make, model].filter(Boolean).join(' ');
   const displayZip = get('garaging_zip') || garagingZip || '';
 
   const vinValidation = vinValue ? validateVin(vinValue) : null;
   const vinStatus: VinStatus = !vinValue ? 'missing' : vinValidation?.valid ? 'valid' : 'warning';
-  const readinessStatus = computeReadinessStatus(packet, vinStatus, warnings);
+  const readinessStatus = resolveReadinessStatus(response, packet, vinStatus, warnings, document_guidance);
 
   const criticalMissing: string[] = [];
-  if (!vinValue) criticalMissing.push('VIN number');
-  if (!year || !make || !model) criticalMissing.push('Vehicle Year / Make / Model');
-  if (!displayZip) criticalMissing.push('Garaging ZIP');
+  if (isPolicyReview(requestType)) {
+    if (!get('current_carrier')) criticalMissing.push('Current carrier / 保险公司');
+    if (!get('premium_amount')) criticalMissing.push('Premium amount / 保费');
+    if (!(response.vehicles?.length)) criticalMissing.push('Vehicle information / 车辆信息');
+  } else {
+    if (!vinValue) criticalMissing.push('VIN number');
+    if (!year || !make || !model) criticalMissing.push('Vehicle Year / Make / Model');
+    if (!displayZip) criticalMissing.push('Garaging ZIP');
+  }
 
-  const requestLabel = requestType === 'replace_vehicle'
+  const requestLabel = requestType === 'policy_review'
+    ? 'Policy review request / 保单检查申请'
+    : requestType === 'replace_vehicle'
     ? 'Vehicle replacement request / 换车申请'
     : 'New car addition request / 加新车申请';
 
@@ -950,31 +1663,110 @@ function SentToBrokerStep({
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
+      {contextHolder}
 
-      {/* ── Success header — ADR-003 compliant language ── */}
-      <div style={{
-        background: '#f6ffed', border: '2px solid #95de64', borderRadius: 14,
-        padding: '32px 28px 28px', marginBottom: 20, textAlign: 'center',
-      }}>
-        <SendOutlined style={{ color: '#52c41a', fontSize: 44, marginBottom: 14 }} />
-        <Title level={3} style={{ margin: 0, marginBottom: 4, color: '#237804' }}>
-          Your request has been submitted
-        </Title>
-        <Title level={4} style={{ margin: 0, marginBottom: 14, color: '#389e0d', fontWeight: 400 }}>
-          您的申请已提交
-        </Title>
-        <Paragraph style={{ margin: 0, fontSize: 14, color: 'rgba(0,0,0,0.55)', lineHeight: 1.8 }}>
-          Your broker will review the details and confirm next steps with you.<br />
-          您的经纪人将审核您的信息，并与您确认后续步骤。
-          {requestType === 'replace_vehicle' && (
-            <>
-              <br /><br />
-              Your broker will review your new vehicle information and confirm any vehicle replacement updates.<br />
-              您的经纪人将审核您的新车信息，并确认换车保险更新。
-            </>
-          )}
-        </Paragraph>
-      </div>
+      {/* ── State-specific header — Stage-Gate UX (P16 fix) ── */}
+      {readinessStatus === 'ready' && (
+        <div style={{
+          background: '#f6ffed', border: '2px solid #95de64', borderRadius: 14,
+          padding: '32px 28px 28px', marginBottom: 20, textAlign: 'center',
+        }}>
+          <SendOutlined style={{ color: '#52c41a', fontSize: 44, marginBottom: 14 }} />
+          <Title level={3} style={{ margin: 0, marginBottom: 4, color: '#237804' }}>
+            Submitted to your broker
+          </Title>
+          <Title level={4} style={{ margin: 0, marginBottom: 14, color: '#389e0d', fontWeight: 400 }}>
+            您的申请已发送给您的保险经纪人
+          </Title>
+          <Paragraph style={{ margin: 0, fontSize: 14, color: 'rgba(0,0,0,0.55)', lineHeight: 1.8 }}>
+            Your broker will review the details and confirm next steps with you.<br />
+            您的经纪人将审核您的信息，并与您确认后续步骤。
+            {requestType === 'replace_vehicle' && (
+              <>
+                <br /><br />
+                Your broker will review your new vehicle information and confirm any vehicle replacement updates.<br />
+                您的经纪人将审核您的新车信息，并确认换车保险更新。
+              </>
+            )}
+          </Paragraph>
+        </div>
+      )}
+
+      {readinessStatus === 'broker_review' && (
+        <div style={{
+          background: '#e6f4ff', border: '2px solid #91caff', borderRadius: 14,
+          padding: '32px 28px 28px', marginBottom: 20, textAlign: 'center',
+        }}>
+          <InfoCircleOutlined style={{ color: '#1677ff', fontSize: 44, marginBottom: 14 }} />
+          <Title level={3} style={{ margin: 0, marginBottom: 4, color: '#0958d9' }}>
+            Sent for broker review
+          </Title>
+          <Title level={4} style={{ margin: 0, marginBottom: 14, color: '#1677ff', fontWeight: 400 }}>
+            您的申请已发送，经纪人需要核实部分信息
+          </Title>
+          <Paragraph style={{ margin: 0, fontSize: 14, color: 'rgba(0,0,0,0.55)', lineHeight: 1.8 }}>
+            Your broker needs to verify some details before proceeding.<br />
+            经纪人需要核实部分信息后才能继续处理。
+          </Paragraph>
+        </div>
+      )}
+
+      {readinessStatus === 'needs_info' && (
+        <div style={{
+          background: '#fff7e6', border: '2px solid #ffd591', borderRadius: 14,
+          padding: '32px 28px 28px', marginBottom: 20, textAlign: 'center',
+        }}>
+          <ExclamationCircleOutlined style={{ color: '#fa8c16', fontSize: 44, marginBottom: 14 }} />
+          <Title level={3} style={{ margin: 0, marginBottom: 4, color: '#ad4e00' }}>
+            Request received — additional information needed
+          </Title>
+          <Title level={4} style={{ margin: 0, marginBottom: 14, color: '#d46b08', fontWeight: 400 }}>
+            您的申请已收到，但还需要补充资料
+          </Title>
+          <Paragraph style={{ margin: 0, fontSize: 14, color: 'rgba(0,0,0,0.55)', lineHeight: 1.8 }}>
+            We received your request, but we could not find all required vehicle information.<br />
+            Please provide the missing information so your broker can process your request.<br /><br />
+            我们已收到您的申请，但尚未找到完整车辆资料。<br />
+            请补充缺失信息，以便经纪人继续处理。
+          </Paragraph>
+        </div>
+      )}
+
+      {/* ── Reference number — prominent for customer follow-up ── */}
+      {case_id && (
+        <div style={{
+          marginBottom: 20,
+          padding: '18px 20px',
+          background: '#fff',
+          border: '1.5px solid #d9d9d9',
+          borderRadius: 12,
+          textAlign: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6, letterSpacing: 0.2 }}>
+            Reference # / 参考编号
+          </Text>
+          <Space align="center" size={8}>
+            <Text strong style={{ fontSize: 20, fontFamily: 'monospace', letterSpacing: 0.8, color: '#262626' }}>
+              {case_id}
+            </Text>
+            <Button
+              type="default"
+              size="small"
+              icon={<CopyOutlined />}
+              onClick={handleCopyReference}
+              aria-label="Copy reference number"
+            >
+              Copy
+            </Button>
+          </Space>
+          <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+            Save this number if you contact your broker about this request.
+            <br />
+            如需联系经纪人查询进度，请保存此编号。
+          </Text>
+        </div>
+      )}
 
       {/* ── What was submitted ── */}
       <Card style={{ marginBottom: 16 }}>
@@ -995,24 +1787,65 @@ function SentToBrokerStep({
           </div>
         )}
 
-        {vehicleLabel && (
-          <div style={rowStyle}>
-            <CarOutlined style={iconStyle} />
-            <Text strong>{vehicleLabel}</Text>
-          </div>
+        {isPolicyReview(requestType) ? (
+          <>
+            {get('current_carrier') && (
+              <div style={rowStyle}>
+                <FileTextOutlined style={iconStyle} />
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>Carrier / 保险公司</Text>
+                  <Text strong>{get('current_carrier')}</Text>
+                </div>
+              </div>
+            )}
+            {get('premium_amount') && (
+              <div style={rowStyle}>
+                <DollarOutlined style={iconStyle} />
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>Premium / 保费</Text>
+                  <Text strong>{get('premium_amount')}{get('premium_period') ? ` / ${get('premium_period')}` : ''}</Text>
+                </div>
+              </div>
+            )}
+            {vehicleLabel && (
+              <div style={rowStyle}>
+                <CarOutlined style={iconStyle} />
+                <Text strong>{vehicleLabel}</Text>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {vehicleLabel && (
+              <div style={rowStyle}>
+                <CarOutlined style={iconStyle} />
+                <Text strong>{vehicleLabel}</Text>
+              </div>
+            )}
+
+            {vinValue && (
+              <div style={rowStyle}>
+                <FileTextOutlined style={iconStyle} />
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>VIN</Text>
+                  <Text code style={{ fontSize: 13, letterSpacing: 1 }}>{vinValue}</Text>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
-        {vinValue && (
-          <div style={rowStyle}>
-            <FileTextOutlined style={iconStyle} />
+        {!isPolicyReview(requestType) && displayZip && (
+          <div style={{ ...rowStyle, borderBottom: 'none' }}>
+            <InfoCircleOutlined style={iconStyle} />
             <div>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>VIN</Text>
-              <Text code style={{ fontSize: 13, letterSpacing: 1 }}>{vinValue}</Text>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>Garaging ZIP / 停放邮编</Text>
+              <Text strong>{displayZip}</Text>
             </div>
           </div>
         )}
 
-        {displayZip && (
+        {isPolicyReview(requestType) && displayZip && (
           <div style={{ ...rowStyle, borderBottom: 'none' }}>
             <InfoCircleOutlined style={iconStyle} />
             <div>
@@ -1032,47 +1865,63 @@ function SentToBrokerStep({
             <CalendarOutlined style={{ marginRight: 5 }} />
             {submittedAt}
           </Text>
-          {case_id && (
-            <Text type="secondary" style={{ fontSize: 11 }}>Case #{case_id}</Text>
-          )}
           {readinessStatus === 'ready' && (
-            <Tag color="success" icon={<CheckCircleOutlined />}>Ready for broker review / 资料已准备完成</Tag>
+            <Tag color="success" icon={<CheckCircleOutlined />}>Submitted / 已提交</Tag>
           )}
           {readinessStatus === 'needs_info' && (
-            <Tag color="error" icon={<CloseCircleOutlined />}>NEED INFO</Tag>
+            <Tag color="error" icon={<CloseCircleOutlined />}>Documents needed / 需补充资料</Tag>
           )}
           {readinessStatus === 'broker_review' && (
-            <Tag color="warning" icon={<WarningOutlined />}>BROKER REVIEW</Tag>
+            <Tag color="warning" icon={<WarningOutlined />}>Under review / 审核中</Tag>
           )}
         </div>
       </Card>
 
-      {/* ── Status-specific context message ── */}
-      {readinessStatus === 'needs_info' && criticalMissing.length > 0 && (
+      {/* ── Document Relevance Gate alert: uploaded docs had no vehicle info ── */}
+      {document_guidance && (
         <Alert
-          type="warning" showIcon
+          type="warning"
+          showIcon
           style={{ marginBottom: 16 }}
-          message="Your broker may contact you for more information"
+          message={
+            <span>
+              <strong>We couldn't find vehicle information</strong>
+              <span style={{ marginLeft: 8, color: 'rgba(0,0,0,0.55)', fontWeight: 400 }}>
+                未找到车辆信息
+              </span>
+            </span>
+          }
           description={
-            <div>
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                经纪人可能会联系您补充以下信息：
-              </Text>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 13 }}>
-                {criticalMissing.map((item, i) => <li key={i}>{item}</li>)}
-              </ul>
-            </div>
+            <Text style={{ fontSize: 13, whiteSpace: 'pre-line' }}>
+              {document_guidance}
+            </Text>
           }
         />
       )}
 
-      {readinessStatus === 'broker_review' && (
-        <Alert
-          type="info" showIcon
-          style={{ marginBottom: 16 }}
-          message="Your broker needs to verify some details"
-          description="经纪人将核实您的文件中的一些细节，并与您确认。"
-        />
+      {/* ── NEED_INFO: Missing information display (no "sent to broker" language) ── */}
+      {readinessStatus === 'needs_info' && (criticalMissing.length > 0 || document_guidance) && (
+        <Card
+          style={{ marginBottom: 16, borderColor: '#ffd591', background: '#fffbe6' }}
+          size="small"
+        >
+          <Space align="start" size={10}>
+            <ExclamationCircleOutlined style={{ color: '#fa8c16', fontSize: 16, marginTop: 2, flexShrink: 0 }} />
+            <div>
+              <Text strong style={{ fontSize: 14, color: '#ad4e00', display: 'block', marginBottom: 6 }}>
+                Missing information / 缺失信息
+              </Text>
+              {criticalMissing.length > 0 && (
+                <ul style={{ margin: '0 0 4px', paddingLeft: 18, fontSize: 13, lineHeight: 1.9 }}>
+                  {criticalMissing.map((item, i) => <li key={i}>{item}</li>)}
+                </ul>
+              )}
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                请上传包含以上信息的文件（例如：购车合同、车辆登记证、VIN 照片）。
+              </Text>
+            </div>
+          </Space>
+        </Card>
       )}
 
       {/* ── ADR-003 disclaimer: never imply policy has changed ── */}
@@ -1112,8 +1961,20 @@ function SentToBrokerStep({
 
       {/* ── Actions ── */}
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        {readinessStatus === 'needs_info' && (
+          <Button
+            type="primary"
+            size="large"
+            block
+            icon={<CloudUploadOutlined />}
+            onClick={onGoToUpload}
+            style={{ height: 52, fontSize: 16, background: '#fa8c16', borderColor: '#fa8c16' }}
+          >
+            Upload Better Documents / 上传更合适的文件
+          </Button>
+        )}
         <Button
-          type="primary"
+          type={readinessStatus === 'needs_info' ? 'default' : 'primary'}
           size="large"
           block
           icon={<ReloadOutlined />}
@@ -1122,16 +1983,169 @@ function SentToBrokerStep({
         >
           Start another request / 提交新申请
         </Button>
-        <Button
-          size="large"
-          block
-          icon={<EyeOutlined />}
-          onClick={onViewBrokerPacket}
-          style={{ color: 'rgba(0,0,0,0.45)', fontSize: 14 }}
-        >
-          View broker packet / 查看经纪人数据包
-        </Button>
       </Space>
+    </div>
+  );
+}
+
+// REMOVED_VIEW_BROKER_PACKET_SENT
+
+// ─── Screen 5: Policy Review Packet (broker-facing) ───────────────────────────
+
+function PolicyReviewPacketStep({
+  response,
+  customerName,
+  garagingZip,
+  onStartOver,
+}: {
+  response: PacketResponse;
+  customerName: string;
+  garagingZip: string;
+  onStartOver: () => void;
+}) {
+  const [messageApi, contextHolder] = message.useMessage();
+  const { packet, warnings, mock_mode, document_guidance, case_id, copy_text, follow_up_message_zh, opportunity_signals, broker_next_action } = response;
+  const vehicles = response.vehicles ?? [];
+  const drivers = response.drivers ?? [];
+  const get = (key: string) => packet[key]?.value || '';
+  const readinessStatus = response.readiness_status ?? 'needs_info';
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copy_text || '');
+      messageApi.success('Report copied / 已复制');
+    } catch {
+      messageApi.error('Could not copy — please copy manually');
+    }
+  };
+
+  const handleCopyPortal = async () => {
+    const text = response.portal_copy_text || '';
+    if (!text.trim()) {
+      messageApi.warning('Portal format not available');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      messageApi.success('Portal format copied / 已复制门户格式');
+    } catch {
+      messageApi.error('Could not copy — please copy manually');
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      {contextHolder}
+      {mock_mode && import.meta.env.DEV && (
+        <Alert type="warning" showIcon closable message="Development mode: mock extraction active" style={{ marginBottom: 16 }} />
+      )}
+      <BrokerReadyBanner status={readinessStatus} missingCount={warnings.length} />
+      <NextActionLine status={readinessStatus} requestType="policy_review" brokerNextAction={broker_next_action} />
+
+      <Card style={{ marginBottom: 12 }}>
+        <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
+          <Title level={4} style={{ margin: 0 }}>Policy Review Packet / 当前保单分析资料包</Title>
+          {case_id && <Text type="secondary" style={{ fontSize: 11 }}>Case #{case_id}</Text>}
+        </Space>
+
+        {document_guidance && (
+          <Alert type="warning" showIcon message="Missing declaration page / 缺少保单首页" description={document_guidance} style={{ marginBottom: 16 }} />
+        )}
+        {warnings.length > 0 && (
+          <Alert type="warning" showIcon message={`${warnings.length} extraction warning(s)`} description={
+            <ul style={{ margin: 0, paddingLeft: 16 }}>{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          } style={{ marginBottom: 16 }} />
+        )}
+
+        <SectionHeader title="Customer" icon={<UserOutlined />} />
+        <ReadinessField label="Name" value={get('customer_name') || customerName} status={get('customer_name') ? 'complete' : 'missing'} />
+        <ReadinessField label="Phone" value={get('phone')} status={get('phone') ? 'complete' : 'missing'} />
+        <ReadinessField label="Garaging ZIP" value={get('garaging_zip') || garagingZip} status={(get('garaging_zip') || garagingZip) ? 'complete' : 'missing'} />
+
+        <Divider style={{ margin: '12px 0' }} />
+        <SectionHeader title="Current Policy" icon={<FileTextOutlined />} />
+        <ReadinessField label="Carrier" value={get('current_carrier')} status={get('current_carrier') ? 'complete' : 'missing'} source={packet.current_carrier?.source_file} />
+        <ReadinessField label="Policy Number" value={get('policy_number')} status={get('policy_number') ? 'complete' : 'needs_confirmation'} source={packet.policy_number?.source_file} />
+        <ReadinessField label="Term Start" value={get('policy_term_start')} status={get('policy_term_start') ? 'complete' : 'needs_confirmation'} source={packet.policy_term_start?.source_file} />
+        <ReadinessField label="Term End" value={get('policy_term_end')} status={get('policy_term_end') ? 'complete' : 'needs_confirmation'} source={packet.policy_term_end?.source_file} />
+
+        <Divider style={{ margin: '12px 0' }} />
+        <SectionHeader title="Vehicles" icon={<CarOutlined />} />
+        {vehicles.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 13 }}>No vehicles extracted</Text>
+        ) : vehicles.map((v, i) => (
+          <ReadinessField
+            key={i}
+            label={`Vehicle ${i + 1}`}
+            value={[v.year, v.make, v.model].filter(Boolean).join(' ') || null}
+            status={v.vin || v.year ? 'complete' : 'missing'}
+            source={v.source_file}
+            note={v.vin ? `VIN: ${v.vin}${v.vehicle_premium ? ` · Premium: ${v.vehicle_premium}` : ''}` : undefined}
+            mono={!!v.vin}
+          />
+        ))}
+
+        <Divider style={{ margin: '12px 0' }} />
+        <SectionHeader title="Drivers" icon={<UserOutlined />} />
+        {drivers.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 13 }}>No drivers extracted</Text>
+        ) : drivers.map((d, i) => (
+          <ReadinessField
+            key={i}
+            label={d.relationship || `Driver ${i + 1}`}
+            value={d.name || null}
+            status={d.name ? 'complete' : 'missing'}
+            source={d.source_file}
+            note={d.visible_violation_or_accident ? `Violation/Accident: ${d.visible_violation_or_accident}` : undefined}
+          />
+        ))}
+
+        <Divider style={{ margin: '12px 0' }} />
+        <SectionHeader title="Coverage" icon={<FileTextOutlined />} />
+        <ReadinessField label="Bodily Injury" value={get('bodily_injury')} status={get('bodily_injury') ? 'complete' : 'missing'} source={packet.bodily_injury?.source_file} />
+        <ReadinessField label="Property Damage" value={get('property_damage')} status={get('property_damage') ? 'complete' : 'missing'} source={packet.property_damage?.source_file} />
+        <ReadinessField label="Uninsured Motorist" value={get('uninsured_motorist')} status={get('uninsured_motorist') ? 'complete' : 'needs_confirmation'} source={packet.uninsured_motorist?.source_file} />
+        <ReadinessField label="Comprehensive Deductible" value={get('comprehensive_deductible')} status={get('comprehensive_deductible') ? 'complete' : 'needs_confirmation'} source={packet.comprehensive_deductible?.source_file} />
+        <ReadinessField label="Collision Deductible" value={get('collision_deductible')} status={get('collision_deductible') ? 'complete' : 'needs_confirmation'} source={packet.collision_deductible?.source_file} />
+
+        <Divider style={{ margin: '12px 0' }} />
+        <SectionHeader title="Premium" icon={<DollarOutlined />} />
+        <ReadinessField label="Premium Amount" value={get('premium_amount')} status={get('premium_amount') ? 'complete' : 'missing'} source={packet.premium_amount?.source_file} />
+        <ReadinessField label="Premium Period" value={get('premium_period')} status={get('premium_period') ? 'complete' : 'needs_confirmation'} source={packet.premium_period?.source_file} />
+
+        {opportunity_signals && opportunity_signals.length > 0 && (
+          <>
+            <Divider style={{ margin: '12px 0' }} />
+            <SectionHeader title="Opportunity Signals" icon={<InfoCircleOutlined />} />
+            {opportunity_signals.map((s) => (
+              <div key={s.code} style={{ padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
+                <Tag color="blue" style={{ marginBottom: 4 }}>{s.code}</Tag>
+                <Text style={{ fontSize: 13, display: 'block' }}>{s.meaning}</Text>
+              </div>
+            ))}
+          </>
+        )}
+
+        <Divider style={{ margin: '16px 0' }} />
+        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <Button type="primary" icon={<CopyOutlined />} size="large" block onClick={handleCopy} style={{ height: 52, fontSize: 16 }}>
+            Copy Report / 复制报告
+          </Button>
+          {response.portal_copy_text?.trim() && (
+            <Button icon={<CopyOutlined />} size="large" block onClick={handleCopyPortal} style={{ height: 48, fontSize: 15 }}>
+              Copy Portal Format / 复制门户格式
+            </Button>
+          )}
+        </Space>
+      </Card>
+
+      {readinessStatus === 'needs_info' && follow_up_message_zh && (
+        <PolicyReviewFollowUpMessage messageText={follow_up_message_zh} />
+      )}
+
+      <div style={{ marginTop: 16, textAlign: 'center' }}>
+        <Button icon={<ReloadOutlined />} onClick={onStartOver}>Start another request / 提交新申请</Button>
+      </div>
     </div>
   );
 }
@@ -1158,7 +2172,7 @@ function PacketStep({
 }) {
   const [messageApi, contextHolder] = message.useMessage();
   const [showDetails, setShowDetails] = useState(false);
-  const { packet, warnings, sources, mock_mode, confirmation_notices } = response;
+  const { packet, warnings, sources, mock_mode, confirmation_notices, document_guidance, case_id } = response;
 
   const get = (key: string) => packet[key]?.value || '';
 
@@ -1209,20 +2223,12 @@ function PacketStep({
   const lienholderStatus: FieldStatus = lienholder ? 'complete' : 'needs_confirmation';
 
   // ── Readiness ──
-  const readinessStatus = computeReadinessStatus(packet, vinStatus, warnings);
+  const readinessStatus = resolveReadinessStatus(response, packet, vinStatus, warnings, document_guidance);
   const criticalMissingCount = ['vin', 'year', 'make', 'model'].filter(k => !packet[k]?.value).length;
 
-  // ── Follow-Up missing keys ──
-  const followUpMissingKeys: string[] = [];
-  if (!vinValue) followUpMissingKeys.push('vin');
-  if (!year || !make || !model) {
-    if (!year) followUpMissingKeys.push('year');
-    if (!make) followUpMissingKeys.push('make');
-    if (!model) followUpMissingKeys.push('model');
-  }
-  if (!displayZip) followUpMissingKeys.push('garaging_zip');
-  if (pdDefaulted) followUpMissingKeys.push('primary_driver');
-  if (!effectiveDate) followUpMissingKeys.push('effective_date');
+  // ── Follow-Up missing keys (critical only — not optional fields like effective_date) ──
+  const criticalFollowUpKeys = buildCriticalFollowUpKeys(vinValue, year, make, model, displayZip);
+  const showAutoFollowUp = shouldShowAutoFollowUp(readinessStatus, criticalFollowUpKeys);
 
   // ── Copy text ──
   const copyText = buildCopyText(packet, warnings, sources, customerName, garagingZip, requestType, oldVehicleVin, oldVehiclePlate);
@@ -1235,7 +2241,21 @@ function PacketStep({
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
-      messageApi.success('Packet copied to clipboard / 已复制');
+      messageApi.success('Report copied / 已复制');
+    } catch {
+      messageApi.error('Could not copy — please copy manually');
+    }
+  };
+
+  const handleCopyPortal = async () => {
+    const text = response.portal_copy_text || '';
+    if (!text.trim()) {
+      messageApi.warning('Portal format not available');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      messageApi.success('Portal format copied / 已复制门户格式');
     } catch {
       messageApi.error('Could not copy — please copy manually');
     }
@@ -1260,6 +2280,8 @@ function PacketStep({
       {/* ── Broker Ready Banner ── */}
       <BrokerReadyBanner status={readinessStatus} missingCount={criticalMissingCount} />
 
+      <NextActionLine status={readinessStatus} requestType={requestType} />
+
       {/* ── Main Packet Card ── */}
       <Card style={{ marginBottom: 12 }}>
 
@@ -1269,10 +2291,29 @@ function PacketStep({
             <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />
             <Title level={4} style={{ margin: 0 }}>Trusted Packet</Title>
           </Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>{packetTimestamp}</Text>
+          <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>{packetTimestamp}</Text>
+            {case_id && (
+              <Text type="secondary" style={{ fontSize: 11 }}>Case #{case_id}</Text>
+            )}
+          </Space>
         </Space>
 
-        {/* Extraction warnings — compact, before sections */}
+        {/* Document Relevance Gate note — broker sees this as a missing-document flag */}
+        {document_guidance && (
+          <Alert
+            type="warning" showIcon
+            message="Customer uploaded a document without vehicle information / 客户上传的文件中无车辆信息"
+            description={
+              <Text style={{ fontSize: 13, whiteSpace: 'pre-line' }}>
+                {document_guidance}
+              </Text>
+            }
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
+        {/* Extraction warnings — real broker-review conflicts only */}
         {warnings.length > 0 && (
           <Alert
             type="warning" showIcon
@@ -1389,22 +2430,35 @@ function PacketStep({
 
         <Divider style={{ margin: '12px 0 16px' }} />
 
-        {/* ── Copy Packet — primary broker CTA ── */}
-        <Button
-          type="primary"
-          icon={<CopyOutlined />}
-          size="large"
-          block
-          onClick={handleCopy}
-          style={{ height: 52, fontSize: 16 }}
-        >
-          Copy Packet / 复制数据包
-        </Button>
+        {/* ── Copy — broker CTAs ── */}
+        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <Button
+            type="primary"
+            icon={<CopyOutlined />}
+            size="large"
+            block
+            onClick={handleCopy}
+            style={{ height: 52, fontSize: 16 }}
+          >
+            Copy Report / 复制报告
+          </Button>
+          {response.portal_copy_text?.trim() && (
+            <Button
+              icon={<CopyOutlined />}
+              size="large"
+              block
+              onClick={handleCopyPortal}
+              style={{ height: 48, fontSize: 15 }}
+            >
+              Copy Portal Format / 复制门户格式
+            </Button>
+          )}
+        </Space>
       </Card>
 
-      {/* ── Auto Follow-Up Message — shown when missing items exist ── */}
-      {followUpMissingKeys.length > 0 && (
-        <AutoFollowUpMessage missingKeys={followUpMissingKeys} uploadLink={uploadLink} />
+      {/* ── Auto Follow-Up Message — NEED_INFO / BROKER_REVIEW when critical info missing ── */}
+      {showAutoFollowUp && (
+        <AutoFollowUpMessage missingKeys={criticalFollowUpKeys} uploadLink={uploadLink} />
       )}
 
       {/* ── Expandable field details ── */}
@@ -1526,12 +2580,27 @@ export default function AddCarPage() {
         method: 'POST',
         body: fd,
       });
+      const data = await res.json().catch(() => null) as PacketResponse | { detail?: unknown } | null;
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(body.detail || `HTTP ${res.status}`);
+        const detail = data && typeof data === 'object' ? (data as { detail?: unknown }).detail : undefined;
+        if (detail && typeof detail === 'object' && (detail as PacketResponse).extraction_failed) {
+          const failed = detail as PacketResponse;
+          throw new Error(`${failed.message || EXTRACTION_FAILED_MESSAGE}\n${failed.message_zh || EXTRACTION_FAILED_MESSAGE_ZH}`);
+        }
+        const detailText = typeof detail === 'string' ? detail : res.statusText;
+        throw new Error(detailText || `HTTP ${res.status}`);
       }
-      const data: PacketResponse = await res.json();
-      setPacketResponse(data);
+      if (!data || typeof data !== 'object' || !('packet' in data)) {
+        throw new Error(EXTRACTION_FAILED_MESSAGE);
+      }
+      const packetData = data as PacketResponse;
+      if (packetData.extraction_failed) {
+        throw new Error(`${packetData.message || EXTRACTION_FAILED_MESSAGE}\n${packetData.message_zh || EXTRACTION_FAILED_MESSAGE_ZH}`);
+      }
+      if (packetData.mock_mode && !import.meta.env.DEV) {
+        throw new Error(`${EXTRACTION_FAILED_MESSAGE}\n${EXTRACTION_FAILED_MESSAGE_ZH}`);
+      }
+      setPacketResponse(packetData);
       setSubmittedAt(new Date().toLocaleString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric',
         hour: 'numeric', minute: '2-digit',
@@ -1563,13 +2632,26 @@ export default function AddCarPage() {
     <div style={{ minHeight: '100vh', background: '#f5f5f5', padding: '24px 16px 48px' }}>
       {contextHolder}
 
-      {/* Page header */}
+      {/* Page header — CKS office branding */}
       <div style={{ maxWidth: 640, margin: '0 auto 8px' }}>
-        <Title level={2} style={{ margin: 0, marginBottom: 2 }}>
-          Add-Car Intake
+        <Text type="secondary" style={{ fontSize: 12, letterSpacing: 0.4 }}>
+          CKS Insurance Agency · Chen Kui Insurance Office
+        </Text>
+        <Title level={2} style={{ margin: '4px 0 2px' }}>
+          {requestType === 'policy_review' ? 'Review My Policy' : 'Add Your New Car'}
         </Title>
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          上传客户文件 → Trusted Packet → 复制到运营商系统
+        <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>
+          {requestType === 'policy_review' ? '当前保单检查' : '新车加保申请'}
+        </Text>
+        <Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 4 }}>
+          {requestType === 'policy_review'
+            ? 'Upload policy docs · Your broker reviews premium & coverage'
+            : 'Tell us about your car · Upload documents · Your broker confirms'}
+        </Text>
+        <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>
+          {requestType === 'policy_review'
+            ? '上传保单文件 · 经纪人审核保费与保障'
+            : '填写车辆信息 · 上传文件 · 经纪人确认'}
         </Text>
       </div>
 
@@ -1594,8 +2676,8 @@ export default function AddCarPage() {
           type="error"
           showIcon
           closable
-          message="Something went wrong"
-          description={error}
+          message="Something went wrong / 出现问题"
+          description={<Text style={{ fontSize: 13, whiteSpace: 'pre-line' }}>{error}</Text>}
           style={{ maxWidth: 640, margin: '0 auto 16px' }}
           onClose={() => setError(null)}
         />
@@ -1620,19 +2702,30 @@ export default function AddCarPage() {
       )}
 
       {/* Screen 3: Extracting */}
-      {step === 'extracting' && <ExtractingStep />}
+      {step === 'extracting' && <ExtractingStep requestType={requestType} />}
 
       {/* Screen 4: Sent to Broker — customer-facing completion (ADR-003) */}
       {step === 'sent' && packetResponse && (
-        <SentToBrokerStep
-          response={packetResponse}
-          customerName={customerName}
-          garagingZip={garagingZip}
-          requestType={requestType}
-          submittedAt={submittedAt}
-          onStartOver={handleStartOver}
-          onViewBrokerPacket={() => setStep('packet')}
-        />
+        isPolicyReview(requestType) ? (
+          <PolicyOpportunityReportStep
+            response={packetResponse}
+            customerName={customerName}
+            garagingZip={garagingZip}
+            submittedAt={submittedAt}
+            onStartOver={handleStartOver}
+            onGoToUpload={() => setStep('upload')}
+          />
+        ) : (
+          <SentToBrokerStep
+            response={packetResponse}
+            customerName={customerName}
+            garagingZip={garagingZip}
+            requestType={requestType}
+            submittedAt={submittedAt}
+            onStartOver={handleStartOver}
+            onGoToUpload={() => setStep('upload')}
+          />
+        )
       )}
 
       {/* Screen 5: Trusted Packet — broker-facing; accessible via secondary link */}
@@ -1648,15 +2741,24 @@ export default function AddCarPage() {
               ← Back to confirmation / 返回确认页
             </Button>
           </div>
-          <PacketStep
-            response={packetResponse}
-            customerName={customerName}
-            garagingZip={garagingZip}
-            requestType={requestType}
-            oldVehicleVin={oldVehicleVin}
-            oldVehiclePlate={oldVehiclePlate}
-            onStartOver={handleStartOver}
-          />
+          {isPolicyReview(requestType) ? (
+            <PolicyReviewPacketStep
+              response={packetResponse}
+              customerName={customerName}
+              garagingZip={garagingZip}
+              onStartOver={handleStartOver}
+            />
+          ) : (
+            <PacketStep
+              response={packetResponse}
+              customerName={customerName}
+              garagingZip={garagingZip}
+              requestType={requestType}
+              oldVehicleVin={oldVehicleVin}
+              oldVehiclePlate={oldVehiclePlate}
+              onStartOver={handleStartOver}
+            />
+          )}
         </div>
       )}
     </div>

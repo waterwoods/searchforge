@@ -132,6 +132,7 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "person_link_confidence",
         "office_case_title",
         "office_broker_next_step",
+        "p16_broker_packet",
     )
     out: dict[str, Any] = {}
     for k in keys:

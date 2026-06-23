@@ -175,6 +175,73 @@ def _prepare_file(path: Path) -> list[tuple[str, str, str]]:
 
 
 # ─────────────────────────────────────────────
+# PDF text-layer VIN (prefer over Vision OCR for native PDFs)
+# ─────────────────────────────────────────────
+
+_VIN_STRUCTURAL = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
+
+
+def try_pdf_text_layer_vin(path: Path) -> str:
+    """
+    Extract a structurally valid 17-char VIN from a PDF's embedded text layer.
+
+    Returns empty string when the file is not a PDF, has no text layer, or no
+    valid VIN is found. Scanned/image-only PDFs fall through to Vision OCR.
+    """
+    if path.suffix.lower() != ".pdf":
+        return ""
+    from .local_ocr_extractor import _extract_text_from_pdf, _extract_vin
+    from .normalizers import normalize_vin
+
+    text = _extract_text_from_pdf(path)
+    if not text.strip():
+        return ""
+    raw, _conf = _extract_vin(text)
+    vin = normalize_vin(raw)
+    if _VIN_STRUCTURAL.match(vin):
+        return vin
+    return ""
+
+
+def _apply_pdf_text_vin_preference(file_path: Path, result: dict) -> dict:
+    """
+    When PDF text layer yields a valid VIN, prefer it over Vision OCR output.
+
+    Vision extraction still runs for all other fields; this only overrides vin.
+    """
+    from .normalizers import normalize_vin
+
+    pdf_vin = try_pdf_text_layer_vin(file_path)
+    if not pdf_vin:
+        return result
+
+    fields = result.setdefault("fields", {})
+    vin_field = fields.get("vin") or {}
+    vision_vin = normalize_vin((vin_field.get("value") or "").strip())
+    if vision_vin == pdf_vin:
+        return result
+
+    note_parts = ["VIN from PDF text layer."]
+    if vision_vin and vision_vin != pdf_vin:
+        note_parts.append(f"Vision OCR had '{vision_vin}'.")
+
+    fields["vin"] = {
+        "value": pdf_vin,
+        "confidence": 0.99,
+        "source_quote": "PDF text layer",
+        "needs_confirmation": False,
+        "notes": " ".join(note_parts),
+    }
+    logger.info(
+        "PDF text-layer VIN override for %s: %s (vision had %s)",
+        file_path.name,
+        pdf_vin,
+        vision_vin or "(empty)",
+    )
+    return result
+
+
+# ─────────────────────────────────────────────
 # JSON extraction helper
 # ─────────────────────────────────────────────
 
@@ -261,7 +328,7 @@ class OpenAIExtractor:
             }
         result["_cost_images"] = len(parts)
         result["_model"] = self.MODEL
-        return result
+        return _apply_pdf_text_vin_preference(file_path, result)
 
     def cost_per_image(self) -> float:
         return self.COST_PER_IMAGE_USD
@@ -321,7 +388,7 @@ class GeminiExtractor:
             }
         result["_cost_images"] = len(parts)
         result["_model"] = self.MODEL
-        return result
+        return _apply_pdf_text_vin_preference(file_path, result)
 
     def cost_per_image(self) -> float:
         return self.COST_PER_IMAGE_USD

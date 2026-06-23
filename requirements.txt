@@ -48,3 +48,5 @@ psycopg[binary]>=3.1.0 ; python_version >= "3.11" and python_version < "4.0"
 # P16 HEIC: iPhone photo conversion to JPEG before sending to OpenAI/Gemini
 pillow-heif>=0.18.0 ; python_version >= "3.11" and python_version < "4.0"
 Pillow>=10.0.0 ; python_version >= "3.11" and python_version < "4.0"
+# P16 Add-Car: PDF → image for vision extraction on Cloud Run
+pymupdf>=1.24.0 ; python_version >= "3.11" and python_version < "4.0"

@@ -755,6 +755,9 @@ def save_case(
     # Explicit Stage-1 lane (Add-Car-first); set only when caller supplies (e.g. formal Add-Car persist path)
     if service_lane and (sl := str(service_lane).strip()):
         case["service_lane"] = sl
+    p16_blob = triage_result.get("p16_broker_packet")
+    if isinstance(p16_blob, dict) and p16_blob:
+        case["p16_broker_packet"] = p16_blob
 
     _apply_identity_fields_from_triage_result(case, triage_result)
 

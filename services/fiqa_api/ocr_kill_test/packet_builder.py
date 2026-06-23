@@ -298,6 +298,8 @@ def process_case(
         try:
             extraction = extractor.extract(fpath)
             per_file_results.append(extraction)
+            if extraction.get("_error") and result.error is None:
+                result.error = str(extraction["_error"])
             dt = extraction.get("document_type", "unknown")
             doc_types.append(dt)
             if dt == "unrelated":

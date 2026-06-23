@@ -6,6 +6,20 @@
 **Supersedes for scope/architecture:** Prior P16 roadmaps, tech-option memos, and build plans unless explicitly referenced here.  
 **Runtime deployment truth still wins in:** `docs/CURRENT_PRODUCT_SHAPE.md`
 
+**ADR Index (architecture decisions — added 2026-06-20):**
+
+| ADR | Decision | File |
+|-----|----------|------|
+| ADR-001 | Request Readiness State Model (READY / NEED_INFO / BROKER_REVIEW) | `docs/p16/adr/ADR_001_REQUEST_READINESS.md` |
+| ADR-002 | No Timeline UI in V1 (deferred to post-10-case gate) | `docs/p16/adr/ADR_002_NO_TIMELINE_V1.md` |
+| ADR-003 | No Carrier API or Quote Automation in V1 | `docs/p16/adr/ADR_003_NO_CARRIER_API_V1.md` |
+
+**Request Framework formal spec:** `docs/p16/P16_REQUEST_FRAMEWORK.md`  
+**Customer Flow Blueprint:** `docs/p16/P16_CUSTOMER_FLOW_BLUEPRINT.md`  
+**Current build plan:** `docs/p16/P16_4_DAY_BUILD_PLAN.md`
+
+---
+
 **Prerequisite reviews completed:**
 
 | Review | Outcome captured in |
@@ -569,6 +583,61 @@ All P0 trust fixes from §12 TOP_10_UI_FIXES are now live:
 4. Log Wu Xiaojie results in `docs/trial/P16_TIME_SAVINGS_TRACKER.md`
 5. After Wu Xiaojie confirms GO: send URL to Chen Kui for first real add-car case (CK-001)
 6. Gate to invoice: 10 real cases, average ≥4 min saved
+
+---
+
+---
+
+---
+
+## 14. Timeline V1 Direction
+
+**Added:** 2026-06-19 (P16 Timeline + Case State Machine Design Review)  
+**Source:** `docs/p16/P16_TIMELINE_STATE_MACHINE_DESIGN.md`  
+**Status:** DESIGN APPROVED — pending GO/NO-GO for implementation
+
+---
+
+### Direction
+
+The Add-Car Trusted Packet will gain a lightweight case timeline. This is the smallest useful layer on top of the existing packet flow — not a CRM.
+
+**Hierarchy:**
+
+```
+Customer (phone identity)
+  └── Case (one per upload session)
+        ├── Vehicle (extracted VIN + year + make + model)
+        └── Timeline Events (ordered log)
+```
+
+**Timeline events written automatically (no human action):**
+
+`CASE_CREATED` → `DOCUMENT_UPLOADED` → `AI_EXTRACTED_PACKET` → `VIN_VALIDATED` → `PRIMARY_DRIVER_DEFAULTED` (if applicable) → `MISSING_ITEM_DETECTED` (if applicable) → `VIN_CONFLICT_FLAGGED` (if applicable) → `PACKET_READY`
+
+**Case states (mapped to existing `lifecycle_status`):**
+
+`NEW` → `DOCS_UPLOADED` → `PACKET_BUILT` → `READY_FOR_QUOTE` (or `MISSING_ITEMS`)
+
+**Key implementation decisions:**
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Timeline storage (V1 MVP) | `case_activity` JSONB in `service_records.extra` | No schema change; reuses existing persistence path |
+| Timeline storage (V2, before 10-case gate) | New `p16_timeline_events` Postgres table | Proper relational log, queryable by event type |
+| `case_id` from extract endpoint | Wire `save_case()` call in `add_car.py` | Currently missing — packet exists but no case is persisted |
+| Conflict rule | Different VIN = new case; never auto-merge | Protects broker from silent wrong-VIN packets |
+| Timeline UI | Ant Design `<Timeline>` inside PacketStep `<Collapse>` | Collapsed by default; doesn't clutter primary broker view |
+
+**What this is NOT:**
+
+- Not a full case management system
+- Not a CRM
+- Not a customer dashboard
+- Not a broker workflow engine
+- Not a policy or quote system
+
+**Reference:** `docs/p16/P16_TIMELINE_STATE_MACHINE_DESIGN.md` for full design.
 
 ---
 
