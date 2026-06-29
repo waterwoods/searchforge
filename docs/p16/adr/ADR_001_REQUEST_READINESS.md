@@ -71,7 +71,7 @@ All critical fields ✅ or ⚠️ only  → READY (broker sees ⚠️ individual
 4. **Do not add extra states in V1.** No PENDING, PROCESSING, IN_REVIEW, AWAITING_SIGNATURE, DRAFT, SUBMITTED, etc.
 5. **BROKER_REVIEW is not an error state.** It is a judgment-required state. The packet may be good; broker confirms.
 6. **Broker-facing status must be understood in 10 seconds.** If it requires explanation, the state design has failed.
-7. **State transitions are one-directional in a session.** A case does not go from READY back to NEED_INFO after broker opens it (UI constraint only; re-submission creates a new session).
+7. **Readiness is evaluated on the materialized Trusted Packet. New evidence attached to an Active Case may change Packet readiness (including READY → BROKER_REVIEW on conflict). Per-field ✅ / ⚠️ / ❌ symbols remain stable within a single materialization until the next evidence append.**
 
 ---
 
@@ -122,4 +122,4 @@ Any state model with more than three states at the request level adds cognitive 
 
 ---
 
-*Related: `ADR_002_NO_TIMELINE_V1.md` · `ADR_003_NO_CARRIER_API_V1.md` · `docs/p16/P16_REQUEST_FRAMEWORK.md`*
+*Related: `ADR_002_NO_TIMELINE_V1.md` · `ADR_003_NO_CARRIER_API_V1.md` · `ADR_005_ACTIVE_CASE_CONSOLIDATION.md` (§10 — Rule #7 supersession rationale for multi-evidence Active Cases) · `docs/p16/P16_REQUEST_FRAMEWORK.md`*

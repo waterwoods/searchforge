@@ -96,4 +96,4 @@ This decision is revisited if:
 
 ---
 
-*Related: `ADR_001_REQUEST_READINESS.md` · `ADR_003_NO_CARRIER_API_V1.md` · `docs/p16/P16_TIMELINE_STATE_MACHINE_DESIGN.md` (deferred design)*
+*Related: `ADR_001_REQUEST_READINESS.md` · `ADR_003_NO_CARRIER_API_V1.md` · `ADR_005_ACTIVE_CASE_CONSOLIDATION.md` · `docs/p16/P16_TIMELINE_STATE_MACHINE_DESIGN.md` (deferred design)*

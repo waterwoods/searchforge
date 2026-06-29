@@ -107,4 +107,4 @@ This decision is revisited if:
 
 ---
 
-*Related: `ADR_001_REQUEST_READINESS.md` · `ADR_002_NO_TIMELINE_V1.md` · `docs/p16/P16_DECISION_FREEZE_V1.md` §4*
+*Related: `ADR_001_REQUEST_READINESS.md` · `ADR_002_NO_TIMELINE_V1.md` · `ADR_005_ACTIVE_CASE_CONSOLIDATION.md` · `docs/p16/P16_DECISION_FREEZE_V1.md` §4*

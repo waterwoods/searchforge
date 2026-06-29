@@ -13,6 +13,8 @@
 | ADR-001 | Request Readiness State Model (READY / NEED_INFO / BROKER_REVIEW) | `docs/p16/adr/ADR_001_REQUEST_READINESS.md` |
 | ADR-002 | No Timeline UI in V1 (deferred to post-10-case gate) | `docs/p16/adr/ADR_002_NO_TIMELINE_V1.md` |
 | ADR-003 | No Carrier API or Quote Automation in V1 | `docs/p16/adr/ADR_003_NO_CARRIER_API_V1.md` |
+| ADR-004 | Enterprise WeCom Channel Integration (Channel Adapter #1) | `docs/p16/adr/ADR_004_ENTERPRISE_WECOM_CHANNEL_INTEGRATION.md` |
+| ADR-005 | Active Case Consolidation & Evidence Append Model (implementation gated) | `docs/p16/adr/ADR_005_ACTIVE_CASE_CONSOLIDATION.md` |
 
 **Request Framework formal spec:** `docs/p16/P16_REQUEST_FRAMEWORK.md`  
 **Customer Flow Blueprint:** `docs/p16/P16_CUSTOMER_FLOW_BLUEPRINT.md`  
