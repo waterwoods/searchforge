@@ -558,9 +558,18 @@ def _persist_add_car_case(
     copy_text: str = "",
     sources: list[dict] | None = None,
 ) -> str | None:
-    """Persist minimal add-car case via save_case(). Non-blocking on failure."""
+    """Persist add-car case via resolver — CREATE or ATTACH to Active Case."""
     try:
-        from services.fiqa_api.inbox_triage.case_store import save_case
+        from services.fiqa_api.inbox_triage.active_case_resolver import (
+            ResolverOutcome,
+            resolve_active_case_for_evidence,
+        )
+        from services.fiqa_api.inbox_triage.case_store import (
+            append_evidence_event_only,
+            attach_add_car_evidence,
+            save_case,
+        )
+        from services.fiqa_api.inbox_triage.case_truth_repository import list_cases_for_phone_lookup
         from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
         from services.fiqa_api.p16.packet_persist import (
             build_p16_broker_packet_blob,
@@ -590,7 +599,7 @@ def _persist_add_car_case(
             request_type=request_type,
             broker_next_step=str(triage_result.get("broker_next_step") or ""),
         )
-        triage_result["p16_broker_packet"] = build_p16_broker_packet_blob(
+        p16_blob = build_p16_broker_packet_blob(
             request_type=request_type,
             readiness_status=readiness,
             packet=packet,
@@ -599,21 +608,57 @@ def _persist_add_car_case(
             sources=sources or [],
             warnings=warnings,
         )
+        triage_result["p16_broker_packet"] = p16_blob
 
         upload_label = ", ".join(file_names) if file_names else "intake only"
-        saved = save_case(
-            source_text=f"[客户] P16 Add-Car upload: {upload_label}",
-            triage_result=triage_result,
-            status=case_status,
-            service_lane=SERVICE_LANE_ADD_CAR,
+        source_text = f"[客户] P16 Add-Car upload: {upload_label}"
+        evidence_filename = file_names[0] if file_names else upload_label
+        new_vin = _packet_field_value(packet, "vin") or None
+
+        decision = resolve_active_case_for_evidence(
+            phone=phone,
+            intent=request_type,
+            new_vin=new_vin,
+            cases=list_cases_for_phone_lookup(phone),
         )
-        case_id = str(saved.get("case_id") or "").strip()
+
+        if decision.outcome == ResolverOutcome.CREATE:
+            saved = save_case(
+                source_text=source_text,
+                triage_result=triage_result,
+                status=case_status,
+                service_lane=SERVICE_LANE_ADD_CAR,
+            )
+            case_id = str(saved.get("case_id") or "").strip()
+            if case_id:
+                append_evidence_event_only(case_id, filename=evidence_filename)
+        else:
+            merge_review = decision.outcome == ResolverOutcome.BROKER_REVIEW
+            if merge_review:
+                attach_triage = dict(triage_result)
+                attach_triage["quote_ready_status"] = "almost_ready"
+            else:
+                attach_triage = triage_result
+            saved = attach_add_car_evidence(
+                str(decision.case_id or ""),
+                source_text=source_text,
+                triage_result=attach_triage,
+                p16_broker_packet=p16_blob,
+                incoming_packet=packet,
+                garaging_zip=garaging_zip,
+                evidence_filename=evidence_filename,
+                merge_review_required=merge_review,
+                conflict_reason=str(decision.conflict_reason or ""),
+            )
+            case_id = str(decision.case_id or "").strip() if saved else None
+
         if case_id:
             logger.info(
-                "add_car_case_persisted case_id=%s vin=%s conflict=%s missing=%s",
+                "add_car_case_persisted case_id=%s outcome=%s vin=%s conflict=%s missing=%s",
                 case_id,
+                decision.outcome.value,
                 _packet_field_value(packet, "vin") or "(none)",
-                has_conflict,
+                has_conflict or decision.outcome == ResolverOutcome.BROKER_REVIEW,
                 missing,
             )
         return case_id or None

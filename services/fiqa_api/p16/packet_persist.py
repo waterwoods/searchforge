@@ -21,6 +21,35 @@ def map_add_car_readiness(
     return "READY"
 
 
+def _packet_field_str(packet: dict, key: str) -> str:
+    raw = packet.get(key)
+    if isinstance(raw, dict):
+        return str(raw.get("value") or "").strip()
+    return str(raw or "").strip()
+
+
+def derive_add_car_field_gaps(packet: dict, *, garaging_zip: str = "") -> tuple[list[str], list[str]]:
+    """Return (collected_fields, still_needed_fields) from a materialized packet."""
+    vin_val = _packet_field_str(packet, "vin")
+    year_val = _packet_field_str(packet, "year")
+    make_val = _packet_field_str(packet, "make")
+    model_val = _packet_field_str(packet, "model")
+    zip_val = (garaging_zip or _packet_field_str(packet, "garaging_zip")).strip()
+
+    missing: list[str] = []
+    if not vin_val:
+        missing.append("vin")
+    if not year_val:
+        missing.append("year")
+    if not make_val or not model_val:
+        missing.append("make_model")
+    if not zip_val:
+        missing.append("zip")
+
+    collected = [f for f in ("vin", "year", "make_model", "zip") if f not in missing]
+    return collected, missing
+
+
 def map_policy_review_readiness(readiness: str) -> str:
     """Map policy_review lane readiness to ADR-001 office labels."""
     r = (readiness or "").strip().lower()
@@ -133,11 +162,10 @@ def build_portal_copy_text_policy_review(
         ymm = " ".join(filter(None, [v.get("year"), v.get("make"), v.get("model")]))
         vin = str(v.get("vin") or "").strip()
         lines.append(f"Vehicle {i}: {ymm} VIN {vin or '—'}".strip())
+    from services.fiqa_api.policy_review.trust_checks import format_portal_driver_line
+
     for i, d in enumerate(drivers or [], 1):
-        name = str(d.get("name") or "").strip()
-        rel = str(d.get("relationship") or "").strip()
-        label = rel or f"Driver {i}"
-        lines.append(f"{label}: {name or '—'}")
+        lines.append(format_portal_driver_line(d, i))
     action = (broker_next_action or {}).get("en") or ""
     if action:
         lines.append(f"Next Action: {action}")

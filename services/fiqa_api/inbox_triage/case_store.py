@@ -29,6 +29,7 @@ CASE_WAITING_ON_VALUES = ("none", "client", "broker", "carrier", "underwriting")
 MAX_STORED_CASES = 200
 MAX_CASE_NOTES = 20
 MAX_CASE_ACTIVITY = 40
+MAX_EVIDENCE_EVENTS = 50
 MAX_NEXT_CONTACT_BY_LENGTH = 80
 MAX_CUSTOMER_NAME_LENGTH = 120
 MAX_CUSTOMER_PHONE_LENGTH = 40
@@ -357,6 +358,14 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
     for ik in ("identity_binding_state", "person_link_key", "person_link_source", "person_link_confidence"):
         if ik not in normalized:
             normalized[ik] = None
+
+    # P17 Phase 1 — lightweight evidence log (ADR-005; no Submission table)
+    if "evidence_events" not in normalized or not isinstance(normalized.get("evidence_events"), list):
+        normalized["evidence_events"] = []
+    if "merge_review_required" not in normalized:
+        normalized["merge_review_required"] = bool(normalized.get("merge_review_required"))
+    if "conflict_state" not in normalized:
+        normalized["conflict_state"] = str(normalized.get("conflict_state") or "none").strip() or "none"
 
     return normalized
 
@@ -1328,3 +1337,221 @@ def append_follow_up_message(
     if not _persist_case_after_update(case_id, updated_case):
         return None
     return updated_case
+
+
+def merge_add_car_packet_fields(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Gap-fill merge only — existing non-empty values win (Phase 1)."""
+    merged = dict(existing)
+    for key, incoming_field in incoming.items():
+        if not isinstance(incoming_field, dict):
+            continue
+        inc_val = str(incoming_field.get("value") or "").strip()
+        if not inc_val:
+            continue
+        ex_field = merged.get(key)
+        if not isinstance(ex_field, dict):
+            merged[key] = dict(incoming_field)
+            continue
+        ex_val = str(ex_field.get("value") or "").strip()
+        if not ex_val:
+            merged[key] = dict(incoming_field)
+    return merged
+
+
+def _append_evidence_event(
+    case: dict[str, Any],
+    *,
+    channel: str,
+    filename: str,
+) -> None:
+    events = list(case.get("evidence_events") or [])
+    events.insert(
+        0,
+        {
+            "time": _utc_now_iso(),
+            "channel": (channel or "web").strip() or "web",
+            "filename": (filename or "").strip() or "upload",
+        },
+    )
+    case["evidence_events"] = events[:MAX_EVIDENCE_EVENTS]
+
+
+def append_evidence_event_only(
+    case_id: str,
+    *,
+    channel: str = "web",
+    filename: str,
+) -> None:
+    """Record lightweight evidence on case without packet merge (first CREATE upload)."""
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return
+    _append_evidence_event(normalized_case, channel=channel, filename=filename)
+    normalized_case["updated_at"] = _utc_now_iso()
+    _persist_case_after_update(case_id, normalized_case)
+
+
+def attach_add_car_evidence(
+    case_id: str,
+    *,
+    source_text: str,
+    triage_result: dict[str, Any],
+    p16_broker_packet: dict[str, Any],
+    incoming_packet: dict[str, Any],
+    garaging_zip: str = "",
+    evidence_channel: str = "web",
+    evidence_filename: str = "",
+    merge_review_required: bool = False,
+    conflict_reason: str = "",
+) -> dict[str, Any] | None:
+    """
+    Append evidence to an existing Active Case (P17 Phase 1).
+
+    When merge_review_required: log evidence, flag conflict, keep existing packet.
+    Otherwise: merge packet, recompute readiness, update broker blob.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    validated = _validate_triage_result(triage_result)
+    timestamp = _utc_now_iso()
+    upload_label = (evidence_filename or "").strip() or "upload"
+    _append_evidence_event(
+        normalized_case,
+        channel=evidence_channel,
+        filename=upload_label,
+    )
+
+    new_msg = (source_text or "").strip()
+    if new_msg:
+        messages = list(normalized_case.get("case_messages") or [])
+        next_seq = max((m.get("sequence") or 0 for m in messages), default=0) + 1
+        messages.append({
+            "message_id": f"msg_{uuid4().hex[:12]}",
+            "role": "customer",
+            "text": new_msg,
+            "created_at": timestamp,
+            "sequence": next_seq,
+        })
+        normalized_case["case_messages"] = messages
+        normalized_case["source_text"] = _build_source_from_messages(messages)
+
+    normalized_case["updated_at"] = timestamp
+    normalized_case["issue_category"] = validated["issue_category"]
+    normalized_case["urgency"] = validated["urgency"]
+    normalized_case["broker_next_step"] = validated["broker_next_step"]
+    normalized_case["client_prep"] = validated["client_prep"]
+    normalized_case["client_reply_draft"] = validated["client_reply_draft"]
+    normalized_case["manual_followup_needed"] = validated["manual_followup_needed"]
+
+    if merge_review_required:
+        normalized_case["merge_review_required"] = True
+        normalized_case["conflict_state"] = (conflict_reason or "broker_review").strip() or "broker_review"
+        existing_blob = normalized_case.get("p16_broker_packet")
+        if isinstance(existing_blob, dict):
+            blob = dict(existing_blob)
+            warnings = [str(w) for w in (blob.get("warnings") or []) if str(w).strip()]
+            note = "New evidence conflicts with current packet — review required."
+            if conflict_reason == "vin_conflict":
+                note = "VIN conflict across evidence — broker review required."
+            elif conflict_reason == "multiple_open_cases":
+                note = "Multiple open cases for this customer — broker review required."
+            if note not in warnings:
+                warnings.append(note)
+            blob["warnings"] = warnings
+            blob["readiness_status"] = "BROKER_REVIEW"
+            normalized_case["p16_broker_packet"] = blob
+        normalized_case["case_activity"] = [
+            _build_activity_entry(
+                "evidence_append_review",
+                f"Evidence appended — broker review required ({conflict_reason or 'conflict'}).",
+            ),
+            *normalized_case.get("case_activity", []),
+        ][:MAX_CASE_ACTIVITY]
+        if not _persist_case_after_update(case_id, normalized_case):
+            return None
+        return normalized_case
+
+    existing_blob = normalized_case.get("p16_broker_packet")
+    existing_packet: dict[str, Any] = {}
+    if isinstance(existing_blob, dict):
+        raw_pkt = existing_blob.get("packet")
+        if isinstance(raw_pkt, dict):
+            existing_packet = raw_pkt
+    merged_packet = merge_add_car_packet_fields(existing_packet, incoming_packet)
+
+    from services.fiqa_api.p16.packet_persist import derive_add_car_field_gaps, map_add_car_readiness
+
+    new_blob = dict(p16_broker_packet)
+    if isinstance(existing_blob, dict):
+        prior_sources = list(existing_blob.get("sources") or [])
+        new_sources = list(new_blob.get("sources") or [])
+        seen = {json.dumps(s, sort_keys=True) for s in prior_sources if isinstance(s, dict)}
+        merged_sources = list(prior_sources)
+        for src in new_sources:
+            if isinstance(src, dict):
+                key = json.dumps(src, sort_keys=True)
+                if key not in seen:
+                    merged_sources.append(src)
+                    seen.add(key)
+        new_blob["sources"] = merged_sources
+        prior_warnings = [str(w) for w in (existing_blob.get("warnings") or []) if str(w).strip()]
+        for w in (new_blob.get("warnings") or []):
+            ws = str(w).strip()
+            if ws and ws not in prior_warnings:
+                prior_warnings.append(ws)
+        new_blob["warnings"] = prior_warnings
+    new_blob["packet"] = merged_packet
+
+    merged_collected, merged_still = derive_add_car_field_gaps(
+        merged_packet,
+        garaging_zip=garaging_zip,
+    )
+    merged_readiness = map_add_car_readiness(
+        still_needed=merged_still,
+        warnings=list(new_blob.get("warnings") or []),
+        quote_ready_status=str(triage_result.get("quote_ready_status") or ""),
+    )
+    new_blob["readiness_status"] = merged_readiness
+    normalized_case["collected_fields"] = merged_collected
+    normalized_case["still_needed_fields"] = merged_still
+    if merged_still:
+        normalized_case["quote_ready_status"] = "need_more"
+        normalized_case["handoff_ready"] = False
+    elif merged_readiness == "BROKER_REVIEW":
+        normalized_case["quote_ready_status"] = "almost_ready"
+        normalized_case["handoff_ready"] = True
+    else:
+        normalized_case["quote_ready_status"] = "quote_ready"
+        normalized_case["handoff_ready"] = True
+    year_val = str((merged_packet.get("year") or {}).get("value") or "").strip() if isinstance(merged_packet.get("year"), dict) else ""
+    make_val = str((merged_packet.get("make") or {}).get("value") or "").strip() if isinstance(merged_packet.get("make"), dict) else ""
+    model_val = str((merged_packet.get("model") or {}).get("value") or "").strip() if isinstance(merged_packet.get("model"), dict) else ""
+    vehicle_summary = " ".join(filter(None, [year_val, make_val, model_val])).strip() or None
+    normalized_case["primary_vehicle_summary"] = vehicle_summary
+    vin_val = str((merged_packet.get("vin") or {}).get("value") or "").strip() if isinstance(merged_packet.get("vin"), dict) else ""
+    if vin_val:
+        normalized_case["vehicle_key"] = vin_val.upper()
+    normalized_case["merge_review_required"] = False
+    normalized_case["conflict_state"] = "none"
+    normalized_case["p16_broker_packet"] = new_blob
+
+    if (en := (triage_result.get("extracted_contact_name") or "").strip()):
+        normalized_case["customer_name"] = _truncate(en, MAX_CUSTOMER_NAME_LENGTH)
+    if (ep := (triage_result.get("extracted_contact_phone") or "").strip()):
+        normalized_case["customer_phone"] = _truncate(ep, MAX_CUSTOMER_PHONE_LENGTH)
+
+    normalized_case["case_activity"] = [
+        _build_activity_entry(
+            "evidence_appended",
+            f"Evidence appended: {_preview_text(upload_label, 64)}",
+        ),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case

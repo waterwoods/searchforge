@@ -151,6 +151,9 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "workbench_test",
         "workbench_archived",
         "asserted_org_id",
+        "evidence_events",
+        "merge_review_required",
+        "conflict_state",
     )
     return {k: case[k] for k in keys if k in case}
 
