@@ -28,8 +28,10 @@ if not INTAKE_KEY:
                 INTAKE_KEY = line.split("=", 1)[1].strip().strip('"').strip("'")
                 break
 
-PHONE_CONSOLIDATION = os.environ.get("P17_SMOKE_PHONE", "6265559301")
-PHONE_CONFLICT = os.environ.get("P17_CONFLICT_PHONE", "6265559302")
+# Fresh 10-digit US phones (626-555-XXXX). 11-digit values break lookup/resolver.
+_suffix = str(int(time.time()))[-4:]
+PHONE_CONSOLIDATION = os.environ.get("P17_SMOKE_PHONE", f"626555{_suffix}")
+PHONE_CONFLICT = os.environ.get("P17_CONFLICT_PHONE", f"626556{_suffix}")
 
 
 def _multipart_extract(phone: str, file_specs: list[tuple[str, str]]) -> dict[str, Any]:
@@ -199,7 +201,7 @@ def main() -> int:
         ),
         (
             "upload3_vin_photo",
-            [(DOCS / "purchase_agreements/pa_002_honda_civic.pdf", "vin_photo.jpg")],
+            [(DOCS / "registrations/reg_002_ca_dmv.pdf", "vehicle_registration.pdf")],
         ),
     ]
     consolidation_results: list[dict[str, Any]] = []
@@ -227,7 +229,7 @@ def main() -> int:
         ),
         (
             "conflict_upload2_vin_b",
-            [(DOCS / "purchase_agreements/pa_003_bmw_x5.pdf", "vin_photo.jpg")],
+            [(DOCS / "purchase_agreements/pa_003_bmw_x5.pdf", "dec_page.pdf")],
         ),
     ]
     conflict_results: list[dict[str, Any]] = []

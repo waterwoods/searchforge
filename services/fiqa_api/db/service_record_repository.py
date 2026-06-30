@@ -966,6 +966,12 @@ def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
         case["workbench_test"] = bool(extra.get("workbench_test"))
     if "workbench_archived" in extra:
         case["workbench_archived"] = bool(extra.get("workbench_archived"))
+    if isinstance(extra.get("evidence_events"), list):
+        case["evidence_events"] = extra["evidence_events"]
+    if "merge_review_required" in extra:
+        case["merge_review_required"] = bool(extra.get("merge_review_required"))
+    if extra.get("conflict_state"):
+        case["conflict_state"] = str(extra.get("conflict_state")).strip() or "none"
     _hydrate_case_asserted_org_id(case, row.get("office_owner_org_id"), extra)
 
     if q_readiness_col:
