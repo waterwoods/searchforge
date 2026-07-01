@@ -50,3 +50,5 @@ pillow-heif>=0.18.0 ; python_version >= "3.11" and python_version < "4.0"
 Pillow>=10.0.0 ; python_version >= "3.11" and python_version < "4.0"
 # P16 Add-Car: PDF → image for vision extraction on Cloud Run
 pymupdf>=1.24.0 ; python_version >= "3.11" and python_version < "4.0"
+# WeCom callback spike: Tencent official WXBizMsgCrypt (AES-CBC)
+pycryptodome>=3.20.0 ; python_version >= "3.11" and python_version < "4.0"
