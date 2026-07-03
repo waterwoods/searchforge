@@ -469,6 +469,29 @@ if [ -n "${WECHAT_BINDING_ALLOW_SIMULATE:-}" ]; then
     ENV_VARS+=("WECHAT_BINDING_ALLOW_SIMULATE=$WECHAT_BINDING_ALLOW_SIMULATE")
 fi
 
+# Optional: WeCom KF callback spike (ADR-004 Phase 0 — set in .env.cloudrun; never commit secrets)
+if [ -n "${WECOM_CORP_ID:-}" ]; then
+    ENV_VARS+=("WECOM_CORP_ID=$WECOM_CORP_ID")
+fi
+if [ -n "${WECOM_KF_TOKEN:-}" ]; then
+    ENV_VARS+=("WECOM_KF_TOKEN=$WECOM_KF_TOKEN")
+fi
+if [ -n "${WECOM_KF_ENCODING_AES_KEY:-}" ]; then
+    ENV_VARS+=("WECOM_KF_ENCODING_AES_KEY=$WECOM_KF_ENCODING_AES_KEY")
+fi
+if [ -n "${WECOM_KF_SECRET:-}" ]; then
+    ENV_VARS+=("WECOM_KF_SECRET=$WECOM_KF_SECRET")
+fi
+if [ -n "${WECOM_CORP_SECRET:-}" ]; then
+    ENV_VARS+=("WECOM_CORP_SECRET=$WECOM_CORP_SECRET")
+fi
+if [ -n "${WECOM_SECRET:-}" ]; then
+    ENV_VARS+=("WECOM_SECRET=$WECOM_SECRET")
+fi
+if [ -n "${WECOM_AGENT_SECRET:-}" ]; then
+    ENV_VARS+=("WECOM_AGENT_SECRET=$WECOM_AGENT_SECRET")
+fi
+
 echo "Non-secret Unified Intake / persistence keys in this deploy bundle:"
 UNIFIED_BUNDLE_PRINTED=0
 for kv in "${ENV_VARS[@]}"; do
