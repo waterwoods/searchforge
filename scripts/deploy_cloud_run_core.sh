@@ -542,6 +542,7 @@ if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
     # Legacy Neon secret (fiqa-service-record-database-url) remains for rollback only — set
     # CLOUD_RUN_SECRET_SERVICE_RECORD_DB explicitly if you intentionally deploy against Neon.
     SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url-cloudsql-private}"
+    SM_H5="${CLOUD_RUN_SECRET_H5_TASK_TOKEN:-fiqa-h5-task-token-secret}"
     if [ "$SM_DB" = "fiqa-service-record-database-url" ]; then
         echo "❌ Error: CLOUD_RUN_SECRET_SERVICE_RECORD_DB points to legacy Neon secret."
         echo "   QA/demo must use fiqa-service-record-database-url-cloudsql-private (GCP Cloud SQL caseiq)."
@@ -550,9 +551,9 @@ if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
     fi
     SECRET_EXTRA_ARGS=(
         --set-secrets
-        "OPENAI_API_KEY=${SM_OPENAI}:latest,QDRANT_API_KEY=${SM_QDRANT}:latest,SERVICE_RECORD_DATABASE_URL=${SM_DB}:latest"
+        "OPENAI_API_KEY=${SM_OPENAI}:latest,QDRANT_API_KEY=${SM_QDRANT}:latest,SERVICE_RECORD_DATABASE_URL=${SM_DB}:latest,H5_TASK_TOKEN_SECRET=${SM_H5}:latest"
     )
-    echo "🔐 CLOUD_RUN_USE_SECRET_MANAGER=1: binding OPENAI_API_KEY, QDRANT_API_KEY, SERVICE_RECORD_DATABASE_URL from Secret Manager (no plaintext on describe)."
+    echo "🔐 CLOUD_RUN_USE_SECRET_MANAGER=1: binding OPENAI_API_KEY, QDRANT_API_KEY, SERVICE_RECORD_DATABASE_URL, H5_TASK_TOKEN_SECRET from Secret Manager (no plaintext on describe)."
     echo "   SERVICE_RECORD_DATABASE_URL secret: ${SM_DB}:latest"
 fi
 
