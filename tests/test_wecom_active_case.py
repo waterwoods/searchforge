@@ -234,6 +234,8 @@ def _b0_cfg(monkeypatch):
     monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
     monkeypatch.setenv("WECOM_KF_SECRET", "secret")
     monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
+    monkeypatch.setenv("H5_TASK_TOKEN_SECRET", "test-h5-secret")
     load_wecom_kf_config.cache_clear()
     cfg = load_wecom_kf_config()
     assert cfg is not None
@@ -288,9 +290,10 @@ class TestTrackB0StartCard:
         assert len(results) == 1
         outcome = results[0]
         assert outcome["active_case_outcome"] == "start_card_sent"
-        assert outcome["case_created"] is False
-        assert outcome["case_id"] is None
-        assert count_stored_cases() == 0
+        assert outcome["case_created"] is True
+        assert outcome["case_id"]
+        assert outcome.get("h5_task_link_masked")
+        assert count_stored_cases() == 1
 
     def test_add_car_want_to_add_sends_start_card_no_case(self, monkeypatch) -> None:
         _setup_json_store()
@@ -310,9 +313,10 @@ class TestTrackB0StartCard:
         assert len(results) == 1
         outcome = results[0]
         assert outcome["active_case_outcome"] == "start_card_sent"
-        assert outcome["case_created"] is False
-        assert outcome["case_id"] is None
-        assert count_stored_cases() == 0
+        assert outcome["case_created"] is True
+        assert outcome["case_id"]
+        assert outcome.get("h5_task_link_masked")
+        assert count_stored_cases() == 1
 
     def test_start_click_creates_draft_case(self, monkeypatch) -> None:
         """Track B0.2 supersedes the old B0.1-only "no case" expectation for
@@ -460,7 +464,7 @@ class TestTrackB0StartCard:
         assert second[0].get("processing_skipped") is True
         assert second[0].get("skip_reason") == "already_processed"
         assert len(menu_calls) == 1
-        assert count_stored_cases() == 0
+        assert count_stored_cases() == 1
 
     def test_later_click_ack_sent_once_on_repeat_delivery(self, monkeypatch) -> None:
         """"Later" click creates no case either — same coverage as above for

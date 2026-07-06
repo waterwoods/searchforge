@@ -143,7 +143,7 @@ _START_CARD_CLICK_REPLIES: dict[WeComIntent, str] = {
 
 
 def build_start_card_payload() -> dict[str, Any]:
-    """WeCom native msgmenu: Start / Later / Talk to Broker. No case exists yet."""
+    """WeCom native msgmenu: Start / Later / Talk to Broker (legacy fallback)."""
     return {
         "head_content": _START_CARD_HEAD,
         "list": [
@@ -152,6 +152,54 @@ def build_start_card_payload() -> dict[str, Any]:
         ],
         "tail_content": _START_CARD_TAIL,
     }
+
+
+# ---------------------------------------------------------------------------
+# P19D-3 — H5 VIN task Start Card (Add Vehicle entry → single-slot upload)
+# ---------------------------------------------------------------------------
+
+_H5_VIN_START_HEAD = """\
+开始补加车资料
+
+为了避免资料放错，我们会一步一步收集。第一步只需要拍 1 张 VIN 照片。
+
+Your broker reviews everything before anything changes.
+经纪人会先审核，任何变更前都会确认。"""
+
+_H5_VIN_UPLOAD_BUTTON = "开始上传 VIN 照片 / Upload VIN photo"
+
+
+def build_h5_vin_start_card_payload(*, h5_url: str) -> dict[str, Any]:
+    """WeCom msgmenu: H5 VIN upload view button + Later / Talk to Broker."""
+    url = (h5_url or "").strip()
+    tail = (
+        "如果按钮打不开，请复制链接在微信中打开：\n"
+        f"{url}\n\n"
+        "If the button doesn't work, copy the link above and open in WeChat."
+    )
+    return {
+        "head_content": _H5_VIN_START_HEAD,
+        "list": [
+            {"type": "view", "view": {"url": url, "content": _H5_VIN_UPLOAD_BUTTON}},
+            {"type": "click", "click": {"id": "start_add_car_decline", "content": "Later / 稍后"}},
+            {
+                "type": "click",
+                "click": {"id": "start_add_car_broker", "content": "Talk to Broker / 联系经纪人"},
+            },
+        ],
+        "tail_content": tail,
+    }
+
+
+def build_h5_vin_start_text_fallback(*, h5_url: str) -> str:
+    """Plain-text fallback when msgmenu view buttons are unavailable."""
+    url = (h5_url or "").strip()
+    return (
+        "开始补加车资料\n\n"
+        "为了避免资料放错，我们会一步一步收集。第一步只需要拍 1 张 VIN 照片。\n\n"
+        f"开始上传 VIN 照片：{url}\n\n"
+        "如果按钮打不开，请复制链接在微信中打开。"
+    )
 
 
 # ---------------------------------------------------------------------------

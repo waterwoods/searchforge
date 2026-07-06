@@ -45,8 +45,7 @@ def main() -> int:
     args = p.parse_args()
 
     from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
-    from services.fiqa_api.inbox_triage.h5_task_token import issue_h5_task_token
-    from services.fiqa_api.inbox_triage.wechat_binding import frontend_return_base
+    from services.fiqa_api.inbox_triage.h5_task_link import h5_task_frontend_base, mint_h5_task_link
 
     case_id = args.case_id.strip()
     case = get_case_for_read(case_id)
@@ -56,19 +55,19 @@ def main() -> int:
 
     ext_uid = str(case.get("wecom_external_userid") or "").strip() or None
     try:
-        token = issue_h5_task_token(
+        base = (args.base_url or h5_task_frontend_base()).rstrip("/")
+        url = mint_h5_task_link(
             case_id=case_id,
             lane=args.lane,
             slot=args.slot,
             external_userid=ext_uid,
+            base_url=base,
             ttl_seconds=max(60, int(args.ttl_seconds)),
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    base = (args.base_url or frontend_return_base()).rstrip("/")
-    url = f"{base}/task/upload/{token}"
     print(url)
     return 0
 

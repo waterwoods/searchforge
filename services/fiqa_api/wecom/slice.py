@@ -37,8 +37,10 @@ from services.fiqa_api.wecom.minimal_lanes import (
     find_open_minimal_lane_case_by_external_userid,
     ingest_wecom_text_to_minimal_lane,
 )
+from services.fiqa_api.inbox_triage.h5_task_link import mask_h5_task_url, mint_h5_task_link
 from services.fiqa_api.wecom.reply import (
     build_guided_menu_payload,
+    build_h5_vin_start_card_payload,
     build_secondary_topic_deferred_reply,
     build_slice_reply,
     build_start_card_payload,
@@ -79,6 +81,24 @@ def _normalized_has_draft_collection_fields(normalized: dict[str, Any]) -> bool:
     if extract_primary_driver_from_text(text):
         return True
     return False
+
+
+def _build_add_car_h5_start_menu(
+    normalized: dict[str, Any],
+    *,
+    case_id: str | None,
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    """Build H5 VIN Start Card menu; fallback to legacy card or plain text."""
+    cid = (case_id or "").strip()
+    if not cid:
+        return build_start_card_payload(), None, None
+    ext_uid = str(normalized.get("external_userid") or "").strip() or None
+    try:
+        h5_url = mint_h5_task_link(case_id=cid, external_userid=ext_uid)
+    except ValueError:
+        return build_start_card_payload(), None, None
+    masked = mask_h5_task_url(h5_url)
+    return build_h5_vin_start_card_payload(h5_url=h5_url), None, masked
 
 
 def _log_slice(stage: str, payload: dict[str, Any]) -> None:
@@ -332,11 +352,24 @@ def process_kf_msg_or_event(
             # external_userid — no Broker Confirm, no Done Card (B0.3 scope).
             # "Later" / "Talk to Broker" remain routing-only acks, no case.
             if b0_enabled and intent_result.intent in START_CARD_CLICK_INTENTS:
-                reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
                 if intent_result.intent == "start_add_car_click":
                     draft_result = create_or_attach_draft_case_for_start_click(normalized)
+                    menu_payload, text_content, h5_masked = _build_add_car_h5_start_menu(
+                        normalized,
+                        case_id=str(draft_result.get("case_id") or ""),
+                    )
+                    if menu_payload is None and not text_content:
+                        reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
+                        menu_payload = None
+                    elif menu_payload is not None:
+                        reply_text = None
+                    else:
+                        reply_text = text_content or build_slice_reply(intent_result.intent, guided_menu=False)
                 else:
                     draft_result = {"outcome": intent_result.intent, "case_id": None, "case_created": False}
+                    menu_payload = None
+                    reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
+                    h5_masked = None
                 outcome = {
                     "msg_id": normalized.get("msg_id"),
                     "external_userid": normalized.get("external_userid"),
@@ -352,6 +385,7 @@ def process_kf_msg_or_event(
                     "case_id": draft_result.get("case_id"),
                     "active_case_outcome": intent_result.intent,
                     "readiness_gate": None,
+                    "h5_task_link_masked": h5_masked,
                 }
                 _log_slice(
                     "start_card_click_v1",
@@ -360,17 +394,22 @@ def process_kf_msg_or_event(
                         "click_intent": intent_result.intent,
                         "case_id": outcome["case_id"],
                         "case_created": outcome["case_created"],
+                        "h5_task_link_masked": h5_masked,
                     },
                 )
                 _log_slice(
                     "reply_generated_v1",
-                    {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                    {
+                        "reply_text": reply_text or "<h5_vin_start_card_msgmenu>",
+                        "guided_menu": False,
+                        "reply_format": "msgmenu" if menu_payload else "text",
+                    },
                 )
                 _dispatch_reply(
                     cfg,
                     normalized,
                     send_enabled=send_enabled,
-                    menu_payload=None,
+                    menu_payload=menu_payload,
                     text_content=reply_text,
                     outcome=outcome,
                 )
@@ -518,9 +557,13 @@ def process_kf_msg_or_event(
                 )
                 continue
 
-            # --- Track B0.1: high-confidence add_car -> Start Card, not immediate ingest ---
+            # --- Track B0.1 + P19D-3: high-confidence add_car -> H5 VIN Start Card ---
             if b0_enabled and intent_result.intent == "add_car" and intent_result.confidence == "high":
-                menu_payload = build_start_card_payload()
+                draft_result = create_or_attach_draft_case_for_start_click(normalized)
+                menu_payload, text_content, h5_masked = _build_add_car_h5_start_menu(
+                    normalized,
+                    case_id=str(draft_result.get("case_id") or ""),
+                )
                 outcome = {
                     "msg_id": normalized.get("msg_id"),
                     "external_userid": normalized.get("external_userid"),
@@ -529,35 +572,46 @@ def process_kf_msg_or_event(
                     "confidence": intent_result.confidence,
                     "matched_by": intent_result.matched_by,
                     "guided_menu_required": False,
-                    "reply_text": None,
+                    "reply_text": text_content,
                     "reply_sent": False,
                     "reply_send_error": None,
-                    "case_created": False,
-                    "case_id": None,
+                    "case_created": draft_result.get("case_created", False),
+                    "case_id": draft_result.get("case_id"),
                     "active_case_outcome": "start_card_sent",
                     "readiness_gate": None,
+                    "h5_task_link_masked": h5_masked,
                 }
                 _log_slice(
                     "start_card_triggered_v1",
-                    {"msg_id": normalized.get("msg_id"), "matched_by": intent_result.matched_by},
+                    {
+                        "msg_id": normalized.get("msg_id"),
+                        "matched_by": intent_result.matched_by,
+                        "case_id": outcome["case_id"],
+                        "case_created": outcome["case_created"],
+                        "h5_task_link_masked": h5_masked,
+                    },
                 )
                 _log_slice(
                     "reply_generated_v1",
-                    {"reply_text": "<start_card_msgmenu>", "guided_menu": False, "reply_format": "msgmenu"},
+                    {
+                        "reply_text": "<h5_vin_start_card_msgmenu>",
+                        "guided_menu": False,
+                        "reply_format": "msgmenu",
+                    },
                 )
                 _dispatch_reply(
                     cfg,
                     normalized,
                     send_enabled=send_enabled,
                     menu_payload=menu_payload,
-                    text_content=None,
+                    text_content=text_content,
                     outcome=outcome,
                 )
                 results.append(outcome)
                 update_message_processed_outcome(
                     msg_id,
                     outcome=str(outcome.get("active_case_outcome") or "start_card_sent"),
-                    case_id=None,
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
                 )
                 continue
 

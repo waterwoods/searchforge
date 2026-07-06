@@ -177,6 +177,8 @@ def test_slice_b0_add_car_still_start_card(monkeypatch):
     monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
     monkeypatch.setenv("WECOM_KF_SECRET", "secret")
     monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
+    monkeypatch.setenv("H5_TASK_TOKEN_SECRET", "test-h5-secret")
     load_wecom_kf_config.cache_clear()
     cfg = load_wecom_kf_config()
 
@@ -186,8 +188,10 @@ def test_slice_b0_add_car_still_start_card(monkeypatch):
     results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
 
     assert results[0]["active_case_outcome"] == "start_card_sent"
-    assert results[0]["case_created"] is False
-    assert count_stored_cases() == 0
+    assert results[0]["case_created"] is True
+    assert results[0]["case_id"]
+    assert results[0].get("h5_task_link_masked")
+    assert count_stored_cases() == 1
 
 
 def test_slice_b0_hello_no_case(monkeypatch):
