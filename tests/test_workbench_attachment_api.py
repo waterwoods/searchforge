@@ -137,6 +137,7 @@ def test_no_attachments_case_returns_empty_list():
 
 
 def test_wecom_holding_case_serialization():
+    _setup_json_store()
     saved = save_case(
         "holding",
         {
