@@ -2,7 +2,19 @@
 
 **Date:** 2026-07-06  
 **Branch:** `sprint/p16-trust-layer`  
-**Verdict:** **ROOT CAUSE FOUND** · **FIX LOCAL PASS** · **Deploy HOLD** (await approval)
+**Verdict:** **ROOT CAUSE FOUND** · **FIX DEPLOYED** · **Phone End Card retest PENDING**
+
+---
+
+## Deploy (End Card fix)
+
+| Field | Value |
+|-------|-------|
+| Commit | `32cfdbc` — fix: persist WeCom open_kf_id for H5 End Card send |
+| Prior revision | `fiqa-api-00158-qnr` (`99a1531`) |
+| **New revision** | **`fiqa-api-00159-6kz`** |
+| QA gate | **PASS** |
+| Frontend | Skipped (backend-only) |
 
 ---
 
@@ -103,6 +115,6 @@ Reply: **`4B.1-B endcard done`**
 | Gate | Verdict |
 |------|---------|
 | Fix + tests | **GO** |
-| Deploy + phone End Card smoke | **HOLD** — deploy when approved |
+| Deploy + phone End Card smoke | **PENDING** — revision `fiqa-api-00159-6kz` live |
 
 **STOP**
