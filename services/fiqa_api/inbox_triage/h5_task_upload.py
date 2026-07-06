@@ -69,18 +69,31 @@ _FLOW_OPTIONAL_SLOTS = frozenset({"insurance_card_photo"})
 
 RESTART_ADD_CAR_PHOTO_MARKERS: tuple[str, ...] = (
     "重新加车",
-    "新加一辆",
-    "再加一辆",
-    "再加一台",
-    "restart add",
+    "重新开始加车",
+    "重新上传加车资料",
+    "新加一辆车",
+    "再加一辆车",
+    "再加一台车",
+    "换一辆车",
+    "另加一辆车",
+    "add another car",
+    "new vehicle",
+    "start over add vehicle",
+    "restart add vehicle",
+    "restart add car",
     "new add car",
 )
 
 
-def wants_restart_add_car_photo_flow(text: str) -> bool:
+def is_explicit_add_car_restart(text: str) -> bool:
     """True when customer explicitly asks to start a fresh add-car photo flow."""
     lowered = (text or "").strip().lower()
     return any(m in lowered for m in RESTART_ADD_CAR_PHOTO_MARKERS)
+
+
+def wants_restart_add_car_photo_flow(text: str) -> bool:
+    """Alias for ``is_explicit_add_car_restart`` (P19D-4B compat)."""
+    return is_explicit_add_car_restart(text)
 
 
 def h5_photo_flow_is_complete(case: dict[str, Any]) -> bool:

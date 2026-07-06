@@ -885,7 +885,7 @@ class TestTrackB0BrokerConfirm:
         confirm_case_by_broker(case_id)
 
         def add_car_again(_cfg, *, token, open_kf_id):
-            return [_text_only_msg("m_confirm_no_start_card_1", "我想再加一辆车")]
+            return [_text_only_msg("m_confirm_no_start_card_1", "我要加车")]
 
         results = process_kf_msg_or_event(
             cfg, callback_token="t", open_kf_id="wktest001", pull_messages=add_car_again

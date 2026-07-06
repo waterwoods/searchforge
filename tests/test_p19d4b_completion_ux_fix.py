@@ -13,6 +13,7 @@ import pytest
 from services.fiqa_api.inbox_triage.case_store import bind_case_channel_identity, get_case_by_id, save_case
 from services.fiqa_api.inbox_triage.h5_task_upload import (
     h5_photo_flow_is_complete,
+    is_explicit_add_car_restart,
     wants_restart_add_car_photo_flow,
 )
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
@@ -86,7 +87,15 @@ def test_h5_photo_flow_is_complete_detects_uploads_and_skip():
 
 def test_wants_restart_add_car_photo_flow():
     assert wants_restart_add_car_photo_flow("我要重新加车") is True
+    assert is_explicit_add_car_restart("重新加车") is True
     assert wants_restart_add_car_photo_flow("我要加车") is False
+
+
+def test_restart_start_card_includes_intro_line():
+    url = "https://example.test/task/upload/h5t1.abc.sig"
+    menu = build_h5_vin_start_card_payload(h5_url=url, restart_intro=True)
+    assert "重新开始一组加车资料收集" in menu["head_content"]
+    assert "加车资料收集" in menu["head_content"]
 
 
 def test_completed_case_gets_followup_not_start_card():

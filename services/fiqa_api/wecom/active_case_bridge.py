@@ -284,10 +284,7 @@ def create_or_attach_draft_case_for_start_click(normalized: dict[str, Any]) -> d
     `external_userid`. Idempotent: a duplicate/double click attaches to the
     already-open Draft instead of creating a second one (Rule 7).
     """
-    from services.fiqa_api.inbox_triage.h5_task_upload import (
-        h5_photo_flow_is_complete,
-        wants_restart_add_car_photo_flow,
-    )
+    from services.fiqa_api.inbox_triage.h5_task_upload import is_explicit_add_car_restart
 
     msg_id = str(normalized.get("msg_id") or "").strip()
     external_userid = str(normalized.get("external_userid") or "").strip()
@@ -296,12 +293,7 @@ def create_or_attach_draft_case_for_start_click(normalized: dict[str, Any]) -> d
 
     existing = find_open_add_car_case_by_external_userid(external_userid)
     if existing:
-        existing_case = get_case_by_id(existing)
-        if (
-            existing_case
-            and h5_photo_flow_is_complete(existing_case)
-            and wants_restart_add_car_photo_flow(text)
-        ):
+        if is_explicit_add_car_restart(text):
             existing = None
         else:
             bind_case_channel_identity(

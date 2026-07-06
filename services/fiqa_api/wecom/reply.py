@@ -178,12 +178,15 @@ _H5_PHOTO_FLOW_START_CARD_TAIL = """\
 如果按钮打不开，请回复：链接"""
 
 
-def build_h5_vin_start_card_payload(*, h5_url: str) -> dict[str, Any]:
+def build_h5_vin_start_card_payload(*, h5_url: str, restart_intro: bool = False) -> dict[str, Any]:
     """WeCom msgmenu: H5 Add Vehicle photo flow view button + Later / Talk to Broker."""
     url = (h5_url or "").strip()
     tail = _H5_PHOTO_FLOW_START_CARD_TAIL
+    head = _H5_PHOTO_FLOW_START_HEAD
+    if restart_intro:
+        head = "好的，我们重新开始一组加车资料收集。\n\n" + head
     return {
-        "head_content": _H5_PHOTO_FLOW_START_HEAD,
+        "head_content": head,
         "list": [
             {"type": "view", "view": {"url": url, "content": _H5_PHOTO_FLOW_BUTTON}},
             {"type": "click", "click": {"id": "start_add_car_decline", "content": "稍后"}},

@@ -42,7 +42,10 @@ from services.fiqa_api.inbox_triage.h5_task_link import (
     mint_h5_add_vehicle_photo_flow_link,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
-from services.fiqa_api.inbox_triage.h5_task_upload import h5_photo_flow_is_complete
+from services.fiqa_api.inbox_triage.h5_task_upload import (
+    h5_photo_flow_is_complete,
+    is_explicit_add_car_restart,
+)
 from services.fiqa_api.wecom.h5_photo_end_card import try_send_h5_photo_flow_end_card
 from services.fiqa_api.wecom.reply import (
     build_guided_menu_payload,
@@ -111,7 +114,35 @@ def _build_add_car_h5_start_menu(
     except ValueError:
         return build_start_card_payload(), None, None
     masked = mask_h5_task_url(h5_url)
-    return build_h5_vin_start_card_payload(h5_url=h5_url), None, masked
+    restart_intro = is_explicit_add_car_restart(str(normalized.get("text") or ""))
+    return build_h5_vin_start_card_payload(h5_url=h5_url, restart_intro=restart_intro), None, masked
+
+
+def _should_route_add_car_h5_start_instead_of_draft_merge(
+    *,
+    b0_enabled: bool,
+    intent_result: Any,
+    normalized: dict[str, Any],
+    open_add_car_draft_id: str | None,
+    open_bound_case: dict[str, Any] | None,
+) -> bool:
+    """Route to H5 Start / completed follow-up instead of generic draft merge."""
+    if not b0_enabled:
+        return False
+    if intent_result.intent != "add_car" or intent_result.confidence != "high":
+        return False
+    if _normalized_has_draft_collection_fields(normalized):
+        return False
+    text = str(normalized.get("text") or "")
+    if is_explicit_add_car_restart(text):
+        return True
+    if (
+        open_add_car_draft_id
+        and open_bound_case
+        and h5_photo_flow_is_complete(open_bound_case)
+    ):
+        return True
+    return False
 
 
 def _add_car_start_active_outcome(
@@ -534,9 +565,16 @@ def process_kf_msg_or_event(
                 if open_bound_case and open_bound_case.get("service_lane") == SERVICE_LANE_ADD_CAR
                 else None
             )
+            route_add_car_h5_start = _should_route_add_car_h5_start_instead_of_draft_merge(
+                b0_enabled=b0_enabled,
+                intent_result=intent_result,
+                normalized=normalized,
+                open_add_car_draft_id=open_add_car_draft_id,
+                open_bound_case=open_bound_case,
+            )
             if b0_enabled and open_add_car_draft_id and (
                 not guided_menu or _normalized_has_draft_collection_fields(normalized)
-            ):
+            ) and not route_add_car_h5_start:
                 reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
                 draft_result = ingest_wecom_text_to_draft_case(normalized, open_add_car_draft_id)
                 outcome = {
