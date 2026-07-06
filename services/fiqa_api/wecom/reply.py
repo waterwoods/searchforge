@@ -171,11 +171,17 @@ _H5_PHOTO_FLOW_TAIL_PREFIX = """\
 照片在页面里上传；提车日期、停车 ZIP、联系电话稍后回微信打字。
 陈总会人工审核，不会自动修改您的保单。"""
 
+_H5_PHOTO_FLOW_START_CARD_TAIL = """\
+照片在页面里上传；提车日期、停车 ZIP、联系电话稍后回微信打字。
+陈总会人工审核，不会自动修改您的保单。
+
+如果按钮打不开，请回复：链接"""
+
 
 def build_h5_vin_start_card_payload(*, h5_url: str) -> dict[str, Any]:
     """WeCom msgmenu: H5 Add Vehicle photo flow view button + Later / Talk to Broker."""
     url = (h5_url or "").strip()
-    tail = f"{_H5_PHOTO_FLOW_TAIL_PREFIX}\n\n如果按钮打不开，请复制链接在微信中打开：\n{url}"
+    tail = _H5_PHOTO_FLOW_START_CARD_TAIL
     return {
         "head_content": _H5_PHOTO_FLOW_START_HEAD,
         "list": [

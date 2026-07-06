@@ -15,6 +15,8 @@ assert.match(src, /capture="environment"/, 'file input should encourage camera')
 assert.match(src, /确认提交/, 'preview confirm submit button required');
 assert.match(src, /重新选择/, 'reselect button required');
 assert.match(src, /照片已收到/, 'flow success copy required');
+assert.match(src, /此照片上传流程已完成/, 'completed flow clarity required');
+assert.match(src, /重新加车/, 'restart hint required');
 assert.match(src, /返回微信/, 'return to WeChat button required');
 assert.match(src, /确认消息/, 'confirmation message expectation required');
 assert.match(src, /已提交/, 'fallback reply hint required');

@@ -38,12 +38,12 @@ def test_guided_menu_concise_chinese_task_options():
 def test_h5_start_card_concise_photo_steps():
     menu = build_h5_vin_start_card_payload(h5_url="https://example.test/task/upload/h5t1.abc")
     head = menu["head_content"]
+    tail = menu["tail_content"]
     assert "加车资料收集" in head
     assert "开始上传照片" in menu["list"][0]["view"]["content"]
     assert "VIN 照片" in head
-    assert "行驶证" in head
-    assert "上传所有" not in head
-    assert "一次发多张" not in head
+    assert "https://example.test" not in tail
+    assert "请回复：链接" in tail
     assert menu["list"][0]["view"]["url"].startswith("https://example.test")
 
 

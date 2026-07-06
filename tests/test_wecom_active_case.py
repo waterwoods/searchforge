@@ -335,7 +335,7 @@ class TestTrackB0StartCard:
         assert len(results) == 1
         outcome = results[0]
         assert outcome["internal_intent"] == "start_add_car_click"
-        assert outcome["active_case_outcome"] == "start_add_car_click"
+        assert outcome["active_case_outcome"] == "start_card_sent"
         assert outcome["case_created"] is True
         assert outcome["case_id"]
         assert count_stored_cases() == 1

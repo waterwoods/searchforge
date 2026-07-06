@@ -100,7 +100,8 @@ def test_h5_vin_start_card_payload_copy():
     assert "上传所有" not in head
     assert "一次发多张" not in head
     assert "OCR" not in head
-    assert url in tail
+    assert "https://example.test" not in tail
+    assert "请回复：链接" in tail
     view_items = [i for i in menu["list"] if i.get("type") == "view"]
     assert view_items
     assert view_items[0]["view"]["url"] == url

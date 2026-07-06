@@ -412,6 +412,9 @@ export default function H5SingleSlotUploadPage() {
               </p>
               {isPhotoFlowTask(task) ? (
                 <>
+                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a1a', textAlign: 'left' }}>
+                    此照片上传流程已完成。
+                  </p>
                   <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', textAlign: 'left' }}>
                     已收到：
                     <br />
@@ -429,15 +432,12 @@ export default function H5SingleSlotUploadPage() {
                     回到聊天后，您会收到一条确认消息。
                   </p>
                   <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', marginTop: 12, textAlign: 'left' }}>
-                    请在微信打字补充：
-                    <br />
-                    1. 提车日期
-                    <br />
-                    2. 停放 ZIP
-                    <br />
-                    3. 联系电话
+                    如需补文字信息，请回微信发送：提车日期、停放 ZIP、联系电话。
                   </p>
-                  <p style={{ fontSize: 13, lineHeight: 1.6, color: '#666', marginTop: 12, textAlign: 'left' }}>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#666', marginTop: 12, textAlign: 'left' }}>
+                    如需重新开始一组新的加车资料，请在微信回复：重新加车。
+                  </p>
+                  <p style={{ fontSize: 13, lineHeight: 1.6, color: '#666', marginTop: 8, textAlign: 'left' }}>
                     陈总会人工确认，不会自动修改您的保单。
                   </p>
                   <p style={{ fontSize: 12, lineHeight: 1.5, color: '#888', marginTop: 12 }}>

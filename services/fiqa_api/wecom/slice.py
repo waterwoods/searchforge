@@ -41,8 +41,12 @@ from services.fiqa_api.inbox_triage.h5_task_link import (
     mask_h5_task_url,
     mint_h5_add_vehicle_photo_flow_link,
 )
+from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
+from services.fiqa_api.inbox_triage.h5_task_upload import h5_photo_flow_is_complete
+from services.fiqa_api.wecom.h5_photo_end_card import try_send_h5_photo_flow_end_card
 from services.fiqa_api.wecom.reply import (
     build_guided_menu_payload,
+    build_h5_photo_phase_complete_reply,
     build_h5_vin_start_card_payload,
     build_secondary_topic_deferred_reply,
     build_slice_reply,
@@ -91,10 +95,16 @@ def _build_add_car_h5_start_menu(
     *,
     case_id: str | None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
-    """Build H5 VIN Start Card menu; fallback to legacy card or plain text."""
+    """Build H5 photo Start Card, or follow-up text when photo flow already complete."""
     cid = (case_id or "").strip()
     if not cid:
         return build_start_card_payload(), None, None
+
+    case = get_case_for_read(cid)
+    if case and h5_photo_flow_is_complete(case):
+        try_send_h5_photo_flow_end_card(cid)
+        return None, build_h5_photo_phase_complete_reply(case), None
+
     ext_uid = str(normalized.get("external_userid") or "").strip() or None
     try:
         h5_url = mint_h5_add_vehicle_photo_flow_link(case_id=cid, external_userid=ext_uid)
@@ -102,6 +112,16 @@ def _build_add_car_h5_start_menu(
         return build_start_card_payload(), None, None
     masked = mask_h5_task_url(h5_url)
     return build_h5_vin_start_card_payload(h5_url=h5_url), None, masked
+
+
+def _add_car_start_active_outcome(
+    *,
+    menu_payload: dict[str, Any] | None,
+    text_content: str | None,
+) -> str:
+    if menu_payload is None and text_content:
+        return "photo_flow_complete_followup"
+    return "start_card_sent"
 
 
 def _log_slice(stage: str, payload: dict[str, Any]) -> None:
@@ -355,11 +375,16 @@ def process_kf_msg_or_event(
             # external_userid — no Broker Confirm, no Done Card (B0.3 scope).
             # "Later" / "Talk to Broker" remain routing-only acks, no case.
             if b0_enabled and intent_result.intent in START_CARD_CLICK_INTENTS:
+                start_outcome = intent_result.intent
                 if intent_result.intent == "start_add_car_click":
                     draft_result = create_or_attach_draft_case_for_start_click(normalized)
                     menu_payload, text_content, h5_masked = _build_add_car_h5_start_menu(
                         normalized,
                         case_id=str(draft_result.get("case_id") or ""),
+                    )
+                    start_outcome = _add_car_start_active_outcome(
+                        menu_payload=menu_payload,
+                        text_content=text_content,
                     )
                     if menu_payload is None and not text_content:
                         reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
@@ -386,7 +411,7 @@ def process_kf_msg_or_event(
                     "reply_send_error": None,
                     "case_created": draft_result.get("case_created", False),
                     "case_id": draft_result.get("case_id"),
-                    "active_case_outcome": intent_result.intent,
+                    "active_case_outcome": start_outcome,
                     "readiness_gate": None,
                     "h5_task_link_masked": h5_masked,
                 }
@@ -567,6 +592,10 @@ def process_kf_msg_or_event(
                     normalized,
                     case_id=str(draft_result.get("case_id") or ""),
                 )
+                start_outcome = _add_car_start_active_outcome(
+                    menu_payload=menu_payload,
+                    text_content=text_content,
+                )
                 outcome = {
                     "msg_id": normalized.get("msg_id"),
                     "external_userid": normalized.get("external_userid"),
@@ -580,7 +609,7 @@ def process_kf_msg_or_event(
                     "reply_send_error": None,
                     "case_created": draft_result.get("case_created", False),
                     "case_id": draft_result.get("case_id"),
-                    "active_case_outcome": "start_card_sent",
+                    "active_case_outcome": start_outcome,
                     "readiness_gate": None,
                     "h5_task_link_masked": h5_masked,
                 }

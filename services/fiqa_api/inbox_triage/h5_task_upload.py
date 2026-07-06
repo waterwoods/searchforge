@@ -67,6 +67,35 @@ _SLOT_COPY: dict[str, dict[str, Any]] = {
 
 _FLOW_OPTIONAL_SLOTS = frozenset({"insurance_card_photo"})
 
+RESTART_ADD_CAR_PHOTO_MARKERS: tuple[str, ...] = (
+    "重新加车",
+    "新加一辆",
+    "再加一辆",
+    "再加一台",
+    "restart add",
+    "new add car",
+)
+
+
+def wants_restart_add_car_photo_flow(text: str) -> bool:
+    """True when customer explicitly asks to start a fresh add-car photo flow."""
+    lowered = (text or "").strip().lower()
+    return any(m in lowered for m in RESTART_ADD_CAR_PHOTO_MARKERS)
+
+
+def h5_photo_flow_is_complete(case: dict[str, Any]) -> bool:
+    """True when all required H5 photo slots are uploaded or optionally skipped."""
+    slots = ADD_VEHICLE_PHOTO_FLOW_SLOTS
+    completed = _completed_h5_slots(case)
+    skipped = _skipped_h5_slots(case)
+    for slot in slots:
+        if slot in completed:
+            continue
+        if slot in _FLOW_OPTIONAL_SLOTS and slot in skipped:
+            continue
+        return False
+    return True
+
 
 def build_h5_media_object_path(
     *,
