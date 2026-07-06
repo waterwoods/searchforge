@@ -12,6 +12,12 @@ WeComIntent = Literal[
     "policy_review",
     "menu_selection",
     "unclear",
+    # Track B0 — Start Card button clicks (WECOM_B0_ACTIVE_WORKSPACE only).
+    # These are workspace actions, not conversation topics; they never re-enter
+    # the add_car text-classification path.
+    "start_add_car_click",
+    "start_add_car_decline_click",
+    "start_add_car_broker_click",
 ]
 
 CanonicalIntent = Literal["add_vehicle", "claim", "policy_review", "unclear"]
@@ -24,6 +30,23 @@ _CANONICAL_INTENT: dict[WeComIntent, CanonicalIntent] = {
     "policy_review": "policy_review",
     "menu_selection": "unclear",
     "unclear": "unclear",
+    "start_add_car_click": "add_vehicle",
+    "start_add_car_decline_click": "unclear",
+    "start_add_car_broker_click": "unclear",
+}
+
+# Track B0.1 — Start Card click ids. Kept separate from `_MENU_CLICK_IDS`
+# (which boosts confidence for the existing add_car/claim/policy guided menu)
+# so a Start Card click can never be reclassified as a fresh add_car intent
+# and re-trigger a new Start Card (Rule 8 — one flow, no loops).
+START_CARD_CLICK_INTENTS = frozenset(
+    {"start_add_car_click", "start_add_car_decline_click", "start_add_car_broker_click"}
+)
+
+_START_CARD_CLICK_IDS: dict[str, WeComIntent] = {
+    "start_add_car": "start_add_car_click",
+    "start_add_car_decline": "start_add_car_decline_click",
+    "start_add_car_broker": "start_add_car_broker_click",
 }
 
 
@@ -47,15 +70,26 @@ _CLAIM_MARKERS = (
     "rear-end",
     "rear ended",
     "collision",
+    "got hit",
+    "i had an accident",
+    "should i file a claim",
+    "neck hurts",
     "报事故",
     "出事故",
+    "出车祸",
     "刚出事故",
     "出险",
     "理赔",
     "撞车",
     "撞了",
     "车祸",
+    "事故",
+    "被撞",
+    "追尾",
+    "要不要报保险",
     "对方跑了",
+    "受伤",
+    "脖子疼",
 )
 
 _ADD_CAR_MARKERS = (
@@ -80,12 +114,34 @@ _POLICY_REVIEW_MARKERS = (
     "review my policy",
     "review policy",
     "check my policy",
+    "premium is too high",
+    "insurance went up",
+    "renewal premium",
+    "cheaper insurance",
+    "switch carrier",
     "保单",
     "检视",
     "看看保险",
     "保险怎么样",
     "保费",
+    "太贵",
+    "涨价",
+    "续保",
+    "便宜一点",
+    "换保险",
     "coverage review",
+)
+
+_GENERIC_VAGUE_MARKERS = (
+    "你好",
+    "您好",
+    "在吗",
+    "有空吗",
+    "帮我看看",
+    "这个怎么办",
+    "hello",
+    "hi there",
+    "hey there",
 )
 
 _MENU_TEXT_MARKERS: list[tuple[WeComIntent, tuple[str, ...]]] = [
@@ -124,6 +180,11 @@ def classify_wecom_intent(text: str, *, menu_id: str | None = None) -> IntentRes
     lowered = raw.lower()
 
     if menu_id:
+        start_card_intent = _START_CARD_CLICK_IDS.get((menu_id or "").strip().lower())
+        if start_card_intent:
+            return IntentResult(
+                intent=start_card_intent, confidence="high", matched_by="start_card_click_id"
+            )
         from_menu = _menu_intent_from_id(menu_id)
         if from_menu and from_menu != "unclear":
             return IntentResult(intent=from_menu, confidence="high", matched_by="menu_id")
@@ -135,6 +196,8 @@ def classify_wecom_intent(text: str, *, menu_id: str | None = None) -> IntentRes
     add_car = _contains_any(lowered, _ADD_CAR_MARKERS)
     policy = _contains_any(lowered, _POLICY_REVIEW_MARKERS)
     hits = sum([claim, add_car, policy])
+    if hits == 0 and _contains_any(lowered, _GENERIC_VAGUE_MARKERS) and len(lowered) <= 24:
+        return IntentResult(intent="unclear", confidence="low", matched_by="generic_vague")
     if hits > 1:
         return IntentResult(intent="unclear", confidence="low", matched_by="multi_intent")
 

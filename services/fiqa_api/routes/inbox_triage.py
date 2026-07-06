@@ -41,6 +41,7 @@ from services.fiqa_api.inbox_triage.case_store import (
     update_case_status,
     update_case_workbench_flags,
 )
+from services.fiqa_api.wecom.active_case_bridge import BrokerConfirmError, confirm_case_by_broker
 from services.fiqa_api.inbox_triage.case_binding import is_case_open_for_binding, resolve_active_case
 from services.fiqa_api.inbox_triage.case_truth_repository import (
     count_cases_for_read,
@@ -1940,6 +1941,32 @@ async def patch_case_workbench(
         return enriched[0] if enriched else updated
     except Exception:
         return updated
+
+
+@router.patch("/cases/{case_id}/confirm")
+async def patch_case_confirm(case_id: str, http_request: Request) -> dict[str, Any]:
+    """
+    Track B0.3 — Broker Confirm. Sets `broker_confirmed_at` (additive, once)
+    and sends exactly ONE Done Card to the customer via existing WeCom send
+    APIs. Idempotent: safe to call twice (second call is a no-op, no second
+    Done Card). No resolver changes — `active_case_resolver.py` untouched.
+
+    Governed by docs/p16/TRACK_B0_ACTIVE_WORKSPACE_CONTRACT.md §7/§9.
+    """
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    try:
+        result = confirm_case_by_broker(case_id)
+    except BrokerConfirmError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result.get("outcome") == "case_not_found" or result.get("case") is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    updated = dict(result["case"])
+    updated["done_card_sent"] = result.get("done_card_sent", False)
+    updated["already_confirmed"] = result.get("already_confirmed", False)
+    return updated
 
 
 @router.post("/cases/{case_id}/attachments")

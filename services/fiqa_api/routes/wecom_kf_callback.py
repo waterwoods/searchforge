@@ -3,6 +3,9 @@ WeCom KF callback — verify, decrypt, sync_msg → Active Case bridge, respond.
 
 GET  /api/wecom/kf/callback  — URL verification (echostr)
 POST /api/wecom/kf/callback  — encrypted event → sync_msg → intent → Active Case
+
+When WECOM_INBOX_QUEUE=1 (default off), POST enqueues to wecom_inbox_events and
+returns 200 immediately without sync_msg / classify / draft / reply.
 """
 
 from __future__ import annotations
@@ -15,6 +18,11 @@ from fastapi.responses import PlainTextResponse, Response
 
 from services.fiqa_api.wecom.config import load_wecom_kf_config
 from services.fiqa_api.wecom.event_parser import parse_wecom_event_xml, structured_wecom_kf_log_payload
+from services.fiqa_api.wecom.inbox_queue import (
+    compute_dedup_key,
+    enqueue_wecom_callback_event,
+    wecom_inbox_queue_enabled,
+)
 from services.fiqa_api.wecom.slice import process_kf_msg_or_event
 
 logger = logging.getLogger(__name__)
@@ -114,6 +122,26 @@ async def wecom_kf_callback_event(
         nonce=nonce,
     )
     logger.info("wecom_kf_callback_event_v1 %s", json.dumps(log_payload, ensure_ascii=False))
+
+    if wecom_inbox_queue_enabled():
+        dedup_key = compute_dedup_key(parsed_event=parsed, raw_body=raw_body)
+        try:
+            enqueue_wecom_callback_event(
+                dedup_key=dedup_key,
+                parsed_event=parsed,
+                payload_json=log_payload,
+            )
+        except Exception as exc:
+            from services.fiqa_api.wecom.queue_db import WeComQueueDbError
+
+            if isinstance(exc, WeComQueueDbError):
+                logger.error(
+                    "wecom_inbox_enqueue_failed_v1 %s",
+                    json.dumps({"error": str(exc)}, ensure_ascii=False),
+                )
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise
+        return Response(content=_WECOM_SUCCESS_BODY, media_type="text/plain", status_code=200)
 
     if parsed.get("Event") == "kf_msg_or_event":
         process_kf_msg_or_event(

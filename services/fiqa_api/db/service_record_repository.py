@@ -66,7 +66,11 @@ def service_record_connection() -> Generator[Any, None, None]:
     url = service_record_database_url()
     if not url:
         raise RuntimeError("no service record database URL configured")
-    conn = psycopg.connect(url, connect_timeout=10)
+    # Short timeout so a cold-starting / transiently unreachable Postgres
+    # (e.g. Neon compute wake-up, or an unroutable resolved address) fails
+    # fast instead of holding a customer-facing WeCom callback open for
+    # 10s+ per attempt across multiple DB calls in one message's processing.
+    conn = psycopg.connect(url, connect_timeout=3)
     try:
         yield conn
     finally:
@@ -133,6 +137,12 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "office_case_title",
         "office_broker_next_step",
         "p16_broker_packet",
+        # P18 Loop 1 — demo/workbench intelligence (JSONB pass-through; no migration)
+        "workbench_tags",
+        "risk_flags",
+        "conflict_flags",
+        "demo_summary",
+        "known_facts",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -157,6 +167,15 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["merge_review_required"] = bool(extra.get("merge_review_required"))
     if extra.get("conflict_state"):
         case["conflict_state"] = str(extra.get("conflict_state")).strip() or "none"
+    if extra.get("wecom_external_userid"):
+        case["wecom_external_userid"] = str(extra.get("wecom_external_userid")).strip()
+    if extra.get("demo_name"):
+        case["demo_name"] = str(extra.get("demo_name")).strip()
+    if isinstance(extra.get("demo_flags"), dict):
+        case["demo_flags"] = dict(extra.get("demo_flags") or {})
+    if "broker_confirmed_at" in extra:
+        v = extra.get("broker_confirmed_at")
+        case["broker_confirmed_at"] = str(v).strip() if v else None
 
 
 def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
@@ -172,6 +191,11 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "evidence_events",
         "merge_review_required",
         "conflict_state",
+        "wecom_external_userid",
+        "demo_name",
+        "demo_flags",
+        "broker_confirmed_at",
+        "claim_mentioned_at",
     )
     return {k: case[k] for k in keys if k in case}
 

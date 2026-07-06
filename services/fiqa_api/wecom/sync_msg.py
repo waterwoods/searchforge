@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -17,6 +18,14 @@ WECOM_ADMIN_BLOCKED_ERRCODE = 48002
 
 _SYNC_MSG_URL = "https://qyapi.weixin.qq.com/cgi-bin/kf/sync_msg"
 _CUSTOMER_ORIGIN = 3
+
+
+@dataclass(frozen=True)
+class SyncPullResult:
+    """Customer text messages plus the final next_cursor from sync_msg pagination."""
+
+    messages: list[dict[str, Any]]
+    next_cursor: str
 
 
 def sync_kf_messages(
@@ -79,10 +88,18 @@ def pull_customer_text_messages(
     *,
     token: str,
     open_kf_id: str,
-) -> list[dict[str, Any]]:
-    """Pull sync_msg pages until has_more=0; return customer-origin text messages only."""
+    start_cursor: str = "",
+) -> SyncPullResult:
+    """
+    Pull sync_msg pages until has_more=0; return customer-origin text messages only.
+
+    ``start_cursor`` is the persisted watermark from a prior successful sync for
+    this ``open_kf_id`` (Q0.10). When set, WeCom returns only messages after
+    that cursor when the API honors incremental sync.
+    """
     messages: list[dict[str, Any]] = []
-    cursor = ""
+    cursor = (start_cursor or "").strip()
+    final_next_cursor = cursor
     while True:
         data = sync_kf_messages(cfg, token=token, open_kf_id=open_kf_id, cursor=cursor)
         for item in data.get("msg_list") or []:
@@ -98,14 +115,23 @@ def pull_customer_text_messages(
                 continue
             messages.append(item)
 
+        next_cursor = str(data.get("next_cursor") or "").strip()
+        if next_cursor:
+            final_next_cursor = next_cursor
+
         if int(data.get("has_more") or 0) != 1:
             break
-        cursor = str(data.get("next_cursor") or "")
-        if not cursor:
+        if not next_cursor:
             break
+        cursor = next_cursor
 
     logger.info(
         "wecom_sync_msg_pulled_v1 %s",
-        {"open_kf_id": open_kf_id, "text_message_count": len(messages)},
+        {
+            "open_kf_id": open_kf_id,
+            "text_message_count": len(messages),
+            "start_cursor_set": bool((start_cursor or "").strip()),
+            "next_cursor_set": bool(final_next_cursor),
+        },
     )
-    return messages
+    return SyncPullResult(messages=messages, next_cursor=final_next_cursor)

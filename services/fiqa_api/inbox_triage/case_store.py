@@ -56,6 +56,13 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def utc_now_iso() -> str:
+    """Public UTC ISO-8601 (Z-suffixed) timestamp helper for callers outside this
+    module (e.g. `active_case_bridge.confirm_case_by_broker`) that need to stamp
+    `broker_confirmed_at` with the same clock/format as the rest of case_store."""
+    return _utc_now_iso()
+
+
 def _store_path() -> Path:
     raw_path = (os.getenv("UNIFIED_INTAKE_CASES_PATH") or "").strip()
     if not raw_path:
@@ -366,6 +373,23 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
         normalized["merge_review_required"] = bool(normalized.get("merge_review_required"))
     if "conflict_state" not in normalized:
         normalized["conflict_state"] = str(normalized.get("conflict_state") or "none").strip() or "none"
+
+    # Track B0.3 — Active Workspace flag (contract §5). Additive, nullable,
+    # same style as evidence_events: presence = "Active Case", absence = "Draft
+    # Case". Set once, by broker action only (update_case_workspace_flags);
+    # immutable thereafter (mirrors formal_submitted_at precedent).
+    if "broker_confirmed_at" not in normalized:
+        normalized["broker_confirmed_at"] = None
+    else:
+        v = normalized.get("broker_confirmed_at")
+        normalized["broker_confirmed_at"] = str(v).strip() if v else None
+
+    # Track B0.2/B0.3 — WeCom channel identity binding (contract §4.1). Narrow,
+    # additive fields only; not used by the phone-based resolver.
+    if "wecom_external_userid" not in normalized:
+        normalized["wecom_external_userid"] = None
+    if "wecom_open_kf_id" not in normalized:
+        normalized["wecom_open_kf_id"] = None
 
     return normalized
 
@@ -767,6 +791,9 @@ def save_case(
     p16_blob = triage_result.get("p16_broker_packet")
     if isinstance(p16_blob, dict) and p16_blob:
         case["p16_broker_packet"] = p16_blob
+    for intel_key in ("workbench_tags", "known_facts", "risk_flags", "demo_summary"):
+        if intel_key in triage_result and triage_result[intel_key]:
+            case[intel_key] = triage_result[intel_key]
 
     _apply_identity_fields_from_triage_result(case, triage_result)
 
@@ -966,6 +993,89 @@ def update_case_workbench_flags(
         _build_activity_entry("workbench_flags", msg),
         *normalized_case.get("case_activity", []),
     ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
+    return updated_case
+
+
+def update_case_workspace_flags(
+    case_id: str,
+    *,
+    broker_confirmed_at: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Track B0.3 — Active Workspace flags (contract §5), same additive shape as
+    `update_case_workbench_flags()`. `broker_confirmed_at` is a sentinel: pass
+    an explicit ISO-8601 string (see `utc_now_iso()`) to set it.
+
+    Set once, by broker action only. Idempotent / immutable once set — a
+    second call is a safe no-op (mirrors `formal_submitted_at` precedent), so
+    it is safe for the Broker Confirm endpoint to call this twice.
+
+    claim_mentioned_at (contract §5) is B0.4 scope — not implemented here.
+    """
+    if broker_confirmed_at is None:
+        from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
+
+        return get_case_for_read(case_id)
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+    if normalized_case.get("broker_confirmed_at"):
+        # Already confirmed — immutable, idempotent no-op (safe to call twice).
+        return normalized_case
+    normalized_case["broker_confirmed_at"] = str(broker_confirmed_at).strip()
+    normalized_case["updated_at"] = _utc_now_iso()
+    normalized_case["case_activity"] = [
+        _build_activity_entry(
+            "broker_confirmed",
+            "Broker confirmed this request. Active Case — Done Card sent to customer.",
+        ),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    updated_case = normalized_case
+    if not _persist_case_after_update(case_id, updated_case):
+        return None
+    return updated_case
+
+
+def bind_case_channel_identity(
+    case_id: str,
+    *,
+    wecom_external_userid: str,
+    wecom_open_kf_id: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Track B0.2 — bind a case to its WeCom `external_userid` (contract §4.1).
+    Track B0.3 extends this with `wecom_open_kf_id`, needed alongside
+    `external_userid` to send the Done Card via the existing kf/send_msg API
+    (`wecom/send_msg.py`) once the broker confirms.
+
+    Narrow, additive fields used only so a Draft Case created on "Start"
+    (before any phone is known) can be found again, and messaged again. Does
+    not change the phone-based resolver contract (`active_case_resolver.py`);
+    once a phone arrives, `update_case_customer()` attaches it as today.
+    """
+    ext = (wecom_external_userid or "").strip()
+    kf_id = (wecom_open_kf_id or "").strip()
+    if not ext:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+    changed = False
+    if normalized_case.get("wecom_external_userid") != ext:
+        normalized_case["wecom_external_userid"] = ext
+        changed = True
+    if kf_id and normalized_case.get("wecom_open_kf_id") != kf_id:
+        normalized_case["wecom_open_kf_id"] = kf_id
+        changed = True
+    if not changed:
+        return normalized_case
+    normalized_case["updated_at"] = _utc_now_iso()
     updated_case = normalized_case
     if not _persist_case_after_update(case_id, updated_case):
         return None
