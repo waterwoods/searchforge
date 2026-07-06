@@ -1,9 +1,12 @@
 # P19B-0 — Guided Workflow / Start-End Card / Attachment State Recon
 
 **Date:** 2026-07-05  
+**Revision:** 2026-07-06 — aligned to P19D step-by-step evidence capture SSOT  
 **Type:** Product design recon — **documentation only**  
 **Audience:** Andy, Chen Kui demo team, P19B/P19C/P19D implementation agents  
 **Prerequisite:** P19A Loop 1 (media intake foundation) + P19A Loop 2 (live WeCom image smoke **PASS**)
+
+**SSOT:** `docs/p19d_core_step_by_step_evidence_capture_doctrine.md` — canonical product doctrine. This doc = Start/End Cards, slots, copy detail.
 
 **Authority:** Extends `docs/p19_wecom_photo_intake_mobile_case_builder_spec.md` and `docs/p19_mobile_task_workflow_recon.md`. Does not supersede B0 contract (`docs/p16/TRACK_B0_ACTIVE_WORKSPACE_CONTRACT.md`) or Constitution safety rules.
 
@@ -15,17 +18,19 @@
 
 P19A proved the **attachment foundation**: WeCom image → download → GCS → metadata → case bind or unassigned holding case → safe customer ack.
 
-P19B-0 designs the **Spark Driver-style guided workflow** layer on top:
+P19B-0 designs the **DoorDash / KYC / Spark Driver-style guided workflow** layer on top:
 
-> **Start Card → one guided step at a time → photo proof per slot → verify/branch → broker review → End Card**
+> **Start Card → one slot / one action at a time → preview confirm (H5) → submit evidence → next step → broker review → End Card**
 
-The customer is not in a free-form chat. They are inside a **finite mobile task** with visible progress, one next action, and safe endings. The broker Workbench is the dispatch console — attachments, slots, OCR drafts (later), and confirm gates.
+The customer is not in a free-form chat and is **not** asked to「上传资料」. They are told **what to capture now** — e.g.「现在请拍 VIN」— one evidence at a time. P19D-1 chat guardrail is a **fallback** when they ignore links and dump photos in chat.
 
 **Core insight (carry forward):**
 
 ```text
-Spark:     arrive → start → [next item → scan → correct? → basket | retry | exception]* → review → complete
-Insurance: Start  → case  → [next doc  → upload → clear?   → slot   | re-ask | manual]*  → broker → End
+KYC:       front of ID → confirm → back of ID → confirm
+Spark:     arrive → scan barcode → verify item → next item → complete
+Insurance: Start → slot_1 photo → confirm → slot_2 photo → confirm → text fields → broker → End
+           NOT: album dump → system guesses slots
 ```
 
 **What P19B-0 adds vs P19 UX recon:** concrete Start/End Card copy, `guided_workflow_state` enum, per-lane attachment slot matrix, multi-image rules, OCR draft boundary, Workbench panel layout, customer next-step catalog, and exception path table — all implementation-ready for P19B/D without schema migration.
@@ -78,9 +83,13 @@ We'll ask for a few photos and details — no long forms.
 **First guided prompt (immediately after Start):**
 ```
 好的，我们开始加车资料。
-第一步：请发一张 **VIN 照片**（挡风玻璃或车门贴纸上的 17 位车架号）。
+第一步：请拍一张 **VIN 照片**（挡风玻璃或车门贴纸上的 17 位车架号）。
 如果暂时拍不到，也可以直接打字发 VIN。
 ```
+
+**Canonical 5-step flow (SSOT §B):** Start Card → (1) VIN photo → (2) registration photo → (3) insurance card optional → (4) delivery date text → (5) broker review → End Card「资料已收到，陈总会人工确认」.
+
+**Interaction rule (SSOT §C):** Never ask「请上传车辆资料」— always name the **current** slot:「现在请拍 VIN」. Multi-sided docs = **multiple steps**, not one multi-image upload.
 
 **Optional upload-intent buttons (P19D — after Start):**
 
@@ -376,16 +385,18 @@ An **attachment slot** is a named place in the checklist that accepts one or mor
 
 | Slot ID | Document type(s) | Required | Field fallback (text) | Guided prompt (ZH) |
 |---------|------------------|----------|----------------------|-------------------|
-| `slot_vin_photo` | `vin_photo` | **Yes** | `vin` text | 请发 VIN 照片（17 位车架号） |
-| `slot_registration` | `registration` | **Yes** | — | 请发行驶证或临时牌照照片 |
-| `slot_insurance_card` | `insurance_card` | Optional | — | 如有保险卡，请发照片 |
+| `slot_vin_photo` | `vin_photo` | **Yes** | `vin` text | **现在请拍 VIN 照片**（一步一图） |
+| `slot_registration` | `registration` | **Yes** | — | **现在请拍行驶证** — 正/反面分两步，不要一次传两张 |
+| `slot_insurance_card` | `insurance_card` | Optional | — | **现在请拍保险卡（可跳过）** — 一步一图 |
 | `slot_driver_license` | `driver_license` | Optional | — | 如有驾照照片也可以发 |
 | `field_delivery_date` | — | **Yes** | `delivery_date` | 请告诉我提车日期 |
 | `field_garaging_zip` | — | **Yes** | `zip` | 请发车辆停放地址邮编 |
 | `field_primary_driver` | — | **Yes** | `primary_driver` | 请发主驾姓名 |
 | `field_phone` | — | **Yes** (broker Confirm gate) | `phone` | 请发联系电话 |
 
-**Guided order:** `slot_vin_photo` → `slot_registration` → `field_delivery_date` → `field_garaging_zip` → `slot_insurance_card` (opt) → `field_primary_driver` → `field_phone`.
+**Guided order (canonical pilot):** `slot_vin_photo` → `slot_registration` → `slot_insurance_card` (opt, skippable) → `field_delivery_date` → broker review → End Card.
+
+*Additional fields (`zip`, `phone`, etc.) remain in full checklist — see broker Confirm gate; pilot H5 MVP may defer non-photo fields to chat text.*
 
 ---
 

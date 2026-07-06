@@ -1,27 +1,30 @@
 # P19D-0 — Upload Guardrail / Guided Photo Capture Recon
 
 **Date:** 2026-07-05  
-**Revision:** 2026-07-05 v2 — **strict guardrail** (replaces v1 soft-cap / save-all-triage framing)  
+**Revision:** 2026-07-06 v3 — aligned to **P19D step-by-step evidence capture SSOT**  
 **Type:** Product / UX guardrail recon — **documentation only**  
 **Audience:** Andy, Chen Kui demo team, P19D implementation agents  
 **Prerequisite:** P19A (media intake) ✅ · P19B (Workbench attachment UI) ✅ · P19B-0 guided workflow recon ✅
 
-**Evaluated gap:** Real WeCom users may **bulk-select album photos** and flood the case. P19A currently stores every image to GCS with minimal discipline. P19D must **prevent mis-upload at the workflow layer**, not merely triage after the fact.
+**SSOT (canonical doctrine):** `docs/p19d_core_step_by_step_evidence_capture_doctrine.md` — read first. This doc is **guardrail detail**; SSOT wins on product direction.
+
+**Evaluated gap:** Real WeCom users may **bulk-select album photos** and flood the case. P19A stores images to GCS with a pipe — that is **infrastructure**, not the product. P19D must **prevent mis-upload at the workflow layer** (guided capture primary; chat guardrail fallback).
 
 **This loop:** No code. No deploy. No schema migration.
 
 ---
 
-## P19 North Star
+## P19 North Star (see SSOT §A)
 
 > **P19 的目标不是增强图片上传能力，而是减少错误上传的机会；图片只是 guided workflow 中某一步的 evidence。**
 
 | P19 is not | P19 is |
 |------------|--------|
-| A better photo inbox / album receiver | A **guided task** with verification at each step |
-| Maximize attachments stored | **Minimize wrong uploads** before they become broker work |
+| A better photo inbox / album receiver | **DoorDash / KYC / Spark-style** step-by-step evidence capture |
+| Maximize attachments stored | **Minimize wrong uploads** before broker work |
 | Photo-first data collection | **Structured input first**; photo only when that step requires proof |
-| Bulk accept → sort later | **One step → one evidence** (with strict bulk pause) |
+| Bulk accept → sort later | **Current case → current slot → one action → one evidence → preview → next** |
+| Chat guardrail as main UX | **H5 single-slot guided capture** primary; P19D-1 chat guardrail = **fallback** |
 
 Every P19A/B/D design choice should be judged against this sentence.
 
@@ -115,12 +118,14 @@ P19A behavior (store every WeCom image to GCS) is a **foundation**, not the **pr
 
 ### 1.5 Guardrail vs guided workflow vs OCR
 
-| Layer | Role |
-|-------|------|
-| **Guided workflow** | Start Card → one step at a time → End Card |
-| **Strict upload guardrail** | Enforce 1-image default, bulk pause, quarantine |
-| **OCR** (P19C) | Only on **promoted primary** slot images |
-| **Broker confirm** | Facts + document acceptance |
+| Layer | Role | Pilot priority |
+|-------|------|----------------|
+| **Guided workflow (H5 / MP)** | Start Card → **one slot at a time** → preview confirm → next step → End Card | **Primary** (P19D-2+) |
+| **Strict chat guardrail (P19D-1)** | Fallback when customer sends images in chat — quarantine bulk, promote one | **Shipped** — not main UX |
+| **OCR** (P19C+) | Only on **promoted**, **current-slot** evidence | After guardrail + H5 |
+| **Broker confirm** | Facts + document acceptance | Later |
+
+**Doctrine (SSOT §D):** Over **1** image in a normal slot = **possible mistake**. Over **3** in 120s = **pause and confirm**. Claim = **batch confirm**, never unlimited bulk.
 
 ---
 
@@ -135,8 +140,8 @@ P19A behavior (store every WeCom image to GCS) is a **foundation**, not the **pr
 | Slot ID | Type | Max primary | Step mode |
 |---------|------|-------------|-----------|
 | `slot_vin_photo` | normal | **1** | Text VIN preferred; photo if can't type |
-| `slot_registration` | special | **2–3** | After 1st image, prompt “need back page?” before 2nd |
-| `slot_insurance_card` | normal | **1** | Optional slot |
+| `slot_registration` | special | **1 per sub-step** | Front = step 2a; back = step 2b — **not** one album of two |
+| `slot_insurance_card` | normal | **1** | Optional slot; skip allowed |
 | `slot_driver_license` | normal | **1** | Optional |
 | `field_*` (ZIP, date, phone) | text | **0 images** | No photo unless customer insists → quarantine |
 
