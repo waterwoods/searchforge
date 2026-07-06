@@ -21,7 +21,7 @@ from services.fiqa_api.wecom.reply import build_h5_vin_start_card_payload
 from services.fiqa_api.wecom.reply_dedup import reset_reply_dedup_memory_for_tests
 from services.fiqa_api.wecom.slice import process_kf_msg_or_event
 from services.fiqa_api.wecom.sync_cursor import reset_sync_cursor_memory_for_tests
-from services.fiqa_api.inbox_triage.case_store import count_stored_cases
+from services.fiqa_api.inbox_triage.case_store import count_stored_cases, get_case_by_id
 
 _H5_URL_RE = re.compile(r"https://example\.test/task/upload/h5t1\.[^/\s]+")
 
@@ -227,6 +227,51 @@ def test_h5_task_api_validates_wecom_minted_token(monkeypatch):
     assert data["slot"] == "vin_photo"
     assert data["lane"] == "add_car"
     assert "VIN" in data["task_label"]
+
+
+def test_add_car_with_open_premium_case_creates_add_car_draft(monkeypatch):
+    """P19D-3 regression: H5 token must bind add_car case, not other open lane."""
+    _setup_json_store()
+    cfg = _b0_cfg(monkeypatch)
+    from services.fiqa_api.wecom.intent import classify_wecom_intent
+    from services.fiqa_api.wecom.minimal_lanes import ingest_wecom_text_to_minimal_lane
+    from services.fiqa_api.wecom.normalize import normalize_text_message
+
+    prem_norm = normalize_text_message(
+        _msg(
+            "m_prem_open",
+            "陈总，我 Uber Black 保险又涨了，现在一年 15500，有没有便宜一点？",
+            external_userid="wm_prem_then_add",
+        )
+    )
+    prem_intent = classify_wecom_intent(prem_norm["text"])
+    prem_result = ingest_wecom_text_to_minimal_lane(prem_norm, prem_intent)
+    prem_id = prem_result["case_id"]
+
+    captured: dict = {}
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [_msg("m_add_car_prem", "我要加车", external_userid="wm_prem_then_add")]
+
+    def fake_dispatch(_cfg, normalized, *, send_enabled, menu_payload, text_content, outcome):
+        captured["outcome"] = outcome
+        captured["menu"] = menu_payload
+
+    monkeypatch.setattr("services.fiqa_api.wecom.slice._dispatch_reply", fake_dispatch)
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+    outcome = results[0]
+    assert outcome["case_id"] != prem_id
+    assert outcome["case_created"] is True
+    stored = get_case_by_id(outcome["case_id"])
+    assert stored is not None
+    assert stored.get("service_lane") == "add_car"
+
+    url = captured["menu"]["list"][0]["view"]["url"]
+    token = url.rsplit("/", 1)[-1]
+    claims = verify_h5_task_token(token)
+    assert claims is not None
+    assert claims.case_id == outcome["case_id"]
 
 
 def test_mint_h5_task_link_no_full_external_userid(monkeypatch):

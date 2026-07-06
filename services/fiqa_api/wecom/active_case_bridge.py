@@ -260,6 +260,24 @@ def _build_draft_case_stub(
     return stub
 
 
+def find_open_add_car_case_by_external_userid(external_userid: str) -> str | None:
+    """Channel binding scoped to open add_car cases only (H5 token / Start Card)."""
+    ext = (external_userid or "").strip()
+    if not ext:
+        return None
+    for case in list_all_cases_for_read():
+        if case.get("wecom_external_userid") != ext:
+            continue
+        if case.get("case_status") == "closed":
+            continue
+        if str(case.get("service_lane") or "").strip().lower() not in ("add_car", SERVICE_LANE_ADD_CAR):
+            continue
+        cid = str(case.get("case_id") or "").strip()
+        if cid:
+            return cid
+    return None
+
+
 def create_or_attach_draft_case_for_start_click(normalized: dict[str, Any]) -> dict[str, Any]:
     """
     Track B0.2 — customer presses "Start": create ONE Draft Case, bound to
@@ -269,7 +287,7 @@ def create_or_attach_draft_case_for_start_click(normalized: dict[str, Any]) -> d
     msg_id = str(normalized.get("msg_id") or "").strip()
     external_userid = str(normalized.get("external_userid") or "").strip()
 
-    existing = find_open_draft_case_by_external_userid(external_userid)
+    existing = find_open_add_car_case_by_external_userid(external_userid)
     if existing:
         _record_wecom_evidence(existing, msg_id)
         _log_event(

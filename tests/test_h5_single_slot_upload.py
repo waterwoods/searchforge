@@ -162,6 +162,46 @@ def test_non_image_rejected():
     assert resp.status_code == 400
 
 
+def test_lane_mismatch_returns_403(monkeypatch):
+    _setup_json_store()
+    case = _save_add_car_case()
+    token = issue_h5_task_token(case_id=case["case_id"], lane="add_car", slot="vin_photo")
+
+    def fake_read(case_id: str):
+        row = get_case_by_id(case_id)
+        if row is None:
+            return None
+        patched = dict(row)
+        patched["service_lane"] = "policy_review"
+        return patched
+
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.h5_task_upload.get_case_for_read",
+        fake_read,
+    )
+    _mock_gcs_upload()
+    client = _client()
+    resp = client.post(
+        f"/api/h5/tasks/{token}/upload",
+        files={"file": ("vin.jpg", _tiny_jpeg(), "image/jpeg")},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "lane_mismatch"
+
+
+def test_octet_stream_wechat_upload_accepted():
+    _setup_json_store()
+    _mock_gcs_upload()
+    case = _save_add_car_case()
+    token = issue_h5_task_token(case_id=case["case_id"])
+    client = _client()
+    resp = client.post(
+        f"/api/h5/tasks/{token}/upload",
+        files={"file": ("photo", _tiny_jpeg(), "application/octet-stream")},
+    )
+    assert resp.status_code == 200
+
+
 def test_oversized_image_rejected():
     _setup_json_store()
     case = _save_add_car_case()

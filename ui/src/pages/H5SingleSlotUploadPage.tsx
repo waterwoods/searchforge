@@ -310,7 +310,17 @@ export default function H5SingleSlotUploadPage() {
         )}
 
         {pageState === 'preview' && errorText && (
-          <div style={{ ...styles.errorBox, marginTop: 12 }}>{errorText}</div>
+          <div style={{ ...styles.errorBox, marginTop: 12 }} role="alert">
+            <strong>上传未成功</strong>
+            <p style={{ margin: '8px 0 0' }}>{errorText}</p>
+          </div>
+        )}
+
+        {pageState === 'uploading' && errorText && (
+          <div style={{ ...styles.errorBox, marginTop: 12 }} role="alert">
+            <strong>上传未成功</strong>
+            <p style={{ margin: '8px 0 0' }}>{errorText}</p>
+          </div>
         )}
       </main>
     </div>

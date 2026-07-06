@@ -28,14 +28,18 @@ _ALLOWED_IMAGE_MIMES = frozenset(
         "image/png",
         "image/heic",
         "image/heif",
+        "application/octet-stream",
     }
 )
 
 _SLOT_COPY: dict[str, dict[str, Any]] = {
     "vin_photo": {
         "title": "加车资料补充",
-        "task_label": "请拍 VIN 照片",
-        "instruction": "请拍清楚车门边或挡风玻璃下方的 VIN 标签。为了避免资料放错，本步骤只需要 1 张照片。",
+        "task_label": "请拍车上的 VIN 标签",
+        "instruction": (
+            "请拍清楚车门边或挡风玻璃下方的 VIN 金属/贴纸标签（不是保险卡或行驶证）。"
+            "为了避免资料放错，本步骤只需要 1 张照片。"
+        ),
         "step_current": 1,
         "step_total": 4,
         "document_type": "vin_photo",
@@ -93,6 +97,9 @@ def _validate_image_upload(
         raise ValueError("not_an_image")
     if mime in _ALLOWED_IMAGE_MIMES or (mime.startswith("image/") and mime != "image/gif"):
         pass
+    elif mime == "application/octet-stream":
+        # WeChat / iOS often send HEIC/JPEG as octet-stream — infer from name or default jpg.
+        pass
     elif any(name.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".heic", ".heif")):
         pass
     else:
@@ -104,6 +111,8 @@ def _validate_image_upload(
             return ".heic"
         if name.endswith(".heif"):
             return ".heif"
+        if mime == "application/octet-stream":
+            return ".jpg"
         raise
 
 
