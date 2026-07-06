@@ -209,6 +209,12 @@ export interface CaseAttachment {
     ocr_status?: string;
     broker_confirmed?: boolean;
     intake_status?: string;
+    guardrail_status?: string;
+    eligible_for_ocr?: boolean;
+    requires_customer_confirm?: boolean;
+    quarantine_reason?: string | null;
+    slot_assignment?: string | null;
+    bulk_sequence?: number;
     preview_available?: boolean;
     preview_url?: string;
     storage_status?: string;

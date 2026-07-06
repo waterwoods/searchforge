@@ -66,7 +66,41 @@ export function isImageAttachment(att: { mime_type?: string | null; document_typ
 }
 
 export function countCaseAttachments(attachments?: unknown[] | null): number {
-  return Array.isArray(attachments) ? attachments.length : 0;
+  if (!Array.isArray(attachments)) return 0;
+  return attachments.filter((raw) => {
+    if (!raw || typeof raw !== 'object') return false;
+    const att = raw as { intake_status?: string };
+    const status = (att.intake_status || 'promoted').toLowerCase();
+    return status !== 'quarantined';
+  }).length;
+}
+
+export function isQuarantinedAttachment(att: { intake_status?: string | null }): boolean {
+  return (att.intake_status || '').toLowerCase() === 'quarantined';
+}
+
+export function guardrailStatusLabel(status?: string | null): string | null {
+  const s = (status || '').toLowerCase();
+  if (s === 'accepted') return null;
+  if (s === 'bulk_confirm_needed') return 'Bulk confirm needed';
+  if (s === 'bulk_upload_paused') return 'Bulk upload paused';
+  if (s === 'claim_batch_confirm_needed') return 'Claim batch confirm needed';
+  return null;
+}
+
+export function partitionAttachments<T extends { intake_status?: string | null }>(
+  attachments: T[],
+): { promoted: T[]; quarantined: T[] } {
+  const promoted: T[] = [];
+  const quarantined: T[] = [];
+  for (const att of attachments) {
+    if (isQuarantinedAttachment(att)) {
+      quarantined.push(att);
+    } else {
+      promoted.push(att);
+    }
+  }
+  return { promoted, quarantined };
 }
 
 export function isWeComMediaIntakeLane(serviceLane?: string | null): boolean {

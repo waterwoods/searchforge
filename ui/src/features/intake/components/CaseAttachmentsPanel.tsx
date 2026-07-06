@@ -15,10 +15,13 @@ import { API_BASE_URL } from '@/api/config';
 import {
   formatAttachmentReceivedAt,
   formatAttachmentSize,
+  guardrailStatusLabel,
   humanizeDocumentType,
   humanizeMimeLabel,
   isImageAttachment,
+  isQuarantinedAttachment,
   ocrStatusLabel,
+  partitionAttachments,
 } from '@/features/intake/utils/attachmentDisplay';
 
 const { Text, Paragraph } = Typography;
@@ -131,10 +134,11 @@ async function openAttachmentPreview(caseId: string, att: CaseAttachment): Promi
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function AttachmentCard({ caseId, att }: { caseId: string; att: CaseAttachment }) {
+function AttachmentCard({ caseId, att, quarantined = false }: { caseId: string; att: CaseAttachment; quarantined?: boolean }) {
   const [opening, setOpening] = useState(false);
   const docType = humanizeDocumentType(att.document_type);
   const needsClassification = (att.document_type || '').toLowerCase() === 'unknown_document';
+  const guardLabel = guardrailStatusLabel(att.guardrail_status);
 
   const handleOpen = useCallback(async () => {
     if (!att.preview_available) return;
@@ -153,6 +157,8 @@ function AttachmentCard({ caseId, att }: { caseId: string; att: CaseAttachment }
         gap: 12,
         padding: '10px 0',
         borderBottom: '1px solid #f0f0f0',
+        background: quarantined ? '#fffbe6' : undefined,
+        borderRadius: quarantined ? 6 : undefined,
       }}
     >
       <AttachmentThumbnail caseId={caseId} att={att} />
@@ -170,6 +176,20 @@ function AttachmentCard({ caseId, att }: { caseId: string; att: CaseAttachment }
           {att.intake_status === 'unassigned' ? (
             <Tag color="warning" style={{ margin: 0 }}>Unassigned</Tag>
           ) : null}
+          {quarantined || isQuarantinedAttachment(att) ? (
+            <>
+              <Tag color="warning" style={{ margin: 0 }}>Needs Review</Tag>
+              {guardLabel ? <Tag color="orange" style={{ margin: 0 }}>{guardLabel}</Tag> : null}
+              <Tag style={{ margin: 0 }}>Not eligible for OCR</Tag>
+            </>
+          ) : (
+            <>
+              <Tag color="success" style={{ margin: 0 }}>Accepted</Tag>
+              {att.eligible_for_ocr ? (
+                <Tag color="processing" style={{ margin: 0 }}>Eligible for OCR later</Tag>
+              ) : null}
+            </>
+          )}
           <Tag color={bindingTagColor(att.binding_confidence || 'unknown')} style={{ margin: 0 }}>
             Binding: {att.binding_confidence || 'unknown'}
           </Tag>
@@ -203,7 +223,7 @@ function AttachmentCard({ caseId, att }: { caseId: string; att: CaseAttachment }
 
 export function CaseAttachmentsPanel({ caseId, attachments }: Props) {
   const items = attachments ?? [];
-  const count = items.length;
+  const { promoted, quarantined } = partitionAttachments(items);
 
   return (
     <Card
@@ -211,22 +231,34 @@ export function CaseAttachmentsPanel({ caseId, attachments }: Props) {
       title={
         <Space size={6}>
           <PaperClipOutlined />
-          <span>Uploaded Documents / Attachments ({count})</span>
+          <span>Uploaded Documents / Attachments ({promoted.length})</span>
         </Space>
       }
       style={{ marginBottom: 12 }}
-      styles={{ body: { padding: count > 0 ? '4px 16px 8px' : '12px 16px' } }}
+      styles={{ body: { padding: items.length > 0 ? '4px 16px 8px' : '12px 16px' } }}
     >
-      {count === 0 ? (
+      {items.length === 0 ? (
         <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
           No uploaded documents yet.
           <br />
           Customer can send photos through WeCom.
         </Paragraph>
       ) : (
-        items.map((att) => (
-          <AttachmentCard key={att.attachment_id} caseId={caseId} att={att} />
-        ))
+        <>
+          {promoted.map((att) => (
+            <AttachmentCard key={att.attachment_id} caseId={caseId} att={att} />
+          ))}
+          {quarantined.length > 0 ? (
+            <div style={{ marginTop: promoted.length > 0 ? 12 : 0 }}>
+              <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                Quarantined Uploads ({quarantined.length})
+              </Text>
+              {quarantined.map((att) => (
+                <AttachmentCard key={att.attachment_id} caseId={caseId} att={att} quarantined />
+              ))}
+            </div>
+          ) : null}
+        </>
       )}
     </Card>
   );

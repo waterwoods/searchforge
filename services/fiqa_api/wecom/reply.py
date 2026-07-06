@@ -192,6 +192,50 @@ _MEDIA_ACK_CLAIM = (
 )
 
 
+# P19D-1 — strict upload guardrail customer copy (no OCR language)
+_GUARD_BULK_CONFIRM = (
+    "已收到多张图片。为了避免资料放错或误传隐私照片，请确认这些图片是否都属于同一个服务事项。"
+    "当前系统会先处理第一张，其余先标记为待确认。"
+)
+
+_GUARD_BULK_PAUSE = (
+    "已收到多张图片。为了避免误传隐私照片或资料放错，请先暂停上传。"
+    "请确认这些图片是否都属于同一个服务事项，陈总会人工查看。"
+)
+
+_GUARD_CLAIM_BATCH = (
+    "已收到这一批事故照片。请确认这些都是同一次事故的照片，确认后再继续上传下一批。"
+)
+
+_GUARD_ONE_PHOTO = (
+    "为了避免资料放错，请一次只上传当前这一步需要的一张图片。"
+)
+
+
+def build_guardrail_media_reply(
+    *,
+    reply_kind: str,
+    bound: bool,
+    service_lane: str | None = None,
+    binding_confidence: str = "unknown",
+) -> str:
+    """Select safe customer reply for guardrail outcome. Never mentions OCR."""
+    kind = (reply_kind or "single_image").strip().lower()
+    if kind == "bulk_pause":
+        return _GUARD_BULK_PAUSE
+    if kind == "bulk_confirm":
+        return _GUARD_BULK_CONFIRM
+    if kind in ("claim_batch", "claim_over_limit"):
+        return _GUARD_CLAIM_BATCH
+    if kind == "one_photo":
+        return _GUARD_ONE_PHOTO
+    return build_media_intake_reply(
+        bound=bound,
+        service_lane=service_lane,
+        binding_confidence=binding_confidence,
+    )
+
+
 def build_media_intake_reply(
     *,
     bound: bool,

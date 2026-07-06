@@ -77,6 +77,31 @@ def _wecom_att(attachment_id: str = "att_test123") -> dict:
     }
 
 
+def test_sanitize_attachment_includes_guardrail_fields():
+    att = {
+        **_wecom_att(),
+        "intake_status": "quarantined",
+        "guardrail_status": "bulk_upload_paused",
+        "eligible_for_ocr": False,
+        "requires_customer_confirm": True,
+        "quarantine_reason": "bulk_upload_over_limit",
+    }
+    safe = sanitize_attachment_for_api("case_abc", att)
+    assert safe["intake_status"] == "quarantined"
+    assert safe["guardrail_status"] == "bulk_upload_paused"
+    assert safe["eligible_for_ocr"] is False
+    assert safe["requires_customer_confirm"] is True
+
+
+def test_sanitize_legacy_attachment_defaults_promoted():
+    safe = sanitize_attachment_for_api("case_abc", _wecom_att())
+    assert safe["intake_status"] == "unassigned"  # legacy test att has unassigned
+    legacy = sanitize_attachment_for_api("case_abc", {**_wecom_att(), "intake_status": None})
+    assert legacy["intake_status"] == "promoted"
+    assert legacy["guardrail_status"] == "accepted"
+    assert legacy["eligible_for_ocr"] is False
+
+
 def test_sanitize_attachment_strips_secrets():
     safe = sanitize_attachment_for_api("case_abc", _wecom_att())
     assert "external_userid" not in safe

@@ -52,6 +52,33 @@ def _attachment_preview_available(att: dict[str, Any]) -> bool:
     return bool(filename)
 
 
+def _guardrail_defaults(att: dict[str, Any]) -> dict[str, Any]:
+    """Legacy attachments without P19D-1 fields."""
+    raw_intake = (att.get("intake_status") or "").strip().lower()
+    if raw_intake == "unassigned":
+        intake_status = "unassigned"
+    elif raw_intake in ("promoted", "quarantined"):
+        intake_status = raw_intake
+    else:
+        intake_status = "promoted"
+    guardrail_status = att.get("guardrail_status") or (
+        "accepted" if intake_status == "promoted" else "bulk_upload_paused"
+    )
+    eligible = att.get("eligible_for_ocr")
+    if eligible is None:
+        # Legacy attachments: not OCR-eligible until explicit P19D-1 guardrail promote.
+        eligible = False
+    return {
+        "intake_status": intake_status,
+        "guardrail_status": guardrail_status,
+        "eligible_for_ocr": bool(eligible),
+        "requires_customer_confirm": bool(att.get("requires_customer_confirm", False)),
+        "quarantine_reason": att.get("quarantine_reason"),
+        "slot_assignment": att.get("slot_assignment"),
+        "bulk_sequence": att.get("bulk_sequence"),
+    }
+
+
 def sanitize_attachment_for_api(case_id: str, att: dict[str, Any]) -> dict[str, Any]:
     """
     Strip sensitive/internal fields; add broker-safe preview_url.
@@ -60,6 +87,7 @@ def sanitize_attachment_for_api(case_id: str, att: dict[str, Any]) -> dict[str, 
     aid = str(att.get("attachment_id") or "").strip()
     source = str(att.get("source") or "").strip().lower() or "web"
     preview_available = _attachment_preview_available(att)
+    guardrail = _guardrail_defaults(att)
     out: dict[str, Any] = {
         "attachment_id": aid,
         "source": source,
@@ -72,7 +100,13 @@ def sanitize_attachment_for_api(case_id: str, att: dict[str, Any]) -> dict[str, 
         "binding_confidence": att.get("binding_confidence") or "unknown",
         "ocr_status": att.get("ocr_status") or "not_started",
         "broker_confirmed": bool(att.get("broker_confirmed", False)),
-        "intake_status": att.get("intake_status"),
+        "intake_status": guardrail["intake_status"],
+        "guardrail_status": guardrail["guardrail_status"],
+        "eligible_for_ocr": guardrail["eligible_for_ocr"],
+        "requires_customer_confirm": guardrail["requires_customer_confirm"],
+        "quarantine_reason": guardrail["quarantine_reason"],
+        "slot_assignment": guardrail["slot_assignment"],
+        "bulk_sequence": guardrail["bulk_sequence"],
         "preview_available": preview_available,
         "storage_status": "stored" if preview_available or att.get("storage_uri") else "unknown",
     }

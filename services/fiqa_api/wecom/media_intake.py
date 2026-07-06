@@ -32,7 +32,11 @@ from services.fiqa_api.wecom.media_download import (
     download_wecom_media,
 )
 from services.fiqa_api.wecom.media_storage import upload_wecom_media_to_gcs
-from services.fiqa_api.wecom.reply import build_media_intake_reply
+from services.fiqa_api.wecom.reply import build_guardrail_media_reply, build_media_intake_reply
+from services.fiqa_api.wecom.upload_guardrail import (
+    apply_guardrail_to_attachment_metadata,
+    evaluate_upload_guardrail,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +333,21 @@ def ingest_wecom_media_message(
         customer_label=customer_label,
     )
 
+    received_at = _parse_received_at(normalized)
+    lane_for_guardrail = binding.service_lane
+    if target_case_id and not lane_for_guardrail:
+        pre_case = get_case_by_id(target_case_id)
+        lane_for_guardrail = str(pre_case.get("service_lane") or "").strip() if pre_case else None
+
+    guardrail = evaluate_upload_guardrail(
+        external_userid=external_userid,
+        received_at=received_at,
+        service_lane=lane_for_guardrail,
+        case_id=target_case_id,
+        slot_assignment=str(att_meta.get("document_type") or "unknown_document"),
+    )
+    att_meta = apply_guardrail_to_attachment_metadata(att_meta, guardrail)
+
     if target_case_id is None:
         had_intake = _find_open_unassigned_intake_case(external_userid)
         target_case_id = _find_or_create_unassigned_intake_case(normalized, customer_label=customer_label)
@@ -337,8 +356,8 @@ def ingest_wecom_media_message(
         binding = MediaBindingDecision(target_case_id, "unknown", SERVICE_LANE_WECOM_MEDIA_INTAKE, "unassigned")
         att_meta["bound_case_id"] = None
         att_meta["binding_confidence"] = "unknown"
-        att_meta["intake_status"] = "unassigned"
         att_meta["broker_action"] = "attach_to_case_or_ask_customer"
+        # Guardrail intake_status (promoted/quarantined) preserved from apply_guardrail above.
 
     updated = append_wecom_gcs_attachment_metadata(target_case_id, att_meta)
     if updated is None:
@@ -359,7 +378,8 @@ def ingest_wecom_media_message(
         case = get_case_by_id(target_case_id)
         lane = str(case.get("service_lane") or "").strip() if case else None
 
-    reply_text = build_media_intake_reply(
+    reply_text = build_guardrail_media_reply(
+        reply_kind=guardrail.reply_kind,
         bound=bound_to_service_case,
         service_lane=lane,
         binding_confidence=binding.binding_confidence,
@@ -374,6 +394,8 @@ def ingest_wecom_media_message(
             "attachment_id": att_meta["attachment_id"],
             "binding_confidence": binding.binding_confidence,
             "active_case_outcome": active_outcome,
+            "guardrail_status": guardrail.guardrail_status,
+            "intake_status": att_meta.get("intake_status"),
         },
     )
     return {
@@ -386,4 +408,6 @@ def ingest_wecom_media_message(
         "binding_confidence": binding.binding_confidence,
         "service_lane": lane,
         "storage_uri": storage["storage_uri"],
+        "guardrail_status": guardrail.guardrail_status,
+        "intake_status": att_meta.get("intake_status"),
     }
