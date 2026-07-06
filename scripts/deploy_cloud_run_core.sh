@@ -491,6 +491,27 @@ fi
 if [ -n "${WECOM_AGENT_SECRET:-}" ]; then
     ENV_VARS+=("WECOM_AGENT_SECRET=$WECOM_AGENT_SECRET")
 fi
+# P0 fix (WeCom reply idempotency, 2026-07): these two flags were previously
+# only ever applied by hand via `gcloud run services update --update-env-vars`
+# and were NOT in this bundle. Since this script deploys with --set-env-vars
+# (a full replace, not a merge), every prior deploy through this script
+# silently dropped them from the live service. Set in .env.cloudrun so they
+# survive deploys going forward.
+if [ -n "${WECOM_B0_ACTIVE_WORKSPACE:-}" ]; then
+    ENV_VARS+=("WECOM_B0_ACTIVE_WORKSPACE=$WECOM_B0_ACTIVE_WORKSPACE")
+fi
+if [ -n "${WECOM_SLICE_SEND_REPLY:-}" ]; then
+    ENV_VARS+=("WECOM_SLICE_SEND_REPLY=$WECOM_SLICE_SEND_REPLY")
+fi
+if [ -n "${WECOM_INBOX_QUEUE:-}" ]; then
+    ENV_VARS+=("WECOM_INBOX_QUEUE=$WECOM_INBOX_QUEUE")
+fi
+if [ -n "${WECOM_REPLY_OUTBOX:-}" ]; then
+    ENV_VARS+=("WECOM_REPLY_OUTBOX=$WECOM_REPLY_OUTBOX")
+fi
+if [ -n "${WECOM_QUEUE_ADMIN_TOKEN:-}" ]; then
+    ENV_VARS+=("WECOM_QUEUE_ADMIN_TOKEN=$WECOM_QUEUE_ADMIN_TOKEN")
+fi
 
 echo "Non-secret Unified Intake / persistence keys in this deploy bundle:"
 UNIFIED_BUNDLE_PRINTED=0
@@ -517,12 +538,22 @@ SECRET_EXTRA_ARGS=()
 if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
     SM_OPENAI="${CLOUD_RUN_SECRET_OPENAI:-fiqa-openai-api-key}"
     SM_QDRANT="${CLOUD_RUN_SECRET_QDRANT:-fiqa-qdrant-api-key}"
-    SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url}"
+    # QA source of truth is GCP Cloud SQL (caseiq @ private VPC). Do NOT use Neon for QA/demo.
+    # Legacy Neon secret (fiqa-service-record-database-url) remains for rollback only — set
+    # CLOUD_RUN_SECRET_SERVICE_RECORD_DB explicitly if you intentionally deploy against Neon.
+    SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url-cloudsql-private}"
+    if [ "$SM_DB" = "fiqa-service-record-database-url" ]; then
+        echo "❌ Error: CLOUD_RUN_SECRET_SERVICE_RECORD_DB points to legacy Neon secret."
+        echo "   QA/demo must use fiqa-service-record-database-url-cloudsql-private (GCP Cloud SQL caseiq)."
+        echo "   Neon is legacy rollback only — do not deploy QA against it."
+        exit 1
+    fi
     SECRET_EXTRA_ARGS=(
         --set-secrets
         "OPENAI_API_KEY=${SM_OPENAI}:latest,QDRANT_API_KEY=${SM_QDRANT}:latest,SERVICE_RECORD_DATABASE_URL=${SM_DB}:latest"
     )
     echo "🔐 CLOUD_RUN_USE_SECRET_MANAGER=1: binding OPENAI_API_KEY, QDRANT_API_KEY, SERVICE_RECORD_DATABASE_URL from Secret Manager (no plaintext on describe)."
+    echo "   SERVICE_RECORD_DATABASE_URL secret: ${SM_DB}:latest"
 fi
 
 # Deploy to Cloud Run

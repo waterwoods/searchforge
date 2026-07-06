@@ -64,7 +64,7 @@ def validate_pilot_env(env: dict[str, str]) -> list[str]:
     if not has_db and not _truthy(get("CLOUD_RUN_USE_SECRET_MANAGER")):
         errors.append(
             "SERVICE_RECORD_DATABASE_URL or DATABASE_URL required "
-            "(or CLOUD_RUN_USE_SECRET_MANAGER=1 with fiqa-service-record-database-url secret)"
+            "(or CLOUD_RUN_USE_SECRET_MANAGER=1 with fiqa-service-record-database-url-cloudsql-private secret)"
         )
 
     if not _truthy(get("UNIFIED_INTAKE_DB_PRIMARY_WRITES")):
