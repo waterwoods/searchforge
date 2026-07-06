@@ -63,7 +63,30 @@ Live bundle contains P19D-1 strings: `Quarantined Uploads`, `Needs Review`, `Eli
 
 ---
 
-## 5. Live guardrail smoke (3 images → 1 promote + 2 quarantine)
+## 5. Live guardrail smoke — Scenario A (manual WeCom, single image) ✅
+
+**Operator:** Andy · **Send time (UTC):** `2026-07-06T15:48:29Z`  
+**Path:** Live WeCom callback → Cloud Run `fiqa-api-00151-hxh` → GCS → Cloud SQL
+
+| Item | Value |
+|------|-------|
+| **msg_id tail** | `…ACGnV` |
+| **Case** | `case_82092cc39bae` (P19A WeCom Photo holding / `wecom_media_intake`) |
+| **Customer label** | `企业微信客户（尾号 mxcw）` |
+| **Attachment** | `att_ba6f2b2c6c95` |
+| **intake_status** | **`promoted`** |
+| **guardrail_status** | **`accepted`** |
+| **eligible_for_ocr** | **`true`** |
+| **GCS** | `caseiq-wecom-media-qa` · 218203 bytes JPEG (private `gs://`) |
+| **Customer reply** | `wecom_slice_reply_sent_v1` **`sent: true`** (safe media ack; no OCR language) |
+| **Preview** | `GET .../att_ba6f2b2c6c95/preview` → **200** `image/jpeg` 218203 bytes |
+| **Dedup** | Single `wecom_media_intake_ok_v1` for msg_id |
+
+Log chain: `wecom_sync_msg_pulled_v1` (media_message_count: 1) → `wecom_media_download_ok_v1` → `wecom_media_gcs_upload_ok_v1` → `wecom_media_intake_ok_v1` (promoted/accepted).
+
+---
+
+## 6. Live guardrail smoke — Scenario B (scripted QA, 3 images) ✅
 
 **Method:** QA Cloud SQL ingest path (same `ingest_wecom_media_message` + guardrail code as deployed revision), then Cloud Run API readback + Workbench UI verification.  
 **Smoke case:** tagged `demo_name=p19d1_guardrail_smoke`, `workbench_test=true` — does not touch `chen_kui_p18` seed rows.
@@ -87,7 +110,7 @@ Absent: `storage_uri`, `external_userid`, public/signed URL.
 
 ---
 
-## 6. Live UI smoke — Workbench drawer
+## 7. Live UI smoke — Workbench drawer
 
 **URL:** https://ui-smoky-beta.vercel.app/workbench/document-intake  
 **Case opened:** `case_65e8f926cb90` · P19D1 Guardrail Smoke · Add Car
@@ -105,7 +128,7 @@ Absent: `storage_uri`, `external_userid`, public/signed URL.
 
 ---
 
-## 7. Regression checks
+## 8. Regression checks
 
 | Check | Result |
 |-------|--------|
@@ -117,7 +140,7 @@ Absent: `storage_uri`, `external_userid`, public/signed URL.
 
 ---
 
-## 8. Scope guardrails (confirmed)
+## 9. Scope guardrails (confirmed)
 
 | Item | Status |
 |------|--------|
@@ -130,15 +153,17 @@ Absent: `storage_uri`, `external_userid`, public/signed URL.
 
 ---
 
-## 9. Known limitations / notes
+## 10. Known limitations / notes
 
-1. Live smoke used **operator-scripted triple ingest** on QA Cloud SQL (not a live WeCom album pick from phone). Callback/crypto path unchanged; guardrail logic exercised on deployed revision `566422a`.
-2. A partial failed pre-smoke row (`case_ae9908e48f76`) may exist from an aborted run — left in QA DB per no-delete policy.
-3. Rolling-window ordering within the same second may be unstable (documented in P19D-1 MVP evidence).
+1. Scenario A landed on **P19A holding case** (`wecom_media_intake` / UNASSIGNED) — guardrail still **promoted** single image correctly; binding lane remains unassigned until broker classifies.
+2. Live smoke Scenario B/C still pending manual WeCom sends from operator.
+3. Scripted triple ingest on `case_65e8f926cb90` (see §6) validated promote/quarantine split + Workbench badges.
+4. A partial failed pre-smoke row (`case_ae9908e48f76`) may exist — left in QA DB per no-delete policy.
+5. Rolling-window ordering within the same second may be unstable (documented in P19D-1 MVP evidence).
 
 ---
 
-## 10. Recommendation
+## 11. Recommendation
 
 **GO — P19D-1 strict upload guardrail is live on QA.**  
 Workbench shows promote vs quarantine split; multi-image bulk does **not** surface all images as normal evidence.
