@@ -21,6 +21,7 @@ import {
   CopyOutlined,
   DeleteOutlined,
   InboxOutlined,
+  PaperClipOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
@@ -33,6 +34,8 @@ import {
   type SavedCase,
 } from '@/api/inboxTriage';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
+import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
+import { countCaseAttachments, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import { copyToClipboard } from '@/utils/demoCopy';
 
 const { Title, Text, Paragraph } = Typography;
@@ -63,6 +66,7 @@ type QueueRow = {
   summary: string;
   opportunity_badges: OpportunityBadge[];
   updated_at: string;
+  attachment_count: number;
   raw: SavedCase;
 };
 
@@ -93,8 +97,15 @@ function isP16DocumentCase(c: SavedCase): boolean {
   return src.includes('p16 add-car') || src.includes('p16 policy review');
 }
 
+/** P19B — include unassigned WeCom photo holding cases in the same queue. */
+function isWorkbenchQueueCase(c: SavedCase): boolean {
+  if (isWeComMediaIntakeLane(c.service_lane)) return true;
+  return isP16DocumentCase(c);
+}
+
 function laneLabel(c: SavedCase): string {
   const lane = (c.service_lane || '').trim();
+  if (lane === 'wecom_media_intake') return 'WeCom Photo';
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
   const rt = blob?.request_type || '';
   if (lane === 'policy_review' || rt === 'policy_review') return 'Policy Review';
@@ -107,6 +118,7 @@ function laneLabel(c: SavedCase): string {
 }
 
 function laneTagColor(lane: string): string {
+  if (lane === 'WeCom Photo') return 'gold';
   if (lane === 'Add Car') return 'blue';
   if (lane === 'Policy Review') return 'purple';
   if (lane === 'Claim Lite') return 'volcano';
@@ -117,6 +129,7 @@ function laneTagColor(lane: string): string {
 
 function readinessFromCase(c: SavedCase): string {
   const lane = (c.service_lane || '').trim();
+  if (lane === 'wecom_media_intake') return 'UNASSIGNED';
   const cat = (c.issue_category || '').toLowerCase();
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
@@ -152,6 +165,7 @@ function statusTag(status: string) {
   const s = status.toUpperCase();
   if (s === 'READY') return <Tag color="success">READY</Tag>;
   if (s === 'NEED_INFO') return <Tag color="warning">NEED_INFO</Tag>;
+  if (s === 'UNASSIGNED') return <Tag color="gold">UNASSIGNED</Tag>;
   return <Tag color="processing">BROKER_REVIEW</Tag>;
 }
 
@@ -213,6 +227,10 @@ function resolveTopActionText(caseItem: SavedCase, blob: P16BrokerPacket | null)
 }
 
 function buildSummary(c: SavedCase): string {
+  const lane = (c.service_lane || '').trim();
+  if (lane === 'wecom_media_intake') {
+    return 'WeChat photo received — classify as add car / policy / claim / DMV';
+  }
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
   if (blob?.request_type === 'policy_review') {
@@ -354,6 +372,8 @@ function BrokerCaseDetail({
   const missingFields = caseItem.still_needed_fields ?? [];
   const knownFacts = caseItem.known_facts ?? {};
   const showConfirm = isAddCarReadyForBroker(caseItem) && !caseItem.broker_confirmed_at;
+  const isWeComMedia = isWeComMediaIntakeLane(caseItem.service_lane);
+  const attachments = caseItem.case_attachments ?? [];
 
   if (!hasFullPacket) {
     return (
@@ -366,7 +386,13 @@ function BrokerCaseDetail({
         {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
-        {Object.keys(knownFacts).length > 0 ? (
+        <CaseAttachmentsPanel caseId={caseItem.case_id} attachments={attachments} />
+        {isWeComMedia ? (
+          <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+            <PacketField label="Name" value={resolveCustomerDisplayName(caseItem)} />
+            <PacketField label="Source" value="WeCom" />
+          </Card>
+        ) : Object.keys(knownFacts).length > 0 ? (
           <Card size="small" title="Known Facts" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
             {Object.entries(knownFacts).map(([k, v]) => (
               <PacketField key={k} label={humanizeStructuredField(k)} value={String(v)} />
@@ -429,6 +455,8 @@ function BrokerCaseDetail({
       {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
         <MissingItemsCard fields={missingFields} />
       ) : null}
+
+      <CaseAttachmentsPanel caseId={caseItem.case_id} attachments={attachments} />
 
       <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
         <PacketField label="Name" value={get('customer_name') || caseItem.customer_name} />
@@ -550,9 +578,8 @@ export default function DocumentIntakeInboxPage() {
     setLoadError(null);
     try {
       const resp = await listRecentCasesPage({ limit: 50, offset: 0 });
-      const filtered = (resp.cases || []).filter(isP16DocumentCase);
-      setRows(
-        filtered.map((c) => ({
+      const filtered = (resp.cases || []).filter(isWorkbenchQueueCase);
+      const mapped = filtered.map((c) => ({
           key: c.case_id,
           case_id: c.case_id,
           customer_name: resolveCustomerDisplayName(c),
@@ -561,9 +588,17 @@ export default function DocumentIntakeInboxPage() {
           summary: buildSummary(c),
           opportunity_badges: buildOpportunityBadges(c),
           updated_at: c.updated_at || c.created_at || '',
+          attachment_count: countCaseAttachments(c.case_attachments),
           raw: c,
-        })),
-      );
+        }));
+      mapped.sort((a, b) => {
+        const aWeCom = isWeComMediaIntakeLane(a.raw.service_lane);
+        const bWeCom = isWeComMediaIntakeLane(b.raw.service_lane);
+        if (aWeCom && !bWeCom) return -1;
+        if (!aWeCom && bWeCom) return 1;
+        return (b.updated_at || '').localeCompare(a.updated_at || '');
+      });
+      setRows(mapped);
     } catch (e) {
       const msg = queueLoadErrorMessage(e);
       setLoadError(msg);
@@ -683,6 +718,19 @@ export default function DocumentIntakeInboxPage() {
       key: 'updated_at',
       width: 140,
       render: (v: string) => <Text style={{ fontSize: 13 }}>{formatUpdated(v)}</Text>,
+    },
+    {
+      title: '',
+      dataIndex: 'attachment_count',
+      key: 'attachments',
+      width: 48,
+      align: 'center',
+      render: (count: number) =>
+        count > 0 ? (
+          <Text style={{ fontSize: 13 }} title={`${count} attachment(s)`}>
+            <PaperClipOutlined /> {count}
+          </Text>
+        ) : null,
     },
     {
       title: '',

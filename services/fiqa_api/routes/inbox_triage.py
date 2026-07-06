@@ -23,9 +23,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
+from services.fiqa_api.inbox_triage.case_attachment_api import (
+    resolve_attachment_preview,
+    sanitize_case_for_workbench_api,
+)
 from services.fiqa_api.inbox_triage.case_store import (
     CASE_STATUS_VALUES,
     CASE_WAITING_ON_VALUES,
@@ -1701,12 +1705,13 @@ async def get_recent_cases(
     except Exception as exc:
         logger.warning("Workbench enrich failed, returning raw cases: %s", exc)
         enriched = raw
+    safe_cases = [sanitize_case_for_workbench_api(c) for c in enriched]
     return {
-        "cases": enriched,
+        "cases": safe_cases,
         "total_count": total,
         "limit": limit,
         "offset": offset,
-        "has_more": offset + len(enriched) < total,
+        "has_more": offset + len(safe_cases) < total,
     }
 
 
@@ -1799,7 +1804,7 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     if case is None:
         raise HTTPException(status_code=404, detail="case not found")
     assert_case_office_access_allowed(http_request, case)
-    return case
+    return sanitize_case_for_workbench_api(case)
 
 
 @router.delete("/cases/{case_id}")
@@ -2011,6 +2016,34 @@ async def download_case_attachment(
     if path is None:
         raise HTTPException(status_code=404, detail="attachment not found")
     return FileResponse(path, filename=path.name.split("_", 1)[-1] if "_" in path.name else path.name)
+
+
+@router.get("/cases/{case_id}/attachments/{attachment_id}/preview")
+async def preview_case_attachment(
+    case_id: str, attachment_id: str, http_request: Request
+) -> Response:
+    """
+    Auth-gated attachment preview (P19B).
+
+    Streams local filesystem or private GCS WeCom media — never exposes signed/public URL.
+    """
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(http_request, row)
+    try:
+        content, media_type, filename = resolve_attachment_preview(row, attachment_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="attachment not found") from None
+    except ValueError:
+        raise HTTPException(status_code=404, detail="attachment not found") from None
+    except Exception as exc:
+        logger.warning("attachment_preview_failed case_id=%s attachment_id=%s err=%s", case_id, attachment_id, exc)
+        raise HTTPException(status_code=404, detail="attachment not found") from exc
+    headers: dict[str, str] = {}
+    if filename:
+        headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    return Response(content=content, media_type=media_type, headers=headers)
 
 
 @router.post("/cases/{case_id}/append-message")

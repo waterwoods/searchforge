@@ -189,13 +189,29 @@ export interface TriageResult {
 export type CaseStatus = 'new' | 'reviewing' | 'waiting_client' | 'done';
 export type WaitingOn = 'none' | 'client' | 'broker' | 'carrier' | 'underwriting';
 
-/** ADD_CAR_ATTACHMENT_READY_LITE: attachment metadata on case */
+/** ADD_CAR_ATTACHMENT_READY_LITE + P19B WeCom attachment metadata */
 export interface CaseAttachment {
     attachment_id: string;
-    filename: string;
-    type: 'registration' | 'vin_photo' | 'dec_page' | 'screenshot';
-    size_bytes: number;
-    created_at: string;
+    /** Web upload filename (legacy) */
+    filename?: string;
+    /** Legacy web upload type */
+    type?: 'registration' | 'vin_photo' | 'dec_page' | 'screenshot';
+    size_bytes?: number;
+    created_at?: string;
+    /** P19B WeCom / workbench fields */
+    source?: string;
+    msgtype?: string;
+    document_type?: string;
+    document_type_confidence?: string;
+    mime_type?: string;
+    received_at?: string;
+    binding_confidence?: string;
+    ocr_status?: string;
+    broker_confirmed?: boolean;
+    intake_status?: string;
+    preview_available?: boolean;
+    preview_url?: string;
+    storage_status?: string;
 }
 
 /** Office workbench enrichment (GET /api/inbox/cases); optional on older payloads */
@@ -576,9 +592,14 @@ export async function uploadCaseAttachment(caseId: string, file: File): Promise<
     return response.data;
 }
 
-/** Get attachment download URL (relative to API base) */
+/** Get attachment download URL (relative to API base) — local filesystem uploads */
 export function getAttachmentDownloadUrl(caseId: string, attachmentId: string): string {
     return `/api/inbox/cases/${caseId}/attachments/${attachmentId}`;
+}
+
+/** Auth-gated preview URL (P19B — WeCom GCS proxy or local file) */
+export function getAttachmentPreviewUrl(caseId: string, attachmentId: string): string {
+    return `/api/inbox/cases/${caseId}/attachments/${attachmentId}/preview`;
 }
 
 /** Update customer contact fields on a saved case (ADD_CAR_IDENTITY_CONTACT_LITE) */
