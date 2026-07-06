@@ -41,8 +41,8 @@ def wecom_customer_display_label(
     ext = (external_userid or "").strip()
     if ext:
         suffix = ext[-4:] if len(ext) > 4 else ext
-        return f"WeCom · …{suffix}"
-    return "WeCom Customer"
+        return f"企业微信客户（尾号 {suffix}）"
+    return "企业微信客户"
 
 # Track B0.2 (contract §4.2) — ZIP, delivery date, primary driver.
 # Same pattern as phone/VIN above: adapter-local regex, no triage import,

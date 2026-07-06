@@ -351,20 +351,30 @@ export function humanizeStructuredFieldForCustomer(field: string): string {
     return CUSTOMER_FIELD_LABELS_ZH[field] ?? humanizeStructuredField(field);
 }
 
+/** Rewrite legacy technical WeCom placeholder labels for broker-facing UI. */
+export function polishWecomCustomerDisplayLabel(label: string): string {
+    const trimmed = (label || '').trim();
+    if (!trimmed) return trimmed;
+    const legacySuffix = trimmed.match(/^WeCom · …(.+)$/);
+    if (legacySuffix) return `企业微信客户（尾号 ${legacySuffix[1]}）`;
+    if (trimmed === 'WeCom Customer') return '企业微信客户';
+    return trimmed;
+}
+
 /** Workbench / document-intake: customer column label with WeCom fallback. */
 export function resolveCustomerDisplayName(
     caseItem: Pick<TriageResult, 'customer_name' | 'customer_phone' | 'wecom_external_userid'>,
 ): string {
-    const name = (caseItem.customer_name || '').trim();
+    const name = polishWecomCustomerDisplayLabel((caseItem.customer_name || '').trim());
     if (name) return name;
     const phone = (caseItem.customer_phone || '').trim();
     if (phone) return phone;
     const ext = (caseItem.wecom_external_userid || '').trim();
     if (ext) {
         const suffix = ext.length > 4 ? ext.slice(-4) : ext;
-        return `WeCom · …${suffix}`;
+        return `企业微信客户（尾号 ${suffix}）`;
     }
-    return 'WeCom Customer';
+    return '企业微信客户';
 }
 
 /** Workbench queue/detail: align strip phase with customer (one state world). */
