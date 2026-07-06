@@ -85,6 +85,31 @@ def _case_with_photos(*, insurance_skipped: bool = False) -> dict:
     return get_case_by_id(case["case_id"]) or mut
 
 
+def test_end_card_skipped_when_open_kf_id_missing(monkeypatch):
+    """End Card requires both wecom_external_userid and wecom_open_kf_id."""
+    _setup_json_store()
+    saved = save_case("end card test", _triage_stub(), service_lane=SERVICE_LANE_ADD_CAR)
+    bind_case_channel_identity(
+        saved["case_id"],
+        wecom_external_userid="wm_ext_only",
+        wecom_open_kf_id=None,
+    )
+    from services.fiqa_api.inbox_triage.case_store import _load_case_for_mutation, _persist_case_after_update
+
+    mut = _load_case_for_mutation(saved["case_id"])
+    assert mut is not None
+    mut["case_attachments"] = [
+        {"attachment_id": "a1", "source": "h5_task", "slot_assignment": "vin_photo"},
+        {"attachment_id": "a2", "source": "h5_task", "slot_assignment": "registration_photo"},
+    ]
+    _persist_case_after_update(saved["case_id"], mut)
+
+    monkeypatch.setenv("WECOM_SLICE_SEND_REPLY", "1")
+    result = try_send_h5_photo_flow_end_card(saved["case_id"])
+    assert result["sent"] is False
+    assert result["reason"] == "no_wecom_channel_binding"
+
+
 def test_end_card_send_with_mock(monkeypatch):
     _setup_json_store()
     monkeypatch.setenv("WECOM_SLICE_SEND_REPLY", "1")

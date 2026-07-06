@@ -169,6 +169,10 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["conflict_state"] = str(extra.get("conflict_state")).strip() or "none"
     if extra.get("wecom_external_userid"):
         case["wecom_external_userid"] = str(extra.get("wecom_external_userid")).strip()
+    if extra.get("wecom_open_kf_id"):
+        case["wecom_open_kf_id"] = str(extra.get("wecom_open_kf_id")).strip()
+    if isinstance(extra.get("h5_photo_flow_state"), dict):
+        case["h5_photo_flow_state"] = dict(extra.get("h5_photo_flow_state") or {})
     if extra.get("demo_name"):
         case["demo_name"] = str(extra.get("demo_name")).strip()
     if isinstance(extra.get("demo_flags"), dict):
@@ -192,6 +196,8 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "merge_review_required",
         "conflict_state",
         "wecom_external_userid",
+        "wecom_open_kf_id",
+        "h5_photo_flow_state",
         "demo_name",
         "demo_flags",
         "broker_confirmed_at",
@@ -367,7 +373,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
 
     messages: Iterable[dict[str, Any]] = case.get("case_messages") or []
     structured = _build_structured_payload(case)
-    extra = _build_extra(case)
+    extra_patch = _build_extra(case)
     now_updated = _str(case.get("updated_at"))
     now_created = _str(case.get("created_at")) or now_updated
 
@@ -377,6 +383,15 @@ def persist_case_append(case: dict[str, Any]) -> None:
         with conn.transaction():
             with conn.cursor() as cur:
                 _ensure_office_owner_org_schema(cur)
+                cur.execute(
+                    "SELECT extra FROM service_records WHERE record_id = %s FOR UPDATE",
+                    (record_id,),
+                )
+                existing_row = cur.fetchone()
+                existing_extra = (
+                    existing_row[0] if existing_row and isinstance(existing_row[0], dict) else {}
+                )
+                extra = {**existing_extra, **extra_patch}
                 cur.execute(
                     """
                     UPDATE service_records SET
