@@ -15,6 +15,48 @@
 
 We borrow **behavioral structure**, not visual design. Spark Driver succeeds because every trip is a **finite mobile task** with proof, status taps, and backend dispatch — not because of Walmart branding.
 
+**Key insight (Andy):** Spark Driver is **not just photo upload**. It is a **guided, location/task-aware workflow** — a repeating loop of micro-steps, verification, and exception branches until the task is complete and ops has done final review. The best pattern to borrow is **guided micro-steps + verification + exception handling + final review** — not the visual UI.
+
+### 1.0 Guided micro-step loop (Spark → Insurance)
+
+#### Spark Driver — item-by-item guided flow
+
+| Step | Driver action | System behavior |
+|------|---------------|-----------------|
+| 1 | **Confirm arrival** | Validates driver is at the right store/aisle context |
+| 2 | **Start task** | Opens active pick/delivery task card |
+| 3 | **Guide to next item** | Shows what to find next — one item at a time |
+| 4 | **Scan / verify item** | Barcode or visual check against expected SKU |
+| 5a | **If correct** | Add to cart / basket; mark item done |
+| 5b | **If wrong** | Continue searching; system keeps context |
+| 5c | **If unavailable** | Report exception; ops sees substitute / skip path |
+| 6 | **Repeat** | Loop back to step 3 for next item |
+| 7 | **Final review** | Review basket before completion tap; dispatch confirms |
+
+This is a **state machine with a human in the loop** — not a single upload form.
+
+#### Insurance Case Builder IQ — parallel guided flow
+
+| Step | Customer / system action | Broker / backend behavior |
+|------|--------------------------|---------------------------|
+| 1 | **Confirm active case** | Start Card or lane intent → one active Draft case (B0 Rule 8) |
+| 2 | **Ask for next needed document** | System prompts **one** gap: next doc or field from checklist |
+| 3 | **Customer uploads photo** | WeCom image/file → download → store |
+| 4 | **Verify receipt + doc type confidence** | Ack received; classify by lane context / prompt / filename (no OCR required in P19A) |
+| 5a | **If clear** | Attach to case; update checklist → `received` |
+| 5b | **If unclear / wrong document** | Ask for clearer or correct document; broker may request re-shoot (P19B+) |
+| 5c | **If missing / unavailable** | Mark exception or `manual_handle`; broker follows up offline |
+| 6 | **Repeat** | Prompt next needed item until checklist materially complete |
+| 7 | **Final broker review** | Broker confirms fields + attachments → close case; customer DONE card |
+
+```text
+Spark:     arrive → start → [next item → scan → correct? → cart | retry | exception]* → final review → complete
+Insurance: start  → case → [next doc → upload → clear?   → attach | re-ask | manual]*  → broker review → close
+```
+
+**What we copy:** the **loop shape** — one guided step at a time, verify each proof, branch on failure, human final gate.  
+**What we do not copy:** Walmart colors, aisle maps, cart iconography, or driver earnings UI.
+
 ### 1.1 Task card
 
 | Pattern | What it means | Why it works |
@@ -78,11 +120,13 @@ We borrow **behavioral structure**, not visual design. Spark Driver succeeds bec
 ### Pattern summary (reference only — not UI copy)
 
 ```text
-[Task Card] → [Checklist steps] → [Photo/scan proof] → [Tap confirm]
-      ↓              ↓                    ↓                  ↓
-  Active case    still_needed        attachment         broker gate
-  one lane       fields/docs         + bind case        Workbench review
+[Task Card] → [Guided loop per item] → [Verify + branch] → [Final review]
+      ↓              ↓                      ↓                    ↓
+  Active case    next doc/field      attach | re-ask |      broker Confirm
+  one lane       photo proof         exception/manual       → close case
 ```
+
+Core borrow: **guided micro-steps + verification + exception handling + final review** — not Spark's visual UI.
 
 ---
 
