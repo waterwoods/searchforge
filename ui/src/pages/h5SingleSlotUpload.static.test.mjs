@@ -15,6 +15,9 @@ assert.match(src, /capture="environment"/, 'file input should encourage camera')
 assert.match(src, /确认提交/, 'preview confirm submit button required');
 assert.match(src, /重新选择/, 'reselect button required');
 assert.match(src, /VIN 照片已收到/, 'success copy required');
+assert.match(src, /步已完成/, 'success step completion required');
+assert.match(src, /返回微信/, 'return to WeChat button required');
+assert.match(src, /稍后继续/, 'continue later button required');
 assert.match(src, /上传未成功/, 'upload failure alert required');
 assert.match(src, /第 \{task\.step_current\} 步/, 'step progress required');
 assert.doesNotMatch(src, /multiple=\{true\}/, 'no multi-image UI');

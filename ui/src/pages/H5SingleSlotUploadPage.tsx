@@ -97,9 +97,22 @@ const styles = {
     color: '#888',
     cursor: 'not-allowed',
   },
+  progressDone: {
+    fontSize: 14,
+    color: '#0d6b2f',
+    fontWeight: 600,
+    marginBottom: 16,
+    textAlign: 'center' as const,
+  },
   successBox: {
     textAlign: 'center' as const,
     padding: '24px 8px',
+  },
+  successHeadline: {
+    fontSize: 20,
+    fontWeight: 700,
+    marginBottom: 12,
+    color: '#0d6b2f',
   },
   errorBox: {
     background: '#fff3f3',
@@ -118,6 +131,26 @@ const styles = {
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return '链接无效或已过期，请联系陈总重新获取。';
+}
+
+function tryReturnToWeChat(): void {
+  const wx = (window as Window & { WeixinJSBridge?: { call: (cmd: string) => void } }).WeixinJSBridge;
+  if (wx) {
+    wx.call('closeWindow');
+    return;
+  }
+  if (window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.close();
+}
+
+function progressLine(task: H5TaskInfo, pageState: PageState): string {
+  if (pageState === 'success') {
+    return `第 ${task.step_current} 步已完成 / 共 ${task.step_total} 步`;
+  }
+  return `第 ${task.step_current} 步 / 共 ${task.step_total} 步`;
 }
 
 export default function H5SingleSlotUploadPage() {
@@ -211,8 +244,8 @@ export default function H5SingleSlotUploadPage() {
 
       <main style={styles.body}>
         {task && pageState !== 'error' && pageState !== 'loading' && (
-          <p style={styles.progress}>
-            第 {task.step_current} 步 / 共 {task.step_total} 步
+          <p style={pageState === 'success' ? styles.progressDone : styles.progress}>
+            {progressLine(task, pageState)}
           </p>
         )}
 
@@ -295,16 +328,33 @@ export default function H5SingleSlotUploadPage() {
           </div>
         )}
 
-        {pageState === 'success' && uploadResult && (
+        {pageState === 'success' && uploadResult && task && (
           <div style={styles.card}>
             <div style={styles.successBox}>
-              <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>VIN 照片已收到。</p>
+              <p style={styles.successHeadline}>VIN 照片已收到 ✅</p>
+              <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a1a' }}>
+                第 {task.step_current} 步已完成
+              </p>
               <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444' }}>
                 {uploadResult.message_zh}
               </p>
               <p style={{ fontSize: 14, lineHeight: 1.6, color: '#666', marginTop: 12 }}>
                 陈总会在 Workbench 中人工确认。
               </p>
+              <button
+                type="button"
+                style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 20 }}
+                onClick={tryReturnToWeChat}
+              >
+                返回微信
+              </button>
+              <button
+                type="button"
+                style={{ ...styles.btn, ...styles.btnSecondary }}
+                onClick={tryReturnToWeChat}
+              >
+                稍后继续
+              </button>
             </div>
           </div>
         )}
