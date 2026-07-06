@@ -408,12 +408,42 @@ export default function H5SingleSlotUploadPage() {
           <div style={styles.card}>
             <div style={styles.successBox}>
               <p style={styles.successHeadline}>
-                {isPhotoFlowTask(task) ? '照片资料已收到 ✅' : 'VIN 照片已收到 ✅'}
+                {isPhotoFlowTask(task) ? '照片已收到 ✅' : 'VIN 照片已收到 ✅'}
               </p>
               {isPhotoFlowTask(task) ? (
-                <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444' }}>
-                  下一步请回微信补充：提车日期、停车 ZIP、联系电话。
-                </p>
+                <>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', textAlign: 'left' }}>
+                    已收到：
+                    <br />
+                    ✓ VIN 照片
+                    <br />
+                    ✓ 行驶证照片
+                    <br />
+                    {task.steps?.find((s) => s.slot === 'insurance_card_photo')?.status === 'skipped'
+                      ? '○ 保险卡 — 可稍后补'
+                      : '✓ 保险卡照片'}
+                  </p>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', marginTop: 16, textAlign: 'left' }}>
+                    请点「返回微信」。
+                    <br />
+                    回到聊天后，您会收到一条确认消息。
+                  </p>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', marginTop: 12, textAlign: 'left' }}>
+                    请在微信打字补充：
+                    <br />
+                    1. 提车日期
+                    <br />
+                    2. 停放 ZIP
+                    <br />
+                    3. 联系电话
+                  </p>
+                  <p style={{ fontSize: 13, lineHeight: 1.6, color: '#666', marginTop: 12, textAlign: 'left' }}>
+                    陈总会人工确认，不会自动修改您的保单。
+                  </p>
+                  <p style={{ fontSize: 12, lineHeight: 1.5, color: '#888', marginTop: 12 }}>
+                    若 10 秒内没有看到确认消息，请回复：已提交
+                  </p>
+                </>
               ) : (
                 <>
                   <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a1a' }}>
@@ -422,11 +452,11 @@ export default function H5SingleSlotUploadPage() {
                   <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444' }}>
                     {uploadResult?.message_zh}
                   </p>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#666', marginTop: 12 }}>
+                    陈总会在 Workbench 中人工确认。
+                  </p>
                 </>
               )}
-              <p style={{ fontSize: 14, lineHeight: 1.6, color: '#666', marginTop: 12 }}>
-                陈总会在 Workbench 中人工确认。
-              </p>
               <button
                 type="button"
                 style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 20 }}

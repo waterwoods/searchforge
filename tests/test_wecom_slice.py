@@ -207,7 +207,7 @@ def test_unclear_message_triggers_guided_menu(cfg, caplog):
         pull_messages=pull,
     )
     assert results[0]["guided_menu_required"] is True
-    assert "Add Vehicle" in results[0]["reply_text"]
+    assert "【加车资料补充】" in results[0]["reply_text"]
     assert "加车" in results[0]["reply_text"]
     assert "1." not in results[0]["reply_text"]
     assert "Reply with the number" not in results[0]["reply_text"]

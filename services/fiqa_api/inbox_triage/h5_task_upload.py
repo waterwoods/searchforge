@@ -20,6 +20,7 @@ from services.fiqa_api.inbox_triage.h5_task_token import (
     external_userid_ref,
 )
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
+from services.fiqa_api.wecom.h5_photo_end_card import try_send_h5_photo_flow_end_card
 from services.fiqa_api.wecom.media_storage import (
     infer_extension,
     wecom_media_gcs_bucket,
@@ -306,13 +307,14 @@ def sanitize_h5_upload_response(
     flow_complete: bool = False,
     next_slot: str | None = None,
     message_zh: str | None = None,
+    end_card_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Broker/customer-safe response — no storage_uri, no external_userid."""
     if flow_complete:
         msg = message_zh or (
             "照片资料已收到。下一步请回微信补充：提车日期、停车 ZIP、联系电话。"
         )
-        return {
+        body: dict[str, Any] = {
             "attachment_id": attachment_id,
             "slot_assignment": slot,
             "status": status,
@@ -320,6 +322,15 @@ def sanitize_h5_upload_response(
             "next_step": "return_wecom_for_text_fields",
             "message_zh": msg,
         }
+        if end_card_result is not None:
+            body["end_card_sent"] = bool(end_card_result.get("sent"))
+            if not end_card_result.get("sent"):
+                body["end_card_send_warning"] = (
+                    "confirmation_message_pending"
+                    if end_card_result.get("reason") == "send_failed"
+                    else None
+                )
+        return body
     if next_slot:
         next_meta = _SLOT_COPY.get(next_slot, {})
         msg = message_zh or f"{_SLOT_COPY.get(slot, {}).get('task_label', slot)}已收到，请继续下一步。"
@@ -339,6 +350,23 @@ def sanitize_h5_upload_response(
         "next_step": "registration_deferred",
         "message_zh": message_zh or "VIN 照片已收到。下一步：registration 上传将在后续版本开放。",
     }
+
+
+def _complete_flow_response(
+    *,
+    attachment_id: str | None,
+    slot: str,
+    status: str,
+    case_id: str,
+) -> dict[str, Any]:
+    end_card_result = try_send_h5_photo_flow_end_card(case_id)
+    return sanitize_h5_upload_response(
+        attachment_id=attachment_id,
+        slot=slot,
+        status=status,
+        flow_complete=True,
+        end_card_result=end_card_result,
+    )
 
 
 def skip_h5_flow_slot(claims: VerifiedH5TaskToken, *, slot: str) -> dict[str, Any]:
@@ -365,11 +393,11 @@ def skip_h5_flow_slot(claims: VerifiedH5TaskToken, *, slot: str) -> dict[str, An
 
     progress = _resolve_flow_progress(claims, updated)
     if progress["flow_complete"]:
-        return sanitize_h5_upload_response(
+        return _complete_flow_response(
             attachment_id=None,
             slot=slot_norm,
             status="skipped",
-            flow_complete=True,
+            case_id=claims.case_id,
         )
     return sanitize_h5_upload_response(
         attachment_id=None,
@@ -469,10 +497,11 @@ def ingest_h5_slot_upload(
     if claims.is_flow_token:
         progress = _resolve_flow_progress(claims, updated)
         if progress["flow_complete"]:
-            return sanitize_h5_upload_response(
+            return _complete_flow_response(
                 attachment_id=attachment_id,
                 slot=target_slot,
-                flow_complete=True,
+                status="uploaded",
+                case_id=claims.case_id,
             )
         return sanitize_h5_upload_response(
             attachment_id=attachment_id,

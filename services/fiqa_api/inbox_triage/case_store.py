@@ -1309,6 +1309,34 @@ def record_h5_photo_flow_skip(
     return normalized_case
 
 
+def record_h5_photo_flow_end_card_status(
+    case_id: str,
+    *,
+    send_status: str,
+    sent_at: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Record H5 photo-flow WeCom End Card send outcome on case JSON (P19D-4B).
+
+    No schema migration — stored in h5_photo_flow_state.end_card_sent_at /
+    end_card_send_status.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    state = dict(normalized_case.get("h5_photo_flow_state") or {})
+    state["end_card_send_status"] = (send_status or "").strip() or "unknown"
+    if sent_at:
+        state["end_card_sent_at"] = sent_at
+    normalized_case["h5_photo_flow_state"] = state
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 def get_attachment_file_path(case_id: str, attachment_id: str) -> Path | None:
     """Return filesystem path for an attachment, or None if not found."""
     from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read

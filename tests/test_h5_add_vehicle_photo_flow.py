@@ -59,7 +59,11 @@ def _triage_stub() -> dict:
     }
 
 
-def _save_add_car_case(*, external_userid: str = "demo_chen_kui_chen_ready") -> dict:
+def _save_add_car_case(
+    *,
+    external_userid: str = "demo_chen_kui_chen_ready",
+    open_kf_id: str = "wktest001",
+) -> dict:
     saved = save_case(
         "add car h5 flow test",
         _triage_stub(),
@@ -67,7 +71,11 @@ def _save_add_car_case(*, external_userid: str = "demo_chen_kui_chen_ready") -> 
     )
     from services.fiqa_api.inbox_triage.case_store import bind_case_channel_identity
 
-    bind_case_channel_identity(saved["case_id"], wecom_external_userid=external_userid)
+    bind_case_channel_identity(
+        saved["case_id"],
+        wecom_external_userid=external_userid,
+        wecom_open_kf_id=open_kf_id,
+    )
     return get_case_by_id(saved["case_id"]) or saved
 
 
@@ -327,3 +335,138 @@ def test_v1_single_slot_still_works():
     )
     assert resp.status_code == 200
     assert resp.json()["slot_assignment"] == "vin_photo"
+
+
+def test_flow_complete_sends_end_card_once(monkeypatch):
+    _setup_json_store()
+    _mock_gcs_upload()
+    case = _save_add_car_case()
+    token = _flow_token(case)
+    client = _client()
+    sent: list[dict] = []
+
+    def fake_send(case_id: str) -> dict:
+        sent.append({"case_id": case_id})
+        from datetime import datetime, timezone
+        from services.fiqa_api.inbox_triage.case_store import record_h5_photo_flow_end_card_status
+
+        record_h5_photo_flow_end_card_status(
+            case_id,
+            send_status="sent",
+            sent_at=datetime.now(timezone.utc).isoformat(),
+        )
+        return {"sent": True}
+
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.h5_task_upload.try_send_h5_photo_flow_end_card",
+        fake_send,
+    )
+
+    for slot, name in (
+        ("vin_photo", "vin.jpg"),
+        ("registration_photo", "reg.jpg"),
+        ("insurance_card_photo", "ins.jpg"),
+    ):
+        client.post(
+            f"/api/h5/tasks/{token}/upload",
+            data={"slot": slot},
+            files={"file": (name, _tiny_jpeg(), "image/jpeg")},
+        )
+
+    assert len(sent) == 1
+    assert sent[0]["case_id"] == case["case_id"]
+
+    # Refresh GET must not trigger another send
+    client.get(f"/api/h5/tasks/{token}")
+    assert len(sent) == 1
+
+    updated = get_case_by_id(case["case_id"])
+    state = (updated or {}).get("h5_photo_flow_state") or {}
+    assert state.get("end_card_sent_at")
+    assert state.get("end_card_send_status") == "sent"
+
+
+def test_flow_complete_end_card_send_failure_does_not_fail_upload(monkeypatch):
+    _setup_json_store()
+    _mock_gcs_upload()
+    case = _save_add_car_case()
+    token = _flow_token(case)
+    client = _client()
+
+    def fail_send(_case_id: str) -> dict:
+        return {"sent": False, "reason": "send_failed", "error": "RuntimeError"}
+
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.h5_task_upload.try_send_h5_photo_flow_end_card",
+        fail_send,
+    )
+
+    client.post(
+        f"/api/h5/tasks/{token}/upload",
+        data={"slot": "vin_photo"},
+        files={"file": ("vin.jpg", _tiny_jpeg(), "image/jpeg")},
+    )
+    client.post(
+        f"/api/h5/tasks/{token}/upload",
+        data={"slot": "registration_photo"},
+        files={"file": ("reg.jpg", _tiny_jpeg(), "image/jpeg")},
+    )
+    r3 = client.post(
+        f"/api/h5/tasks/{token}/upload",
+        data={"slot": "insurance_card_photo"},
+        files={"file": ("ins.jpg", _tiny_jpeg(), "image/jpeg")},
+    )
+    assert r3.status_code == 200
+    body = r3.json()
+    assert body["flow_complete"] is True
+    assert body.get("end_card_sent") is False
+    assert body.get("end_card_send_warning") == "confirmation_message_pending"
+
+
+def test_skip_insurance_triggers_end_card_with_skipped_checklist(monkeypatch):
+    _setup_json_store()
+    _mock_gcs_upload()
+    case = _save_add_car_case()
+    token = _flow_token(case)
+    client = _client()
+    captured: list[str] = []
+
+    def capture_send(case_id: str) -> dict:
+        from services.fiqa_api.wecom.reply import build_h5_photo_phase_complete_reply
+        from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
+        from datetime import datetime, timezone
+        from services.fiqa_api.inbox_triage.case_store import record_h5_photo_flow_end_card_status
+
+        c = get_case_for_read(case_id)
+        captured.append(build_h5_photo_phase_complete_reply(c or {}))
+        record_h5_photo_flow_end_card_status(
+            case_id,
+            send_status="sent",
+            sent_at=datetime.now(timezone.utc).isoformat(),
+        )
+        return {"sent": True}
+
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.h5_task_upload.try_send_h5_photo_flow_end_card",
+        capture_send,
+    )
+
+    client.post(
+        f"/api/h5/tasks/{token}/upload",
+        data={"slot": "vin_photo"},
+        files={"file": ("vin.jpg", _tiny_jpeg(), "image/jpeg")},
+    )
+    client.post(
+        f"/api/h5/tasks/{token}/upload",
+        data={"slot": "registration_photo"},
+        files={"file": ("reg.jpg", _tiny_jpeg(), "image/jpeg")},
+    )
+    skip = client.post(
+        f"/api/h5/tasks/{token}/skip",
+        data={"slot": "insurance_card_photo"},
+    )
+    assert skip.status_code == 200
+    assert skip.json()["flow_complete"] is True
+    assert len(captured) == 1
+    assert "○ 保险卡 — 可稍后补" in captured[0]
+    assert "提车日期" in captured[0]

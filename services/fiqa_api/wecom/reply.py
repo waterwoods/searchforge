@@ -7,31 +7,28 @@ from typing import Any
 from services.fiqa_api.wecom.intent import WeComIntent
 
 _GUIDED_MENU_HEAD = """\
-Thanks. I can help you review your request.
-To make sure we route this correctly, please tap a topic below or reply with a short phrase.
-感谢您联系我们。为确保正确分类，请点击下方选项或回复简短说明。
+您好，请选择您要办理的事项：
 
-Your broker will review — we will not change your policy automatically.
-经纪人会审核，我们不会自动修改您的保单。"""
+也可以直接回复：
+「我要加车」/「我要理赔」/「查保单」"""
 
 _GUIDED_MENU_TAIL = """\
-Tap a topic above, or reply with a short phrase (e.g. 加车, claim, 保单检视).
-请点击上方选项，或回复简短说明。"""
+经纪人会审核，我们不会自动修改您的保单。"""
 
 _GUIDED_MENU_ITEMS: list[dict[str, str]] = [
-    {"id": "add_vehicle", "content": "Add Vehicle / 加车"},
-    {"id": "claim", "content": "Claim / Accident / 事故理赔"},
-    {"id": "policy_review", "content": "Policy Review / 保单检视"},
-    {"id": "other", "content": "Other / 其他"},
+    {"id": "add_vehicle", "content": "【加车资料补充】"},
+    {"id": "claim", "content": "【事故/理赔】"},
+    {"id": "policy_review", "content": "【保单检视】"},
+    {"id": "other", "content": "【其他问题】"},
 ]
 
 _GUIDED_MENU_TEXT = f"""\
 {_GUIDED_MENU_HEAD}
 
-• Add Vehicle / 加车
-• Claim / Accident / 事故理赔
-• Policy Review / 保单检视
-• Other / 其他
+• 【加车资料补充】
+• 【事故/理赔】
+• 【保单检视】
+• 【其他问题】
 
 {_GUIDED_MENU_TAIL}"""
 
@@ -159,32 +156,34 @@ def build_start_card_payload() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _H5_PHOTO_FLOW_START_HEAD = """\
-开始补加车资料
+加车资料收集
 
-为了避免资料放错，我们会一步一步收集。请点击按钮进入资料补充页面，按顺序完成 VIN、行驶证、保险卡照片。每一步只需要 1 张照片。
+请点下方按钮，按顺序上传 3 张照片：
+1. VIN 照片
+2. 行驶证 / registration
+3. 保险卡，可选
 
-Your broker reviews everything before anything changes.
-经纪人会先审核，任何变更前都会确认。"""
+大约 2 分钟，不用填长表格。"""
 
-_H5_PHOTO_FLOW_BUTTON = "开始补资料 / Start guided upload"
+_H5_PHOTO_FLOW_BUTTON = "开始上传照片"
+
+_H5_PHOTO_FLOW_TAIL_PREFIX = """\
+照片在页面里上传；提车日期、停车 ZIP、联系电话稍后回微信打字。
+陈总会人工审核，不会自动修改您的保单。"""
 
 
 def build_h5_vin_start_card_payload(*, h5_url: str) -> dict[str, Any]:
     """WeCom msgmenu: H5 Add Vehicle photo flow view button + Later / Talk to Broker."""
     url = (h5_url or "").strip()
-    tail = (
-        "如果按钮打不开，请复制链接在微信中打开：\n"
-        f"{url}\n\n"
-        "If the button doesn't work, copy the link above and open in WeChat."
-    )
+    tail = f"{_H5_PHOTO_FLOW_TAIL_PREFIX}\n\n如果按钮打不开，请复制链接在微信中打开：\n{url}"
     return {
         "head_content": _H5_PHOTO_FLOW_START_HEAD,
         "list": [
             {"type": "view", "view": {"url": url, "content": _H5_PHOTO_FLOW_BUTTON}},
-            {"type": "click", "click": {"id": "start_add_car_decline", "content": "Later / 稍后"}},
+            {"type": "click", "click": {"id": "start_add_car_decline", "content": "稍后"}},
             {
                 "type": "click",
-                "click": {"id": "start_add_car_broker", "content": "Talk to Broker / 联系经纪人"},
+                "click": {"id": "start_add_car_broker", "content": "联系经纪人"},
             },
         ],
         "tail_content": tail,
@@ -195,12 +194,69 @@ def build_h5_vin_start_text_fallback(*, h5_url: str) -> str:
     """Plain-text fallback when msgmenu view buttons are unavailable."""
     url = (h5_url or "").strip()
     return (
-        "开始补加车资料\n\n"
-        "为了避免资料放错，我们会一步一步收集。请点击按钮进入资料补充页面，"
-        "按顺序完成 VIN、行驶证、保险卡照片。每一步只需要 1 张照片。\n\n"
-        f"开始补资料：{url}\n\n"
+        f"{_H5_PHOTO_FLOW_START_HEAD}\n\n"
+        f"开始上传照片：{url}\n\n"
+        f"{_H5_PHOTO_FLOW_TAIL_PREFIX}\n\n"
         "如果按钮打不开，请复制链接在微信中打开。"
     )
+
+
+# ---------------------------------------------------------------------------
+# P19D-4B — H5 photo flow End Card (E2-photo phase)
+# ---------------------------------------------------------------------------
+
+_H5_PHOTO_SLOT_LABELS: dict[str, str] = {
+    "vin_photo": "VIN 照片",
+    "registration_photo": "行驶证照片",
+    "insurance_card_photo": "保险卡照片",
+}
+
+
+def _h5_photo_slots_from_case(case: dict[str, Any]) -> tuple[set[str], set[str]]:
+    completed: set[str] = set()
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        if str(att.get("source") or "").strip().lower() != "h5_task":
+            continue
+        slot = str(att.get("slot_assignment") or "").strip().lower()
+        if slot:
+            completed.add(slot)
+    state = case.get("h5_photo_flow_state") or {}
+    skipped_raw = state.get("skipped_slots") or [] if isinstance(state, dict) else []
+    skipped = {str(s).strip().lower() for s in skipped_raw if s}
+    return completed, skipped
+
+
+def build_h5_photo_phase_complete_reply(case: dict[str, Any]) -> str:
+    """WeCom E2-photo End Card — photos received, text fields still needed."""
+    completed, skipped = _h5_photo_slots_from_case(case)
+    lines = [
+        "【加车资料】照片已收到 ✅",
+        "",
+        "我们已收到：",
+        f"✓ {_H5_PHOTO_SLOT_LABELS['vin_photo']}",
+        f"✓ {_H5_PHOTO_SLOT_LABELS['registration_photo']}",
+    ]
+    if "insurance_card_photo" in completed:
+        lines.append(f"✓ {_H5_PHOTO_SLOT_LABELS['insurance_card_photo']}")
+    elif "insurance_card_photo" in skipped:
+        lines.append("○ 保险卡 — 可稍后补")
+    else:
+        lines.append(f"✓ {_H5_PHOTO_SLOT_LABELS['insurance_card_photo']}")
+    lines.extend(
+        [
+            "",
+            "还差 3 项，请在本聊天打字：",
+            "1. 提车日期",
+            "2. 停放 ZIP",
+            "3. 联系电话",
+            "",
+            "陈总会人工查看并确认，不会自动修改您的保单。",
+            "资料齐全后我们会再通知您。",
+        ]
+    )
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
