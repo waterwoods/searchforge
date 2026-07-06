@@ -84,9 +84,39 @@ Live bundle contains P19D-1 strings: `Quarantined Uploads`, `Needs Review`, `Eli
 
 Log chain: `wecom_sync_msg_pulled_v1` (media_message_count: 1) → `wecom_media_download_ok_v1` → `wecom_media_gcs_upload_ok_v1` → `wecom_media_intake_ok_v1` (promoted/accepted).
 
+Log chain: `wecom_sync_msg_pulled_v1` (media_message_count: 1) → `wecom_media_download_ok_v1` → `wecom_media_gcs_upload_ok_v1` → `wecom_media_intake_ok_v1` (promoted/accepted).
+
 ---
 
-## 6. Live guardrail smoke — Scenario B (scripted QA, 3 images) ✅
+## 6. Live guardrail smoke — Scenario B (manual WeCom, 3 images in ~4s) ✅
+
+**Operator:** Andy · **Window:** `2026-07-06T15:57:23Z` – `15:57:27Z` (same `external_userid`, within 120s rolling window; outside Scenario A window)
+
+| # | msg_id tail | attachment_id | intake_status | guardrail_status | eligible_for_ocr | bulk_sequence |
+|---|-------------|---------------|---------------|------------------|------------------|---------------|
+| 1 | `…9LS` | `att_4c8cbba047e5` | **promoted** | accepted | true | 1 |
+| 2 | `…So` | `att_2f49d5a0079d` | **quarantined** | bulk_confirm_needed | false | 2 |
+| 3 | `…BTu` | `att_c398a80b97fe` | **quarantined** | bulk_confirm_needed | false | 3 |
+
+| Check | Result |
+|-------|--------|
+| Case | `case_82092cc39bae` (same P19A holding case) |
+| 3 separate callbacks | ✅ each `wecom_media_intake_ok_v1` once (no duplicate msg_id) |
+| Customer reply | `wecom_slice_reply_sent_v1` **sent: true** on images 2 & 3 (bulk-confirm copy per `build_guardrail_media_reply`) |
+| Reply content (expected) | 「已收到多张图片…请确认…当前系统会先处理第一张，其余先标记为待确认。」— no OCR language |
+| Preview | ✅ all 3 `preview_available: true` |
+| Public URL / secrets | ❌ not exposed |
+
+**Workbench drawer (`case_82092cc39bae`):**
+- **Uploaded Documents / Attachments (5)** — includes promoted items (Scenario A + B first image show `Accepted` · `Eligible for OCR later`)
+- **Quarantined Uploads (2)** — Scenario B images 2–3 with `Needs Review` · `Bulk confirm needed` · `Not eligible for OCR`
+- Queue paperclip updated to **5** (promoted-count semantics; quarantined excluded)
+
+**Verdict:** 3 quick images did **not** all become normal evidence — **1 promote + 2 quarantine** in the B window. ✅
+
+---
+
+## 7. Live guardrail smoke — Scenario B (scripted QA, 3 images) ✅
 
 **Method:** QA Cloud SQL ingest path (same `ingest_wecom_media_message` + guardrail code as deployed revision), then Cloud Run API readback + Workbench UI verification.  
 **Smoke case:** tagged `demo_name=p19d1_guardrail_smoke`, `workbench_test=true` — does not touch `chen_kui_p18` seed rows.
@@ -156,8 +186,8 @@ Absent: `storage_uri`, `external_userid`, public/signed URL.
 ## 10. Known limitations / notes
 
 1. Scenario A landed on **P19A holding case** (`wecom_media_intake` / UNASSIGNED) — guardrail still **promoted** single image correctly; binding lane remains unassigned until broker classifies.
-2. Live smoke Scenario B/C still pending manual WeCom sends from operator.
-3. Scripted triple ingest on `case_65e8f926cb90` (see §6) validated promote/quarantine split + Workbench badges.
+2. Scenario B on same holding case: **1 promote + 2 quarantine** in live WeCom window; legacy P19A attachments may appear in main Attachments section with `Accepted` badge (pre-guardrail metadata).
+3. Live Scenario C (>3 bulk pause) still pending if operator chooses to send.
 4. A partial failed pre-smoke row (`case_ae9908e48f76`) may exist — left in QA DB per no-delete policy.
 5. Rolling-window ordering within the same second may be unstable (documented in P19D-1 MVP evidence).
 
