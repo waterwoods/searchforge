@@ -6,6 +6,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import UnifiedIntakePage from './pages/UnifiedIntakePage';
 import AddCarPage from './pages/AddCarPage';
 import DocumentIntakeInboxPage from './pages/DocumentIntakeInboxPage';
+import H5SingleSlotUploadPage from './pages/H5SingleSlotUploadPage';
 import { OfficeReviewShell } from './components/layout/OfficeReviewShell';
 import { DemoPage } from './pages/DemoPage';
 import { ClientConfigProvider } from './context/ClientConfigContext';
@@ -96,6 +97,12 @@ function App() {
                         <Route path="/add-car" element={
                             <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
                                 <AddCarPage />
+                            </ConfigProvider>
+                        } />
+
+                        <Route path="/task/upload/:taskToken" element={
+                            <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                <H5SingleSlotUploadPage />
                             </ConfigProvider>
                         } />
 

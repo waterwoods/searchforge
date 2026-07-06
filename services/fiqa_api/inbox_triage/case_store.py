@@ -1226,6 +1226,50 @@ def append_wecom_gcs_attachment_metadata(
     return normalized_case
 
 
+def append_h5_gcs_attachment_metadata(
+    case_id: str,
+    attachment_meta: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    Append H5 guided-task GCS attachment metadata to case JSON (P19D-2).
+
+    Idempotent on h5_upload_id within the case.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    upload_id = str(attachment_meta.get("h5_upload_id") or "").strip()
+    attachments = list(normalized_case.get("case_attachments") or [])
+    if upload_id:
+        for att in attachments:
+            if (
+                isinstance(att, dict)
+                and att.get("source") == "h5_task"
+                and att.get("h5_upload_id") == upload_id
+            ):
+                return normalized_case
+
+    if len(attachments) >= MAX_ATTACHMENTS_PER_CASE:
+        raise ValueError(f"Case already has maximum {MAX_ATTACHMENTS_PER_CASE} attachments")
+
+    timestamp = _utc_now_iso()
+    att_record = dict(attachment_meta)
+    att_record.setdefault("created_at", timestamp)
+    attachments.append(att_record)
+    normalized_case["case_attachments"] = attachments[:MAX_ATTACHMENTS_PER_CASE]
+    slot = att_record.get("slot_assignment") or "guided_upload"
+    normalized_case["updated_at"] = timestamp
+    normalized_case["case_activity"] = [
+        _build_activity_entry("h5_task_attached", f"H5 task upload: {slot}"),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 def get_attachment_file_path(case_id: str, attachment_id: str) -> Path | None:
     """Return filesystem path for an attachment, or None if not found."""
     from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read

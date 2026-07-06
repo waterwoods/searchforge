@@ -16,6 +16,8 @@ _ALLOWED_MIME_TO_EXT: dict[str, str] = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
     "image/png": ".png",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
     "application/pdf": ".pdf",
 }
 
@@ -44,7 +46,7 @@ def infer_extension(
     if mime in _ALLOWED_MIME_TO_EXT:
         return _ALLOWED_MIME_TO_EXT[mime]
     name = (filename or "").lower()
-    for ext in (".jpg", ".jpeg", ".png", ".pdf"):
+    for ext in (".jpg", ".jpeg", ".png", ".heic", ".heif", ".pdf"):
         if name.endswith(ext):
             return ".jpg" if ext == ".jpeg" else ext
     if (msgtype or "").lower() == "image" and not mime:

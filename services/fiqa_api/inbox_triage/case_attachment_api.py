@@ -46,7 +46,8 @@ def _preview_path(case_id: str, attachment_id: str) -> str:
 
 
 def _attachment_preview_available(att: dict[str, Any]) -> bool:
-    if att.get("source") == "wecom":
+    source = str(att.get("source") or "").strip().lower()
+    if source in ("wecom", "h5_task"):
         return bool(parse_storage_uri(str(att.get("storage_uri") or "")))
     filename = att.get("filename")
     return bool(filename)
@@ -173,20 +174,24 @@ def resolve_attachment_preview(
     if att is None:
         raise FileNotFoundError("attachment_not_found")
 
-    if att.get("source") == "wecom":
+    source = str(att.get("source") or "").strip().lower()
+    if source in ("wecom", "h5_task"):
         storage_uri = str(att.get("storage_uri") or "").strip()
         if not storage_uri:
             raise FileNotFoundError("storage_uri_missing")
         content, content_type = download_wecom_attachment_bytes(storage_uri)
         mime = content_type or att.get("mime_type") or "application/octet-stream"
-        msg_id = str(att.get("msg_id") or attachment_id)
+        hint_id = str(att.get("msg_id") or att.get("h5_upload_id") or attachment_id)
+        prefix = "h5" if source == "h5_task" else "wecom"
         ext = ".jpg"
         mime_l = (mime or "").lower()
         if "png" in mime_l:
             ext = ".png"
         elif "pdf" in mime_l:
             ext = ".pdf"
-        return content, mime, f"wecom_{msg_id[:12]}{ext}"
+        elif "heic" in mime_l or "heif" in mime_l:
+            ext = ".heic"
+        return content, mime, f"{prefix}_{hint_id[:12]}{ext}"
 
     from services.fiqa_api.inbox_triage.case_store import get_attachment_file_path
 
