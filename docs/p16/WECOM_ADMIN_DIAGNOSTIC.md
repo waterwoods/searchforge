@@ -219,6 +219,9 @@ PYTHONPATH=. python3 scripts/validate_wecom_sync_msg.py
 
 ## Related
 
+- **Q0 queued pipeline smoke test (real Postgres / Cloud Run):** [`docs/wecom_q0_smoke_test.md`](../wecom_q0_smoke_test.md)
+- Manual drain / status CLI: `scripts/wecom_drain_queues.py`
+- **Cloud Run → Neon Postgres (Q0.8.3):** use Neon **pooled** connection string on Cloud Run; confirm `GET /api/admin/wecom/queues/status` returns `db_preflight.ok: true` twice before drain. If inbox rows stuck in `processing` after a DB flap, run `POST /api/admin/wecom/queues/repair-stale` or `scripts/wecom_drain_queues.py --repair-stale` (only resets rows with `locked_at` older than stale timeout).
 - `docs/p16/adr/ADR_004_ENTERPRISE_WECOM_CHANNEL_INTEGRATION.md`
 - `docs/p16/WECOM_VERTICAL_SLICE_PROMPT1.md`
 - `scripts/validate_wecom_gettoken.py`

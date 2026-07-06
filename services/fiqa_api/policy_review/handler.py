@@ -23,6 +23,7 @@ from services.fiqa_api.policy_review.readiness import (
     build_opportunity_signals,
     compute_readiness,
 )
+from services.fiqa_api.policy_review.trust_checks import apply_trust_checks
 
 logger = logging.getLogger(__name__)
 
@@ -267,11 +268,18 @@ def _assemble_response(
     file_names: list[str],
     mock_mode: bool,
 ) -> dict:
+    drivers, warnings = apply_trust_checks(
+        customer_name,
+        list(merged.get("drivers") or []),
+        list(merged.get("warnings") or []),
+    )
+    merged = {**merged, "drivers": drivers, "warnings": warnings}
+
     readiness, reasons = compute_readiness(
         fields=merged.get("fields") or {},
         vehicles=merged.get("vehicles") or [],
         document_types=merged.get("document_types") or [],
-        warnings=merged.get("warnings") or [],
+        warnings=warnings,
         conflicts=merged.get("conflicts") or [],
         extraction_notes=merged.get("extraction_notes") or [],
     )

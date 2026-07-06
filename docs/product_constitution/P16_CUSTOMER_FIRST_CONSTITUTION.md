@@ -28,7 +28,7 @@ P16 is the **Customer First Add-Car Intake System**.
 
 ---
 
-## The Seven Rules
+## The Eight Rules
 
 These rules are product law. Future sprints, specs, and agent prompts must align with them unless this constitution is explicitly revised.
 
@@ -237,6 +237,36 @@ Multiple open add-car cases for the same phone confuse customers (“which one d
 - Optimize for “one person, many concurrent service records” in the add-car wedge
 
 **Note:** Historical closed cases may exist. Rule 7 governs **active** cases only.
+
+---
+
+### Rule 8 — One Business Flow At A Time
+
+**What it means**
+
+A customer thread may contain many topics — add a vehicle, file a claim, ask about a policy, ask about billing. The AI advances **exactly one business flow** at a time per customer. Once a flow is open, the AI stays inside it until that flow reaches a terminal state (broker confirms, customer declines, or broker closes/splits). Other topics raised mid-flow are acknowledged briefly and **politely deferred** — flagged for the broker, never processed in parallel.
+
+**Why it exists**
+
+Real conversations are messy; real brokers are not confused by that, because a human broker instinctively finishes today's ask before starting the next one. An AI that tries to be "smarter" by advancing two flows at once cross-contaminates state (a claim date captured into a vehicle field), produces replies with no clear topic, and hands the broker a case that is two half-finished jobs instead of one clear one. This rule makes the AI behave like the best human assistant already does, not like a general-purpose multi-tasking bot.
+
+**What complexity it removes**
+
+- Cross-intent merge/split resolvers for simultaneously active topics
+- Conflict states caused purely by topic mixing (e.g. "BROKER_REVIEW" triggered by mixed claim + add-car language in one message)
+- Secondary-intent field-merge logic and multi-topic precedence rules embedded in reply templates
+- Parallel flow state machines and generic multi-flow orchestration engines
+- Pairwise testing of every topic combination (claim+payment, premium+doc, add-car+garaging, …)
+
+**What the system must NOT do**
+
+- Start slot-filling, drafting, or a new case for a second topic while a flow is already open for that customer
+- Silently switch the active flow because the customer mentioned a second topic once
+- Merge fields from two different topics into one flow's state
+- Ask the customer "which do you want first" mid-flow — the first flow is already chosen; defer the rest, don't re-litigate
+- Build a generic rules engine or workflow framework to process multiple topics "at once" — one flag per deferred topic (see Track B0's `claim_mentioned_at` pattern), not a multi-flow engine
+
+**Relationship to Rule 7:** Rule 7 governs case **identity** (at most one active case record per phone). Rule 8 governs conversational **attention** (at most one flow gets the AI's processing at a time). A customer could theoretically have one active case yet still confuse the AI by raising a second topic inside it — Rule 8 is what stops that regardless of case identity.
 
 ---
 
