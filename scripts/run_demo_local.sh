@@ -49,6 +49,12 @@ fi
 echo "=========================================="
 echo "Unified Intake — Local Demo (8001 + UI 5173)"
 echo "=========================================="
+echo ""
+echo "[NOTICE] LOCAL DEV ONLY — not the Chen Kui formal demo path."
+echo "         Primary demo: https://ui-smoky-beta.vercel.app/workbench/unified-intake"
+echo "         See: docs/runbooks/CHEN_KUI_DEMO_ENVIRONMENT.md"
+echo "         If localhost:5173 shows ERR_EMPTY_RESPONSE, this script is not running."
+echo ""
 
 # Default to paid-pilot parity unless explicit lab opt-in (RUN_DEMO_LAB=1).
 if [ "${RUN_DEMO_LAB:-0}" = "1" ]; then

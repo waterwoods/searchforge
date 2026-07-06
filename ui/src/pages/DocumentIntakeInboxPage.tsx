@@ -22,15 +22,17 @@ import {
   DeleteOutlined,
   InboxOutlined,
   ReloadOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import {
+  confirmCaseByBroker,
   deleteTestCase,
   getSavedCase,
   listRecentCasesPage,
   patchCaseWorkbench,
   type SavedCase,
 } from '@/api/inboxTriage';
-import { humanizeStructuredField } from '@/features/intake/utils/intakePure';
+import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
 import { copyToClipboard } from '@/utils/demoCopy';
 
 const { Title, Text, Paragraph } = Typography;
@@ -83,8 +85,10 @@ const ACTION_BANNER_STYLE: Record<string, { background: string; border: string; 
 };
 
 function isP16DocumentCase(c: SavedCase): boolean {
+  if (c.workbench_archived) return false;
   const lane = (c.service_lane || '').trim();
-  if (lane === 'add_car' || lane === 'policy_review') return true;
+  if (lane === 'add_car' || lane === 'policy_review' || lane === 'claim_lite') return true;
+  if (c.demo_name === 'chen_kui_p18' && c.workbench_test) return true;
   const src = (c.source_text || '').toLowerCase();
   return src.includes('p16 add-car') || src.includes('p16 policy review');
 }
@@ -94,23 +98,47 @@ function laneLabel(c: SavedCase): string {
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
   const rt = blob?.request_type || '';
   if (lane === 'policy_review' || rt === 'policy_review') return 'Policy Review';
+  if (lane === 'claim_lite' || rt === 'claim_intake') return 'Claim Lite';
   if (rt === 'replace_vehicle') return 'Replace Vehicle';
   if (lane === 'add_car' || rt === 'add_vehicle') return 'Add Car';
+  if ((c.workbench_tags ?? []).some((t) => /coverage risk/i.test(t))) return 'Coverage Risk';
   return 'Document Intake';
 }
 
 function laneTagColor(lane: string): string {
   if (lane === 'Add Car') return 'blue';
   if (lane === 'Policy Review') return 'purple';
+  if (lane === 'Claim Lite') return 'volcano';
+  if (lane === 'Coverage Risk') return 'red';
   if (lane === 'Replace Vehicle') return 'cyan';
   return 'default';
 }
 
 function readinessFromCase(c: SavedCase): string {
+  const lane = (c.service_lane || '').trim();
+  const cat = (c.issue_category || '').toLowerCase();
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
+
+  if (lane === 'claim_lite' || cat === 'claim_intake') {
+    return blob?.readiness_status || 'BROKER_REVIEW';
+  }
+  if (lane === 'policy_review' || cat === 'premium_review') {
+    if (blob?.readiness_status) return blob.readiness_status;
+    return (c.still_needed_fields?.length ?? 0) > 0 ? 'BROKER_REVIEW' : 'READY';
+  }
+  if (lane === 'add_car' || cat === 'add_car') {
+    if (!isAddCarReadyForBroker(c)) {
+      const qrs = (c.quote_ready_status || '').trim();
+      if (qrs === 'need_more' || (c.still_needed_fields?.length ?? 0) > 0) return 'NEED_INFO';
+      return 'BROKER_REVIEW';
+    }
+    if (blob?.readiness_status === 'READY') return 'READY';
+    if ((c.quote_ready_status || '').trim() === 'quote_ready') return 'READY';
+    return blob?.readiness_status || 'BROKER_REVIEW';
+  }
   if (blob?.readiness_status) return blob.readiness_status;
   const qrs = (c.quote_ready_status || '').trim();
-  if (qrs === 'quote_ready') return 'READY';
+  if (qrs === 'quote_ready' && isAddCarReadyForBroker(c)) return 'READY';
   if (qrs === 'almost_ready') return 'BROKER_REVIEW';
   if (qrs === 'need_more') return 'NEED_INFO';
   return 'BROKER_REVIEW';
@@ -306,16 +334,22 @@ function BrokerCaseDetail({
   onCopyReport,
   onCopyPortal,
   onDelete,
+  onConfirm,
+  confirmSaving,
 }: {
   caseItem: SavedCase;
   blob: P16BrokerPacket | null;
   onCopyReport: () => void;
   onCopyPortal: () => void;
   onDelete: () => void;
+  onConfirm?: () => void;
+  confirmSaving?: boolean;
 }) {
   const hasFullPacket = Boolean(blob?.packet && Object.keys(blob.packet).length > 0);
   const readiness = readinessFromCase(caseItem);
   const missingFields = caseItem.still_needed_fields ?? [];
+  const knownFacts = caseItem.known_facts ?? {};
+  const showConfirm = isAddCarReadyForBroker(caseItem) && !caseItem.broker_confirmed_at;
 
   if (!hasFullPacket) {
     return (
@@ -328,22 +362,43 @@ function BrokerCaseDetail({
         {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="Full packet not stored for this case"
-          description={
-            <>
-              <Paragraph style={{ marginBottom: 8 }}>
-                This case was saved before full packet persistence. Summary fields only:
-              </Paragraph>
-              <Text>Customer: {caseItem.customer_name || '—'}</Text>
-              <br />
-              <Text>Phone: {caseItem.customer_phone || '—'}</Text>
-            </>
-          }
-        />
+        {Object.keys(knownFacts).length > 0 ? (
+          <Card size="small" title="Known Facts" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+            {Object.entries(knownFacts).map(([k, v]) => (
+              <PacketField key={k} label={humanizeStructuredField(k)} value={String(v)} />
+            ))}
+          </Card>
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Full packet not stored for this case"
+            description={
+              <>
+                <Paragraph style={{ marginBottom: 8 }}>
+                  This case was saved before full packet persistence. Summary fields only:
+                </Paragraph>
+                <Text>Customer: {resolveCustomerDisplayName(caseItem)}</Text>
+                <br />
+                <Text>Phone: {caseItem.customer_phone || '—'}</Text>
+              </>
+            }
+          />
+        )}
+        {showConfirm && onConfirm ? (
+          <Button
+            type="primary"
+            icon={<CheckCircleOutlined />}
+            onClick={onConfirm}
+            loading={confirmSaving}
+            block
+            size="large"
+            style={{ marginBottom: 8 }}
+          >
+            Confirm / Broker confirm
+          </Button>
+        ) : null}
         {blob?.copy_text ? (
           <Button icon={<CopyOutlined />} onClick={onCopyReport} block style={{ marginBottom: 8 }}>
             Copy Report (partial)
@@ -396,10 +451,21 @@ function BrokerCaseDetail({
             </Card>
           )}
         </>
+      ) : blob!.request_type === 'claim_intake' ? (
+        <Card size="small" title="Claim Intake" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+          <PacketField label="Accident Time" value={get('accident_time')} />
+          <PacketField label="Location" value={get('accident_location')} />
+          <PacketField label="Other Vehicle" value={get('other_vehicle')} />
+        </Card>
       ) : (
         <Card size="small" title="Vehicle" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
           <PacketField label="VIN" value={get('vin')} source={pkt.vin?.source_file} />
           <PacketField label="Year / Make / Model" value={[get('year'), get('make'), get('model')].filter(Boolean).join(' ')} />
+          <PacketField label="Primary Driver" value={get('primary_driver')} />
+          <PacketField
+            label="Effective / Delivery Date"
+            value={get('effective_date') || get('delivery_date')}
+          />
         </Card>
       )}
 
@@ -424,6 +490,18 @@ function BrokerCaseDetail({
       )}
 
       <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        {showConfirm && onConfirm ? (
+          <Button
+            type="primary"
+            icon={<CheckCircleOutlined />}
+            onClick={onConfirm}
+            loading={confirmSaving}
+            block
+            size="large"
+          >
+            Confirm / Broker confirm
+          </Button>
+        ) : null}
         <Button type="primary" icon={<CopyOutlined />} onClick={onCopyReport} block size="large">
           Copy Report
         </Button>
@@ -460,6 +538,7 @@ export default function DocumentIntakeInboxPage() {
   const [detail, setDetail] = useState<SavedCase | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmSaving, setConfirmSaving] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   const loadQueue = useCallback(async () => {
@@ -472,7 +551,7 @@ export default function DocumentIntakeInboxPage() {
         filtered.map((c) => ({
           key: c.case_id,
           case_id: c.case_id,
-          customer_name: c.customer_name || '—',
+          customer_name: resolveCustomerDisplayName(c),
           lane: laneLabel(c),
           status: readinessFromCase(c),
           summary: buildSummary(c),
@@ -537,6 +616,21 @@ export default function DocumentIntakeInboxPage() {
         }
       },
     });
+  };
+
+  const handleConfirmCase = async () => {
+    if (!detail?.case_id) return;
+    setConfirmSaving(true);
+    try {
+      const updated = await confirmCaseByBroker(detail.case_id);
+      setDetail(updated);
+      messageApi.success('Case confirmed');
+      await loadQueue();
+    } catch {
+      messageApi.error('Could not confirm case');
+    } finally {
+      setConfirmSaving(false);
+    }
   };
 
   const detailBlob = useMemo((): P16BrokerPacket | null => {
@@ -657,7 +751,7 @@ export default function DocumentIntakeInboxPage() {
       <Drawer
         title={
           detail
-            ? `${detail.customer_name || 'Case'} · ${laneLabel(detail)}`
+            ? `${resolveCustomerDisplayName(detail)} · ${laneLabel(detail)}`
             : 'Case detail'
         }
         width={520}
@@ -685,6 +779,8 @@ export default function DocumentIntakeInboxPage() {
               messageApi.success(ok ? 'Portal format copied' : 'Copy failed');
             }}
             onDelete={() => confirmDeleteCase(detail.case_id)}
+            onConfirm={() => void handleConfirmCase()}
+            confirmSaving={confirmSaving}
           />
         ) : null}
         {deleting && (

@@ -18,7 +18,7 @@ def test_claim_reply_adr003_safe_language():
     text = build_slice_reply("claim_intake", guided_menu=False)
     lower = text.lower()
     assert "broker" in lower
-    assert "not filing a claim automatically" in lower
+    assert "cannot advise whether to file a claim" in lower or "不能替您决定是否报保险" in text
     assert "approved" not in lower
     assert "policy updated" not in lower
 

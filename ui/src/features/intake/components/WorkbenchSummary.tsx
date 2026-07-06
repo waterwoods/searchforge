@@ -1,26 +1,241 @@
-import { Space, Tag, Typography } from 'antd';
+import { Space, Tag, Typography, Button } from 'antd';
+import { CheckCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import type { UiCopy } from '@/api/clientConfig';
-import type { TriageResult } from '@/api/inboxTriage';
+import type { SavedCase, TriageResult } from '@/api/inboxTriage';
 import { addCarNextOwnerLine } from '@/components/intake/AddCarRecordSummaryRail';
 import { CASE_STATUS_OPTIONS } from '@/features/intake/constants';
 import {
     addCarQueueStatusPhase,
     buildOfficeWorkbenchGlance,
+    extractWorkbenchIntelligenceTags,
     formatPortalLocalDateTime,
     getCaseStatusColor,
+    getCaseTypeDisplayLabel,
+    getCaseWorkspaceStatusLabel,
+    getCustomerMatchLabel,
     getFollowUpDueTag,
     getOfficeLifecycleTag,
     getPreviewText,
+    getRecentCustomerMessages,
     getUrgencyColor,
     hasSavedFollowUpTarget,
     humanizeCaseStatus,
+    humanizeStructuredField,
     humanizeUrgencyLabel,
     humanizeWaitingOn,
+    isAddCarReadyForBroker,
     normalizeFollowUpText,
     triageResultLooksLikeAddCar,
 } from '@/features/intake/utils';
 
 const { Text } = Typography;
+
+/** P18 Loop 1 — Case Workspace screen-proof panel (display layer only). */
+export function BrokerCaseWorkspacePanel({
+    triage,
+    onConfirm,
+    onManualPromote,
+    confirmSaving,
+}: {
+    triage: SavedCase;
+    onConfirm?: () => void;
+    onManualPromote?: () => void;
+    confirmSaving?: boolean;
+}) {
+    const status = getCaseWorkspaceStatusLabel(triage);
+    const caseType = getCaseTypeDisplayLabel(triage);
+    const matchLabel = getCustomerMatchLabel(triage.demo_flags);
+    const headerTags = extractWorkbenchIntelligenceTags(triage);
+    const summary =
+        (triage.demo_summary ?? triage.conversation_summary ?? '').trim()
+        || getPreviewText(triage.source_text ?? '', 200);
+    const knownFacts = triage.known_facts ?? {};
+    const knownFromFields = (triage.collected_fields ?? [])
+        .filter(Boolean)
+        .map((f) => humanizeStructuredField(f));
+    const missing = (triage.still_needed_fields ?? [])
+        .filter(Boolean)
+        .map((f) => humanizeStructuredField(f));
+    const risks = triage.risk_flags ?? [];
+    const conflicts = triage.conflict_flags ?? [];
+    const nextAction = (triage.broker_next_step ?? triage.office_broker_next_step ?? '').trim();
+    const recent = getRecentCustomerMessages(triage, 1);
+    const latestLine = recent[0] ? getPreviewText(recent[0], 160) : getPreviewText(triage.source_text ?? '', 160);
+    const customerSafeNote = String(triage.demo_flags?.customer_safe_note ?? '').trim();
+    const showConfirm =
+        Boolean(triage.case_id)
+        && !triage.broker_confirmed_at
+        && isAddCarReadyForBroker(triage);
+    const showManualHandle = Boolean(triage.manual_followup_needed) && !triage.broker_confirmed_at;
+
+    const tagColor = (tag: string): string => {
+        const t = tag.toLowerCase();
+        if (t.includes('vip')) return 'gold';
+        if (t.includes('urgent') || t.includes('manual')) return 'volcano';
+        if (t.includes('coverage') || t.includes('risk')) return 'red';
+        if (t.includes('wecom')) return 'green';
+        if (t.includes('draft')) return 'default';
+        if (t.includes('ready')) return 'blue';
+        return 'cyan';
+    };
+
+    return (
+        <div
+            style={{
+                marginBottom: 12,
+                padding: 14,
+                borderRadius: 8,
+                border: '1px solid #adc6ff',
+                borderLeft: '4px solid #2f54eb',
+                background: 'linear-gradient(180deg, #f9fbff 0%, #ffffff 100%)',
+            }}
+        >
+            <Text strong style={{ fontSize: 14, color: '#10239e', display: 'block', marginBottom: 10 }}>
+                Case Workspace · AI Insurance Service Desk
+            </Text>
+
+            <Space wrap size={[6, 6]} style={{ marginBottom: 10 }}>
+                {triage.customer_name?.trim() ? (
+                    <Tag color="blue" style={{ fontSize: 12 }}>{triage.customer_name}</Tag>
+                ) : (
+                    <Tag>客户未留名</Tag>
+                )}
+                {matchLabel ? <Tag color="gold">{matchLabel}</Tag> : null}
+                {headerTags.map((tag) => (
+                    <Tag key={tag} color={tagColor(tag)} style={{ fontSize: 11 }}>
+                        {tag}
+                    </Tag>
+                ))}
+                <Tag color="processing">{caseType}</Tag>
+                <Tag color={status.color}>{status.label}</Tag>
+            </Space>
+
+            {summary ? (
+                <div style={{ marginBottom: 10 }}>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        摘要 Summary
+                    </Text>
+                    <Text style={{ fontSize: 13, lineHeight: 1.55, display: 'block' }}>{summary}</Text>
+                </div>
+            ) : null}
+
+            {(Object.keys(knownFacts).length > 0 || knownFromFields.length > 0) && (
+                <div style={{ marginBottom: 10 }}>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        已知 Known Facts
+                    </Text>
+                    {Object.entries(knownFacts).map(([k, v]) => (
+                        <Text key={k} style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}>
+                            · {k.replace(/_/g, ' ')}：{v}
+                        </Text>
+                    ))}
+                    {knownFromFields.length > 0 && Object.keys(knownFacts).length === 0 ? (
+                        <Text style={{ fontSize: 12, lineHeight: 1.5 }}>{knownFromFields.join(' · ')}</Text>
+                    ) : null}
+                </div>
+            )}
+
+            {missing.length > 0 ? (
+                <div
+                    style={{
+                        marginBottom: 10,
+                        padding: '8px 10px',
+                        borderRadius: 6,
+                        background: '#fff7e6',
+                        border: '1px solid #ffd591',
+                    }}
+                >
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        尚缺 Missing Fields
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#ad4e00' }}>{missing.join(' · ')}</Text>
+                </div>
+            ) : null}
+
+            {risks.length > 0 ? (
+                <div
+                    style={{
+                        marginBottom: 10,
+                        padding: '8px 10px',
+                        borderRadius: 6,
+                        background: '#fff1f0',
+                        border: '1px solid #ffa39e',
+                    }}
+                >
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        风险 Risk Flags
+                    </Text>
+                    {risks.map((r) => (
+                        <Text key={r} style={{ fontSize: 12, color: '#cf1322', display: 'block' }}>
+                            ⚠ {r}
+                        </Text>
+                    ))}
+                    {customerSafeNote ? (
+                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
+                            客户提示：{customerSafeNote}
+                        </Text>
+                    ) : null}
+                </div>
+            ) : null}
+
+            {conflicts.length > 0 ? (
+                <div style={{ marginBottom: 10 }}>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        冲突 Conflict Flags
+                    </Text>
+                    <Text style={{ fontSize: 12 }}>{conflicts.join(' · ')}</Text>
+                </div>
+            ) : null}
+
+            {nextAction ? (
+                <div style={{ marginBottom: 10, paddingTop: 4, borderTop: '1px solid #e6ebf5' }}>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        经纪人下一步 Broker Next Action
+                    </Text>
+                    <Text strong style={{ fontSize: 14, color: '#10239e', lineHeight: 1.5, display: 'block' }}>
+                        {nextAction}
+                    </Text>
+                </div>
+            ) : null}
+
+            {latestLine ? (
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 10, lineHeight: 1.45 }}>
+                    最近消息：{latestLine}
+                </Text>
+            ) : null}
+
+            <Space wrap size="small">
+                {showConfirm && onConfirm ? (
+                    <Button
+                        type="primary"
+                        size="small"
+                        icon={<CheckCircleOutlined />}
+                        loading={confirmSaving}
+                        onClick={onConfirm}
+                    >
+                        Confirm 确认加车
+                    </Button>
+                ) : null}
+                {showManualHandle && onManualPromote ? (
+                    <Button
+                        danger
+                        size="small"
+                        icon={<WarningOutlined />}
+                        loading={confirmSaving}
+                        onClick={onManualPromote}
+                    >
+                        人工处理 Manual Handle
+                    </Button>
+                ) : null}
+                {triage.broker_confirmed_at ? (
+                    <Tag color="green" icon={<CheckCircleOutlined />}>
+                        已确认 · {formatPortalLocalDateTime(triage.broker_confirmed_at) ?? triage.broker_confirmed_at}
+                    </Tag>
+                ) : null}
+            </Space>
+        </div>
+    );
+}
 
 export function UrgencyTag({ urgency }: { urgency: string }) {
     return <Tag color={getUrgencyColor(urgency)}>{humanizeUrgencyLabel(urgency)}</Tag>;

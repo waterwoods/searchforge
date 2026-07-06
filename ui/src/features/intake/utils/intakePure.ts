@@ -351,6 +351,22 @@ export function humanizeStructuredFieldForCustomer(field: string): string {
     return CUSTOMER_FIELD_LABELS_ZH[field] ?? humanizeStructuredField(field);
 }
 
+/** Workbench / document-intake: customer column label with WeCom fallback. */
+export function resolveCustomerDisplayName(
+    caseItem: Pick<TriageResult, 'customer_name' | 'customer_phone' | 'wecom_external_userid'>,
+): string {
+    const name = (caseItem.customer_name || '').trim();
+    if (name) return name;
+    const phone = (caseItem.customer_phone || '').trim();
+    if (phone) return phone;
+    const ext = (caseItem.wecom_external_userid || '').trim();
+    if (ext) {
+        const suffix = ext.length > 4 ? ext.slice(-4) : ext;
+        return `WeCom · …${suffix}`;
+    }
+    return 'WeCom Customer';
+}
+
 /** Workbench queue/detail: align strip phase with customer (one state world). */
 export function addCarQueueStatusPhase(triage: Pick<TriageResult, 'lifecycle_status'> | null | undefined): 'intake' | 'submitted' {
     const ls = (triage?.lifecycle_status ?? '').trim();
@@ -1180,4 +1196,113 @@ export function formatQueueCaseIdShort(caseId: string | undefined): string {
     if (!s) return '—';
     if (s.length <= 12) return s;
     return `${s.slice(0, 8)}…`;
+}
+
+/** P18 Loop 1 — broker-facing case workspace status (display only). */
+export function isAddCarReadyForBroker(
+    caseItem: Pick<
+        TriageResult,
+        'issue_category' | 'service_lane' | 'collected_fields' | 'still_needed_fields' | 'quote_ready_status'
+    >,
+): boolean {
+    const lane = (caseItem.service_lane ?? '').trim();
+    const cat = (caseItem.issue_category ?? '').toLowerCase();
+    if (lane !== 'add_car' && cat !== 'add_car' && !cat.includes('add_car')) {
+        return false;
+    }
+    const still = new Set(
+        (caseItem.still_needed_fields ?? []).filter(Boolean).map((f) => f.toLowerCase()),
+    );
+    const collected = new Set(
+        (caseItem.collected_fields ?? []).filter(Boolean).map((f) => f.toLowerCase()),
+    );
+    const required = ['vin', 'zip', 'primary_driver', 'phone'] as const;
+    for (const field of required) {
+        if (still.has(field) || !collected.has(field)) return false;
+    }
+    const hasDate =
+        (collected.has('delivery_date') && !still.has('delivery_date'))
+        || (collected.has('effective_date') && !still.has('effective_date'));
+    if (!hasDate) return false;
+    if ((caseItem.quote_ready_status ?? '').trim() === 'quote_ready') {
+        return still.size === 0;
+    }
+    return false;
+}
+
+export function getCaseWorkspaceStatusLabel(
+    caseItem: Pick<
+        TriageResult,
+        | 'manual_followup_needed'
+        | 'lifecycle_status'
+        | 'still_needed_fields'
+        | 'quote_ready_status'
+        | 'workbench_tags'
+        | 'risk_flags'
+        | 'issue_category'
+        | 'service_lane'
+        | 'collected_fields'
+    > & { case_status?: string; broker_confirmed_at?: string | null },
+): { label: string; color: string } {
+    if (caseItem.broker_confirmed_at) {
+        return { label: 'Done / Active', color: 'green' };
+    }
+    const tags = (caseItem.workbench_tags ?? []).map((t) => t.toLowerCase());
+    const risks = (caseItem.risk_flags ?? []).length;
+    if (
+        caseItem.manual_followup_needed
+        && (tags.some((t) => t.includes('manual') || t.includes('claim') || t.includes('coverage')) || risks > 0)
+    ) {
+        return { label: 'Manual Handle', color: 'volcano' };
+    }
+    if ((caseItem.lifecycle_status ?? '') === 'collecting' || tags.includes('draft')) {
+        return { label: 'Draft', color: 'default' };
+    }
+    if ((caseItem.still_needed_fields?.filter(Boolean).length ?? 0) > 0) {
+        return { label: 'Needs Info', color: 'gold' };
+    }
+    if (isAddCarReadyForBroker(caseItem)) {
+        return { label: 'Ready for Broker', color: 'blue' };
+    }
+    if (caseItem.quote_ready_status === 'quote_ready' || tags.some((t) => t.includes('ready'))) {
+        return { label: 'Ready for Broker', color: 'blue' };
+    }
+    const st = (caseItem.case_status ?? 'new').replace(/_/g, ' ');
+    return { label: st, color: 'default' };
+}
+
+export function getCustomerMatchLabel(
+    demoFlags?: Record<string, unknown> | null,
+): string | null {
+    const raw = String(demoFlags?.customer_match ?? '').trim().toLowerCase();
+    if (!raw) return null;
+    if (raw.includes('vip')) return 'Known VIP';
+    if (raw === 'known') return 'Known';
+    if (raw.includes('possible')) return 'Possible Match';
+    if (raw === 'new') return 'New';
+    return raw.replace(/_/g, ' ');
+}
+
+export function getCaseTypeDisplayLabel(
+    caseItem: Pick<TriageResult, 'service_lane' | 'service_type' | 'issue_category' | 'source_text'>,
+): string {
+    const lane = humanizeServiceLaneOffice(caseItem.service_lane);
+    if (lane) return lane;
+    const st = humanizeServiceLaneOffice(caseItem.service_type);
+    if (st) return st;
+    return humanizeCategory(caseItem.issue_category, caseItem.source_text);
+}
+
+export function extractWorkbenchIntelligenceTags(
+    caseItem: Pick<TriageResult, 'workbench_tags' | 'wecom_external_userid' | 'demo_flags'>,
+): string[] {
+    const tags = [...(caseItem.workbench_tags ?? [])];
+    if (caseItem.wecom_external_userid?.trim() && !tags.some((t) => t.toLowerCase() === 'wecom')) {
+        tags.unshift('WeCom');
+    }
+    const match = getCustomerMatchLabel(caseItem.demo_flags);
+    if (match && !tags.some((t) => t.toLowerCase().includes('vip') || t === match)) {
+        if (match.includes('VIP')) tags.unshift('VIP');
+    }
+    return tags;
 }

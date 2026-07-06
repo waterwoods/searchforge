@@ -144,3 +144,23 @@ def test_follow_up_required_signal_on_needs_info() -> None:
         extraction_notes=[],
     )
     assert any(s["code"] == SIGNAL_FOLLOW_UP for s in signals)
+
+
+def test_ready_packet_regression_with_trust_checks() -> None:
+    """Declaration mock stays READY; portal copy still generated after trust layer."""
+    from services.fiqa_api.policy_review.handler import _assemble_response
+
+    merged = _mock_merged_from_filenames(["declaration_page.pdf"])
+    resp = _assemble_response(
+        customer_name="Li Hua",
+        phone="6265550000",
+        garaging_zip="91101",
+        merged=merged,
+        file_names=["declaration_page.pdf"],
+        mock_mode=True,
+    )
+    assert resp["readiness_status"] == "ready"
+    assert resp["copy_text"]
+    assert resp["portal_copy_text"]
+    assert "Policy Review Packet" in resp["copy_text"]
+    assert "Customer Name: Li Hua" in resp["portal_copy_text"]

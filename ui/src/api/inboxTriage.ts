@@ -174,6 +174,16 @@ export interface TriageResult {
     person_link_key?: string | null;
     person_link_source?: 'wechat' | 'phone' | 'email' | null;
     person_link_confidence?: number | null;
+    /** P18 Loop 1 — workbench intelligence (structured_payload JSONB pass-through) */
+    workbench_tags?: string[];
+    risk_flags?: string[];
+    conflict_flags?: string[];
+    demo_summary?: string;
+    known_facts?: Record<string, string>;
+    /** P18 Loop 1 — demo seed metadata (extra JSONB) */
+    demo_name?: string;
+    demo_flags?: Record<string, unknown>;
+    wecom_external_userid?: string | null;
 }
 
 export type CaseStatus = 'new' | 'reviewing' | 'waiting_client' | 'done';
@@ -218,6 +228,12 @@ export interface SavedCase extends TriageResult {
     pg_mirror_state?: PgMirrorState;
     /** P16 document-intake full packet blob for broker reopen */
     p16_broker_packet?: Record<string, unknown>;
+    /**
+     * Track B0.3 (Active Workspace): set once, by broker action only, via
+     * PATCH /cases/{case_id}/confirm. Presence = Active Case; null = Draft
+     * Case. Immutable once set (mirrors formal_submitted_at).
+     */
+    broker_confirmed_at?: string | null;
 }
 
 /** Soft-route intent from quick-start button (add_car, remove_car, claim_intake, cancellation_warning, missing_document, talk_to_agent) */
@@ -516,6 +532,20 @@ export async function updateSavedCaseStatus(caseId: string, status: CaseStatus):
     const response = await request.patch<SavedCase>(`/api/inbox/cases/${caseId}/status`, {
         status,
     });
+    return response.data;
+}
+
+/**
+ * Track B0.3 — Broker Confirm. Sets `broker_confirmed_at` and triggers exactly
+ * ONE Done Card to the customer (server-side, idempotent). Safe to call twice.
+ */
+export async function confirmCaseByBroker(
+    caseId: string,
+): Promise<SavedCase & { done_card_sent?: boolean; already_confirmed?: boolean }> {
+    const response = await request.patch<SavedCase & { done_card_sent?: boolean; already_confirmed?: boolean }>(
+        `/api/inbox/cases/${caseId}/confirm`,
+        {},
+    );
     return response.data;
 }
 

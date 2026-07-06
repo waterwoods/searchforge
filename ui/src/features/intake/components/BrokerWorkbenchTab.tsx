@@ -21,6 +21,7 @@ import {
     message,
 } from 'antd';
 import {
+    CheckCircleOutlined,
     ClockCircleOutlined,
     CopyOutlined,
     InboxOutlined,
@@ -30,10 +31,12 @@ import {
     SendOutlined,
     SwapOutlined,
     UploadOutlined,
+    WarningOutlined,
 } from '@ant-design/icons';
 import {
     addSavedCaseNote,
     appendFollowUpMessage,
+    confirmCaseByBroker,
     deleteTestCase,
     getAttachmentDownloadUrl,
     getSavedCase,
@@ -62,6 +65,7 @@ import {
     buildOfficeCaseHeadline,
     buildOfficeNextAction,
     buildOfficeWorkbenchGlance,
+    extractWorkbenchIntelligenceTags,
     formatDateLabel,
     formatPortalLocalDateTime,
     formatQueueCaseIdShort,
@@ -117,6 +121,7 @@ import { AddCarCaseStatusStrip } from '@/features/intake/components/StatusStrips
 import {
     OfficeWorkbenchOneGlanceSummary,
     OfficeWorkbenchAddCarSubmissionSnapshot,
+    BrokerCaseWorkspacePanel,
     UrgencyTag,
     CaseStatusTag,
 } from '@/features/intake/components/WorkbenchSummary';
@@ -190,6 +195,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     const [loading, setLoading] = useState(false);
     const [recentLoading, setRecentLoading] = useState(true);
     const [statusSaving, setStatusSaving] = useState(false);
+    const [confirmSaving, setConfirmSaving] = useState(false);
     const [noteSaving, setNoteSaving] = useState(false);
     const [followUpSaving, setFollowUpSaving] = useState(false);
     const [appendMessageDraft, setAppendMessageDraft] = useState('');
@@ -625,6 +631,41 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
         }
     };
 
+    const handleBrokerConfirm = async () => {
+        if (!currentCase?.case_id) return;
+        setConfirmSaving(true);
+        try {
+            const updated = await confirmCaseByBroker(currentCase.case_id);
+            setCurrentCase(updated);
+            setRecentCases((cases) => orderCasesForWorkbench([updated, ...cases.filter((item) => item.case_id !== updated.case_id)]));
+            if (updated.already_confirmed) {
+                message.info('该服务记录此前已确认（未重复发送 Done Card）');
+            } else if (updated.done_card_sent) {
+                message.success('已确认 — Done Card 已发送给客户');
+            } else {
+                message.success('已确认（未绑定微信客服渠道，未发送 Done Card）');
+            }
+        } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+                ?? (e as { message?: string })?.message
+                ?? '确认失败';
+            message.error(msg);
+        } finally {
+            setConfirmSaving(false);
+        }
+    };
+
+    const handleManualPromote = () => {
+        if (!currentCase?.case_id) return;
+        Modal.confirm({
+            title: '报价信息尚未齐全，仍要确认吗？',
+            content: '该服务记录还缺少部分字段（见下方「报价进度」）。Manual Promote 会像 Confirm 一样立即确认并发送 Done Card 给客户 — 请确认这是经纪人的有意决定。',
+            okText: '仍要确认',
+            cancelText: '取消',
+            onOk: () => handleBrokerConfirm(),
+        });
+    };
+
     const handleAppendMessage = async () => {
         if (!currentCase?.case_id) return;
         const trimmed = appendMessageDraft.trim();
@@ -881,6 +922,23 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         {caseFocus && (
                             <Tag color="blue">{getCaseFocusDisplayLabel(caseFocus) ?? caseFocus}</Tag>
                         )}
+                        {extractWorkbenchIntelligenceTags(savedCase).slice(0, 4).map((tag) => (
+                            <Tag
+                                key={`ws-${tag}`}
+                                color={
+                                    tag.toLowerCase().includes('vip')
+                                        ? 'gold'
+                                        : tag.toLowerCase().includes('urgent') || tag.toLowerCase().includes('manual')
+                                          ? 'volcano'
+                                          : tag.toLowerCase().includes('wecom')
+                                            ? 'green'
+                                            : 'cyan'
+                                }
+                                style={{ fontSize: 10 }}
+                            >
+                                {tag}
+                            </Tag>
+                        ))}
                         <Tag color={attention.color}>{attention.label}</Tag>
                         {dueTag && <Tag color={dueTag.color}>{dueTag.label}</Tag>}
                         <UrgencyTag urgency={savedCase.urgency} />
@@ -1587,6 +1645,20 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     {formatQueueCaseIdShort(currentCase.case_id)}
                                 </Text>
                             )}
+                            {currentCase.case_id ? (
+                                <BrokerCaseWorkspacePanel
+                                    triage={currentCase}
+                                    confirmSaving={confirmSaving}
+                                    onConfirm={
+                                        currentCase.quote_ready_status === 'quote_ready'
+                                            ? () => void handleBrokerConfirm()
+                                            : undefined
+                                    }
+                                    onManualPromote={
+                                        currentCase.manual_followup_needed ? handleManualPromote : undefined
+                                    }
+                                />
+                            ) : null}
                             <OfficeWorkbenchOneGlanceSummary
                                 triage={currentCase}
                                 inputFallback={(input.trim() || currentCase.source_text || '').trim()}
@@ -2078,6 +2150,40 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                             <Tag color={QUOTE_READY_STATUS_LABELS[currentCase.quote_ready_status]?.color ?? 'default'}>
                                                 {QUOTE_READY_STATUS_LABELS[currentCase.quote_ready_status]?.label ?? currentCase.quote_ready_status}
                                             </Tag>
+                                        </div>
+                                    )}
+                                    {/* Track B0.3 — Broker Confirm + Done Card. Confirm when quote_ready; otherwise
+                                        Manual Promote (same endpoint, with a confirmation dialog since data is incomplete). */}
+                                    {currentCase.case_id && (
+                                        <div style={{ marginBottom: 8 }}>
+                                            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                                                经纪人确认（Broker Confirm）
+                                            </Text>
+                                            {currentCase.broker_confirmed_at ? (
+                                                <Tag color="green" icon={<CheckCircleOutlined />}>
+                                                    已确认 · Active Case · {formatPortalLocalDateTime(currentCase.broker_confirmed_at) ?? currentCase.broker_confirmed_at}
+                                                </Tag>
+                                            ) : currentCase.quote_ready_status === 'quote_ready' ? (
+                                                <Button
+                                                    type="primary"
+                                                    size="small"
+                                                    icon={<CheckCircleOutlined />}
+                                                    loading={confirmSaving}
+                                                    onClick={() => void handleBrokerConfirm()}
+                                                >
+                                                    Confirm
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    danger
+                                                    size="small"
+                                                    icon={<WarningOutlined />}
+                                                    loading={confirmSaving}
+                                                    onClick={handleManualPromote}
+                                                >
+                                                    Manual Promote
+                                                </Button>
+                                            )}
                                         </div>
                                     )}
                                     {/* Contact block (ADD_CAR_IDENTITY_CONTACT_LITE) — skipped for加车 when已在摘要「①」 */}
