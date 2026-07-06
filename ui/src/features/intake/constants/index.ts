@@ -317,6 +317,8 @@ export const SERVICE_TYPE_OFFICE_ZH: Record<string, string> = {
     general_inquiry: '客户咨询（待分类）',
     underwriting: '核保跟进中',
     cancellation: '保单取消风险',
+    coverage_risk: '停保 / Coverage 风险（需 broker 核实）',
+    coverage_status_risk: '停保 / Coverage 风险（需 broker 核实）',
 };
 
 export const ADD_CAR_TRIAGE_FIELD_IDS = new Set([

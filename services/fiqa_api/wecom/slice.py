@@ -52,7 +52,7 @@ from services.fiqa_api.wecom.sync_msg import pull_customer_text_messages
 
 logger = logging.getLogger(__name__)
 
-_MINIMAL_LANE_INTENTS = frozenset({"policy_review", "claim_intake"})
+_MINIMAL_LANE_INTENTS = frozenset({"policy_review", "claim_intake", "coverage_risk_intake"})
 
 
 def wecom_b0_active_workspace_enabled() -> bool:

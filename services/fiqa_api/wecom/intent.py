@@ -9,6 +9,7 @@ from typing import Literal
 WeComIntent = Literal[
     "add_car",
     "claim_intake",
+    "coverage_risk_intake",
     "policy_review",
     "menu_selection",
     "unclear",
@@ -20,13 +21,14 @@ WeComIntent = Literal[
     "start_add_car_broker_click",
 ]
 
-CanonicalIntent = Literal["add_vehicle", "claim", "policy_review", "unclear"]
+CanonicalIntent = Literal["add_vehicle", "claim", "coverage_risk", "policy_review", "unclear"]
 
 Confidence = Literal["high", "low"]
 
 _CANONICAL_INTENT: dict[WeComIntent, CanonicalIntent] = {
     "add_car": "add_vehicle",
     "claim_intake": "claim",
+    "coverage_risk_intake": "coverage_risk",
     "policy_review": "policy_review",
     "menu_selection": "unclear",
     "unclear": "unclear",
@@ -60,6 +62,48 @@ _MENU_CLICK_IDS = {
     "policy_review": {"policy_review", "policy", "103", "3"},
     "unclear": {"other", "104", "4"},
 }
+
+_COVERAGE_RISK_MARKERS = (
+    "coverage lapse",
+    "coverage lapsed",
+    "coverage suspended",
+    "policy cancelled",
+    "policy canceled",
+    "policy inactive",
+    "policy suspended",
+    "can i still drive",
+    "can i drive",
+    "am i covered",
+    "no insurance",
+    "my insurance expired",
+    "my insurance was cancelled",
+    "my insurance was canceled",
+    "my policy is inactive",
+    "reinstate my policy",
+    "dmv says no insurance",
+    "停保",
+    "停保了",
+    "已经停了",
+    "好像停",
+    "没保险",
+    "保险断了",
+    "保险失效",
+    "保单被取消",
+    "保单取消",
+    "coverage lapse",
+    "还能开",
+    "能不能开",
+    "还能不能开",
+    "还能不能开车",
+    "还能不能上路",
+    "车还能不能上路",
+    "现在还能不能开车",
+    "帮我恢复保险",
+    "恢复保险",
+    "reinstate",
+    "dmv",
+    "registration",
+)
 
 _CLAIM_MARKERS = (
     "accident",
@@ -191,6 +235,13 @@ def classify_wecom_intent(text: str, *, menu_id: str | None = None) -> IntentRes
 
     if not raw:
         return IntentResult(intent="unclear", confidence="low", matched_by="empty")
+
+    if _contains_any(lowered, _COVERAGE_RISK_MARKERS):
+        return IntentResult(
+            intent="coverage_risk_intake",
+            confidence="high",
+            matched_by="coverage_risk_markers",
+        )
 
     claim = _contains_any(lowered, _CLAIM_MARKERS)
     add_car = _contains_any(lowered, _ADD_CAR_MARKERS)

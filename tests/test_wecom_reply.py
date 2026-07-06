@@ -23,6 +23,17 @@ def test_claim_reply_adr003_safe_language():
     assert "policy updated" not in lower
 
 
+def test_coverage_reply_conservative():
+    text = build_slice_reply("coverage_risk_intake", guided_menu=False)
+    lower = text.lower()
+    assert "broker" in lower
+    assert "can't confirm" in lower or "不能判断" in text or "不能建议您" in text
+    assert "you can drive now" not in lower
+    assert "你现在可以开" not in text
+    assert "已恢复" not in text
+    assert "不用担心" not in text
+
+
 def test_guided_menu_payload_has_click_items():
     menu = build_guided_menu_payload()
     assert menu["list"]

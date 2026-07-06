@@ -87,7 +87,7 @@ const ACTION_BANNER_STYLE: Record<string, { background: string; border: string; 
 function isP16DocumentCase(c: SavedCase): boolean {
   if (c.workbench_archived) return false;
   const lane = (c.service_lane || '').trim();
-  if (lane === 'add_car' || lane === 'policy_review' || lane === 'claim_lite') return true;
+  if (lane === 'add_car' || lane === 'policy_review' || lane === 'claim_lite' || lane === 'coverage_risk') return true;
   if (c.demo_name === 'chen_kui_p18' && c.workbench_test) return true;
   const src = (c.source_text || '').toLowerCase();
   return src.includes('p16 add-car') || src.includes('p16 policy review');
@@ -99,6 +99,7 @@ function laneLabel(c: SavedCase): string {
   const rt = blob?.request_type || '';
   if (lane === 'policy_review' || rt === 'policy_review') return 'Policy Review';
   if (lane === 'claim_lite' || rt === 'claim_intake') return 'Claim Lite';
+  if (lane === 'coverage_risk' || rt === 'coverage_risk') return 'Coverage Risk';
   if (rt === 'replace_vehicle') return 'Replace Vehicle';
   if (lane === 'add_car' || rt === 'add_vehicle') return 'Add Car';
   if ((c.workbench_tags ?? []).some((t) => /coverage risk/i.test(t))) return 'Coverage Risk';
@@ -120,6 +121,9 @@ function readinessFromCase(c: SavedCase): string {
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
   if (lane === 'claim_lite' || cat === 'claim_intake') {
+    return blob?.readiness_status || 'BROKER_REVIEW';
+  }
+  if (lane === 'coverage_risk' || cat === 'coverage_status_risk') {
     return blob?.readiness_status || 'BROKER_REVIEW';
   }
   if (lane === 'policy_review' || cat === 'premium_review') {

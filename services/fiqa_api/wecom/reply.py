@@ -53,6 +53,14 @@ _INTENT_REPLIES: dict[WeComIntent, str] = {
         "收到，我先帮您整理保费/续保情况，陈总会人工帮您查看是否有更合适的方案。"
         "请您方便时补充当前保费、续保日期或 renewal notice。不会线上直接报价。"
     ),
+    "coverage_risk_intake": (
+        "Got it. This is a high-risk coverage status issue and must be reviewed by the broker. "
+        "I can't confirm whether coverage is active or advise whether you can drive. "
+        "Please provide the carrier notice, policy number, vehicle info, and cancellation or lapse date.\n"
+        "收到，这个属于高风险保单状态问题，需要陈总人工核实。"
+        "线上不能判断您是否仍有保障，也不能建议您是否可以开车。"
+        "请补充保险公司通知、保单号和停保日期。"
+    ),
     "menu_selection": _GUIDED_MENU_TEXT,
     "unclear": _GUIDED_MENU_TEXT,
 }

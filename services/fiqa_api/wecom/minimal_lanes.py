@@ -17,6 +17,7 @@ from services.fiqa_api.inbox_triage.case_store import (
 from services.fiqa_api.inbox_triage.case_truth_repository import list_all_cases_for_read
 from services.fiqa_api.inbox_triage.intake_service_lanes import (
     SERVICE_LANE_CLAIM_LITE,
+    SERVICE_LANE_COVERAGE_RISK,
     SERVICE_LANE_POLICY_REVIEW,
 )
 from services.fiqa_api.p16.packet_persist import (
@@ -30,13 +31,18 @@ from services.fiqa_api.wecom.active_case_bridge import (
 )
 from services.fiqa_api.wecom.identity import extract_phone_from_text, wecom_customer_display_label
 from services.fiqa_api.wecom.intent import IntentResult, WeComIntent
-from services.fiqa_api.wecom.lane_extractors import extract_claim_facts, extract_premium_facts
+from services.fiqa_api.wecom.lane_extractors import (
+    extract_claim_facts,
+    extract_coverage_facts,
+    extract_premium_facts,
+)
 
 logger = logging.getLogger(__name__)
 
 _MINIMAL_LANE_BY_INTENT: dict[WeComIntent, str] = {
     "policy_review": SERVICE_LANE_POLICY_REVIEW,
     "claim_intake": SERVICE_LANE_CLAIM_LITE,
+    "coverage_risk_intake": SERVICE_LANE_COVERAGE_RISK,
 }
 
 WeComMinimalLaneOutcome = Literal[
@@ -74,7 +80,11 @@ def find_open_minimal_lane_case_by_external_userid(
     ext = (external_userid or "").strip()
     if not ext:
         return None
-    lanes = {service_lane} if service_lane else {SERVICE_LANE_POLICY_REVIEW, SERVICE_LANE_CLAIM_LITE}
+    lanes = {service_lane} if service_lane else {
+        SERVICE_LANE_POLICY_REVIEW,
+        SERVICE_LANE_CLAIM_LITE,
+        SERVICE_LANE_COVERAGE_RISK,
+    }
     for case in list_all_cases_for_read():
         if case.get("wecom_external_userid") != ext:
             continue
@@ -130,6 +140,13 @@ def _claim_tags(facts: dict[str, Any]) -> list[str]:
     injury = str(facts.get("injury") or "")
     if injury and "none" not in injury.lower():
         tags.append("Injury")
+    return list(dict.fromkeys(tags))
+
+
+def _coverage_tags(facts: dict[str, Any], *, urgent: bool) -> list[str]:
+    tags = ["WeCom", "Manual Handle", "Coverage Risk", "Broker Review"]
+    if urgent:
+        tags.insert(1, "Urgent")
     return list(dict.fromkeys(tags))
 
 
@@ -195,6 +212,39 @@ def _build_claim_p16_packet(
         follow_up_message_zh="",
         sources=[{"file": "wecom", "fields": "claim_lite_minimal"}],
         warnings=["Urgent — broker call customer; no auto FNOL or claim advice"],
+    )
+
+
+def _build_coverage_p16_packet(
+    *,
+    facts: dict[str, Any],
+    broker_next: str,
+    customer_message: str,
+) -> dict[str, Any]:
+    packet: dict[str, Any] = {}
+    if facts.get("coverage_status_mentioned"):
+        packet["coverage_status"] = _pkt(str(facts["coverage_status_mentioned"]))
+    if facts.get("mentioned_time"):
+        packet["mentioned_time"] = _pkt(str(facts["mentioned_time"]))
+    if facts.get("vehicle"):
+        packet["vehicle"] = _pkt(str(facts["vehicle"]))
+    if facts.get("dmv_or_reinstatement"):
+        packet["dmv_or_reinstatement"] = _pkt("Mentioned — broker must verify")
+    broker_action = {"en": broker_next, "zh": broker_next}
+    summary = customer_message[:500]
+    return build_p16_broker_packet_blob(
+        request_type="coverage_risk",
+        readiness_status="BROKER_REVIEW",
+        packet=packet,
+        copy_text=f"COVERAGE RISK (WeCom)\n{summary}",
+        portal_copy_text=summary[:300],
+        broker_next_action=broker_action,
+        follow_up_message_zh="",
+        sources=[{"file": "wecom", "fields": "coverage_risk_minimal"}],
+        warnings=[
+            "Coverage status risk — do not advise driving or confirm active coverage",
+            "Broker manual review required",
+        ],
     )
 
 
@@ -273,6 +323,53 @@ def _build_claim_stub(text: str, extracted: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coverage_urgency(facts: dict[str, Any]) -> str:
+    if facts.get("driving_question") or facts.get("dmv_or_reinstatement"):
+        return "critical"
+    return "high"
+
+
+def _build_coverage_stub(text: str, extracted: dict[str, Any]) -> dict[str, Any]:
+    facts = extracted["facts"]
+    still_needed = list(extracted["still_needed"])
+    collected = list(extracted["collected_keys"])
+    urgency = _coverage_urgency(facts)
+    broker_next = "陈总人工核实保单状态、停保原因、恢复/替代方案。"
+    summary = "客户询问停保/coverage 状态/是否还能开车，需要 broker 人工确认。"
+    risk_flags = [
+        "Coverage Status Risk",
+        "Do Not Advise Driving",
+        "Broker Manual Review",
+        "Possible Lapse / Suspended Coverage",
+    ]
+    if urgency == "critical":
+        risk_flags.insert(0, "Urgent")
+    return {
+        "issue_category": "coverage_status_risk",
+        "urgency": urgency,
+        "manual_followup_needed": True,
+        "broker_next_step": broker_next,
+        "client_prep": "请准备保险公司通知、保单号、车辆信息与停保/取消日期。",
+        "client_reply_draft": "",
+        "handoff_ready": False,
+        "lifecycle_status": "handed_off",
+        "service_type": "coverage_status_risk",
+        "conversation_summary": summary,
+        "demo_summary": summary,
+        "collected_fields": collected,
+        "still_needed_fields": still_needed,
+        "quote_ready_status": "need_more",
+        "workbench_tags": _coverage_tags(facts, urgent=urgency == "critical"),
+        "risk_flags": risk_flags,
+        "known_facts": {k: str(v) for k, v in facts.items() if v},
+        "p16_broker_packet": _build_coverage_p16_packet(
+            facts=facts,
+            broker_next=broker_next,
+            customer_message=text,
+        ),
+    }
+
+
 def _merge_intelligence(existing: dict[str, Any], stub: dict[str, Any]) -> None:
     """Merge workbench intelligence fields onto case dict before persist."""
     for key in ("workbench_tags", "known_facts", "risk_flags", "demo_summary", "p16_broker_packet"):
@@ -341,7 +438,7 @@ def ingest_wecom_text_to_minimal_lane(
             "readiness_gate": "BROKER_REVIEW",
         }
 
-    if find_open_add_car_case_by_external_userid(external_userid):
+    if find_open_add_car_case_by_external_userid(external_userid) and intent != "coverage_risk_intake":
         _log_event(
             "wecom_minimal_lane_deferred_v1",
             {"msg_id": msg_id, "external_userid": external_userid, "reason": "active_add_car_flow"},
@@ -362,6 +459,9 @@ def ingest_wecom_text_to_minimal_lane(
     if intent == "policy_review":
         extracted = extract_premium_facts(text)
         stub = _build_premium_stub(text, extracted)
+    elif intent == "coverage_risk_intake":
+        extracted = extract_coverage_facts(text)
+        stub = _build_coverage_stub(text, extracted)
     else:
         extracted = extract_claim_facts(text)
         stub = _build_claim_stub(text, extracted)

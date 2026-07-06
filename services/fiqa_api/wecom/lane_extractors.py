@@ -157,3 +157,85 @@ def extract_claim_facts(text: str) -> dict[str, Any]:
         known.append("carrier_contact_mentioned")
 
     return {"facts": facts, "collected_keys": known, "still_needed": missing}
+
+
+_COVERAGE_STATUS_MARKERS = (
+    "停保",
+    "没保险",
+    "保险断了",
+    "保险失效",
+    "cancelled",
+    "canceled",
+    "inactive",
+    "suspended",
+    "lapsed",
+    "lapse",
+    "expired",
+    "no insurance",
+)
+_URGENT_COVERAGE_MARKERS = (
+    "还能开",
+    "能不能开",
+    "还能不能开",
+    "还能不能开车",
+    "还能不能上路",
+    "车还能不能上路",
+    "can i drive",
+    "can i still drive",
+    "dmv",
+    "没保险",
+    "no insurance",
+)
+_DMV_REINSTATEMENT_MARKERS = ("dmv", "registration", "reinstate", "恢复保险", "帮我恢复保险")
+
+
+def extract_coverage_facts(text: str) -> dict[str, Any]:
+    """Extract minimal Coverage Risk facts from customer free text."""
+    raw = (text or "").strip()
+    lowered = raw.lower()
+    facts: dict[str, Any] = {"customer_message": raw}
+    known: list[str] = []
+    missing = [
+        "policy_number",
+        "carrier",
+        "cancellation_notice",
+        "effective_or_cancellation_date",
+        "vehicle_or_vin",
+        "customer_phone",
+    ]
+
+    status_bits: list[str] = []
+    for marker in _COVERAGE_STATUS_MARKERS:
+        if marker in lowered or marker in raw:
+            status_bits.append(marker)
+    if status_bits:
+        facts["coverage_status_mentioned"] = "; ".join(dict.fromkeys(status_bits))
+        known.append("coverage_status_mentioned")
+
+    if _contains_any(lowered, _URGENT_COVERAGE_MARKERS) or any(m in raw for m in ("还能开", "能不能开", "DMV")):
+        facts["driving_question"] = True
+        known.append("driving_question")
+
+    if _contains_any(lowered, _DMV_REINSTATEMENT_MARKERS) or "DMV" in raw:
+        facts["dmv_or_reinstatement"] = True
+        known.append("dmv_or_reinstatement")
+
+    tm = _TIME_PATTERN.search(raw)
+    if tm:
+        facts["mentioned_time"] = tm.group(1).strip()
+        known.append("mentioned_time")
+        if "effective_or_cancellation_date" in missing:
+            missing.remove("effective_or_cancellation_date")
+
+    vm = _VEHICLE_BRAND_PATTERN.search(raw)
+    if vm:
+        facts["vehicle"] = vm.group(1)
+        known.append("vehicle")
+        missing.remove("vehicle_or_vin")
+
+    zip_code = extract_zip_from_text(raw)
+    if zip_code:
+        facts["zip"] = zip_code
+        known.append(f"zip_{zip_code}")
+
+    return {"facts": facts, "collected_keys": known, "still_needed": missing}

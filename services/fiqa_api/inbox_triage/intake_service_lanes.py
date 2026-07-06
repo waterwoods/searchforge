@@ -7,3 +7,4 @@ Add-Car is the primary lane in scope; values are plain strings (not a heavy taxo
 SERVICE_LANE_ADD_CAR = "add_car"
 SERVICE_LANE_POLICY_REVIEW = "policy_review"
 SERVICE_LANE_CLAIM_LITE = "claim_lite"
+SERVICE_LANE_COVERAGE_RISK = "coverage_risk"

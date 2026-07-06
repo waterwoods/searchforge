@@ -208,3 +208,138 @@ def test_slice_b0_hello_no_case(monkeypatch):
     assert results[0]["guided_menu_required"] is True
     assert results[0]["case_created"] is False
     assert count_stored_cases() == 0
+
+
+def test_coverage_intent_high_confidence():
+    r = classify_wecom_intent("我保险停了还能开吗？DMV 说我没保险。")
+    assert r.intent == "coverage_risk_intake"
+    assert r.confidence == "high"
+
+
+def test_coverage_message_creates_minimal_case():
+    _setup_json_store()
+    normalized = normalize_text_message(
+        _msg("m_cov_1", "我保险停了还能开吗？DMV 说我没保险。", external_userid="wm_loop3_cov")
+    )
+    intent = classify_wecom_intent(normalized["text"])
+    result = ingest_wecom_text_to_minimal_lane(normalized, intent)
+
+    assert result["outcome"] == "created"
+    assert result["case_created"] is True
+    assert result["service_lane"] == "coverage_risk"
+    assert count_stored_cases() == 1
+
+    stored = get_case_by_id(result["case_id"])
+    assert stored is not None
+    assert stored.get("service_lane") == "coverage_risk"
+    assert stored.get("issue_category") == "coverage_status_risk"
+    assert stored.get("urgency") == "critical"
+    assert "Coverage Risk" in (stored.get("workbench_tags") or [])
+    assert "Manual Handle" in (stored.get("workbench_tags") or [])
+    assert stored.get("customer_name")
+    assert stored.get("p16_broker_packet")
+    assert (stored.get("quote_ready_status") or "") != "quote_ready"
+
+
+def test_coverage_followup_attaches_same_case():
+    _setup_json_store()
+    ext = "wm_loop3_cov_dup"
+    first = normalize_text_message(_msg("m_cov_a", "保单被取消了", external_userid=ext))
+    intent1 = classify_wecom_intent(first["text"])
+    created = ingest_wecom_text_to_minimal_lane(first, intent1)
+    case_id = created["case_id"]
+
+    second = normalize_text_message(_msg("m_cov_b", "DMV 说我没保险", external_userid=ext))
+    intent2 = classify_wecom_intent(second["text"])
+    attached = ingest_wecom_text_to_minimal_lane(second, intent2)
+
+    assert attached["outcome"] == "attached"
+    assert attached["case_id"] == case_id
+    assert count_stored_cases() == 1
+
+
+def test_safe_coverage_reply_no_driving_advice():
+    text = build_slice_reply("coverage_risk_intake", guided_menu=False)
+    lower = text.lower()
+    assert "你现在可以开" not in text
+    assert "可以先开" not in text
+    assert "you can drive now" not in lower
+    assert "you are covered" not in lower
+    assert "should be covered" not in lower
+    assert "还有保险" not in text
+    assert "已恢复" not in text
+    assert "不用担心" not in text
+    assert "人工" in text or "broker" in lower
+    assert "不能" in text or "can't" in lower or "can not" in lower
+
+
+def test_slice_b0_coverage_creates_case(monkeypatch):
+    _setup_json_store()
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    load_wecom_kf_config.cache_clear()
+    cfg = load_wecom_kf_config()
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [_msg("m_slice_cov", "我保险停了还能开吗？DMV 说我没保险。", external_userid="wm_loop3_slice_cov")]
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+
+    assert len(results) == 1
+    assert results[0]["internal_intent"] == "coverage_risk_intake"
+    assert results[0]["case_created"] is True
+    assert results[0]["active_case_outcome"] == "created"
+    assert results[0]["service_lane"] == "coverage_risk"
+    assert count_stored_cases() == 1
+
+
+def test_slice_b0_claim_still_works(monkeypatch):
+    _setup_json_store()
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    load_wecom_kf_config.cache_clear()
+    cfg = load_wecom_kf_config()
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [_msg("m_slice_claim", "我刚刚在 405 附近撞车了，现在怎么办？要不要报保险？", external_userid="wm_loop3_claim")]
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+
+    assert results[0]["internal_intent"] == "claim_intake"
+    assert results[0]["case_created"] is True
+    assert results[0]["service_lane"] == "claim_lite"
+
+
+def test_mixed_premium_coverage_slice_no_duplicate_explosion(monkeypatch):
+    _setup_json_store()
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    load_wecom_kf_config.cache_clear()
+    cfg = load_wecom_kf_config()
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [
+            _msg(
+                "m_mixed_cov",
+                "我保险太贵了，而且好像停保了，现在还能开车吗？",
+                external_userid="wm_loop3_mixed",
+            )
+        ]
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+
+    assert results[0]["internal_intent"] == "coverage_risk_intake"
+    assert results[0]["case_created"] is True
+    assert count_stored_cases() == 1
+    reply = results[0].get("reply_text") or ""
+    assert "你现在可以开" not in reply
+    assert "可以先开" not in reply
