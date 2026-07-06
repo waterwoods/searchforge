@@ -1,4 +1,4 @@
-"""H5 guided task link minting (P19D-2 / P19D-3)."""
+"""H5 guided task link minting (P19D-2 / P19D-3 / P19D-4A)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import re
 from services.fiqa_api.inbox_triage.h5_task_token import (
     DEFAULT_TTL_SECONDS,
     TOKEN_PREFIX,
+    issue_h5_flow_token,
     issue_h5_task_token,
 )
 
@@ -35,11 +36,30 @@ def mint_h5_task_link(
     base_url: str | None = None,
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
 ) -> str:
-    """Mint signed H5 upload URL for one case/slot. Never logs secrets."""
+    """Mint signed H5 upload URL for one case/slot (v1 single-slot). Never logs secrets."""
     token = issue_h5_task_token(
         case_id=case_id,
         lane=lane,
         slot=slot,
+        external_userid=external_userid,
+        ttl_seconds=ttl_seconds,
+    )
+    base = (base_url or h5_task_frontend_base()).rstrip("/")
+    return f"{base}/task/upload/{token}"
+
+
+def mint_h5_add_vehicle_photo_flow_link(
+    *,
+    case_id: str,
+    lane: str = "add_car",
+    external_userid: str | None = None,
+    base_url: str | None = None,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+) -> str:
+    """Mint signed H5 URL for Add Vehicle continuous photo flow (v2)."""
+    token = issue_h5_flow_token(
+        case_id=case_id,
+        lane=lane,
         external_userid=external_userid,
         ttl_seconds=ttl_seconds,
     )

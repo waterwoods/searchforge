@@ -17,6 +17,8 @@ import {
 
 assert.equal(humanizeDocumentType('unknown_document'), 'Unknown document');
 assert.equal(humanizeDocumentType('vin_photo'), 'VIN photo');
+assert.equal(humanizeDocumentType('registration_photo'), 'Registration photo');
+assert.equal(humanizeDocumentType('insurance_card_photo'), 'Insurance card photo');
 assert.equal(ocrStatusLabel('not_started'), 'OCR: not started');
 assert.equal(isWeComMediaIntakeLane('wecom_media_intake'), true);
 assert.equal(isWeComMediaIntakeLane('add_car'), false);

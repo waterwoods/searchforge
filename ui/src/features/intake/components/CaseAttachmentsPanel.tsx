@@ -41,7 +41,7 @@ function bindingTagColor(confidence: string): string {
 function sourceLabel(source?: string): string {
   const s = (source || '').toLowerCase();
   if (s === 'wecom') return 'WeCom';
-  if (s === 'h5_task') return 'H5 Task';
+  if (s === 'h5_task') return 'H5 Task / Guided Upload';
   return 'Web';
 }
 

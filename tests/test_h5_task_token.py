@@ -8,6 +8,7 @@ import pytest
 
 from services.fiqa_api.inbox_triage.h5_task_token import (
     DEFAULT_TTL_SECONDS,
+    issue_h5_flow_token,
     issue_h5_task_token,
     verify_h5_task_token,
 )
@@ -54,7 +55,15 @@ def test_tampered_token_rejected():
 
 def test_wrong_slot_rejected_at_issue():
     with pytest.raises(ValueError, match="unsupported_slot"):
-        issue_h5_task_token(case_id="case_x", slot="registration")
+        issue_h5_task_token(case_id="case_x", slot="not_a_slot")
+
+
+def test_flow_token_issue_and_verify():
+    token = issue_h5_flow_token(case_id="case_flow")
+    claims = verify_h5_task_token(token)
+    assert claims is not None
+    assert claims.is_flow_token
+    assert claims.slots == ("vin_photo", "registration_photo", "insurance_card_photo")
 
 
 def test_token_case_id_immutable():

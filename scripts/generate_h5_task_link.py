@@ -34,7 +34,12 @@ def main() -> int:
 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--case-id", required=True, help="Add Vehicle case_id")
-    p.add_argument("--slot", default="vin_photo", help="Task slot (default: vin_photo)")
+    p.add_argument("--slot", default="vin_photo", help="Task slot for v1 link (default: vin_photo)")
+    p.add_argument(
+        "--flow",
+        action="store_true",
+        help="Mint v2 Add Vehicle photo flow link (VIN + registration + insurance)",
+    )
     p.add_argument("--lane", default="add_car", help="Service lane (default: add_car)")
     p.add_argument("--ttl-seconds", type=int, default=86400, help="Token TTL (default 24h)")
     p.add_argument(
@@ -45,7 +50,11 @@ def main() -> int:
     args = p.parse_args()
 
     from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
-    from services.fiqa_api.inbox_triage.h5_task_link import h5_task_frontend_base, mint_h5_task_link
+    from services.fiqa_api.inbox_triage.h5_task_link import (
+        h5_task_frontend_base,
+        mint_h5_add_vehicle_photo_flow_link,
+        mint_h5_task_link,
+    )
 
     case_id = args.case_id.strip()
     case = get_case_for_read(case_id)
@@ -56,14 +65,23 @@ def main() -> int:
     ext_uid = str(case.get("wecom_external_userid") or "").strip() or None
     try:
         base = (args.base_url or h5_task_frontend_base()).rstrip("/")
-        url = mint_h5_task_link(
-            case_id=case_id,
-            lane=args.lane,
-            slot=args.slot,
-            external_userid=ext_uid,
-            base_url=base,
-            ttl_seconds=max(60, int(args.ttl_seconds)),
-        )
+        if args.flow:
+            url = mint_h5_add_vehicle_photo_flow_link(
+                case_id=case_id,
+                lane=args.lane,
+                external_userid=ext_uid,
+                base_url=base,
+                ttl_seconds=max(60, int(args.ttl_seconds)),
+            )
+        else:
+            url = mint_h5_task_link(
+                case_id=case_id,
+                lane=args.lane,
+                slot=args.slot,
+                external_userid=ext_uid,
+                base_url=base,
+                ttl_seconds=max(60, int(args.ttl_seconds)),
+            )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1

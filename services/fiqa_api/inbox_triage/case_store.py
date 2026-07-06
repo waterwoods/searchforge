@@ -1270,6 +1270,45 @@ def append_h5_gcs_attachment_metadata(
     return normalized_case
 
 
+def record_h5_photo_flow_skip(
+    case_id: str,
+    *,
+    flow: str,
+    slot: str,
+) -> dict[str, Any] | None:
+    """
+    Record optional H5 photo-flow slot skip on case JSON (P19D-4A).
+
+    No schema migration — stored in h5_photo_flow_state on the case document.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    flow_norm = (flow or "").strip()
+    slot_norm = (slot or "").strip().lower()
+    if not flow_norm or not slot_norm:
+        raise ValueError("flow_and_slot_required")
+
+    state = dict(normalized_case.get("h5_photo_flow_state") or {})
+    skipped = list(state.get("skipped_slots") or [])
+    if slot_norm not in skipped:
+        skipped.append(slot_norm)
+    state["flow"] = flow_norm
+    state["skipped_slots"] = skipped
+    normalized_case["h5_photo_flow_state"] = state
+    timestamp = _utc_now_iso()
+    normalized_case["updated_at"] = timestamp
+    normalized_case["case_activity"] = [
+        _build_activity_entry("h5_flow_slot_skipped", f"H5 photo flow skipped: {slot_norm}"),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 def get_attachment_file_path(case_id: str, attachment_id: str) -> Path | None:
     """Return filesystem path for an attachment, or None if not found."""
     from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read

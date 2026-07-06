@@ -5,6 +5,8 @@ export function humanizeDocumentType(documentType?: string | null): string {
   const map: Record<string, string> = {
     unknown_document: 'Unknown document',
     vin_photo: 'VIN photo',
+    registration_photo: 'Registration photo',
+    insurance_card_photo: 'Insurance card photo',
     registration: 'Registration',
     renewal_notice: 'Renewal notice',
     accident_photo: 'Accident photo',

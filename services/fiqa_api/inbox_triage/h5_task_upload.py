@@ -1,4 +1,4 @@
-"""H5 single-slot guided upload handler (P19D-2)."""
+"""H5 guided upload handler (P19D-2 single-slot / P19D-4A photo flow)."""
 
 from __future__ import annotations
 
@@ -8,9 +8,17 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
-from services.fiqa_api.inbox_triage.case_store import append_h5_gcs_attachment_metadata
+from services.fiqa_api.inbox_triage.case_store import (
+    append_h5_gcs_attachment_metadata,
+    record_h5_photo_flow_skip,
+)
 from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
-from services.fiqa_api.inbox_triage.h5_task_token import VerifiedH5TaskToken, external_userid_ref
+from services.fiqa_api.inbox_triage.h5_task_token import (
+    ADD_VEHICLE_PHOTO_FLOW_SLOTS,
+    FLOW_ADD_VEHICLE_PHOTO,
+    VerifiedH5TaskToken,
+    external_userid_ref,
+)
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
 from services.fiqa_api.wecom.media_storage import (
     infer_extension,
@@ -35,16 +43,28 @@ _ALLOWED_IMAGE_MIMES = frozenset(
 _SLOT_COPY: dict[str, dict[str, Any]] = {
     "vin_photo": {
         "title": "加车资料补充",
-        "task_label": "请拍车上的 VIN 标签",
-        "instruction": (
-            "请拍清楚车门边或挡风玻璃下方的 VIN 金属/贴纸标签（不是保险卡或行驶证）。"
-            "为了避免资料放错，本步骤只需要 1 张照片。"
-        ),
-        "step_current": 1,
-        "step_total": 4,
+        "task_label": "请拍 VIN 照片",
+        "instruction": "请拍清楚车门边或挡风玻璃下方的 VIN 标签。",
         "document_type": "vin_photo",
+        "required": True,
+    },
+    "registration_photo": {
+        "title": "加车资料补充",
+        "task_label": "请拍行驶证 / registration",
+        "instruction": "请拍清楚车辆 registration / 行驶证页面。",
+        "document_type": "registration_photo",
+        "required": True,
+    },
+    "insurance_card_photo": {
+        "title": "加车资料补充",
+        "task_label": "请拍保险卡 / insurance card",
+        "instruction": "请拍清楚保险卡正面（可选步骤，可跳过）。",
+        "document_type": "insurance_card_photo",
+        "required": False,
     },
 }
+
+_FLOW_OPTIONAL_SLOTS = frozenset({"insurance_card_photo"})
 
 
 def build_h5_media_object_path(
@@ -65,17 +85,113 @@ def build_h5_media_object_path(
     return f"h5/{cid}/{slot_norm}/{ts.year:04d}/{ts.month:02d}/{uid}{ext_norm}"
 
 
+def _completed_h5_slots(case: dict[str, Any]) -> set[str]:
+    completed: set[str] = set()
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        if str(att.get("source") or "").strip().lower() != "h5_task":
+            continue
+        slot = str(att.get("slot_assignment") or "").strip().lower()
+        if slot:
+            completed.add(slot)
+    return completed
+
+
+def _skipped_h5_slots(case: dict[str, Any]) -> set[str]:
+    state = case.get("h5_photo_flow_state") or {}
+    if not isinstance(state, dict):
+        return set()
+    skipped = state.get("skipped_slots") or []
+    return {str(s).strip().lower() for s in skipped if s}
+
+
+def _slot_status(slot: str, *, completed: set[str], skipped: set[str]) -> str:
+    if slot in completed:
+        return "completed"
+    if slot in skipped:
+        return "skipped"
+    return "pending"
+
+
+def _resolve_flow_progress(
+    claims: VerifiedH5TaskToken,
+    case: dict[str, Any],
+) -> dict[str, Any]:
+    slots = tuple(claims.slots or ADD_VEHICLE_PHOTO_FLOW_SLOTS)
+    completed = _completed_h5_slots(case)
+    skipped = _skipped_h5_slots(case)
+    steps: list[dict[str, Any]] = []
+    current_step: str | None = None
+    step_index = 0
+
+    for idx, slot in enumerate(slots, start=1):
+        meta = _SLOT_COPY.get(slot, {})
+        status = _slot_status(slot, completed=completed, skipped=skipped)
+        steps.append(
+            {
+                "slot": slot,
+                "label": meta.get("task_label", slot),
+                "instruction": meta.get("instruction", ""),
+                "required": bool(meta.get("required", True)),
+                "status": status,
+            }
+        )
+        if current_step is None and status == "pending":
+            current_step = slot
+            step_index = idx
+
+    flow_complete = current_step is None
+    return {
+        "slots": slots,
+        "steps": steps,
+        "current_step": current_step,
+        "step_index": step_index if not flow_complete else len(slots),
+        "step_total": len(slots),
+        "flow_complete": flow_complete,
+        "completed": completed,
+        "skipped": skipped,
+    }
+
+
 def task_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
     """Public task metadata for H5 page — no secrets."""
-    slot_meta = _SLOT_COPY.get(claims.slot, {})
+    case = get_case_for_read(claims.case_id)
+    if case is None:
+        raise ValueError("case_not_found")
+
+    if claims.is_flow_token:
+        progress = _resolve_flow_progress(claims, case)
+        current = progress["current_step"]
+        current_meta = _SLOT_COPY.get(current or "", _SLOT_COPY["vin_photo"])
+        if progress["flow_complete"]:
+            current_meta = _SLOT_COPY["vin_photo"]
+        return {
+            "lane": claims.lane,
+            "flow": claims.flow,
+            "case_id": claims.case_id,
+            "title": "加车资料补充",
+            "max_images": 1,
+            "accept": "image/jpeg,image/png,image/heic",
+            "flow_complete": progress["flow_complete"],
+            "current_step": progress["current_step"],
+            "step_index": progress["step_index"],
+            "step_total": progress["step_total"],
+            "steps": progress["steps"],
+            "task_label": current_meta.get("task_label", ""),
+            "instruction": current_meta.get("instruction", ""),
+            "slot": current,
+        }
+
+    slot_meta = _SLOT_COPY.get(claims.slot or "vin_photo", {})
     return {
         "lane": claims.lane,
         "slot": claims.slot,
         "title": slot_meta.get("title", "资料补充"),
         "task_label": slot_meta.get("task_label", claims.slot),
         "instruction": slot_meta.get("instruction", ""),
-        "step_current": slot_meta.get("step_current", 1),
-        "step_total": slot_meta.get("step_total", 4),
+        "step_current": 1,
+        "step_total": 1,
         "max_images": 1,
         "accept": "image/jpeg,image/png,image/heic",
     }
@@ -98,7 +214,6 @@ def _validate_image_upload(
     if mime in _ALLOWED_IMAGE_MIMES or (mime.startswith("image/") and mime != "image/gif"):
         pass
     elif mime == "application/octet-stream":
-        # WeChat / iOS often send HEIC/JPEG as octet-stream — infer from name or default jpg.
         pass
     elif any(name.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".heic", ".heif")):
         pass
@@ -166,25 +281,110 @@ def _assert_case_eligible(case: dict[str, Any], claims: VerifiedH5TaskToken) -> 
             raise ValueError("user_ref_mismatch")
 
 
+def _assert_flow_slot_allowed(
+    claims: VerifiedH5TaskToken,
+    case: dict[str, Any],
+    slot: str,
+) -> None:
+    slot_norm = (slot or "").strip().lower()
+    allowed = tuple(claims.slots or ADD_VEHICLE_PHOTO_FLOW_SLOTS)
+    if slot_norm not in allowed:
+        raise ValueError("slot_not_in_flow")
+    progress = _resolve_flow_progress(claims, case)
+    current = progress["current_step"]
+    if progress["flow_complete"]:
+        raise ValueError("flow_already_complete")
+    if slot_norm != current:
+        raise ValueError("wrong_slot_order")
+
+
 def sanitize_h5_upload_response(
     *,
-    attachment_id: str,
+    attachment_id: str | None = None,
     slot: str,
     status: str = "uploaded",
+    flow_complete: bool = False,
+    next_slot: str | None = None,
+    message_zh: str | None = None,
 ) -> dict[str, Any]:
     """Broker/customer-safe response — no storage_uri, no external_userid."""
+    if flow_complete:
+        msg = message_zh or (
+            "照片资料已收到。下一步请回微信补充：提车日期、停车 ZIP、联系电话。"
+        )
+        return {
+            "attachment_id": attachment_id,
+            "slot_assignment": slot,
+            "status": status,
+            "flow_complete": True,
+            "next_step": "return_wecom_for_text_fields",
+            "message_zh": msg,
+        }
+    if next_slot:
+        next_meta = _SLOT_COPY.get(next_slot, {})
+        msg = message_zh or f"{_SLOT_COPY.get(slot, {}).get('task_label', slot)}已收到，请继续下一步。"
+        return {
+            "attachment_id": attachment_id,
+            "slot_assignment": slot,
+            "status": status,
+            "flow_complete": False,
+            "next_slot": next_slot,
+            "next_step": next_slot,
+            "message_zh": msg,
+        }
     return {
         "attachment_id": attachment_id,
         "slot_assignment": slot,
         "status": status,
         "next_step": "registration_deferred",
-        "message_zh": "VIN 照片已收到。下一步：registration 上传将在后续版本开放。",
+        "message_zh": message_zh or "VIN 照片已收到。下一步：registration 上传将在后续版本开放。",
     }
 
 
-def ingest_h5_single_slot_upload(
+def skip_h5_flow_slot(claims: VerifiedH5TaskToken, *, slot: str) -> dict[str, Any]:
+    """Skip optional flow slot (insurance_card_photo only)."""
+    if not claims.is_flow_token:
+        raise ValueError("skip_not_supported")
+    slot_norm = (slot or "").strip().lower()
+    if slot_norm not in _FLOW_OPTIONAL_SLOTS:
+        raise ValueError("slot_not_skippable")
+
+    case = get_case_for_read(claims.case_id)
+    if case is None:
+        raise ValueError("case_not_found")
+    _assert_case_eligible(case, claims)
+    _assert_flow_slot_allowed(claims, case, slot_norm)
+
+    updated = record_h5_photo_flow_skip(
+        claims.case_id,
+        flow=str(claims.flow or FLOW_ADD_VEHICLE_PHOTO),
+        slot=slot_norm,
+    )
+    if updated is None:
+        raise ValueError("case_persist_failed")
+
+    progress = _resolve_flow_progress(claims, updated)
+    if progress["flow_complete"]:
+        return sanitize_h5_upload_response(
+            attachment_id=None,
+            slot=slot_norm,
+            status="skipped",
+            flow_complete=True,
+        )
+    return sanitize_h5_upload_response(
+        attachment_id=None,
+        slot=slot_norm,
+        status="skipped",
+        flow_complete=False,
+        next_slot=progress["current_step"],
+        message_zh="已跳过保险卡照片。请继续下一步。",
+    )
+
+
+def ingest_h5_slot_upload(
     claims: VerifiedH5TaskToken,
     *,
+    slot: str | None,
     content: bytes,
     content_type: str | None,
     filename: str | None,
@@ -199,12 +399,22 @@ def ingest_h5_single_slot_upload(
         raise ValueError("case_not_found")
     _assert_case_eligible(case, claims)
 
+    if claims.is_flow_token:
+        if not slot:
+            raise ValueError("slot_required")
+        _assert_flow_slot_allowed(claims, case, slot)
+        target_slot = slot.strip().lower()
+    else:
+        target_slot = (claims.slot or "").strip().lower()
+        if slot and slot.strip().lower() != target_slot:
+            raise ValueError("slot_mismatch")
+
     ext = _validate_image_upload(content, content_type=content_type, filename=filename)
     upload_id = f"h5_{uuid4().hex[:12]}"
     received_at = datetime.now(timezone.utc)
     storage = _upload_h5_bytes_to_gcs(
         case_id=claims.case_id,
-        slot=claims.slot,
+        slot=target_slot,
         upload_id=upload_id,
         content=content,
         mime_type=content_type,
@@ -213,8 +423,8 @@ def ingest_h5_single_slot_upload(
     )
 
     attachment_id = f"att_{uuid4().hex[:12]}"
-    slot_meta = _SLOT_COPY.get(claims.slot, {})
-    document_type = str(slot_meta.get("document_type") or claims.slot)
+    slot_meta = _SLOT_COPY.get(target_slot, {})
+    document_type = str(slot_meta.get("document_type") or target_slot)
     att_meta: dict[str, Any] = {
         "attachment_id": attachment_id,
         "source": "h5_task",
@@ -222,13 +432,13 @@ def ingest_h5_single_slot_upload(
         "storage_uri": storage["storage_uri"],
         "mime_type": storage.get("mime_type"),
         "size_bytes": storage.get("size_bytes"),
-        "filename": filename or f"{claims.slot}{ext}",
+        "filename": filename or f"{target_slot}{ext}",
         "received_at": received_at.isoformat(),
         "bound_case_id": claims.case_id,
         "binding_confidence": "high",
         "document_type": document_type,
         "document_type_confidence": "user_selected_step",
-        "slot_assignment": claims.slot,
+        "slot_assignment": target_slot,
         "intake_status": "promoted",
         "guardrail_status": "accepted",
         "eligible_for_ocr": True,
@@ -238,18 +448,41 @@ def ingest_h5_single_slot_upload(
         "task_token_nonce": claims.nonce,
         "h5_upload_id": upload_id,
     }
+    if claims.is_flow_token:
+        att_meta["flow"] = claims.flow
 
     updated = append_h5_gcs_attachment_metadata(claims.case_id, att_meta)
     if updated is None:
         raise ValueError("case_persist_failed")
 
     logger.info(
-        "h5_task_upload_ok_v1 %s",
+        "h5_task_upload_ok %s",
         {
             "case_id": claims.case_id,
-            "slot": claims.slot,
+            "slot": target_slot,
             "attachment_id": attachment_id,
             "size_bytes": len(content),
+            "flow": claims.flow,
         },
     )
-    return sanitize_h5_upload_response(attachment_id=attachment_id, slot=claims.slot)
+
+    if claims.is_flow_token:
+        progress = _resolve_flow_progress(claims, updated)
+        if progress["flow_complete"]:
+            return sanitize_h5_upload_response(
+                attachment_id=attachment_id,
+                slot=target_slot,
+                flow_complete=True,
+            )
+        return sanitize_h5_upload_response(
+            attachment_id=attachment_id,
+            slot=target_slot,
+            flow_complete=False,
+            next_slot=progress["current_step"],
+        )
+
+    return sanitize_h5_upload_response(attachment_id=attachment_id, slot=target_slot)
+
+
+# Backward-compatible alias for P19D-2 tests
+ingest_h5_single_slot_upload = ingest_h5_slot_upload

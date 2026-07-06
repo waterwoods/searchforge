@@ -1,17 +1,26 @@
 /**
- * P19D-2 — H5 single-slot guided upload (Add Vehicle VIN photo only).
- * Mobile-first; one image, preview confirm, submit.
+ * P19D-2 / P19D-4A — H5 guided upload (single-slot + Add Vehicle photo flow).
+ * Mobile-first; one image per step, preview confirm, submit.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   fetchH5Task,
+  isPhotoFlowTask,
+  skipH5TaskSlot,
   uploadH5TaskImage,
   type H5TaskInfo,
   type H5UploadResult,
 } from '@/api/h5TaskUpload';
 
-type PageState = 'loading' | 'ready' | 'preview' | 'uploading' | 'success' | 'error';
+type PageState =
+  | 'loading'
+  | 'ready'
+  | 'preview'
+  | 'uploading'
+  | 'step_done'
+  | 'success'
+  | 'error';
 
 const styles = {
   page: {
@@ -147,10 +156,24 @@ function tryReturnToWeChat(): void {
 }
 
 function progressLine(task: H5TaskInfo, pageState: PageState): string {
-  if (pageState === 'success') {
-    return `第 ${task.step_current} 步已完成 / 共 ${task.step_total} 步`;
+  if (isPhotoFlowTask(task)) {
+    const total = task.step_total ?? task.steps?.length ?? 3;
+    if (pageState === 'success' || task.flow_complete) {
+      return `完成 ${total}/${total}`;
+    }
+    const current = task.step_index ?? 1;
+    return `第 ${current} 步 / 共 ${total} 步`;
   }
-  return `第 ${task.step_current} 步 / 共 ${task.step_total} 步`;
+  if (pageState === 'success' || pageState === 'step_done') {
+    return `第 ${task.step_current ?? 1} 步已完成 / 共 ${task.step_total ?? 1} 步`;
+  }
+  return `第 ${task.step_current ?? 1} 步 / 共 ${task.step_total ?? 1} 步`;
+}
+
+function isOptionalCurrentStep(task: H5TaskInfo): boolean {
+  if (!isPhotoFlowTask(task) || !task.current_step || !task.steps) return false;
+  const step = task.steps.find((s) => s.slot === task.current_step);
+  return step ? !step.required : false;
 }
 
 export default function H5SingleSlotUploadPage() {
@@ -162,35 +185,43 @@ export default function H5SingleSlotUploadPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<H5UploadResult | null>(null);
   const [errorText, setErrorText] = useState('');
+  const [skipping, setSkipping] = useState(false);
 
-  useEffect(() => {
+  const loadTask = useCallback(async () => {
     if (!taskToken) {
       setPageState('error');
       setErrorText('链接无效或已过期，请联系陈总重新获取。');
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const info = await fetchH5Task(taskToken);
-        if (cancelled) return;
-        setTask(info);
+    try {
+      const info = await fetchH5Task(taskToken);
+      setTask(info);
+      if (isPhotoFlowTask(info) && info.flow_complete) {
+        setPageState('success');
+      } else {
         setPageState('ready');
-      } catch (err) {
-        if (cancelled) return;
-        setErrorText(errorMessage(err));
-        setPageState('error');
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      setErrorText('');
+    } catch (err) {
+      setErrorText(errorMessage(err));
+      setPageState('error');
+    }
   }, [taskToken]);
+
+  useEffect(() => {
+    loadTask();
+  }, [loadTask]);
 
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
+  }, [previewUrl]);
+
+  const resetFileSelection = useCallback(() => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(null);
+    setPreviewUrl(null);
   }, [previewUrl]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,38 +233,70 @@ export default function H5SingleSlotUploadPage() {
       return;
     }
     const file = files[0];
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    resetFileSelection();
     const url = URL.createObjectURL(file);
     setSelectedFile(file);
     setPreviewUrl(url);
     setPageState('preview');
     setErrorText('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [previewUrl]);
+  }, [resetFileSelection]);
 
   const handleReselect = useCallback(() => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setSelectedFile(null);
-    setPreviewUrl(null);
+    resetFileSelection();
     setPageState('ready');
     setErrorText('');
-  }, [previewUrl]);
+  }, [resetFileSelection]);
+
+  const advanceAfterUpload = useCallback(async (result: H5UploadResult) => {
+    setUploadResult(result);
+    if (result.flow_complete) {
+      setPageState('success');
+      await loadTask();
+      return;
+    }
+    if (isPhotoFlowTask(task || {})) {
+      resetFileSelection();
+      setPageState('ready');
+      await loadTask();
+      return;
+    }
+    setPageState('success');
+  }, [loadTask, resetFileSelection, task]);
 
   const handleSubmit = useCallback(async () => {
-    if (!taskToken || !selectedFile) return;
+    if (!taskToken || !selectedFile || !task) return;
     setPageState('uploading');
     setErrorText('');
     try {
-      const result = await uploadH5TaskImage(taskToken, selectedFile);
-      setUploadResult(result);
-      setPageState('success');
+      const slot = isPhotoFlowTask(task) ? task.current_step ?? undefined : undefined;
+      const result = await uploadH5TaskImage(taskToken, selectedFile, slot);
+      await advanceAfterUpload(result);
     } catch (err) {
       setErrorText(errorMessage(err));
       setPageState('preview');
     }
-  }, [taskToken, selectedFile]);
+  }, [taskToken, selectedFile, task, advanceAfterUpload]);
+
+  const handleSkip = useCallback(async () => {
+    if (!taskToken || !task?.current_step) return;
+    setSkipping(true);
+    setErrorText('');
+    try {
+      const result = await skipH5TaskSlot(taskToken, task.current_step);
+      await advanceAfterUpload(result);
+    } catch (err) {
+      setErrorText(errorMessage(err));
+    } finally {
+      setSkipping(false);
+    }
+  }, [taskToken, task, advanceAfterUpload]);
 
   const openFilePicker = () => fileInputRef.current?.click();
+
+  const showCapture =
+    pageState === 'ready' || pageState === 'preview' || pageState === 'uploading';
+  const showSkip = isOptionalCurrentStep(task || {}) && pageState === 'ready' && !skipping;
 
   return (
     <div style={styles.page}>
@@ -262,7 +325,7 @@ export default function H5SingleSlotUploadPage() {
           </div>
         )}
 
-        {(pageState === 'ready' || pageState === 'preview' || pageState === 'uploading') && task && (
+        {showCapture && task && (
           <div style={styles.card}>
             <div style={styles.taskLabel}>{task.task_label}</div>
             <p style={styles.instruction}>{task.instruction}</p>
@@ -317,27 +380,50 @@ export default function H5SingleSlotUploadPage() {
               </button>
             )}
 
-            <button
-              type="button"
-              style={{ ...styles.btn, ...styles.btnDisabled }}
-              disabled
-              title="后续版本开放"
-            >
-              暂时跳过 / 稍后补充
-            </button>
+            {showSkip && (
+              <button
+                type="button"
+                style={{ ...styles.btn, ...styles.btnSecondary }}
+                onClick={handleSkip}
+                disabled={skipping}
+              >
+                {skipping ? '处理中…' : '跳过此步骤 / 稍后补充'}
+              </button>
+            )}
+
+            {!isPhotoFlowTask(task) && pageState === 'ready' && (
+              <button
+                type="button"
+                style={{ ...styles.btn, ...styles.btnDisabled }}
+                disabled
+                title="后续版本开放"
+              >
+                暂时跳过 / 稍后补充
+              </button>
+            )}
           </div>
         )}
 
-        {pageState === 'success' && uploadResult && task && (
+        {pageState === 'success' && task && (
           <div style={styles.card}>
             <div style={styles.successBox}>
-              <p style={styles.successHeadline}>VIN 照片已收到 ✅</p>
-              <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a1a' }}>
-                第 {task.step_current} 步已完成
+              <p style={styles.successHeadline}>
+                {isPhotoFlowTask(task) ? '照片资料已收到 ✅' : 'VIN 照片已收到 ✅'}
               </p>
-              <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444' }}>
-                {uploadResult.message_zh}
-              </p>
+              {isPhotoFlowTask(task) ? (
+                <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444' }}>
+                  下一步请回微信补充：提车日期、停车 ZIP、联系电话。
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a1a' }}>
+                    第 {task.step_current ?? 1} 步已完成
+                  </p>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444' }}>
+                    {uploadResult?.message_zh}
+                  </p>
+                </>
+              )}
               <p style={{ fontSize: 14, lineHeight: 1.6, color: '#666', marginTop: 12 }}>
                 陈总会在 Workbench 中人工确认。
               </p>
@@ -359,7 +445,7 @@ export default function H5SingleSlotUploadPage() {
           </div>
         )}
 
-        {pageState === 'preview' && errorText && (
+        {(pageState === 'preview' || pageState === 'ready') && errorText && (
           <div style={{ ...styles.errorBox, marginTop: 12 }} role="alert">
             <strong>上传未成功</strong>
             <p style={{ margin: '8px 0 0' }}>{errorText}</p>

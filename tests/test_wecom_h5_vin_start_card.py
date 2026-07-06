@@ -93,7 +93,8 @@ def test_h5_vin_start_card_payload_copy():
     head = menu["head_content"]
     tail = menu["tail_content"]
     assert "开始补加车资料" in head
-    assert "第一步只需要拍 1 张 VIN 照片" in head
+    assert "VIN、行驶证、保险卡照片" in head
+    assert "每一步只需要 1 张照片" in head
     assert "上传所有" not in head
     assert "一次发多张" not in head
     assert "OCR" not in head
@@ -101,7 +102,7 @@ def test_h5_vin_start_card_payload_copy():
     view_items = [i for i in menu["list"] if i.get("type") == "view"]
     assert view_items
     assert view_items[0]["view"]["url"] == url
-    assert "开始上传 VIN 照片" in view_items[0]["view"]["content"]
+    assert "开始补资料" in view_items[0]["view"]["content"]
 
 
 def test_add_car_text_creates_case_and_h5_link(monkeypatch):
@@ -143,7 +144,9 @@ def test_add_car_text_creates_case_and_h5_link(monkeypatch):
     assert claims is not None
     assert claims.case_id == outcome["case_id"]
     assert claims.lane == "add_car"
-    assert claims.slot == "vin_photo"
+    assert claims.is_flow_token
+    assert claims.flow == "add_vehicle_photo_flow"
+    assert claims.slots == ("vin_photo", "registration_photo", "insurance_card_photo")
 
 
 def test_add_car_reuses_existing_draft_case(monkeypatch):
@@ -224,8 +227,9 @@ def test_h5_task_api_validates_wecom_minted_token(monkeypatch):
     resp = client.get(f"/api/h5/tasks/{token}")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["slot"] == "vin_photo"
+    assert data["flow"] == "add_vehicle_photo_flow"
     assert data["lane"] == "add_car"
+    assert data["current_step"] == "vin_photo"
     assert "VIN" in data["task_label"]
 
 

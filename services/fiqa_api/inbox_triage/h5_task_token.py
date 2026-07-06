@@ -1,8 +1,8 @@
 """
-HMAC-signed H5 guided task token (P19D-2).
+HMAC-signed H5 guided task token (P19D-2 / P19D-4A).
 
-Token binds case_id + lane + slot with TTL. No login required.
-Never embeds full external_userid — optional user_ref tail for audit only.
+Token binds case_id + lane + slot (v1) or flow + slots (v2) with TTL.
+No login required. Never embeds full external_userid.
 
 Env: H5_TASK_TOKEN_SECRET (preferred), else UNIFIED_INTAKE_BROKER_TOKEN_HMAC_SECRET,
      else WECHAT_BINDING_STATE_SECRET.
@@ -24,8 +24,16 @@ TOKEN_PREFIX: Final[str] = "h5t1."
 MODEL_VERSION: Final[str] = "h5_task_token_v1"
 DEFAULT_TTL_SECONDS: Final[int] = 86400  # 24h
 
-_SUPPORTED_SLOTS: Final[frozenset[str]] = frozenset({"vin_photo"})
+_SUPPORTED_SLOTS: Final[frozenset[str]] = frozenset(
+    {"vin_photo", "registration_photo", "insurance_card_photo"}
+)
 _SUPPORTED_LANES: Final[frozenset[str]] = frozenset({"add_car"})
+FLOW_ADD_VEHICLE_PHOTO: Final[str] = "add_vehicle_photo_flow"
+ADD_VEHICLE_PHOTO_FLOW_SLOTS: Final[tuple[str, ...]] = (
+    "vin_photo",
+    "registration_photo",
+    "insurance_card_photo",
+)
 
 
 def _token_secret() -> bytes:
@@ -50,6 +58,13 @@ def external_userid_ref(external_userid: str | None) -> str:
     return digest[:8]
 
 
+def _validate_lane_slot(lane_norm: str, slot_norm: str) -> None:
+    if lane_norm not in _SUPPORTED_LANES:
+        raise ValueError(f"unsupported_lane: {lane_norm}")
+    if slot_norm not in _SUPPORTED_SLOTS:
+        raise ValueError(f"unsupported_slot: {slot_norm}")
+
+
 def issue_h5_task_token(
     *,
     case_id: str,
@@ -60,16 +75,13 @@ def issue_h5_task_token(
     now: float | None = None,
     nonce: str | None = None,
 ) -> str:
-    """Issue signed task token for H5 upload page."""
+    """Issue signed v1 single-slot task token for H5 upload page."""
     cid = (case_id or "").strip()
     if not cid:
         raise ValueError("case_id_required")
     lane_norm = (lane or "").strip().lower()
     slot_norm = (slot or "").strip().lower()
-    if lane_norm not in _SUPPORTED_LANES:
-        raise ValueError(f"unsupported_lane: {lane_norm}")
-    if slot_norm not in _SUPPORTED_SLOTS:
-        raise ValueError(f"unsupported_slot: {slot_norm}")
+    _validate_lane_slot(lane_norm, slot_norm)
 
     t = time.time() if now is None else float(now)
     iat = int(t)
@@ -94,15 +106,96 @@ def issue_h5_task_token(
     return f"{TOKEN_PREFIX}{b64}.{sig}"
 
 
+def issue_h5_flow_token(
+    *,
+    case_id: str,
+    lane: str = "add_car",
+    flow: str = FLOW_ADD_VEHICLE_PHOTO,
+    slots: tuple[str, ...] | None = None,
+    external_userid: str | None = None,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    now: float | None = None,
+    nonce: str | None = None,
+) -> str:
+    """Issue signed v2 multi-slot photo flow token."""
+    cid = (case_id or "").strip()
+    if not cid:
+        raise ValueError("case_id_required")
+    lane_norm = (lane or "").strip().lower()
+    if lane_norm not in _SUPPORTED_LANES:
+        raise ValueError(f"unsupported_lane: {lane_norm}")
+    flow_norm = (flow or "").strip()
+    if flow_norm != FLOW_ADD_VEHICLE_PHOTO:
+        raise ValueError(f"unsupported_flow: {flow_norm}")
+    slot_list = list(slots or ADD_VEHICLE_PHOTO_FLOW_SLOTS)
+    if tuple(slot_list) != ADD_VEHICLE_PHOTO_FLOW_SLOTS:
+        raise ValueError("invalid_flow_slots")
+
+    t = time.time() if now is None else float(now)
+    iat = int(t)
+    exp = iat + max(60, int(ttl_seconds))
+    payload: dict[str, Any] = {
+        "v": 2,
+        "model": MODEL_VERSION,
+        "case_id": cid,
+        "lane": lane_norm,
+        "flow": flow_norm,
+        "slots": slot_list,
+        "iat": iat,
+        "exp": exp,
+        "nonce": (nonce or uuid.uuid4().hex[:16]),
+    }
+    user_ref = external_userid_ref(external_userid)
+    if user_ref:
+        payload["user_ref"] = user_ref
+
+    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    b64 = base64.urlsafe_b64encode(body).decode("ascii").rstrip("=")
+    sig = hmac.new(_token_secret(), body, hashlib.sha256).hexdigest()[:32]
+    return f"{TOKEN_PREFIX}{b64}.{sig}"
+
+
 @dataclass(frozen=True)
 class VerifiedH5TaskToken:
     case_id: str
     lane: str
-    slot: str
     user_ref: str | None
     nonce: str
     iat: int
     exp: int
+    version: int = 1
+    slot: str | None = None
+    flow: str | None = None
+    slots: tuple[str, ...] = ()
+
+    @property
+    def is_flow_token(self) -> bool:
+        return self.version == 2 and bool(self.flow)
+
+
+def _verify_common(payload: dict[str, Any], *, now: float | None) -> tuple[int, int, str, str, str, str | None] | None:
+    if str(payload.get("model") or "") != MODEL_VERSION:
+        return None
+    try:
+        iat = int(payload["iat"])
+        exp = int(payload["exp"])
+    except Exception:
+        return None
+    t = time.time() if now is None else float(now)
+    if t > float(exp) or t < float(iat - 60):
+        return None
+
+    case_id = str(payload.get("case_id") or "").strip()
+    lane = str(payload.get("lane") or "").strip().lower()
+    nonce = str(payload.get("nonce") or "").strip()
+    if not case_id or not lane or not nonce:
+        return None
+    if lane not in _SUPPORTED_LANES:
+        return None
+
+    user_ref_raw = payload.get("user_ref")
+    user_ref = str(user_ref_raw).strip() if user_ref_raw else None
+    return iat, exp, case_id, lane, nonce, user_ref or None
 
 
 def verify_h5_task_token(token: str, *, now: float | None = None) -> VerifiedH5TaskToken | None:
@@ -130,36 +223,48 @@ def verify_h5_task_token(token: str, *, now: float | None = None) -> VerifiedH5T
         return None
     if not isinstance(payload, dict):
         return None
-    if int(payload.get("v") or 0) != 1:
-        return None
-    if str(payload.get("model") or "") != MODEL_VERSION:
-        return None
-    try:
-        iat = int(payload["iat"])
-        exp = int(payload["exp"])
-    except Exception:
-        return None
-    t = time.time() if now is None else float(now)
-    if t > float(exp) or t < float(iat - 60):
-        return None
 
-    case_id = str(payload.get("case_id") or "").strip()
-    lane = str(payload.get("lane") or "").strip().lower()
-    slot = str(payload.get("slot") or "").strip().lower()
-    nonce = str(payload.get("nonce") or "").strip()
-    if not case_id or not lane or not slot or not nonce:
+    version = int(payload.get("v") or 0)
+    common = _verify_common(payload, now=now)
+    if common is None:
         return None
-    if lane not in _SUPPORTED_LANES or slot not in _SUPPORTED_SLOTS:
-        return None
+    iat, exp, case_id, lane, nonce, user_ref = common
 
-    user_ref_raw = payload.get("user_ref")
-    user_ref = str(user_ref_raw).strip() if user_ref_raw else None
-    return VerifiedH5TaskToken(
-        case_id=case_id,
-        lane=lane,
-        slot=slot,
-        user_ref=user_ref or None,
-        nonce=nonce,
-        iat=iat,
-        exp=exp,
-    )
+    if version == 1:
+        slot = str(payload.get("slot") or "").strip().lower()
+        if not slot or slot not in _SUPPORTED_SLOTS:
+            return None
+        return VerifiedH5TaskToken(
+            case_id=case_id,
+            lane=lane,
+            slot=slot,
+            user_ref=user_ref,
+            nonce=nonce,
+            iat=iat,
+            exp=exp,
+            version=1,
+        )
+
+    if version == 2:
+        flow = str(payload.get("flow") or "").strip()
+        if flow != FLOW_ADD_VEHICLE_PHOTO:
+            return None
+        raw_slots = payload.get("slots")
+        if not isinstance(raw_slots, list) or len(raw_slots) != 3:
+            return None
+        slots = tuple(str(s).strip().lower() for s in raw_slots)
+        if slots != ADD_VEHICLE_PHOTO_FLOW_SLOTS:
+            return None
+        return VerifiedH5TaskToken(
+            case_id=case_id,
+            lane=lane,
+            flow=flow,
+            slots=slots,
+            user_ref=user_ref,
+            nonce=nonce,
+            iat=iat,
+            exp=exp,
+            version=2,
+        )
+
+    return None

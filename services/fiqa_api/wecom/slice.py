@@ -37,7 +37,10 @@ from services.fiqa_api.wecom.minimal_lanes import (
     find_open_minimal_lane_case_by_external_userid,
     ingest_wecom_text_to_minimal_lane,
 )
-from services.fiqa_api.inbox_triage.h5_task_link import mask_h5_task_url, mint_h5_task_link
+from services.fiqa_api.inbox_triage.h5_task_link import (
+    mask_h5_task_url,
+    mint_h5_add_vehicle_photo_flow_link,
+)
 from services.fiqa_api.wecom.reply import (
     build_guided_menu_payload,
     build_h5_vin_start_card_payload,
@@ -94,7 +97,7 @@ def _build_add_car_h5_start_menu(
         return build_start_card_payload(), None, None
     ext_uid = str(normalized.get("external_userid") or "").strip() or None
     try:
-        h5_url = mint_h5_task_link(case_id=cid, external_userid=ext_uid)
+        h5_url = mint_h5_add_vehicle_photo_flow_link(case_id=cid, external_userid=ext_uid)
     except ValueError:
         return build_start_card_payload(), None, None
     masked = mask_h5_task_url(h5_url)
