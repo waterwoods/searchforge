@@ -37,7 +37,6 @@ from services.fiqa_api.wecom.minimal_lanes import (
     find_open_minimal_lane_case_by_external_userid,
     ingest_wecom_text_to_minimal_lane,
 )
-from services.fiqa_api.wecom.normalize import normalize_text_message
 from services.fiqa_api.wecom.reply import (
     build_guided_menu_payload,
     build_secondary_topic_deferred_reply,
@@ -48,7 +47,9 @@ from services.fiqa_api.wecom.reply_dedup import claim_reply_send, release_reply_
 from services.fiqa_api.wecom.reply_outbox import enqueue_wecom_reply, wecom_reply_outbox_enabled
 from services.fiqa_api.wecom.send_msg import send_menu_reply, send_text_reply, wecom_slice_send_enabled
 from services.fiqa_api.wecom.sync_cursor import load_sync_cursor, save_sync_cursor
-from services.fiqa_api.wecom.sync_msg import pull_customer_text_messages
+from services.fiqa_api.wecom.media_intake import ingest_wecom_media_message, is_supported_media_msgtype
+from services.fiqa_api.wecom.normalize import normalize_media_message, normalize_text_message
+from services.fiqa_api.wecom.sync_msg import pull_customer_messages
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +217,7 @@ def process_kf_msg_or_event(
             sync_next_cursor = ""
         else:
             start_cursor = load_sync_cursor(open_kf_id)
-            pull_result = pull_customer_text_messages(
+            pull_result = pull_customer_messages(
                 cfg,
                 token=callback_token,
                 open_kf_id=open_kf_id,
@@ -248,7 +249,18 @@ def process_kf_msg_or_event(
     batch_had_processing_failure = False
 
     for raw in raw_messages:
-        normalized = normalize_text_message(raw)
+        msgtype = (raw.get("msgtype") or "").lower()
+        if is_supported_media_msgtype(msgtype):
+            normalized = normalize_media_message(raw)
+        elif msgtype == "text":
+            normalized = normalize_text_message(raw)
+        else:
+            _log_slice(
+                "unsupported_msgtype_skipped_v1",
+                {"msgtype": msgtype, "msg_id": raw.get("msgid")},
+            )
+            continue
+
         msg_id = str(normalized.get("msg_id") or "").strip()
 
         if not claim_message_processed(
@@ -273,6 +285,43 @@ def process_kf_msg_or_event(
             continue
 
         try:
+            if is_supported_media_msgtype(msgtype):
+                media_result = ingest_wecom_media_message(normalized, cfg)
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "msgtype": msgtype,
+                    "reply_text": media_result.get("reply_text"),
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": media_result.get("case_created", False),
+                    "case_id": media_result.get("case_id"),
+                    "active_case_outcome": media_result.get("active_case_outcome"),
+                    "attachment_id": media_result.get("attachment_id"),
+                    "binding_confidence": media_result.get("binding_confidence"),
+                    "service_lane": media_result.get("service_lane"),
+                }
+                _log_slice(
+                    "media_intake_v1",
+                    {k: v for k, v in outcome.items() if k != "reply_text"},
+                )
+                if media_result.get("reply_text"):
+                    _dispatch_reply(
+                        cfg,
+                        normalized,
+                        send_enabled=send_enabled,
+                        menu_payload=None,
+                        text_content=str(media_result["reply_text"]),
+                        outcome=outcome,
+                    )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or media_result.get("outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
+
             intent_result = classify_wecom_intent(
                 normalized.get("text") or "",
                 menu_id=normalized.get("menu_id"),

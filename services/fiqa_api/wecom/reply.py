@@ -168,3 +168,42 @@ def build_start_card_payload() -> dict[str, Any]:
 DONE_CARD_TEXT = """\
 Chen Kui's team has received your request. We will follow up with next steps.
 陈奎团队已收到您的请求，我们会跟进后续步骤。"""
+
+
+# ---------------------------------------------------------------------------
+# P19A — WeCom media intake safe replies (no OCR, no coverage/driving advice)
+# ---------------------------------------------------------------------------
+
+_MEDIA_ACK_BOUND = (
+    "收到图片，我先把它放到您的服务 case 里，陈总会人工查看确认。"
+)
+
+_MEDIA_ACK_UNASSIGNED = (
+    "收到图片。为了放到正确的服务事项里，请问这是加车资料、保单/续保资料、理赔照片，还是 DMV/停保通知？"
+)
+
+_MEDIA_ACK_COVERAGE = (
+    "收到通知图片。这个属于高风险保单状态问题，需要陈总人工核实。"
+    "线上不能判断您是否仍有保障，也不能建议您是否可以开车。"
+)
+
+_MEDIA_ACK_CLAIM = (
+    "收到事故照片。请先确认人是否安全，我会把照片放到理赔服务 case 里，陈总会人工联系您。"
+)
+
+
+def build_media_intake_reply(
+    *,
+    bound: bool,
+    service_lane: str | None = None,
+    binding_confidence: str = "unknown",
+) -> str:
+    """Safe customer ack for WeCom image/file intake. Never mentions OCR."""
+    lane = (service_lane or "").strip()
+    if bound and lane == "coverage_risk":
+        return _MEDIA_ACK_COVERAGE
+    if bound and lane == "claim_lite":
+        return _MEDIA_ACK_CLAIM
+    if bound and binding_confidence in ("high", "medium"):
+        return _MEDIA_ACK_BOUND
+    return _MEDIA_ACK_UNASSIGNED

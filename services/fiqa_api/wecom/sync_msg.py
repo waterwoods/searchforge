@@ -18,6 +18,7 @@ WECOM_ADMIN_BLOCKED_ERRCODE = 48002
 
 _SYNC_MSG_URL = "https://qyapi.weixin.qq.com/cgi-bin/kf/sync_msg"
 _CUSTOMER_ORIGIN = 3
+_CUSTOMER_MSGTYPES = frozenset({"text", "image", "file"})
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,24 @@ def sync_kf_messages(
     return data
 
 
-def pull_customer_text_messages(
+def _customer_message_eligible(item: dict[str, Any]) -> bool:
+    if int(item.get("origin") or 0) != _CUSTOMER_ORIGIN:
+        return False
+    msgtype = (item.get("msgtype") or "").lower()
+    if msgtype not in _CUSTOMER_MSGTYPES:
+        return False
+    if msgtype == "text":
+        text_obj = item.get("text") or {}
+        content = (text_obj.get("content") or "").strip()
+        return bool(content)
+    if msgtype == "image":
+        return bool(str((item.get("image") or {}).get("media_id") or "").strip())
+    if msgtype == "file":
+        return bool(str((item.get("file") or {}).get("media_id") or "").strip())
+    return False
+
+
+def pull_customer_messages(
     cfg: WeComKfConfig,
     *,
     token: str,
@@ -91,7 +109,7 @@ def pull_customer_text_messages(
     start_cursor: str = "",
 ) -> SyncPullResult:
     """
-    Pull sync_msg pages until has_more=0; return customer-origin text messages only.
+    Pull sync_msg pages until has_more=0; return customer-origin text/image/file messages.
 
     ``start_cursor`` is the persisted watermark from a prior successful sync for
     this ``open_kf_id`` (Q0.10). When set, WeCom returns only messages after
@@ -105,15 +123,8 @@ def pull_customer_text_messages(
         for item in data.get("msg_list") or []:
             if not isinstance(item, dict):
                 continue
-            if int(item.get("origin") or 0) != _CUSTOMER_ORIGIN:
-                continue
-            if (item.get("msgtype") or "").lower() != "text":
-                continue
-            text_obj = item.get("text") or {}
-            content = (text_obj.get("content") or "").strip()
-            if not content:
-                continue
-            messages.append(item)
+            if _customer_message_eligible(item):
+                messages.append(item)
 
         next_cursor = str(data.get("next_cursor") or "").strip()
         if next_cursor:
@@ -125,13 +136,32 @@ def pull_customer_text_messages(
             break
         cursor = next_cursor
 
+    text_count = sum(1 for m in messages if (m.get("msgtype") or "").lower() == "text")
+    media_count = len(messages) - text_count
     logger.info(
         "wecom_sync_msg_pulled_v1 %s",
         {
             "open_kf_id": open_kf_id,
-            "text_message_count": len(messages),
+            "message_count": len(messages),
+            "text_message_count": text_count,
+            "media_message_count": media_count,
             "start_cursor_set": bool((start_cursor or "").strip()),
             "next_cursor_set": bool(final_next_cursor),
         },
     )
     return SyncPullResult(messages=messages, next_cursor=final_next_cursor)
+
+
+def pull_customer_text_messages(
+    cfg: WeComKfConfig,
+    *,
+    token: str,
+    open_kf_id: str,
+    start_cursor: str = "",
+) -> SyncPullResult:
+    """Backward-compatible wrapper — text messages only."""
+    result = pull_customer_messages(
+        cfg, token=token, open_kf_id=open_kf_id, start_cursor=start_cursor
+    )
+    text_only = [m for m in result.messages if (m.get("msgtype") or "").lower() == "text"]
+    return SyncPullResult(messages=text_only, next_cursor=result.next_cursor)
