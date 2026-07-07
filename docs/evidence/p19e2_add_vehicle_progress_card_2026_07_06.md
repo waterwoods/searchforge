@@ -2,15 +2,19 @@
 
 **Date:** 2026-07-06  
 **Branch:** `sprint/p16-trust-layer`  
-**Type:** Local dev + tests + evidence — **no deploy**
+**Type:** Local dev + deploy + live smoke prep  
+**Verdict:** **DEPLOY PASS** · **QA gate PASS** · **Andy live phone smoke PENDING**
 
 ---
 
-## Recon commit
+## Commits (pushed)
 
 | Commit | Message |
 |--------|---------|
 | `48761e7` | docs: add P19E Add Vehicle progress card recon |
+| `67a57cc` | feat: add Add Vehicle progress card |
+
+Pushed: `git push origin sprint/p16-trust-layer` (`c66305a..67a57cc`)
 
 ---
 
@@ -126,7 +130,7 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 | No public URL / GCS expose | ✅ |
 | No Neon as QA truth | ✅ |
 | No 小程序 / H5 Task Home / H5 form | ✅ |
-| No deploy | ✅ |
+| No deploy (local loop) | ✅ (superseded by deploy below) |
 | P19E-1 Phase 2 preserved | ✅ |
 | P19E-1.5 Postgres read facade preserved | ✅ |
 | P19D H5 / restart preserved | ✅ |
@@ -142,12 +146,115 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 
 ---
 
-## GO / HOLD
+## GO / HOLD (local)
 
 | Gate | Verdict |
 |------|---------|
 | Local tests + build | **GO** |
-| QA gate | **GO** |
-| Deploy / live phone smoke | **HOLD** — not executed this loop |
+| QA gate (pre-deploy) | **GO** |
 
-**Recommendation:** GO for deploy + Andy phone smoke when ready; verify「你好 / 进度 / 继续」on Phase 1, Phase 2, and broker-review cases.
+---
+
+## Backend deploy
+
+| Field | Value |
+|-------|-------|
+| Script | `bash scripts/deploy_paid_pilot.sh` |
+| Project | `optimal-disk-472305-e2` |
+| Service | `fiqa-api` |
+| Region | `us-west1` |
+| **Revision (prior)** | `fiqa-api-00162-qhp` |
+| **Revision (this deploy)** | **`fiqa-api-00163-w4k`** |
+| URL | `https://fiqa-api-g7zatxrycq-uw.a.run.app` |
+| GIT_SHA | `67a57ccfd` |
+| Deploy time (UTC) | 2026-07-07 ~03:17 UTC |
+| `/health/live` | 200 |
+| `/readyz` | 200 (`intake_core_readiness: true`) |
+| `/healthz` | 404 at edge (expected — use `/health/live`) |
+| `WECOM_SLICE_SEND_REPLY` | `1` |
+| `H5_TASK_TOKEN_SECRET` | Secret Manager `fiqa-h5-task-token-secret` — unchanged |
+| DB secret | `fiqa-service-record-database-url-cloudsql-private` — unchanged |
+| Cloud SQL | `caseiq` @ `10.73.0.3` — unchanged |
+| VPC / NAT / WeCom callback | unchanged |
+
+---
+
+## Frontend deploy
+
+| Field | Value |
+|-------|-------|
+| **Action** | **Skipped** — P19E-2 is backend WeCom routing only |
+| **Alias** | `https://ui-smoky-beta.vercel.app` (unchanged) |
+| Rationale | No `ui/` changes in `67a57cc` |
+
+---
+
+## Post-deploy QA gate
+
+`bash scripts/check_chen_kui_demo_environment.sh --cloud-api` → **PASS** (revision `fiqa-api-00163-w4k`)
+
+---
+
+## Pre-smoke log check
+
+Revision `fiqa-api-00163-w4k` startup logs reviewed (80 lines):
+
+- **No** import/syntax errors
+- **No** Postgres read facade errors
+- **No** WeCom route exceptions
+- **No** H5 token generation errors at startup
+- Expected optional warnings only: embedding warmup deferred, Qdrant/Redis optional, bm25 optional
+
+---
+
+## Andy live phone smoke checklist
+
+**Revision under test:** `fiqa-api-00163-w4k` · **GIT_SHA:** `67a57cc`
+
+### Smoke A — Existing active add_car case
+
+If Andy already has an active add_car case in WeCom:
+
+| # | Send | Expected |
+|---|------|----------|
+| A1 | `你好` | Reply contains **【加车资料进度】** — not generic main menu. State matches case: Phase 1 → 第 1 步; Phase 2 → 第 2 步; broker review → 第 3 步 |
+| A2 | `进度` | Same Progress Card as A1 |
+| A3 | `还差什么` | Progress Card lists missing items OR says no action needed (Phase 3) |
+| A4 | `7月10号提车，zip 92705，电话2031234567` | Phase 2 extractor wins — **not** Progress Card. If complete: **【第 2 阶段完成 ✅ · 文字信息】** + 第 3 步 broker confirm |
+| A5 | `我要理赔` | Claim lane — **not** Add Vehicle Progress Card |
+| A6 | `重新加车` | New H5 Start Card / new flow — **not** Progress Card |
+
+### Smoke B — No active add_car case
+
+| # | Send | Expected |
+|---|------|----------|
+| B1 | `你好` | Normal greeting / guided menu |
+| B2 | `进度` | Normal menu or no-active-case behavior — **not** fake progress |
+
+### Smoke C — Phase 1 incomplete (new flow)
+
+| # | Step | Expected |
+|---|------|----------|
+| C1 | Send `重新加车` | New Start Card |
+| C2 | Start flow but leave a photo missing | — |
+| C3 | Return to WeCom, send `继续` | **【加车资料进度】** · 第 1 步 · button **继续上传照片** · same case (not new) |
+
+### Live smoke result
+
+| Item | Status |
+|------|--------|
+| Andy phone smoke executed | **PENDING** |
+| Screenshots / exact messages | _(fill after Andy retest)_ |
+
+---
+
+## GO / HOLD (deploy + live)
+
+| Gate | Verdict |
+|------|---------|
+| Deploy | **GO** |
+| Post-deploy QA | **GO** |
+| Logs pre-smoke | **GO** |
+| Andy live phone smoke | **PENDING** |
+
+**Recommendation:** Andy run Smoke A–C on WeCom; report exact messages + PASS/HOLD per row.
