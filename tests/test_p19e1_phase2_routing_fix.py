@@ -190,3 +190,81 @@ def test_phase2_unrecognized_text_gets_format_hint():
         )
     assert result["active_case_outcome"] == "phase2_unrecognized_fields"
     assert "还没有识别到" in (result.get("reply_text") or "")
+
+
+def test_stale_binding_without_read_facade_routes_to_greeting(monkeypatch):
+    """Documents live bug: binding id from Postgres but JSON get_case_by_id misses row."""
+    pg_case = _photo_complete_case()
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    load_wecom_kf_config.cache_clear()
+    cfg = load_wecom_kf_config()
+    reset_message_processed_memory_for_tests()
+    reset_reply_dedup_memory_for_tests()
+    text = "7月10号提车，zip. 92705。电话2031234567"
+
+    with patch(
+        "services.fiqa_api.wecom.slice.find_open_draft_case_by_external_userid",
+        return_value="case_pg_only",
+    ), patch(
+        "services.fiqa_api.wecom.slice.get_case_for_read",
+        return_value=None,
+    ), patch(
+        "services.fiqa_api.wecom.add_vehicle_phase2.list_all_cases_for_read",
+        return_value=[],
+    ):
+        outcomes = process_kf_msg_or_event(
+            cfg,
+            callback_token="tok",
+            open_kf_id="wktest001",
+            pull_messages=lambda *_a, **_k: [
+                {
+                    "msgid": "m_bug_repro",
+                    "msgtype": "text",
+                    "text": {"content": text},
+                    "external_userid": "wm_andy",
+                    "open_kfid": "wktest001",
+                }
+            ],
+        )
+    assert outcomes[0]["guided_menu_required"] is True
+    assert outcomes[0]["active_case_outcome"] == "intent_not_actionable"
+
+
+def test_hello_unchanged_without_active_phase2_case(monkeypatch):
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    load_wecom_kf_config.cache_clear()
+    cfg = load_wecom_kf_config()
+    reset_message_processed_memory_for_tests()
+    reset_reply_dedup_memory_for_tests()
+
+    with patch(
+        "services.fiqa_api.wecom.slice.find_open_draft_case_by_external_userid",
+        return_value=None,
+    ), patch(
+        "services.fiqa_api.wecom.add_vehicle_phase2.list_all_cases_for_read",
+        return_value=[],
+    ):
+        outcomes = process_kf_msg_or_event(
+            cfg,
+            callback_token="tok",
+            open_kf_id="wktest001",
+            pull_messages=lambda *_a, **_k: [
+                {
+                    "msgid": "m_hello_only",
+                    "msgtype": "text",
+                    "text": {"content": "你好"},
+                    "external_userid": "wm_new_user",
+                    "open_kfid": "wktest001",
+                }
+            ],
+        )
+    assert outcomes[0]["guided_menu_required"] is True
+    assert "intent_not_actionable" in str(outcomes[0].get("active_case_outcome", ""))

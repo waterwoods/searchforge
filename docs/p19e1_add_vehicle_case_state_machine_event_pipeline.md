@@ -29,7 +29,29 @@ stateDiagram-v2
 
 ---
 
-## 2. WeCom Text Event Pipeline
+## 2. Event Pipeline (with live bug annotation)
+
+**System model:** case state machine + event pipeline. P19E-1 goal = wire WeCom text into Phase 2 after H5 photos complete.
+
+```mermaid
+flowchart TD
+    A[WeCom text: date + ZIP + phone] --> B[Find active add_car case]
+    B --> C{Photo phase complete?}
+    C -- yes --> D{Phase 2 incomplete?}
+    D -- yes --> E[Run Phase 2 extractor]
+    E --> F[Write collected_fields / known_facts]
+    F --> G{All 3 fields collected?}
+    G -- yes --> H[Send Stage Complete S2]
+    G -- no --> I[Send Current Step Card]
+    C -- no --> J[Route to existing Add Vehicle flow]
+    B -- no case --> K[Generic greeting menu]
+
+    BUG["LIVE BUG fiqa-api-00160-44g: Postgres binding found case but JSON-only get_case_by_id returned None → stale_draft_binding_cleared → greeting menu"] -.-> K
+```
+
+**Fixed path (post `9cb7e5f`):** `get_case_for_read` + `find_phase2_eligible_add_car_case` — binding id resolves to Cloud SQL row → Phase 2 handler runs.
+
+### Detailed routing (post-fix)
 
 ```mermaid
 flowchart TD
