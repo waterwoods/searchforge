@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-08  
 **Branch:** `sprint/p16-trust-layer`  
-**Type:** Copy/constants polish — local tests + build + QA gate  
-**Verdict:** **LOCAL PASS** · **QA gate PASS** · **HOLD deploy + phone smoke**
+**Type:** Copy/constants polish — local tests + build + deploy + phone smoke prep  
+**Verdict:** **LOCAL PASS** · **DEPLOY PASS** · **QA gate PASS** · **Phone smoke PENDING**
 
 ---
 
@@ -218,7 +218,129 @@ Implement P19G-3 P0 copy polish for Add Vehicle WeCom/H5 flow: shorter Chinese-f
 bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 ```
 
-**PASS** — QA UI + Cloud Run API + Cloud SQL aligned (pre-deploy baseline unchanged).
+**PASS** — QA UI + Cloud Run API + Cloud SQL aligned (post-deploy revision `fiqa-api-00165-qfk`).
+
+---
+
+## Deploy (2026-07-07)
+
+### Pushed commits
+
+| Commit | Message |
+|--------|---------|
+| `7a51ace` | feat: polish Add Vehicle WeCom copy |
+
+Pushed: `git push origin sprint/p16-trust-layer` (`ca6bc42..7a51ace`)
+
+### Backend deploy
+
+| Field | Value |
+|-------|-------|
+| Script | `bash scripts/deploy_paid_pilot.sh` |
+| Project | `optimal-disk-472305-e2` |
+| Service | `fiqa-api` |
+| Region | `us-west1` |
+| **Revision (prior)** | `fiqa-api-00164-8c9` |
+| **Revision (this deploy)** | **`fiqa-api-00165-qfk`** |
+| URL | `https://fiqa-api-g7zatxrycq-uw.a.run.app` |
+| **GIT_SHA** | **`7a51ace1e`** |
+| Deploy time (UTC) | 2026-07-07 ~22:28 UTC |
+| `/health/live` | 200 |
+| `/readyz` | 200 (`intake_core_readiness: true`) |
+| DB secret | `fiqa-service-record-database-url-cloudsql-private` — unchanged |
+| Cloud SQL | `caseiq` @ `10.73.0.3` private VPC — unchanged |
+| `WECOM_SLICE_SEND_REPLY` | `1` — unchanged |
+| `H5_TASK_TOKEN_SECRET` | configured — unchanged |
+| WeCom callback / VPC / NAT / min instances | unchanged |
+| Neon | Not QA truth |
+
+### Frontend deploy
+
+| Field | Value |
+|-------|-------|
+| Command | `vercel deploy --prod --yes` (ui/) |
+| Production deployment | `https://ui-m120jt8xs-andys-projects-1f411b73.vercel.app` |
+| **Stable alias** | **`https://ui-smoky-beta.vercel.app`** |
+| `/workbench/document-intake` | HTTP 200 |
+| `/task/upload/:taskToken` | HTTP 200 (SPA route) |
+| Build | PASS (~39s on Vercel) |
+| Bundle check | Contains `第 1 步完成`, `照片资料已收到`, `返回微信` |
+
+### Post-deploy QA gate
+
+```bash
+bash scripts/check_chen_kui_demo_environment.sh --cloud-api
+# Result: PASS — revision fiqa-api-00165-qfk, Cloud SQL aligned
+```
+
+### Log check (post-deploy)
+
+Revision `fiqa-api-00165-qfk` startup + runtime logs reviewed (~100 lines):
+
+- **No** import/syntax errors
+- **No** WeCom reply errors
+- **No** H5 task upload errors
+- **No** Postgres read facade errors
+- Expected optional warnings only: embedding warmup deferred, Qdrant/Redis optional, bm25 optional
+
+---
+
+## Andy WeCom phone smoke checklist
+
+**Backend:** `fiqa-api-00165-qfk` · **GIT_SHA:** `7a51ace` · **Frontend alias:** `ui-smoky-beta`
+
+### Smoke A — Start Card copy
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| A1 | Send `重新加车` | Start Card with `【加车资料收集】` + 3-item checklist | **PENDING** |
+| A2 | Button label | `开始上传资料` | **PENDING** |
+| A3 | No English / long URL in main copy | Clean Chinese-first copy | **PENDING** |
+
+### Smoke B — H5 photo flow + final page
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| B1 | Click `开始上传资料` | H5 opens | **PENDING** |
+| B2 | Complete or skip photo flow | `第 1 步完成 ✅` | **PENDING** |
+| B3 | Final page copy | 照片资料已收到 + 回微信补文字 | **PENDING** |
+| B4 | Button | `返回微信` only (no 稍后继续) | **PENDING** |
+| B5 | No Workbench / 全部完成 | Clean customer copy | **PENDING** |
+
+### Smoke C — S1 WeCom copy
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| C1 | After H5 flow_complete | `【第 1 步完成 ✅】` + example line | **PENDING** |
+| C2 | Next action clear | 微信里回复提车日期/ZIP/电话 | **PENDING** |
+
+### Smoke D — Phase 2 text + S2 copy
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| D1 | Send `7月10号提车，ZIP 92705，电话 2031234567` | `【第 2 步完成 ✅】` | **PENDING** |
+| D2 | Broker handoff copy | 陈总人工确认 + 不会自动修改保单 | **PENDING** |
+| D3 | No greeting hijack | Phase 2 extractor wins | **PENDING** |
+
+### Smoke E — Progress Card copy
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| E1 | Send `进度` (after S2) | broker review Progress Card | **PENDING** |
+| E2 | Short status lines | 照片✅ 文字✅ 陈总确认中 | **PENDING** |
+
+### Smoke F — Phase 1 incomplete progress (optional)
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| F1 | New add car, partial photos, send `继续` | `▶️ 第 1 步：上传照片` + `继续上传照片` | **PENDING** |
+
+### Smoke G — Regression
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| G1 | Send `我要理赔` | Claim lane (existing behavior) | **PENDING** |
+| G2 | Send `你好` / `进度` | Progress Card if active case; menu if none | **PENDING** |
 
 ---
 
@@ -230,9 +352,9 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 | No Claim workflow | ✅ |
 | No schema migration | ✅ |
 | No Cloud config change | ✅ |
-| No deploy | ✅ |
 | No routing / state machine change | ✅ |
 | Copy/constants only | ✅ |
+| No H5 token/security change | ✅ |
 
 ---
 
@@ -242,7 +364,7 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 - Greeting menu unchanged — P1
 - Broker Done Card (`DONE_CARD_TEXT`) unchanged — P1
 - Legacy Start Card (`Start / 开始`) unchanged — legacy fallback path only
-- Cloud/QA still serves pre-deploy copy until next deploy
+- Legacy Start Card (`Start / 开始`) unchanged — legacy fallback path only
 
 ---
 
@@ -251,10 +373,11 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 | Gate | Verdict |
 |------|---------|
 | Local tests + build | **GO** |
-| Commit | **GO** |
-| Deploy | **HOLD** — copy not live until deploy |
-| Phone smoke | **HOLD** — run after deploy on WeCom + H5 |
+| Push + deploy | **GO** |
+| Post-deploy QA gate | **GO** |
+| Logs | **GO** (clean) |
+| Andy phone smoke | **PENDING** — operator run on WeChat |
 
 ---
 
-*P19G-3.1 local implementation complete. Next: deploy + Andy phone smoke when ready.*
+*P19G-3.1 deploy complete. Andy phone smoke pending.*
