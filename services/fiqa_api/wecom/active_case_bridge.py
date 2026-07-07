@@ -14,13 +14,13 @@ from services.fiqa_api.inbox_triage.case_store import (
     append_evidence_event_only,
     append_follow_up_message,
     bind_case_channel_identity,
-    get_case_by_id,
     save_case,
     update_case_customer,
     update_case_workspace_flags,
     utc_now_iso,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import (
+    get_case_for_read,
     list_all_cases_for_read,
     list_cases_for_phone_lookup,
 )
@@ -358,7 +358,7 @@ def ingest_wecom_text_to_draft_case(
         )
         return {"outcome": "duplicate_msg", "case_id": existing_by_msg, "case_created": False}
 
-    case = get_case_by_id(case_id)
+    case = get_case_for_read(case_id)
     if case is None:
         _log_event(
             "wecom_draft_case_ingest_v1",
@@ -664,7 +664,7 @@ def confirm_case_by_broker(case_id: str) -> dict[str, Any]:
     Guardrail (contract §4.1/§9): blocked with `BrokerConfirmError` when the
     case has no phone on file yet (cannot confirm an unidentifiable case).
     """
-    case = get_case_by_id(case_id)
+    case = get_case_for_read(case_id)
     if case is None:
         return {
             "outcome": "case_not_found",

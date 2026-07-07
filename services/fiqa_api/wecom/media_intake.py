@@ -12,10 +12,12 @@ from uuid import uuid4
 from services.fiqa_api.inbox_triage.case_store import (
     append_wecom_gcs_attachment_metadata,
     bind_case_channel_identity,
-    get_case_by_id,
     save_case,
 )
-from services.fiqa_api.inbox_triage.case_truth_repository import list_all_cases_for_read
+from services.fiqa_api.inbox_triage.case_truth_repository import (
+    get_case_for_read,
+    list_all_cases_for_read,
+)
 from services.fiqa_api.inbox_triage.intake_service_lanes import (
     SERVICE_LANE_ADD_CAR,
     SERVICE_LANE_CLAIM_LITE,
@@ -253,7 +255,7 @@ def ingest_wecom_media_message(
     if existing_att:
         lane = None
         if existing_case_id:
-            case = get_case_by_id(existing_case_id)
+            case = get_case_for_read(existing_case_id)
             lane = str(case.get("service_lane") or "").strip() if case else None
         reply = build_media_intake_reply(
             bound=True,
@@ -336,7 +338,7 @@ def ingest_wecom_media_message(
     received_at = _parse_received_at(normalized)
     lane_for_guardrail = binding.service_lane
     if target_case_id and not lane_for_guardrail:
-        pre_case = get_case_by_id(target_case_id)
+        pre_case = get_case_for_read(target_case_id)
         lane_for_guardrail = str(pre_case.get("service_lane") or "").strip() if pre_case else None
 
     guardrail = evaluate_upload_guardrail(
@@ -375,7 +377,7 @@ def ingest_wecom_media_message(
 
     lane = binding.service_lane
     if target_case_id and not lane:
-        case = get_case_by_id(target_case_id)
+        case = get_case_for_read(target_case_id)
         lane = str(case.get("service_lane") or "").strip() if case else None
 
     reply_text = build_guardrail_media_reply(

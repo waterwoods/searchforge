@@ -41,7 +41,6 @@ from services.fiqa_api.inbox_triage.h5_task_link import (
     mask_h5_task_url,
     mint_h5_add_vehicle_photo_flow_link,
 )
-from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
 from services.fiqa_api.inbox_triage.h5_task_upload import (
     h5_photo_flow_is_complete,
     is_explicit_add_car_restart,

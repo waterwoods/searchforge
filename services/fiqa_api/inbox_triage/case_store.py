@@ -674,7 +674,12 @@ def list_all_cases() -> list[dict[str, Any]]:
 
 
 def get_case_by_id(case_id: str) -> dict[str, Any] | None:
-    """Return a case by id, or None if not found."""
+    """Return a case by id from the **local JSON file only** (dev/test).
+
+    Production routing and API reads must use ``case_truth_repository.get_case_for_read``
+    which is Postgres-first on Cloud Run. Do not use this for WeCom routing, phase
+    decisions, or Workbench hydration in production code paths.
+    """
     payload = _read_payload()
     for case in payload["cases"]:
         if case.get("case_id") == case_id:

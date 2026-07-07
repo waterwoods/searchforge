@@ -10,11 +10,13 @@ from services.fiqa_api.inbox_triage.case_store import (
     _persist_case_after_update,
     append_follow_up_message,
     bind_case_channel_identity,
-    get_case_by_id,
     save_case,
     update_case_status,
 )
-from services.fiqa_api.inbox_triage.case_truth_repository import list_all_cases_for_read
+from services.fiqa_api.inbox_triage.case_truth_repository import (
+    get_case_for_read,
+    list_all_cases_for_read,
+)
 from services.fiqa_api.inbox_triage.intake_service_lanes import (
     SERVICE_LANE_CLAIM_LITE,
     SERVICE_LANE_COVERAGE_RISK,
@@ -453,7 +455,7 @@ def ingest_wecom_text_to_minimal_lane(
     open_same_lane = find_open_minimal_lane_case_by_external_userid(
         external_userid, service_lane=service_lane
     )
-    if open_same_lane and get_case_by_id(open_same_lane) is None:
+    if open_same_lane and get_case_for_read(open_same_lane) is None:
         open_same_lane = None
 
     if intent == "policy_review":
