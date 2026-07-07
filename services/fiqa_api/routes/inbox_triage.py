@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from services.fiqa_api.inbox_triage.case_attachment_api import (
+    consume_preview_gcs_ms,
     resolve_attachment_preview,
     sanitize_case_for_workbench_api,
 )
@@ -2031,15 +2032,52 @@ async def preview_case_attachment(
     if row is None:
         raise HTTPException(status_code=404, detail="case not found")
     assert_case_office_access_allowed(http_request, row)
+    t0 = time.perf_counter()
     try:
         content, media_type, filename = resolve_attachment_preview(row, attachment_id)
     except FileNotFoundError:
+        total_ms = round((time.perf_counter() - t0) * 1000, 1)
+        logger.info(
+            "PREVIEW_PERF case_id=%s attachment_id=%s total_ms=%s gcs_ms=0 bytes=0 status=not_found",
+            case_id,
+            attachment_id,
+            total_ms,
+        )
         raise HTTPException(status_code=404, detail="attachment not found") from None
     except ValueError:
+        total_ms = round((time.perf_counter() - t0) * 1000, 1)
+        logger.info(
+            "PREVIEW_PERF case_id=%s attachment_id=%s total_ms=%s gcs_ms=0 bytes=0 status=not_found",
+            case_id,
+            attachment_id,
+            total_ms,
+        )
         raise HTTPException(status_code=404, detail="attachment not found") from None
     except Exception as exc:
-        logger.warning("attachment_preview_failed case_id=%s attachment_id=%s err=%s", case_id, attachment_id, exc)
+        total_ms = round((time.perf_counter() - t0) * 1000, 1)
+        logger.warning(
+            "attachment_preview_failed case_id=%s attachment_id=%s err=%s",
+            case_id,
+            attachment_id,
+            exc,
+        )
+        logger.info(
+            "PREVIEW_PERF case_id=%s attachment_id=%s total_ms=%s gcs_ms=0 bytes=0 status=error",
+            case_id,
+            attachment_id,
+            total_ms,
+        )
         raise HTTPException(status_code=404, detail="attachment not found") from exc
+    total_ms = round((time.perf_counter() - t0) * 1000, 1)
+    gcs_ms = consume_preview_gcs_ms() or 0
+    logger.info(
+        "PREVIEW_PERF case_id=%s attachment_id=%s total_ms=%s gcs_ms=%s bytes=%s status=ok",
+        case_id,
+        attachment_id,
+        total_ms,
+        gcs_ms,
+        len(content),
+    )
     headers: dict[str, str] = {}
     if filename:
         headers["Content-Disposition"] = f'inline; filename="{filename}"'

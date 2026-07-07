@@ -9,6 +9,7 @@ import {
   Card,
   Drawer,
   Modal,
+  Skeleton,
   Space,
   Spin,
   Table,
@@ -35,7 +36,13 @@ import {
 } from '@/api/inboxTriage';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
-import { countCaseAttachments, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
+import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
+import {
+  countImagePreviews,
+  createWorkbenchPerfSession,
+  logCaseDetailLoaded,
+  type WorkbenchPerfSession,
+} from '@/features/intake/utils/workbenchPerfLog';
 import { copyToClipboard } from '@/utils/demoCopy';
 
 const { Title, Text, Paragraph } = Typography;
@@ -358,6 +365,7 @@ function BrokerCaseDetail({
   onDelete,
   onConfirm,
   confirmSaving,
+  perfSession,
 }: {
   caseItem: SavedCase;
   blob: P16BrokerPacket | null;
@@ -366,6 +374,7 @@ function BrokerCaseDetail({
   onDelete: () => void;
   onConfirm?: () => void;
   confirmSaving?: boolean;
+  perfSession?: WorkbenchPerfSession | null;
 }) {
   const hasFullPacket = Boolean(blob?.packet && Object.keys(blob.packet).length > 0);
   const readiness = readinessFromCase(caseItem);
@@ -386,7 +395,6 @@ function BrokerCaseDetail({
         {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
-        <CaseAttachmentsPanel caseId={caseItem.case_id} attachments={attachments} />
         {isWeComMedia ? (
           <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
             <PacketField label="Name" value={resolveCustomerDisplayName(caseItem)} />
@@ -416,6 +424,11 @@ function BrokerCaseDetail({
             }
           />
         )}
+        <CaseAttachmentsPanel
+          caseId={caseItem.case_id}
+          attachments={attachments}
+          perfSession={perfSession}
+        />
         {showConfirm && onConfirm ? (
           <Button
             type="primary"
@@ -455,8 +468,6 @@ function BrokerCaseDetail({
       {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
         <MissingItemsCard fields={missingFields} />
       ) : null}
-
-      <CaseAttachmentsPanel caseId={caseItem.case_id} attachments={attachments} />
 
       <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
         <PacketField label="Name" value={get('customer_name') || caseItem.customer_name} />
@@ -521,6 +532,12 @@ function BrokerCaseDetail({
         <Alert type="warning" showIcon message="Warnings" description={blob!.warnings!.join('; ')} style={{ marginBottom: 12 }} />
       )}
 
+      <CaseAttachmentsPanel
+        caseId={caseItem.case_id}
+        attachments={attachments}
+        perfSession={perfSession}
+      />
+
       <Space direction="vertical" style={{ width: '100%' }} size={8}>
         {showConfirm && onConfirm ? (
           <Button
@@ -569,6 +586,7 @@ export default function DocumentIntakeInboxPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SavedCase | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [drawerPerfSession, setDrawerPerfSession] = useState<WorkbenchPerfSession | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
@@ -614,14 +632,26 @@ export default function DocumentIntakeInboxPage() {
   }, [loadQueue]);
 
   const openCase = async (caseId: string) => {
+    const stub = rows.find((r) => r.case_id === caseId)?.raw ?? null;
+    const imageCount = countImagePreviews(stub?.case_attachments, isImageAttachment);
+    const session = createWorkbenchPerfSession(caseId, imageCount);
+    setDrawerPerfSession(session);
     setOpenId(caseId);
+    if (stub) setDetail(stub);
     setDetailLoading(true);
+    const fetchStart = performance.now();
     try {
       const full = await getSavedCase(caseId);
       setDetail(full);
+      const hydratedCount = countImagePreviews(full.case_attachments, isImageAttachment);
+      if (hydratedCount !== session.imagePreviewCount) {
+        session.imagePreviewCount = hydratedCount;
+        session.attachmentCount = hydratedCount;
+      }
+      logCaseDetailLoaded(session, Math.round(performance.now() - fetchStart));
     } catch {
       messageApi.error('Could not open case');
-      setDetail(null);
+      if (!stub) setDetail(null);
     } finally {
       setDetailLoading(false);
     }
@@ -808,17 +838,22 @@ export default function DocumentIntakeInboxPage() {
         }
         width={520}
         open={Boolean(openId)}
-        onClose={() => { setOpenId(null); setDetail(null); }}
+        onClose={() => { setOpenId(null); setDetail(null); setDrawerPerfSession(null); }}
         styles={{ body: { paddingTop: 12 } }}
         destroyOnClose
       >
-        {detailLoading ? (
-          <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
-        ) : detail ? (
-          <BrokerCaseDetail
-            caseItem={detail}
-            blob={detailBlob}
-            onCopyReport={async () => {
+        {detail ? (
+          <>
+            {detailLoading ? (
+              <div style={{ marginBottom: 12 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Refreshing case details…</Text>
+              </div>
+            ) : null}
+            <BrokerCaseDetail
+              caseItem={detail}
+              blob={detailBlob}
+              perfSession={drawerPerfSession}
+              onCopyReport={async () => {
               const text = detailBlob?.copy_text || '';
               if (!text) { messageApi.warning('No copy text stored'); return; }
               const ok = await copyToClipboard(text);
@@ -834,6 +869,9 @@ export default function DocumentIntakeInboxPage() {
             onConfirm={() => void handleConfirmCase()}
             confirmSaving={confirmSaving}
           />
+          </>
+        ) : detailLoading ? (
+          <Skeleton active paragraph={{ rows: 6 }} />
         ) : null}
         {deleting && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

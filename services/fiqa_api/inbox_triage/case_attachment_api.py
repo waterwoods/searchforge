@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import re
+import time
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
@@ -12,6 +14,11 @@ _GCS_URI_RE = re.compile(r"^gs://([^/]+)/(.+)$")
 
 # Tests inject mock GCS reader — never used in production unless set.
 _gcs_download_hook: Callable[[str], tuple[bytes, str | None]] | None = None
+
+# P19F-1 — per-request GCS download timing for preview perf logs (no URI logged).
+_preview_gcs_ms: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "preview_gcs_ms", default=None
+)
 
 
 def set_gcs_download_hook_for_tests(
@@ -139,6 +146,13 @@ def sanitize_case_for_workbench_api(case: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def consume_preview_gcs_ms() -> float | None:
+    """Return and clear GCS download ms captured during resolve_attachment_preview."""
+    gcs_ms = _preview_gcs_ms.get()
+    _preview_gcs_ms.set(None)
+    return gcs_ms
+
+
 def download_wecom_attachment_bytes(storage_uri: str) -> tuple[bytes, str | None]:
     """
     Read attachment bytes from private GCS storage_uri (gs://bucket/path).
@@ -149,7 +163,10 @@ def download_wecom_attachment_bytes(storage_uri: str) -> tuple[bytes, str | None
         raise ValueError("invalid_storage_uri")
     bucket, object_path = parsed
     if _gcs_download_hook is not None:
-        return _gcs_download_hook(storage_uri)
+        t0 = time.perf_counter()
+        content, content_type = _gcs_download_hook(storage_uri)
+        _preview_gcs_ms.set(round((time.perf_counter() - t0) * 1000, 1))
+        return content, content_type
 
     from google.cloud import storage  # type: ignore[import-untyped]
 
@@ -157,7 +174,9 @@ def download_wecom_attachment_bytes(storage_uri: str) -> tuple[bytes, str | None
     blob = client.bucket(bucket).blob(object_path)
     if not blob.exists():
         raise FileNotFoundError("gcs_object_not_found")
+    t0 = time.perf_counter()
     content = blob.download_as_bytes()
+    _preview_gcs_ms.set(round((time.perf_counter() - t0) * 1000, 1))
     content_type = blob.content_type or None
     return content, content_type
 
