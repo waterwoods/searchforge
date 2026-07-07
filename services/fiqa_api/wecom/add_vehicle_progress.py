@@ -22,11 +22,6 @@ from services.fiqa_api.wecom.add_vehicle_phase2 import (
     phase2_text_is_complete,
     phase2_text_still_needed,
 )
-from services.fiqa_api.wecom.identity import (
-    extract_delivery_date_from_text,
-    extract_phone_from_text,
-    extract_zip_from_text,
-)
 from services.fiqa_api.wecom.intent import IntentResult, is_add_vehicle_status_inquiry, is_vague_greeting_for_progress
 from services.fiqa_api.wecom.reply import build_add_vehicle_progress_card
 
@@ -152,14 +147,10 @@ def derive_add_vehicle_progress(case: dict[str, Any]) -> dict[str, Any]:
 
 
 def message_has_phase2_extractable_fields(text: str, normalized: dict[str, Any]) -> bool:
-    """True when free text likely carries Phase 2 delivery_date / zip / phone."""
-    return any(
-        [
-            extract_delivery_date_from_text(text),
-            extract_zip_from_text(text),
-            normalized.get("phone") or extract_phone_from_text(text),
-        ]
-    )
+    """True when free text likely carries Phase 2 delivery_date / zip / phone (incl. invalid)."""
+    from services.fiqa_api.wecom.add_vehicle_phase2 import _phase2_text_has_field_signals
+
+    return _phase2_text_has_field_signals(text, normalized)
 
 
 def should_route_add_vehicle_progress(

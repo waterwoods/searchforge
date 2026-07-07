@@ -20,6 +20,16 @@ def normalize_phone_digits(raw: str | None) -> str:
     return digits
 
 
+def normalize_us_phone_10_digits(raw: str | None) -> str | None:
+    """Return exactly 10 US digits when valid; None if not a clear US phone."""
+    digits = re.sub(r"\D", "", (raw or "").strip())
+    if len(digits) == 10:
+        return digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return digits[1:]
+    return None
+
+
 def is_valid_customer_phone(raw: str | None) -> bool:
     """Phase 1: US 10-digit minimum bar for customer entry Continue."""
     digits = normalize_phone_digits(raw)

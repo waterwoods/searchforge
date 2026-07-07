@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,7 +22,9 @@ from services.fiqa_api.inbox_triage.phone_normalization import normalize_phone_d
 from services.fiqa_api.wecom.active_case_bridge import find_case_by_wecom_msg_id
 from services.fiqa_api.wecom.identity import (
     extract_delivery_date_from_text,
+    extract_delivery_date_with_validation,
     extract_phone_from_text,
+    extract_phone_with_validation,
     extract_zip_from_text,
 )
 from services.fiqa_api.wecom.intent import IntentResult
@@ -143,23 +146,11 @@ def should_handle_phase2_incoming_text(
         return False
     if intent_result.confidence == "high" and intent_result.intent == "add_car":
         text = str(normalized.get("text") or "").strip()
-        has_phase2_fields = any(
-            [
-                extract_delivery_date_from_text(text),
-                extract_zip_from_text(text),
-                normalized.get("phone") or extract_phone_from_text(text),
-            ]
-        )
+        has_phase2_fields = _phase2_text_has_field_signals(text, normalized)
         if not has_phase2_fields:
             return False
     text = str(normalized.get("text") or "").strip()
-    if not any(
-        [
-            extract_delivery_date_from_text(text),
-            extract_zip_from_text(text),
-            normalized.get("phone") or extract_phone_from_text(text),
-        ]
-    ):
+    if not _phase2_text_has_field_signals(text, normalized):
         from services.fiqa_api.wecom.intent import (
             is_add_vehicle_status_inquiry,
             is_vague_greeting_for_progress,
@@ -170,11 +161,47 @@ def should_handle_phase2_incoming_text(
     return True
 
 
-def _extract_phase2_fields(text: str, normalized: dict[str, Any]) -> dict[str, str | None]:
+def _phase2_text_has_field_signals(text: str, normalized: dict[str, Any]) -> bool:
+    """True when message carries Phase 2 field content (valid or rejected-invalid)."""
+    parsed = parse_phase2_text_fields(text, normalized)
+    return any(
+        [
+            parsed.get("delivery_date"),
+            parsed.get("zip"),
+            parsed.get("phone"),
+            parsed.get("invalid_date"),
+            parsed.get("invalid_phone"),
+        ]
+    )
+
+
+def parse_phase2_text_fields(text: str, normalized: dict[str, Any]) -> dict[str, str | None]:
+    """Extract Phase 2 fields with validation; invalid candidates are not saved."""
+    delivery_date, invalid_date = extract_delivery_date_with_validation(text)
+    phone_norm = normalized.get("phone")
+    if phone_norm:
+        from services.fiqa_api.inbox_triage.phone_normalization import normalize_us_phone_10_digits
+
+        phone_digits = re.sub(r"\D", "", str(phone_norm))
+        phone = normalize_us_phone_10_digits(phone_digits)
+        invalid_phone = phone_digits if not phone and len(phone_digits) >= 10 else None
+    else:
+        phone, invalid_phone = extract_phone_with_validation(text)
     return {
-        "delivery_date": extract_delivery_date_from_text(text),
+        "delivery_date": delivery_date,
         "zip": extract_zip_from_text(text),
-        "phone": normalized.get("phone") or extract_phone_from_text(text),
+        "phone": phone,
+        "invalid_date": invalid_date,
+        "invalid_phone": invalid_phone,
+    }
+
+
+def _extract_phase2_fields(text: str, normalized: dict[str, Any]) -> dict[str, str | None]:
+    parsed = parse_phase2_text_fields(text, normalized)
+    return {
+        "delivery_date": parsed.get("delivery_date"),
+        "zip": parsed.get("zip"),
+        "phone": parsed.get("phone"),
     }
 
 
@@ -266,8 +293,13 @@ def ingest_phase2_text_collection(
             "active_case_outcome": "phase2_case_not_found",
         }
 
+    parsed = parse_phase2_text_fields(text, normalized)
     extracted = _extract_phase2_fields(text, normalized)
-    if not any(extracted.values()):
+    invalid_date = parsed.get("invalid_date")
+    invalid_phone = parsed.get("invalid_phone")
+    has_invalid = bool(invalid_date or invalid_phone)
+
+    if not any(extracted.values()) and not has_invalid:
         from services.fiqa_api.wecom.reply import build_phase2_unrecognized_fields_reply
 
         _log_event(
@@ -282,33 +314,67 @@ def ingest_phase2_text_collection(
             "active_case_outcome": "phase2_unrecognized_fields",
         }
 
-    triage_stub = _build_phase2_triage_stub(case, extracted)
+    if any(extracted.values()):
+        triage_stub = _build_phase2_triage_stub(case, extracted)
 
-    if not text:
-        text = "(no text)"
-    from services.fiqa_api.wecom.active_case_bridge import _record_wecom_evidence
+        if not text:
+            text = "(no text)"
+        from services.fiqa_api.wecom.active_case_bridge import _record_wecom_evidence
 
-    updated = append_follow_up_message(case_id, text, triage_stub)
-    if updated is None:
+        updated = append_follow_up_message(case_id, text, triage_stub)
+        if updated is None:
+            return {
+                "outcome": "case_not_found",
+                "case_id": None,
+                "case_created": False,
+                "reply_text": None,
+                "active_case_outcome": "phase2_case_not_found",
+            }
+
+        _record_wecom_evidence(case_id, msg_id)
+
+        phone = extracted.get("phone")
+        if phone:
+            from services.fiqa_api.inbox_triage.case_store import update_case_customer
+
+            digits = normalize_phone_digits(phone)
+            if digits:
+                update_case_customer(case_id, customer_phone=digits)
+    elif has_invalid:
+        from services.fiqa_api.wecom.active_case_bridge import _record_wecom_evidence
+
+        _record_wecom_evidence(case_id, msg_id)
+
+    refreshed = get_case_for_read(case_id) or case
+    if has_invalid:
+        from services.fiqa_api.wecom.reply import build_phase2_validation_reply
+
+        reply_text = build_phase2_validation_reply(
+            refreshed,
+            invalid_date=invalid_date,
+            invalid_phone=invalid_phone,
+        )
+        _log_event(
+            "wecom_phase2_validation_retry_v1",
+            {
+                "msg_id": msg_id,
+                "case_id": case_id,
+                "invalid_date": invalid_date,
+                "invalid_phone": invalid_phone,
+                "saved_zip": bool(extracted.get("zip")),
+            },
+        )
         return {
-            "outcome": "case_not_found",
-            "case_id": None,
+            "outcome": "validation_retry",
+            "case_id": case_id,
             "case_created": False,
-            "reply_text": None,
-            "active_case_outcome": "phase2_case_not_found",
+            "reply_text": reply_text,
+            "active_case_outcome": "phase2_validation_retry",
+            "still_needed_fields": phase2_text_still_needed(refreshed),
+            "guided_workflow_state": refreshed.get("guided_workflow_state"),
+            "add_vehicle_phase": refreshed.get("add_vehicle_phase"),
         }
 
-    _record_wecom_evidence(case_id, msg_id)
-
-    phone = extracted.get("phone")
-    if phone:
-        from services.fiqa_api.inbox_triage.case_store import update_case_customer
-
-        digits = normalize_phone_digits(phone)
-        if digits:
-            update_case_customer(case_id, customer_phone=digits)
-
-    refreshed = get_case_for_read(case_id) or updated
     complete = phase2_text_is_complete(refreshed)
 
     from services.fiqa_api.wecom.reply import (

@@ -330,6 +330,55 @@ def build_phase2_unrecognized_fields_reply() -> str:
     )
 
 
+def build_phase2_validation_reply(
+    case: dict[str, Any],
+    *,
+    invalid_date: str | None = None,
+    invalid_phone: str | None = None,
+) -> str:
+    """Ask customer to re-enter fields that failed validation."""
+    from services.fiqa_api.wecom.add_vehicle_phase2 import (
+        PHASE2_TEXT_FIELDS,
+        _FIELD_LABELS_ZH,
+        _field_display_value,
+    )
+
+    lines: list[str] = []
+    collected_names = {str(x).lower() for x in (case.get("collected_fields") or [])}
+    has_collected = any(f in collected_names for f in PHASE2_TEXT_FIELDS)
+    if has_collected:
+        lines.extend(["已收到："])
+        for field in PHASE2_TEXT_FIELDS:
+            if field in collected_names:
+                lines.append(f"✓ {_FIELD_LABELS_ZH[field]} — {_field_display_value(case, field)}")
+        lines.append("")
+
+    if invalid_date:
+        lines.extend(
+            [
+                "提车日期好像不对，我看到：",
+                invalid_date,
+                "",
+                "请重新回复正确日期。",
+                "例如：",
+                "7月12号",
+                "",
+            ]
+        )
+    if invalid_phone:
+        lines.extend(
+            [
+                "联系电话位数好像不对，我看到：",
+                invalid_phone,
+                "",
+                "请重新回复 10 位电话号码。",
+                "例如：",
+                "2031234567",
+            ]
+        )
+    return "\n".join(lines).rstrip()
+
+
 # ---------------------------------------------------------------------------
 # P19E-2 — Add Vehicle Progress Card (status / resume layer)
 # ---------------------------------------------------------------------------

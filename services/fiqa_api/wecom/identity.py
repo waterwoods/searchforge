@@ -7,6 +7,7 @@ import re
 from services.fiqa_api.inbox_triage.phone_normalization import (
     is_valid_customer_phone,
     normalize_phone_digits,
+    normalize_us_phone_10_digits,
 )
 
 _PHONE_PATTERNS = (
@@ -64,21 +65,79 @@ _DRIVER_PATTERNS = (
 )
 
 
-def extract_phone_from_text(text: str | None) -> str | None:
-    """Return normalized 10-digit US phone when found in free text."""
+_PHONE_LABELED_PATTERN = re.compile(
+    r"(?:电话|phone|call me|我电话|联系方式|手机)[：:\s是为]*([+\d\s().-]+)",
+    re.IGNORECASE,
+)
+
+
+def _phone_match_bounded(text: str, start: int, end: int) -> bool:
+    if start > 0 and text[start - 1].isdigit():
+        return False
+    if end < len(text) and text[end].isdigit():
+        return False
+    return True
+
+
+def _is_valid_month_day(month: int, day: int) -> bool:
+    return 1 <= month <= 12 and 1 <= day <= 31
+
+
+def _validate_slash_date_token(token: str) -> bool:
+    parts = re.split(r"[/-]", token.strip())
+    if len(parts) < 2:
+        return True
+    if len(parts[0]) == 4 and parts[0].isdigit():
+        return True
+    try:
+        month = int(parts[0])
+        day = int(parts[1])
+    except ValueError:
+        return True
+    return _is_valid_month_day(month, day)
+
+
+def extract_phone_with_validation(text: str | None) -> tuple[str | None, str | None]:
+    """Return (normalized_10_digit_phone, invalid_candidate_digits)."""
     t = (text or "").strip()
     if not t:
-        return None
+        return None, None
+
+    labeled = _PHONE_LABELED_PATTERN.search(t)
+    if labeled:
+        digit_run = re.sub(r"\D", "", labeled.group(1))
+        valid = normalize_us_phone_10_digits(digit_run)
+        if valid:
+            return valid, None
+        if len(digit_run) >= 10:
+            return None, digit_run
+
     for pat in _PHONE_PATTERNS:
-        m = re.search(pat, t, re.IGNORECASE)
-        if m and len(m.groups()) == 3:
+        for m in re.finditer(pat, t, re.IGNORECASE):
+            if len(m.groups()) != 3:
+                continue
+            if not _phone_match_bounded(t, m.start(), m.end()):
+                continue
             candidate = f"{m.group(1)}{m.group(2)}{m.group(3)}"
-            if is_valid_customer_phone(candidate):
-                return normalize_phone_digits(candidate)
-    digits = normalize_phone_digits(t)
-    if is_valid_customer_phone(digits) and len(re.sub(r"\D", "", t)) >= 10:
-        return digits
-    return None
+            valid = normalize_us_phone_10_digits(candidate)
+            if valid:
+                return valid, None
+
+    for m in re.finditer(r"(?<!\d)(\d{10,11})(?!\d)", t):
+        digit_run = m.group(1)
+        valid = normalize_us_phone_10_digits(digit_run)
+        if valid:
+            return valid, None
+        if len(digit_run) == 11 and not digit_run.startswith("1"):
+            return None, digit_run
+
+    return None, None
+
+
+def extract_phone_from_text(text: str | None) -> str | None:
+    """Return normalized 10-digit US phone when clearly valid in free text."""
+    valid, _ = extract_phone_with_validation(text)
+    return valid
 
 
 def extract_vin_from_text(text: str | None) -> str | None:
@@ -109,32 +168,54 @@ def extract_zip_from_text(text: str | None) -> str | None:
     return None
 
 
-def extract_delivery_date_from_text(text: str | None) -> str | None:
-    """Return a date token when present in free text (calendar, Chinese, or relative pickup)."""
+def extract_delivery_date_with_validation(text: str | None) -> tuple[str | None, str | None]:
+    """Return (valid_delivery_date, invalid_date_candidate_raw)."""
     t = (text or "").strip()
     if not t:
-        return None
-    m = _DATE_PATTERN.search(t)
-    if m:
-        return m.group(1)
+        return None, None
+
     cm = _CHINESE_MONTH_DAY_PATTERN.search(t)
     if cm:
-        return f"{cm.group(1)}月{cm.group(2)}日"
+        month = int(cm.group(1))
+        day = int(cm.group(2))
+        raw = cm.group(0)
+        if _is_valid_month_day(month, day):
+            return f"{month}月{day}日", None
+        return None, raw
+
+    m = _DATE_PATTERN.search(t)
+    if m:
+        token = m.group(1)
+        if not _validate_slash_date_token(token):
+            return None, token
+        return token, None
+
     from services.fiqa_api.inbox_triage.date_normalization import normalize_delivery_date_or_flag
 
     resolved, mode = normalize_delivery_date_or_flag(t)
     if mode == "resolved" and resolved:
-        return resolved
+        return resolved, None
     if mode == "ask_exact":
         for phrase in ("明天", "后天", "大后天", "下周一", "下周二", "下周三", "下周四", "下周五", "下周六", "下周日", "下周天"):
             if phrase in t:
-                return phrase
+                return phrase, None
     pickup_markers = ("提车", "拿车", "delivery", "pickup", "pick up")
     if any(marker in t.lower() or marker in t for marker in pickup_markers):
         cm2 = _CHINESE_MONTH_DAY_PATTERN.search(t)
         if cm2:
-            return f"{cm2.group(1)}月{cm2.group(2)}日"
-    return None
+            month = int(cm2.group(1))
+            day = int(cm2.group(2))
+            raw = cm2.group(0)
+            if _is_valid_month_day(month, day):
+                return f"{month}月{day}日", None
+            return None, raw
+    return None, None
+
+
+def extract_delivery_date_from_text(text: str | None) -> str | None:
+    """Return a date token when present and valid in free text."""
+    valid, _ = extract_delivery_date_with_validation(text)
+    return valid
 
 
 def extract_primary_driver_from_text(text: str | None) -> str | None:
