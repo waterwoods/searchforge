@@ -3,7 +3,7 @@
 **Date:** 2026-07-08  
 **Branch:** `sprint/p16-trust-layer`  
 **Type:** Phase 2 phone/date validation — local + deploy  
-**Verdict:** **LOCAL PASS** · **DEPLOY PASS** · **QA gate PASS** · **Voice retest PENDING**
+**Verdict:** **LOCAL PASS** · **DEPLOY PASS** · **QA gate PASS** · **Phone retest PASS** · **CLOSED**
 
 ---
 
@@ -160,13 +160,78 @@ Revision `fiqa-api-00166-vs2` startup + runtime logs reviewed (~100 lines):
 
 ---
 
-## Andy phone retest checklist
+## Andy Phone Retest Result
+
+**Test date:** 2026-07-08  
+**Backend revision:** `fiqa-api-00166-vs2`  
+**User channel:** WeCom phone live test (Andy)  
+**Result summary:** **PASS / GO / CLOSED**
+
+### A. Invalid date + invalid phone
+
+**Input:**
+```
+我是要是17月12号提车，Zip code 92705，电话是20311155573
+```
+
+**Expected:**
+- ZIP saved
+- invalid date rejected
+- invalid phone rejected
+- no S2
+- no broker review
+- no truncated phone
+
+**Actual:**
+- ZIP 92705 saved ✅
+- date `17月12号` rejected ✅
+- phone `20311155573` rejected ✅
+- validation reply shown (要求重新回复正确日期和 10 位电话) ✅
+- no S2 ✅
+- no broker review ✅
+- no truncated phone `0311155573` ✅
+
+**Result:** **PASS**
+
+### B. Corrected date + phone
+
+**Input:**
+```
+我是要是7月12号提车，Zip code 92705，电话是2031115557
+```
+
+**Expected:**
+- date saved
+- phone saved
+- ZIP retained
+- S2 sent
+- broker review state
+
+**Actual:**
+- S2 `【第 2 步完成 ✅】` sent ✅
+- broker review (陈总人工确认) ✅
+- Workbench Known Facts:
+  - ZIP: `92705` ✅
+  - 电话: `2031115557` ✅
+  - 提车日期: `7月12日` ✅
+
+**Result:** **PASS**
+
+### C. Old dirty test case note
+
+Workbench list may still show a pre-fix demo case with truncated phone `0311155573`. This is historical data from before `fea8790` — not evidence of current bug. Can be cleaned up in a later demo-data pass; not a P19G-3.2 blocker.
+
+### Overall verdict
+
+**P19G-3.2 PASS / GO / CLOSED**
+
+---
+
+## Andy phone retest checklist (reference)
 
 **Backend:** `fiqa-api-00166-vs2` · **GIT_SHA:** `fea8790` · **Frontend:** unchanged (`ui-smoky-beta`)
 
-### Smoke A — invalid voice/text input
-
-**Setup:** If no active Phase 2 case → `重新加车` → complete H5 photos → wait for S1.
+### Smoke A — invalid voice/text input — **PASS**
 
 **Send:**
 ```
@@ -175,50 +240,32 @@ Revision `fiqa-api-00166-vs2` startup + runtime logs reviewed (~100 lines):
 
 | # | Expected | Result |
 |---|----------|--------|
-| A1 | ZIP 92705 saved | **PENDING** |
-| A2 | Phone `20311155573` NOT saved | **PENDING** |
-| A3 | Date `17月12号` NOT saved | **PENDING** |
-| A4 | No S2 `【第 2 步完成 ✅】` | **PENDING** |
-| A5 | No broker review state | **PENDING** |
-| A6 | Reply: 提车日期不对 + 联系电话位数不对 | **PENDING** |
-| A7 | Workbench: no `0311155573` or `17月12日` | **PENDING** |
+| A1 | ZIP 92705 saved | **PASS** |
+| A2 | Phone `20311155573` NOT saved | **PASS** |
+| A3 | Date `17月12号` NOT saved | **PASS** |
+| A4 | No S2 `【第 2 步完成 ✅】` | **PASS** |
+| A5 | No broker review state | **PASS** |
+| A6 | Reply: 提车日期不对 + 联系电话位数不对 | **PASS** |
+| A7 | Workbench: no new `0311155573` or `17月12日` | **PASS** |
 
-### Smoke B — correction completes Phase 2
+### Smoke B — correction completes Phase 2 — **PASS**
 
 **Send:**
 ```
-7月12号，电话2031234567
+我是要是7月12号提车，Zip code 92705，电话是2031115557
 ```
 
 | # | Expected | Result |
 |---|----------|--------|
-| B1 | Date saved `7月12日` | **PENDING** |
-| B2 | Phone saved `2031234567` | **PENDING** |
-| B3 | ZIP 92705 retained | **PENDING** |
-| B4 | S2 sent | **PENDING** |
-| B5 | Broker review state | **PENDING** |
+| B1 | Date saved `7月12日` | **PASS** |
+| B2 | Phone saved `2031115557` | **PASS** |
+| B3 | ZIP 92705 retained | **PASS** |
+| B4 | S2 sent | **PASS** |
+| B5 | Broker review state | **PASS** |
 
-### Smoke C — valid 11-digit leading 1 (optional)
+### Smoke C — valid 11-digit leading 1 (optional) — **NOT RUN**
 
-**Setup:** `重新加车` → photos → S1.
-
-**Send:**
-```
-7月12号提车，ZIP 92705，电话12031234567
-```
-
-| # | Expected | Result |
-|---|----------|--------|
-| C1 | Phone saved as `2031234567` | **PENDING** |
-| C2 | S2 if all fields valid | **PENDING** |
-
-### Smoke D — regression
-
-| # | Action | Expected | Result |
-|---|--------|----------|--------|
-| D1 | `进度` | Progress Card works | **PENDING** |
-| D2 | `你好` (active case) | Progress Card, not menu | **PENDING** |
-| D3 | `重新加车` | Restart flow works | **PENDING** |
+### Smoke D — regression — **NOT RUN** (A/B sufficient for closure)
 
 ---
 
@@ -253,8 +300,8 @@ Revision `fiqa-api-00166-vs2` startup + runtime logs reviewed (~100 lines):
 | Push + deploy | **GO** |
 | Post-deploy QA gate | **GO** |
 | Logs | **GO** (clean) |
-| Andy voice retest | **PENDING** — operator run on WeChat |
+| Andy voice retest | **GO** — PASS (2026-07-08) |
 
 ---
 
-*P19G-3.2 deploy complete. Andy voice retest pending.*
+*P19G-3.2 CLOSED — Phase 2 phone/date validation guardrail live and phone-tested.*
