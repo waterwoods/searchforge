@@ -345,6 +345,120 @@ def build_phase2_unrecognized_fields_reply() -> str:
 
 
 # ---------------------------------------------------------------------------
+# P19E-2 — Add Vehicle Progress Card (status / resume layer)
+# ---------------------------------------------------------------------------
+
+_PROGRESS_CARD_TITLE = "【加车资料进度】"
+_PROGRESS_MULTI_CAR_TAIL = "如果您同时办理多台车，请联系陈总。"
+_PROGRESS_H5_TAIL = "如果按钮打不开，请回复：链接"
+_PROGRESS_H5_FALLBACK = "请回复：重新加车 重新开始上传，或联系经纪人。"
+
+
+def build_add_vehicle_progress_card(
+    case: dict[str, Any],
+    *,
+    progress: dict[str, Any],
+    h5_url: str | None = None,
+    multiple_open_cases: bool = False,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """WeCom Progress Card — query-driven status for open add_car cases."""
+    phase = str(progress.get("phase") or "").strip()
+    lines: list[str] = [_PROGRESS_CARD_TITLE, ""]
+
+    if phase == "phase1_in_progress":
+        lines.append("▶️ 第 1 步：上传照片")
+        missing = progress.get("missing_photo_labels") or []
+        if missing:
+            lines.append("还差：")
+            for label in missing:
+                lines.append(f"○ {label}")
+        lines.append("")
+        lines.append("请点击继续上传照片。")
+        body = "\n".join(lines)
+        if multiple_open_cases:
+            body = f"{body}\n\n{_PROGRESS_MULTI_CAR_TAIL}"
+        url = (h5_url or "").strip()
+        if url:
+            return None, {
+                "head_content": body,
+                "list": [
+                    {"type": "view", "view": {"url": url, "content": "继续上传照片"}},
+                    {
+                        "type": "click",
+                        "click": {"id": "start_add_car_broker", "content": "联系经纪人"},
+                    },
+                ],
+                "tail_content": _PROGRESS_H5_TAIL,
+            }
+        fallback = f"{body}\n\n{_PROGRESS_H5_FALLBACK}"
+        return fallback, None
+
+    if phase in ("phase2_incomplete", "phase2_partial"):
+        lines.extend(
+            [
+                "✅ 第 1 步：照片资料已收到",
+                "▶️ 第 2 步：补充文字信息",
+                "",
+            ]
+        )
+        collected = progress.get("collected_fields") or []
+        if collected:
+            lines.append("已收到：")
+            for item in collected:
+                lines.append(f"✓ {item['label']} — {item['value']}")
+            lines.append("")
+        missing_fields = progress.get("missing_field_labels") or []
+        if missing_fields:
+            lines.append("还差：")
+            for label in missing_fields:
+                lines.append(f"○ {label}")
+            lines.append("")
+        if phase == "phase2_partial":
+            lines.append("请继续在本聊天打字回复。")
+        else:
+            lines.append("请直接在本聊天打字回复。")
+        text = "\n".join(lines)
+        if multiple_open_cases:
+            text = f"{text}\n\n{_PROGRESS_MULTI_CAR_TAIL}"
+        return text, None
+
+    if phase == "phase3_broker_review":
+        lines.extend(
+            [
+                "✅ 第 1 步：照片资料已收到",
+                "✅ 第 2 步：文字信息已收到",
+                "▶️ 第 3 步：陈总人工确认中",
+                "",
+                "目前不需要您补充资料。",
+                "陈总会人工查看，不会自动修改您的保单。",
+                "确认后我们会通过微信或电话跟进。",
+            ]
+        )
+        text = "\n".join(lines)
+        if multiple_open_cases:
+            text = f"{text}\n\n{_PROGRESS_MULTI_CAR_TAIL}"
+        return text, None
+
+    if phase == "broker_done":
+        lines.extend(
+            [
+                "✅ 第 1 步：照片资料已收到",
+                "✅ 第 2 步：文字信息已收到",
+                "✅ 第 3 步：陈总已处理 / 已确认",
+                "",
+                "陈总已处理或正在跟进，请留意微信/电话。",
+                "如需办理其他事项，请直接回复。",
+            ]
+        )
+        text = "\n".join(lines)
+        if multiple_open_cases:
+            text = f"{text}\n\n{_PROGRESS_MULTI_CAR_TAIL}"
+        return text, None
+
+    return build_slice_reply("unclear", guided_menu=True), build_guided_menu_payload()
+
+
+# ---------------------------------------------------------------------------
 # Track B0.3 — Done Card (WECOM_B0_ACTIVE_WORKSPACE only)
 #
 # Sent exactly once, only from `active_case_bridge.confirm_case_by_broker()`,

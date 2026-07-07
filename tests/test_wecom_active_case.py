@@ -729,8 +729,8 @@ class TestTrackB0DraftCase:
             cfg, callback_token="t", open_kf_id="wktest001", pull_messages=hello
         )
         assert result[0]["case_created"] is False
-        assert result[0]["guided_menu_required"] is True
-        assert result[0]["active_case_outcome"] == "intent_not_actionable"
+        assert result[0]["guided_menu_required"] is False
+        assert result[0]["active_case_outcome"] == "add_vehicle_progress_card"
         assert count_stored_cases() == 1
         stored = get_case_by_id(case_id)
         assert stored is not None

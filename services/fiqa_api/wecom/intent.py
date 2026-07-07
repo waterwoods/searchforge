@@ -188,6 +188,37 @@ _GENERIC_VAGUE_MARKERS = (
     "hey there",
 )
 
+_STATUS_INQUIRY_MARKERS = (
+    "进度",
+    "查进度",
+    "什么进度",
+    "到哪了",
+    "哪一步",
+    "还差什么",
+    "还差",
+    "缺什么",
+    "继续",
+    "继续办",
+    "继续上传",
+    "还没完",
+    "完成了吗",
+    "好了吗",
+    "交了吗",
+    "提交了吗",
+    "现在怎么样",
+    "资料齐了吗",
+    "还有什么要补",
+    "下一步是什么",
+    "已提交",
+    "status",
+    "progress",
+    "continue",
+    "what is next",
+    "what else do you need",
+    "did i submit",
+    "where am i",
+)
+
 _MENU_TEXT_MARKERS: list[tuple[WeComIntent, tuple[str, ...]]] = [
     ("add_car", ("add vehicle", "加车", "加一台车", "新车加保")),
     ("claim_intake", ("claim", "accident", "事故", "理赔", "出险")),
@@ -205,6 +236,33 @@ class IntentResult:
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
     lowered = text.lower()
     return any(m in lowered for m in markers)
+
+
+def is_vague_greeting_for_progress(text: str) -> bool:
+    """Vague greeting that should rehydrate Progress Card when an add_car case is open."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    return _contains_any(lowered, _GENERIC_VAGUE_MARKERS) and len(lowered) <= 24
+
+
+def is_add_vehicle_status_inquiry(text: str) -> bool:
+    """High-confidence status / progress inquiry (P19E-2)."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    if is_explicit_add_car_restart(raw):
+        return False
+    return _contains_any(lowered, _STATUS_INQUIRY_MARKERS)
+
+
+def is_explicit_add_car_restart(text: str) -> bool:
+    """Delegate to H5 upload restart markers (single source of truth)."""
+    from services.fiqa_api.inbox_triage.h5_task_upload import is_explicit_add_car_restart as _restart
+
+    return _restart(text)
 
 
 def _menu_intent_from_id(menu_id: str) -> WeComIntent | None:

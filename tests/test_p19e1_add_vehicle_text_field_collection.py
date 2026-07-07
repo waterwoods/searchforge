@@ -212,21 +212,22 @@ def test_s2_dedup_on_repeat_message():
     assert second["reply_text"] is None
 
 
-def test_add_car_after_phase1_shows_s1_not_new_h5(monkeypatch):
+def test_add_car_after_phase1_shows_progress_card_not_new_h5(monkeypatch):
     case = _case_with_h5_photos()
     bind_case_channel_identity(case["case_id"], wecom_external_userid="wm_follow", wecom_open_kf_id="wk001")
     cfg = _b0_cfg(monkeypatch)
+    monkeypatch.setenv("H5_TASK_TOKEN_SECRET", "test-h5-secret")
     reset_message_processed_memory_for_tests()
     reset_reply_dedup_memory_for_tests()
     captured: dict = {}
 
+    def fake_send_menu_reply(_cfg, *, external_userid, open_kf_id, msgmenu):
+        captured["menu"] = msgmenu
+
     def fake_send_text_reply(_cfg, *, external_userid, open_kf_id, content):
         captured["text"] = content
 
-    with patch(
-        "services.fiqa_api.wecom.slice.try_send_h5_photo_flow_end_card",
-        return_value={"sent": True},
-    ):
+    with patch("services.fiqa_api.wecom.slice.send_menu_reply", side_effect=fake_send_menu_reply):
         with patch("services.fiqa_api.wecom.slice.send_text_reply", side_effect=fake_send_text_reply):
             outcomes = process_kf_msg_or_event(
                 cfg,
@@ -242,8 +243,10 @@ def test_add_car_after_phase1_shows_s1_not_new_h5(monkeypatch):
                     }
                 ],
             )
-    assert outcomes[0]["active_case_outcome"] == "photo_flow_complete_followup"
-    assert "第 1 阶段完成" in captured.get("text", "")
+    assert outcomes[0]["active_case_outcome"] == "add_vehicle_progress_card"
+    reply_blob = captured.get("text") or str(captured.get("menu") or "")
+    assert "加车资料进度" in reply_blob
+    assert "第 2 步" in reply_blob
 
 
 def test_restart_still_creates_new_flow(monkeypatch):

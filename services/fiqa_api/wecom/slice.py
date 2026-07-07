@@ -140,7 +140,7 @@ def _should_route_add_car_h5_start_instead_of_draft_merge(
         and open_bound_case
         and h5_photo_flow_is_complete(open_bound_case)
     ):
-        return True
+        return False
     return False
 
 
@@ -626,6 +626,71 @@ def process_kf_msg_or_event(
                     update_message_processed_outcome(
                         msg_id,
                         outcome=str(outcome.get("active_case_outcome") or ""),
+                        case_id=str(outcome.get("case_id") or "").strip() or None,
+                    )
+                    continue
+
+            # P19E-2 — Progress Card before draft merge / duplicate H5 Start.
+            from services.fiqa_api.wecom.add_vehicle_progress import (
+                build_add_vehicle_progress_reply,
+                find_active_add_car_case_for_progress,
+                should_route_add_vehicle_progress,
+            )
+
+            if b0_enabled and should_route_add_vehicle_progress(
+                normalized,
+                intent_result,
+                guided_menu=guided_menu,
+            ):
+                progress_case, open_count = find_active_add_car_case_for_progress(
+                    str(normalized.get("external_userid") or "")
+                )
+                if progress_case:
+                    text_content, menu_payload, h5_masked = build_add_vehicle_progress_reply(
+                        progress_case,
+                        external_userid=str(normalized.get("external_userid") or ""),
+                        open_case_count=open_count,
+                    )
+                    outcome = {
+                        "msg_id": normalized.get("msg_id"),
+                        "external_userid": normalized.get("external_userid"),
+                        "detected_intent": canonical_intent(intent_result.intent),
+                        "internal_intent": intent_result.intent,
+                        "confidence": intent_result.confidence,
+                        "matched_by": intent_result.matched_by,
+                        "guided_menu_required": False,
+                        "reply_text": text_content,
+                        "reply_sent": False,
+                        "reply_send_error": None,
+                        "case_created": False,
+                        "case_id": progress_case.get("case_id"),
+                        "active_case_outcome": "add_vehicle_progress_card",
+                        "h5_task_link_masked": h5_masked,
+                    }
+                    _log_slice(
+                        "add_vehicle_progress_card_v1",
+                        {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                    )
+                    _log_slice(
+                        "reply_generated_v1",
+                        {
+                            "reply_text": text_content or "<add_vehicle_progress_card_msgmenu>",
+                            "guided_menu": False,
+                            "reply_format": "msgmenu" if menu_payload else "text",
+                        },
+                    )
+                    _dispatch_reply(
+                        cfg,
+                        normalized,
+                        send_enabled=send_enabled,
+                        menu_payload=menu_payload,
+                        text_content=text_content,
+                        outcome=outcome,
+                    )
+                    results.append(outcome)
+                    update_message_processed_outcome(
+                        msg_id,
+                        outcome="add_vehicle_progress_card",
                         case_id=str(outcome.get("case_id") or "").strip() or None,
                     )
                     continue

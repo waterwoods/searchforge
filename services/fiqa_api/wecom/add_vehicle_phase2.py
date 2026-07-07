@@ -152,6 +152,21 @@ def should_handle_phase2_incoming_text(
         )
         if not has_phase2_fields:
             return False
+    text = str(normalized.get("text") or "").strip()
+    if not any(
+        [
+            extract_delivery_date_from_text(text),
+            extract_zip_from_text(text),
+            normalized.get("phone") or extract_phone_from_text(text),
+        ]
+    ):
+        from services.fiqa_api.wecom.intent import (
+            is_add_vehicle_status_inquiry,
+            is_vague_greeting_for_progress,
+        )
+
+        if is_add_vehicle_status_inquiry(text) or is_vague_greeting_for_progress(text):
+            return False
     return True
 
 
