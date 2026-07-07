@@ -7,7 +7,7 @@
 
 **This loop:** Local dev + deploy + browser smoke prep.
 
-**Verdict:** **DEPLOY PASS** · **QA gate PASS** · **Automated browser smoke PASS (partial)** · **Andy broker smoke PENDING**
+**Verdict:** **DEPLOY PASS** · **QA gate PASS** · **Andy manual browser smoke PASS** · **P19F-1 CLOSED**
 
 ---
 
@@ -137,7 +137,8 @@ No storage_uri, VIN, phone, or external_userid in log line.
 - Cloud Run min instances not changed (cold start still possible).
 - Unified Intake tab (`BrokerWorkbenchTab`) not updated — only Document Intake drawer.
 - Full-size GCS proxy latency remains (~857ms total for one sample image).
-- Andy manual DevTools + multi-image / retry smoke still pending.
+- Preview retry UI not manually triggered during smoke.
+- Unified Intake tab (`BrokerWorkbenchTab`) not updated.
 
 ---
 
@@ -151,11 +152,11 @@ No storage_uri, VIN, phone, or external_userid in log line.
 | QA gate | **GO** |
 | Logs clean | **GO** |
 | Automated browser smoke | **GO** (partial — A/B/C core paths) |
-| Andy broker smoke | **HOLD** — manual DevTools + multi-image + retry pending |
+| Andy manual browser smoke | **GO** — see §20 |
 
 ---
 
-*Evidence loop: P19F-1 deploy complete. STOP — awaiting Andy broker browser smoke.*
+*Evidence loop: P19F-1 deploy complete. Manual browser smoke closed in §20–§21.*
 
 ## 1. Goal
 
@@ -320,3 +321,86 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 | Code ready for deploy | **GO** — build + tests pass, scope contained |
 
 ---
+
+## 20. Manual Browser Smoke Result — Andy Workbench Test
+
+**Test date:** 2026-07-07  
+**Frontend stable alias:** https://ui-smoky-beta.vercel.app  
+**Backend revision:** `fiqa-api-00164-8c9`  
+**Route tested:** `/workbench/document-intake`  
+**Browser:** Chrome desktop  
+**Result summary:** **PASS**
+
+### A. Drawer text-first render
+
+**Expected:** Drawer shows Next Step / Customer / Known Facts before images fully load. Should not feel like a blank spinner.
+
+**Actual:** Drawer showed Next Step and Customer / Known Facts first. Attachments were below text content. No long blank spinner.
+
+**Result:** **PASS**
+
+### B. Attachments and image preview
+
+**Expected:** Attachment metadata visible. Image previews load normally. Drawer remains usable.
+
+**Actual:** Attachment list and image previews displayed. No drawer crash.
+
+**Result:** **PASS**
+
+### C. Frontend latency logs
+
+**Expected:** DevTools Console shows `WORKBENCH_DRAWER_OPEN`, `WORKBENCH_CASE_DETAIL_LOADED`, `WORKBENCH_FIRST_PREVIEW_LOADED`, `WORKBENCH_ALL_PREVIEWS_LOADED`.
+
+**Actual:** All expected log event names appeared in Console (Andy screenshot confirmed).
+
+**Result:** **PASS**
+
+### D. Backend PREVIEW_PERF
+
+**Expected:** Backend preview logs include `PREVIEW_PERF`.
+
+**Actual:** Confirmed during deploy:
+
+```
+PREVIEW_PERF case_id=case_82092cc39bae attachment_id=att_92f722de864d total_ms=857.0 gcs_ms=190.3 bytes=237473 status=ok
+```
+
+**Result:** **PASS**
+
+### E. Retry behavior
+
+**Expected:** If preview fails, UI shows retry.
+
+**Actual:** Not triggered during manual smoke.
+
+**Result:** **PENDING** — not blocking closure.
+
+### Overall manual smoke verdict
+
+**P19F-1 Workbench UX Polish: PASS / GO / CLOSED**
+
+Manual browser smoke confirms text-first drawer and perf logs are working in production.
+
+**Remaining limitations (non-blocking):**
+
+- Thumbnails not implemented
+- Full-size proxy still used
+- Retry not manually triggered
+- Unified Intake tab not updated
+- Min instances unchanged
+
+---
+
+## 21. P19F-1 Final Verdict
+
+**Verdict:** **GO / CLOSED**
+
+**Reason:** Workbench drawer no longer feels like a blank image-loading experience. Broker can see case context first while attachments load progressively.
+
+**Business value:** Improves broker trust and reduces perceived latency without changing storage security or adding premature infrastructure.
+
+**Next recommended loop:** P19G-0 Actual Cost Gap / Cost Model Recon
+
+---
+
+*Evidence loop: P19F-1 CLOSED. STOP.*
