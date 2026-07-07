@@ -13,7 +13,7 @@ from services.fiqa_api.wecom.active_case_bridge import (
     ingest_wecom_text_to_active_case,
     ingest_wecom_text_to_draft_case,
 )
-from services.fiqa_api.inbox_triage.case_store import get_case_by_id
+from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
 from services.fiqa_api.wecom.config import WeComKfConfig, wecom_kf_api_configured
 from services.fiqa_api.wecom.identity import (
@@ -486,7 +486,7 @@ def process_kf_msg_or_event(
                 if b0_enabled
                 else None
             )
-            open_bound_case = get_case_by_id(open_bound_case_id) if open_bound_case_id else None
+            open_bound_case = get_case_for_read(open_bound_case_id) if open_bound_case_id else None
             if b0_enabled and open_bound_case_id and open_bound_case is None:
                 _log_slice(
                     "stale_draft_binding_cleared_v1",
@@ -567,20 +567,26 @@ def process_kf_msg_or_event(
             )
 
             # P19E-1 — Phase 2 text collection after H5 photo flow complete.
+            from services.fiqa_api.wecom.add_vehicle_phase2 import (
+                ingest_phase2_text_collection,
+                resolve_add_car_case_for_phase2,
+                should_handle_phase2_incoming_text,
+            )
+
+            phase2_case_id, phase2_case = resolve_add_car_case_for_phase2(
+                bound_case_id=open_add_car_draft_id,
+                bound_case=open_bound_case,
+                external_userid=str(normalized.get("external_userid") or ""),
+            )
             if (
                 b0_enabled
-                and open_add_car_draft_id
-                and open_bound_case
-                and h5_photo_flow_is_complete(open_bound_case)
+                and phase2_case_id
+                and phase2_case
+                and h5_photo_flow_is_complete(phase2_case)
                 and not is_explicit_add_car_restart(str(normalized.get("text") or ""))
             ):
-                from services.fiqa_api.wecom.add_vehicle_phase2 import (
-                    ingest_phase2_text_collection,
-                    should_handle_phase2_incoming_text,
-                )
-
-                if should_handle_phase2_incoming_text(open_bound_case, normalized, intent_result):
-                    phase2_result = ingest_phase2_text_collection(normalized, open_add_car_draft_id)
+                if should_handle_phase2_incoming_text(phase2_case, normalized, intent_result):
+                    phase2_result = ingest_phase2_text_collection(normalized, phase2_case_id)
                     reply_text = phase2_result.get("reply_text")
                     outcome = {
                         "msg_id": normalized.get("msg_id"),

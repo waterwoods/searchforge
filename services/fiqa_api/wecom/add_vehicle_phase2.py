@@ -9,9 +9,13 @@ from typing import Any
 
 from services.fiqa_api.inbox_triage.case_store import (
     append_follow_up_message,
-    get_case_by_id,
     update_add_vehicle_workflow_state,
 )
+from services.fiqa_api.inbox_triage.case_truth_repository import (
+    get_case_for_read,
+    list_all_cases_for_read,
+)
+from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
 from services.fiqa_api.inbox_triage.h5_task_upload import h5_photo_flow_is_complete
 from services.fiqa_api.inbox_triage.phone_normalization import normalize_phone_digits
 from services.fiqa_api.wecom.active_case_bridge import find_case_by_wecom_msg_id
@@ -68,6 +72,52 @@ def _field_display_value(case: dict[str, Any], field: str) -> str:
         if len(phone) == 10:
             return f"({phone[:3]}) {phone[3:6]}-{phone[6:]}"
     return _FIELD_LABELS_ZH.get(field, field)
+
+
+def find_phase2_eligible_add_car_case(external_userid: str) -> dict[str, Any] | None:
+    """
+    Return the newest open add_car case with H5 photos complete and Phase 2 incomplete.
+
+    Uses Postgres-aware list_all_cases_for_read (newest-first). Prefer this when
+    channel binding id exists but JSON-only get_case_by_id would miss Cloud SQL rows.
+    """
+    ext = (external_userid or "").strip()
+    if not ext:
+        return None
+    for case in list_all_cases_for_read():
+        if case.get("wecom_external_userid") != ext:
+            continue
+        if case.get("case_status") == "closed":
+            continue
+        lane = str(case.get("service_lane") or "").strip().lower()
+        if lane not in ("add_car", SERVICE_LANE_ADD_CAR):
+            continue
+        if not h5_photo_flow_is_complete(case):
+            continue
+        if phase2_text_is_complete(case):
+            continue
+        return case
+    return None
+
+
+def resolve_add_car_case_for_phase2(
+    *,
+    bound_case_id: str | None,
+    bound_case: dict[str, Any] | None,
+    external_userid: str,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Load bound case via read facade; fall back to photo-complete add_car scan."""
+    if bound_case_id and bound_case:
+        return bound_case_id, bound_case
+    if bound_case_id and not bound_case:
+        loaded = get_case_for_read(bound_case_id)
+        if loaded:
+            return bound_case_id, loaded
+    eligible = find_phase2_eligible_add_car_case(external_userid)
+    if eligible:
+        cid = str(eligible.get("case_id") or "").strip() or None
+        return cid, eligible
+    return bound_case_id, bound_case
 
 
 def should_handle_phase2_incoming_text(
@@ -177,7 +227,7 @@ def ingest_phase2_text_collection(
     if existing_by_msg:
         from services.fiqa_api.wecom.reply import build_phase2_current_step_reply
 
-        case = get_case_by_id(case_id) or {}
+        case = get_case_for_read(case_id) or {}
         reply = build_phase2_current_step_reply(case) if not phase2_text_is_complete(case) else None
         return {
             "outcome": "duplicate_msg",
@@ -187,8 +237,12 @@ def ingest_phase2_text_collection(
             "active_case_outcome": "phase2_duplicate_msg",
         }
 
-    case = get_case_by_id(case_id)
+    case = get_case_for_read(case_id)
     if case is None:
+        _log_event(
+            "wecom_phase2_case_missing_v1",
+            {"msg_id": msg_id, "case_id": case_id, "reason": "get_case_for_read_miss"},
+        )
         return {
             "outcome": "case_not_found",
             "case_id": None,
@@ -198,6 +252,21 @@ def ingest_phase2_text_collection(
         }
 
     extracted = _extract_phase2_fields(text, normalized)
+    if not any(extracted.values()):
+        from services.fiqa_api.wecom.reply import build_phase2_unrecognized_fields_reply
+
+        _log_event(
+            "wecom_phase2_no_fields_extracted_v1",
+            {"msg_id": msg_id, "case_id": case_id},
+        )
+        return {
+            "outcome": "phase2_no_fields_extracted",
+            "case_id": case_id,
+            "case_created": False,
+            "reply_text": build_phase2_unrecognized_fields_reply(),
+            "active_case_outcome": "phase2_unrecognized_fields",
+        }
+
     triage_stub = _build_phase2_triage_stub(case, extracted)
 
     if not text:
@@ -224,7 +293,7 @@ def ingest_phase2_text_collection(
         if digits:
             update_case_customer(case_id, customer_phone=digits)
 
-    refreshed = get_case_by_id(case_id) or updated
+    refreshed = get_case_for_read(case_id) or updated
     complete = phase2_text_is_complete(refreshed)
 
     from services.fiqa_api.wecom.reply import (
@@ -244,7 +313,7 @@ def ingest_phase2_text_collection(
                 datetime.now(timezone.utc).isoformat() if not sent_s2_before else None
             ),
         )
-        refreshed = get_case_by_id(case_id) or refreshed
+        refreshed = get_case_for_read(case_id) or refreshed
         if sent_s2_before:
             reply_text = None
             outcome = "phase2_complete_s2_deduped"
@@ -257,7 +326,7 @@ def ingest_phase2_text_collection(
             guided_workflow_state="collecting_text_fields",
             add_vehicle_phase="phase_2_text_in_progress",
         )
-        refreshed = get_case_by_id(case_id) or refreshed
+        refreshed = get_case_for_read(case_id) or refreshed
         reply_text = build_phase2_current_step_reply(refreshed)
         outcome = "phase2_partial_progress"
 

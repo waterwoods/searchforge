@@ -331,6 +331,19 @@ def build_phase2_stage_complete_s2_reply(case: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_phase2_unrecognized_fields_reply() -> str:
+    """When Phase 2 is active but no structured fields could be parsed from free text."""
+    return "\n".join(
+        [
+            "【加车资料 · 第 2 步】",
+            "",
+            "我还没有识别到提车日期、停放 ZIP 或联系电话。",
+            "请按这个格式直接回复，例如：",
+            "7月10号提车，ZIP 92705，电话 949-123-4567",
+        ]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Track B0.3 — Done Card (WECOM_B0_ACTIVE_WORKSPACE only)
 #
