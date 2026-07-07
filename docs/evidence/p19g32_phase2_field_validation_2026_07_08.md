@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-08  
 **Branch:** `sprint/p16-trust-layer`  
-**Type:** Phase 2 phone/date validation — local only  
-**Verdict:** **LOCAL PASS** · **HOLD deploy**
+**Type:** Phase 2 phone/date validation — local + deploy  
+**Verdict:** **LOCAL PASS** · **DEPLOY PASS** · **QA gate PASS** · **Voice retest PENDING**
 
 ---
 
@@ -105,6 +105,123 @@ Fix Andy phone smoke regression where voice-input Phase 2 text saved invalid pho
 
 ---
 
+## Deploy (2026-07-07)
+
+### Pushed commits
+
+| Commit | Message |
+|--------|---------|
+| `fea8790` | fix: validate Phase 2 phone and date fields |
+
+Pushed: `git push origin sprint/p16-trust-layer` (`41a6b65..fea8790`)
+
+### Backend deploy
+
+| Field | Value |
+|-------|-------|
+| Script | `bash scripts/deploy_paid_pilot.sh` |
+| Project | `optimal-disk-472305-e2` |
+| Service | `fiqa-api` |
+| Region | `us-west1` |
+| **Revision (prior)** | `fiqa-api-00165-qfk` |
+| **Revision (this deploy)** | **`fiqa-api-00166-vs2`** |
+| URL | `https://fiqa-api-g7zatxrycq-uw.a.run.app` |
+| **GIT_SHA** | **`fea879000`** |
+| Deploy time (UTC) | 2026-07-07 ~22:58 UTC |
+| `/health/live` | 200 |
+| `/readyz` | 200 (`intake_core_readiness: true`) |
+| DB secret | `fiqa-service-record-database-url-cloudsql-private` — unchanged |
+| Cloud SQL | `caseiq` @ `10.73.0.3` private VPC — unchanged |
+| `WECOM_SLICE_SEND_REPLY` | `1` — unchanged |
+| `H5_TASK_TOKEN_SECRET` | configured — unchanged |
+| WeCom callback / VPC / NAT | unchanged |
+| Neon | Not QA truth |
+
+### Frontend deploy
+
+**Not required** — P19G-3.2 is backend validation only; no UI changes.
+
+### Post-deploy QA gate
+
+```bash
+bash scripts/check_chen_kui_demo_environment.sh --cloud-api
+# Result: PASS — revision fiqa-api-00166-vs2, Cloud SQL aligned
+```
+
+### Log check (post-deploy)
+
+Revision `fiqa-api-00166-vs2` startup + runtime logs reviewed (~100 lines):
+
+- **No** import/syntax errors
+- **No** WeCom reply errors
+- **No** Phase 2 validation errors
+- **No** Postgres read facade errors
+- Expected optional warnings only: embedding warmup deferred, Qdrant/Redis optional, bm25 optional
+
+---
+
+## Andy phone retest checklist
+
+**Backend:** `fiqa-api-00166-vs2` · **GIT_SHA:** `fea8790` · **Frontend:** unchanged (`ui-smoky-beta`)
+
+### Smoke A — invalid voice/text input
+
+**Setup:** If no active Phase 2 case → `重新加车` → complete H5 photos → wait for S1.
+
+**Send:**
+```
+我是要是17月12号提车，Zip code 92705，电话是20311155573
+```
+
+| # | Expected | Result |
+|---|----------|--------|
+| A1 | ZIP 92705 saved | **PENDING** |
+| A2 | Phone `20311155573` NOT saved | **PENDING** |
+| A3 | Date `17月12号` NOT saved | **PENDING** |
+| A4 | No S2 `【第 2 步完成 ✅】` | **PENDING** |
+| A5 | No broker review state | **PENDING** |
+| A6 | Reply: 提车日期不对 + 联系电话位数不对 | **PENDING** |
+| A7 | Workbench: no `0311155573` or `17月12日` | **PENDING** |
+
+### Smoke B — correction completes Phase 2
+
+**Send:**
+```
+7月12号，电话2031234567
+```
+
+| # | Expected | Result |
+|---|----------|--------|
+| B1 | Date saved `7月12日` | **PENDING** |
+| B2 | Phone saved `2031234567` | **PENDING** |
+| B3 | ZIP 92705 retained | **PENDING** |
+| B4 | S2 sent | **PENDING** |
+| B5 | Broker review state | **PENDING** |
+
+### Smoke C — valid 11-digit leading 1 (optional)
+
+**Setup:** `重新加车` → photos → S1.
+
+**Send:**
+```
+7月12号提车，ZIP 92705，电话12031234567
+```
+
+| # | Expected | Result |
+|---|----------|--------|
+| C1 | Phone saved as `2031234567` | **PENDING** |
+| C2 | S2 if all fields valid | **PENDING** |
+
+### Smoke D — regression
+
+| # | Action | Expected | Result |
+|---|--------|----------|--------|
+| D1 | `进度` | Progress Card works | **PENDING** |
+| D2 | `你好` (active case) | Progress Card, not menu | **PENDING** |
+| D3 | `重新加车` | Restart flow works | **PENDING** |
+
+---
+
 ## Constraints honored
 
 | Constraint | Status |
@@ -116,7 +233,7 @@ Fix Andy phone smoke regression where voice-input Phase 2 text saved invalid pho
 | No routing priority change | ✅ |
 | No H5 token/security change | ✅ |
 | No Workbench change | ✅ |
-| No deploy (this loop) | ✅ |
+| No frontend deploy | ✅ |
 
 ---
 
@@ -133,10 +250,11 @@ Fix Andy phone smoke regression where voice-input Phase 2 text saved invalid pho
 | Gate | Verdict |
 |------|---------|
 | Local tests | **GO** |
-| Commit | **GO** |
-| Deploy | **HOLD** — separate deploy loop |
-| Andy re-test | **HOLD** — after deploy |
+| Push + deploy | **GO** |
+| Post-deploy QA gate | **GO** |
+| Logs | **GO** (clean) |
+| Andy voice retest | **PENDING** — operator run on WeChat |
 
 ---
 
-*P19G-3.2 local implementation complete. Next: deploy + Andy voice-input retest.*
+*P19G-3.2 deploy complete. Andy voice retest pending.*
