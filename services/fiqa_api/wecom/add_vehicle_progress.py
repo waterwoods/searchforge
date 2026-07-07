@@ -40,8 +40,8 @@ AddVehicleProgressPhase = Literal[
 
 _H5_SLOT_LABELS: dict[str, str] = {
     "vin_photo": "VIN 照片",
-    "registration_photo": "行驶证照片",
-    "insurance_card_photo": "保险卡照片（可选）",
+    "registration_photo": "行驶证 / 登记证",
+    "insurance_card_photo": "保险卡（可跳过）",
 }
 
 _FLOW_OPTIONAL_SLOTS = frozenset({"insurance_card_photo"})

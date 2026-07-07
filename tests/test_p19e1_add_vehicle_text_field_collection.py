@@ -106,9 +106,9 @@ def _b0_cfg(monkeypatch) -> object:
 def test_s1_photo_complete_reply_uses_stage_complete_framing():
     case = _case_with_h5_photos()
     text = build_h5_photo_phase_complete_reply(case)
-    assert "第 1 阶段完成" in text
-    assert "照片已收到" not in text
-    assert "下一步 · 第 2 步" in text
+    assert "第 1 步完成" in text
+    assert "照片资料已收到" in text
+    assert "例如：" in text
     assert "加车完成" not in text
     assert "全部资料已收齐" not in text
 
@@ -116,7 +116,8 @@ def test_s1_photo_complete_reply_uses_stage_complete_framing():
 def test_s1_insurance_skipped_copy():
     case = _case_with_h5_photos(insurance_skipped=True)
     text = build_h5_photo_phase_complete_reply(case)
-    assert "○ 保险卡 — 可稍后补" in text
+    assert "第 1 步完成" in text
+    assert "照片资料已收到" in text
 
 
 # --- Field extraction ---
@@ -171,7 +172,7 @@ def test_partial_phase2_reply_lists_missing_fields():
         case["case_id"],
     )
     assert result["reply_text"] is not None
-    assert "第 2 步进行中" in result["reply_text"]
+    assert "还差：" in result["reply_text"]
     assert "92705" in result["reply_text"]
     assert "联系电话" in result["reply_text"]
     stored = get_case_by_id(case["case_id"])
@@ -189,8 +190,8 @@ def test_all_three_fields_sends_s2_and_updates_state():
         case["case_id"],
     )
     reply = result["reply_text"] or ""
-    assert "第 2 阶段完成" in reply
-    assert "第 3 步：陈总人工确认" in reply
+    assert "第 2 步完成" in reply
+    assert "陈总人工确认" in reply
     stored = get_case_by_id(case["case_id"])
     assert stored is not None
     assert phase2_text_is_complete(stored)
@@ -246,7 +247,7 @@ def test_add_car_after_phase1_shows_progress_card_not_new_h5(monkeypatch):
     assert outcomes[0]["active_case_outcome"] == "add_vehicle_progress_card"
     reply_blob = captured.get("text") or str(captured.get("menu") or "")
     assert "加车资料进度" in reply_blob
-    assert "第 2 步" in reply_blob
+    assert "还差文字信息" in reply_blob
 
 
 def test_restart_still_creates_new_flow(monkeypatch):
@@ -306,8 +307,7 @@ def test_premium_lane_not_regressed(monkeypatch):
 def test_phase2_current_step_empty_prompt():
     case = _case_with_h5_photos()
     text = build_phase2_current_step_reply(case)
-    assert "第 2 步】" in text
-    assert "提车日期" in text
+    assert "还差 3 个文字信息" in text
 
 
 def test_phase2_s2_copy_safe_language():

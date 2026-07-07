@@ -468,5 +468,6 @@ def test_skip_insurance_triggers_end_card_with_skipped_checklist(monkeypatch):
     assert skip.status_code == 200
     assert skip.json()["flow_complete"] is True
     assert len(captured) == 1
-    assert "○ 保险卡 — 可稍后补" in captured[0]
+    assert "第 1 步完成" in captured[0]
+    assert "照片资料已收到" in captured[0]
     assert "提车日期" in captured[0]

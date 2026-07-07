@@ -134,7 +134,8 @@ def test_end_card_send_with_mock(monkeypatch):
     r1 = try_send_h5_photo_flow_end_card(case["case_id"])
     assert r1["sent"] is True
     assert len(sent_content) == 1
-    assert "✓ VIN 照片" in sent_content[0]
+    assert "第 1 步完成" in sent_content[0]
+    assert "照片资料已收到" in sent_content[0]
     assert "提车日期" in sent_content[0]
 
     r2 = try_send_h5_photo_flow_end_card(case["case_id"])

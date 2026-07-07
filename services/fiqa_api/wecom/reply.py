@@ -156,24 +156,24 @@ def build_start_card_payload() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _H5_PHOTO_FLOW_START_HEAD = """\
-加车资料收集
+【加车资料收集】
 
-请点下方按钮，按顺序上传 3 张照片：
+请先上传 3 类资料：
 1. VIN 照片
-2. 行驶证 / registration
-3. 保险卡，可选
+2. 行驶证 / 登记证
+3. 保险卡（没有可跳过）
 
-大约 2 分钟，不用填长表格。"""
+点下面按钮开始上传。"""
 
-_H5_PHOTO_FLOW_BUTTON = "开始上传照片"
+_H5_PHOTO_FLOW_BUTTON = "开始上传资料"
 
 _H5_PHOTO_FLOW_TAIL_PREFIX = """\
-照片在页面里上传；提车日期、停车 ZIP、联系电话稍后回微信打字。
-陈总会人工审核，不会自动修改您的保单。"""
+照片在页面里上传；提车日期、停放 ZIP、联系电话稍后回微信补充。
+陈总会人工确认，不会自动修改您的保单。"""
 
 _H5_PHOTO_FLOW_START_CARD_TAIL = """\
-照片在页面里上传；提车日期、停车 ZIP、联系电话稍后回微信打字。
-陈总会人工审核，不会自动修改您的保单。
+照片在页面里上传；提车日期、停放 ZIP、联系电话稍后回微信补充。
+陈总会人工确认，不会自动修改您的保单。
 
 如果按钮打不开，请回复：链接"""
 
@@ -184,7 +184,7 @@ def build_h5_vin_start_card_payload(*, h5_url: str, restart_intro: bool = False)
     tail = _H5_PHOTO_FLOW_START_CARD_TAIL
     head = _H5_PHOTO_FLOW_START_HEAD
     if restart_intro:
-        head = "好的，我们重新开始一组加车资料收集。\n\n" + head
+        head = "好的，我们为您开始一辆新车的资料收集。\n\n" + head
     return {
         "head_content": head,
         "list": [
@@ -204,7 +204,7 @@ def build_h5_vin_start_text_fallback(*, h5_url: str) -> str:
     url = (h5_url or "").strip()
     return (
         f"{_H5_PHOTO_FLOW_START_HEAD}\n\n"
-        f"开始上传照片：{url}\n\n"
+        f"开始上传资料：{url}\n\n"
         f"{_H5_PHOTO_FLOW_TAIL_PREFIX}\n\n"
         "如果按钮打不开，请复制链接在微信中打开。"
     )
@@ -239,34 +239,17 @@ def _h5_photo_slots_from_case(case: dict[str, Any]) -> tuple[set[str], set[str]]
 
 def build_h5_photo_phase_complete_reply(case: dict[str, Any]) -> str:
     """WeCom Stage Complete S1 — Phase 1 photos done; prompt Phase 2 text fields."""
-    completed, skipped = _h5_photo_slots_from_case(case)
     lines = [
-        "【第 1 阶段完成 ✅ · 照片资料】",
+        "【第 1 步完成 ✅】",
         "",
-        "已收到：",
-        f"✓ {_H5_PHOTO_SLOT_LABELS['vin_photo']}",
-        f"✓ {_H5_PHOTO_SLOT_LABELS['registration_photo']}",
+        "照片资料已收到。",
+        "",
+        "下一步请在微信里回复：",
+        "提车日期、停放 ZIP、联系电话。",
+        "",
+        "例如：",
+        "7月10号提车，ZIP 92705，电话 2031234567",
     ]
-    if "insurance_card_photo" in completed:
-        lines.append(f"✓ {_H5_PHOTO_SLOT_LABELS['insurance_card_photo']}")
-    elif "insurance_card_photo" in skipped:
-        lines.append("○ 保险卡 — 可稍后补")
-    else:
-        lines.append(f"✓ {_H5_PHOTO_SLOT_LABELS['insurance_card_photo']}")
-    lines.extend(
-        [
-            "",
-            "──────────",
-            "【下一步 · 第 2 步：补充文字信息】",
-            "",
-            "请直接在本聊天打字发送：",
-            "1. 提车日期（例：7月10日）",
-            "2. 停放 ZIP（例：92705）",
-            "3. 联系电话",
-            "",
-            "陈总会人工查看并确认，不会自动修改您的保单。",
-        ]
-    )
     return "\n".join(lines)
 
 
@@ -287,47 +270,46 @@ def build_phase2_current_step_reply(case: dict[str, Any]) -> str:
         lines = [
             "【加车资料 · 第 2 步】",
             "",
-            "请直接在本聊天补充：",
+            f"还差 {len(PHASE2_TEXT_FIELDS)} 个文字信息：",
+            "",
             "1. 提车日期",
             "2. 停放 ZIP",
             "3. 联系电话",
+            "",
+            "可以直接这样回复：",
+            "7月10号提车，ZIP 92705，电话 2031234567",
         ]
         return "\n".join(lines)
 
-    lines = ["【加车资料 · 第 2 步进行中】", "", "已收到："]
+    lines = ["【加车资料 · 第 2 步】", "", "已收到："]
     for field in PHASE2_TEXT_FIELDS:
         if field in collected_names:
             lines.append(f"✓ {_FIELD_LABELS_ZH[field]} — {_field_display_value(case, field)}")
     lines.append("")
     if still:
-        lines.append(f"还差 {len(still)} 项：")
+        lines.append("还差：")
         for field in still:
-            lines.append(f"○ {_FIELD_LABELS_ZH[field]} — 请直接打字回复")
+            lines.append(f"○ {_FIELD_LABELS_ZH[field]}")
+        lines.append("")
+        if len(still) == 1 and still[0] == "phone":
+            lines.append("请直接回复电话号码即可。")
+        else:
+            lines.append("请继续在微信里回复。")
     return "\n".join(lines)
 
 
 def build_phase2_stage_complete_s2_reply(case: dict[str, Any]) -> str:
     """Stage Complete S2 — Phase 2 text fields done; hand off to broker review."""
-    from services.fiqa_api.wecom.add_vehicle_phase2 import _FIELD_LABELS_ZH, PHASE2_TEXT_FIELDS
-
     lines = [
-        "【第 2 阶段完成 ✅ · 文字信息】",
+        "【第 2 步完成 ✅】",
         "",
-        "已收到：",
+        "文字信息已收到。",
+        "",
+        "目前资料已基本收齐。",
+        "下一步：陈总人工确认。",
+        "",
+        "系统不会自动修改您的保单。",
     ]
-    for field in PHASE2_TEXT_FIELDS:
-        lines.append(f"✓ {_FIELD_LABELS_ZH[field]}")
-    lines.extend(
-        [
-            "",
-            "──────────",
-            "【下一步 · 第 3 步：陈总人工确认】",
-            "",
-            "资料已基本收齐，已转陈总审核。",
-            "陈总会人工查看，不会自动修改您的保单。",
-            "确认后我们会通过微信或电话跟进，请留意消息。",
-        ]
-    )
     return "\n".join(lines)
 
 
@@ -335,11 +317,15 @@ def build_phase2_unrecognized_fields_reply() -> str:
     """When Phase 2 is active but no structured fields could be parsed from free text."""
     return "\n".join(
         [
-            "【加车资料 · 第 2 步】",
+            "我还需要一点信息才能继续。",
             "",
-            "我还没有识别到提车日期、停放 ZIP 或联系电话。",
-            "请按这个格式直接回复，例如：",
-            "7月10号提车，ZIP 92705，电话 949-123-4567",
+            "还差：",
+            "○ 提车日期",
+            "○ 停放 ZIP",
+            "○ 联系电话",
+            "",
+            "请直接这样回复：",
+            "7月10号提车，ZIP 92705，电话 2031234567",
         ]
     )
 
@@ -373,7 +359,7 @@ def build_add_vehicle_progress_card(
             for label in missing:
                 lines.append(f"○ {label}")
         lines.append("")
-        lines.append("请点击继续上传照片。")
+        lines.append("请点下面按钮继续上传。")
         body = "\n".join(lines)
         if multiple_open_cases:
             body = f"{body}\n\n{_PROGRESS_MULTI_CAR_TAIL}"
@@ -396,8 +382,8 @@ def build_add_vehicle_progress_card(
     if phase in ("phase2_incomplete", "phase2_partial"):
         lines.extend(
             [
-                "✅ 第 1 步：照片资料已收到",
-                "▶️ 第 2 步：补充文字信息",
+                "✅ 照片资料已收到",
+                "▶️ 还差文字信息",
                 "",
             ]
         )
@@ -413,10 +399,7 @@ def build_add_vehicle_progress_card(
             for label in missing_fields:
                 lines.append(f"○ {label}")
             lines.append("")
-        if phase == "phase2_partial":
-            lines.append("请继续在本聊天打字回复。")
-        else:
-            lines.append("请直接在本聊天打字回复。")
+        lines.append("请直接在微信里回复。")
         text = "\n".join(lines)
         if multiple_open_cases:
             text = f"{text}\n\n{_PROGRESS_MULTI_CAR_TAIL}"
@@ -425,13 +408,12 @@ def build_add_vehicle_progress_card(
     if phase == "phase3_broker_review":
         lines.extend(
             [
-                "✅ 第 1 步：照片资料已收到",
-                "✅ 第 2 步：文字信息已收到",
-                "▶️ 第 3 步：陈总人工确认中",
+                "✅ 照片资料已收到",
+                "✅ 文字信息已收到",
+                "▶️ 陈总人工确认中",
                 "",
-                "目前不需要您补充资料。",
-                "陈总会人工查看，不会自动修改您的保单。",
-                "确认后我们会通过微信或电话跟进。",
+                "目前不需要您补资料。",
+                "确认后会通过微信或电话跟进。",
             ]
         )
         text = "\n".join(lines)
@@ -442,12 +424,12 @@ def build_add_vehicle_progress_card(
     if phase == "broker_done":
         lines.extend(
             [
-                "✅ 第 1 步：照片资料已收到",
-                "✅ 第 2 步：文字信息已收到",
-                "✅ 第 3 步：陈总已处理 / 已确认",
+                "✅ 照片资料已收到",
+                "✅ 文字信息已收到",
+                "✅ 陈总已处理",
                 "",
-                "陈总已处理或正在跟进，请留意微信/电话。",
-                "如需办理其他事项，请直接回复。",
+                "请留意微信或电话。",
+                "如需办理其他事项，直接回复即可。",
             ]
         )
         text = "\n".join(lines)

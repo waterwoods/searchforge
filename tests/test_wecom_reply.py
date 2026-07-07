@@ -40,7 +40,7 @@ def test_h5_start_card_concise_photo_steps():
     head = menu["head_content"]
     tail = menu["tail_content"]
     assert "加车资料收集" in head
-    assert "开始上传照片" in menu["list"][0]["view"]["content"]
+    assert "开始上传资料" in menu["list"][0]["view"]["content"]
     assert "VIN 照片" in head
     assert "https://example.test" not in tail
     assert "请回复：链接" in tail
@@ -57,14 +57,12 @@ def test_h5_end_card_checklist_and_text_fields():
         "h5_photo_flow_state": {},
     }
     text = build_h5_photo_phase_complete_reply(case)
-    assert "第 1 阶段完成" in text
-    assert "✓ VIN 照片" in text
-    assert "✓ 行驶证照片" in text
-    assert "✓ 保险卡照片" in text
+    assert "第 1 步完成" in text
+    assert "照片资料已收到" in text
     assert "提车日期" in text
     assert "停放 ZIP" in text
     assert "联系电话" in text
-    assert "不会自动修改您的保单" in text
+    assert "7月10号提车" in text
     assert "OCR" not in text
 
 
@@ -77,8 +75,8 @@ def test_h5_end_card_insurance_skipped():
         "h5_photo_flow_state": {"skipped_slots": ["insurance_card_photo"]},
     }
     text = build_h5_photo_phase_complete_reply(case)
-    assert "○ 保险卡 — 可稍后补" in text
-    assert "✓ 保险卡照片" not in text
+    assert "第 1 步完成" in text
+    assert "照片资料已收到" in text
 
 
 def test_claim_reply_adr003_safe_language():

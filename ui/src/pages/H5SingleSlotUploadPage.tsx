@@ -408,41 +408,16 @@ export default function H5SingleSlotUploadPage() {
           <div style={styles.card}>
             <div style={styles.successBox}>
               <p style={styles.successHeadline}>
-                {isPhotoFlowTask(task) ? '第 1 阶段完成 ✅' : 'VIN 照片已收到 ✅'}
+                {isPhotoFlowTask(task) ? '第 1 步完成 ✅' : 'VIN 照片已收到 ✅'}
               </p>
               {isPhotoFlowTask(task) ? (
                 <>
-                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a1a', textAlign: 'left' }}>
-                    第 1 阶段完成 ✅
+                  <p style={{ fontSize: 15, lineHeight: 1.6, color: '#444', textAlign: 'left' }}>
+                    照片资料已收到。
                     <br />
-                    照片上传已完成
-                  </p>
-                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', textAlign: 'left' }}>
-                    已收到：
+                    请回到微信，继续补充：
                     <br />
-                    ✓ VIN 照片
-                    <br />
-                    ✓ 行驶证照片
-                    <br />
-                    {task.steps?.find((s) => s.slot === 'insurance_card_photo')?.status === 'skipped'
-                      ? '○ 保险卡 — 可稍后补'
-                      : '✓ 保险卡照片'}
-                  </p>
-                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', marginTop: 16, textAlign: 'left' }}>
-                    总进度：
-                    <br />
-                    ① 上传照片 ✓  →  ② 补充文字  →  ③ 陈总确认
-                  </p>
-                  <p style={{ fontSize: 14, lineHeight: 1.6, color: '#444', marginTop: 16, textAlign: 'left' }}>
-                    请点「返回微信」。
-                    <br />
-                    回到聊天后，您会收到第 2 步指引。
-                  </p>
-                  <p style={{ fontSize: 13, lineHeight: 1.6, color: '#666', marginTop: 8, textAlign: 'left' }}>
-                    陈总会人工确认，不会自动修改您的保单。
-                  </p>
-                  <p style={{ fontSize: 12, lineHeight: 1.5, color: '#888', marginTop: 12 }}>
-                    若 10 秒内没有看到新消息，请回复：已提交
+                    提车日期、停放 ZIP、联系电话。
                   </p>
                 </>
               ) : (
@@ -454,7 +429,7 @@ export default function H5SingleSlotUploadPage() {
                     {uploadResult?.message_zh}
                   </p>
                   <p style={{ fontSize: 14, lineHeight: 1.6, color: '#666', marginTop: 12 }}>
-                    陈总会在 Workbench 中人工确认。
+                    陈总会人工确认，不会自动修改您的保单。
                   </p>
                 </>
               )}
@@ -464,13 +439,6 @@ export default function H5SingleSlotUploadPage() {
                 onClick={tryReturnToWeChat}
               >
                 返回微信
-              </button>
-              <button
-                type="button"
-                style={{ ...styles.btn, ...styles.btnSecondary }}
-                onClick={tryReturnToWeChat}
-              >
-                稍后继续
               </button>
             </div>
           </div>

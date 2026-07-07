@@ -174,7 +174,7 @@ def test_slice_routes_phase2_not_greeting_when_pg_case_only(monkeypatch):
         )
 
     assert outcomes[0]["active_case_outcome"] == "phase2_complete_s2_sent"
-    assert "第 2 阶段完成" in captured.get("text", "")
+    assert "第 2 步完成" in captured.get("text", "")
     assert "请选择您要办理的事项" not in captured.get("text", "")
 
 
@@ -189,7 +189,7 @@ def test_phase2_unrecognized_text_gets_format_hint():
             "case_pg_only",
         )
     assert result["active_case_outcome"] == "phase2_unrecognized_fields"
-    assert "还没有识别到" in (result.get("reply_text") or "")
+    assert "我还需要一点信息" in (result.get("reply_text") or "")
 
 
 def test_stale_binding_without_read_facade_routes_to_greeting(monkeypatch):

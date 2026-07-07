@@ -72,7 +72,7 @@ def test_start_card_hides_long_url_in_msgmenu_tail():
     tail = menu["tail_content"]
     assert "https://example.test" not in tail
     assert "请回复：链接" in tail
-    assert menu["list"][0]["view"]["content"] == "开始上传照片"
+    assert menu["list"][0]["view"]["content"] == "开始上传资料"
     assert menu["list"][0]["view"]["url"] == url
 
 
@@ -94,7 +94,7 @@ def test_wants_restart_add_car_photo_flow():
 def test_restart_start_card_includes_intro_line():
     url = "https://example.test/task/upload/h5t1.abc.sig"
     menu = build_h5_vin_start_card_payload(h5_url=url, restart_intro=True)
-    assert "重新开始一组加车资料收集" in menu["head_content"]
+    assert "一辆新车的资料收集" in menu["head_content"]
     assert "加车资料收集" in menu["head_content"]
 
 
@@ -120,9 +120,8 @@ def test_completed_case_gets_followup_not_start_card():
     assert menu is None
     assert masked is None
     assert text is not None
-    assert "第 1 阶段完成" in text
+    assert "第 1 步完成" in text
     assert "提车日期" in text
-    assert "不会自动修改您的保单" in text
     mock_send.assert_called_once_with(case["case_id"])
 
 
@@ -135,5 +134,5 @@ def test_incomplete_case_still_gets_start_card():
     assert menu is not None
     assert text is None
     assert masked is not None
-    assert menu["list"][0]["view"]["content"] == "开始上传照片"
+    assert menu["list"][0]["view"]["content"] == "开始上传资料"
     assert "https://example.test" not in menu["tail_content"]

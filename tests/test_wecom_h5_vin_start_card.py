@@ -96,7 +96,7 @@ def test_h5_vin_start_card_payload_copy():
     assert "VIN 照片" in head
     assert "行驶证" in head
     assert "保险卡" in head
-    assert "大约 2 分钟" in head
+    assert "点下面按钮开始上传" in head
     assert "上传所有" not in head
     assert "一次发多张" not in head
     assert "OCR" not in head
@@ -105,7 +105,7 @@ def test_h5_vin_start_card_payload_copy():
     view_items = [i for i in menu["list"] if i.get("type") == "view"]
     assert view_items
     assert view_items[0]["view"]["url"] == url
-    assert view_items[0]["view"]["content"] == "开始上传照片"
+    assert view_items[0]["view"]["content"] == "开始上传资料"
 
 
 def test_add_car_text_creates_case_and_h5_link(monkeypatch):

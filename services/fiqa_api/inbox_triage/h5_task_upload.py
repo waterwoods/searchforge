@@ -51,14 +51,14 @@ _SLOT_COPY: dict[str, dict[str, Any]] = {
     },
     "registration_photo": {
         "title": "加车资料补充",
-        "task_label": "请拍行驶证 / registration",
-        "instruction": "请拍清楚车辆 registration / 行驶证页面。",
+        "task_label": "请拍行驶证 / 登记证",
+        "instruction": "请拍清楚行驶证或登记证页面。",
         "document_type": "registration_photo",
         "required": True,
     },
     "insurance_card_photo": {
         "title": "加车资料补充",
-        "task_label": "请拍保险卡 / insurance card",
+        "task_label": "请拍保险卡（可跳过）",
         "instruction": "请拍清楚保险卡正面（可选步骤，可跳过）。",
         "document_type": "insurance_card_photo",
         "required": False,

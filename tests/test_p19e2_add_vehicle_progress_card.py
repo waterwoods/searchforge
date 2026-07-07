@@ -273,7 +273,7 @@ def test_phase1_card_shows_step1_and_missing_photos():
     text, menu = build_add_vehicle_progress_card(case, progress=progress, h5_url="https://example.com/t")
     assert menu is not None
     assert "第 1 步" in menu["head_content"]
-    assert "行驶证照片" in menu["head_content"]
+    assert "行驶证 / 登记证" in menu["head_content"]
     assert menu["list"][0]["view"]["content"] == "继续上传照片"
 
 
@@ -283,7 +283,7 @@ def test_phase2_incomplete_card():
     text, menu = build_add_vehicle_progress_card(case, progress=progress)
     assert menu is None
     assert text is not None
-    assert "第 2 步" in text
+    assert "还差文字信息" in text
     assert "提车日期" in text
 
 
@@ -299,8 +299,8 @@ def test_phase3_card_broker_review_no_action():
     case = _case_phase3()
     progress = derive_add_vehicle_progress(case)
     text, menu = build_add_vehicle_progress_card(case, progress=progress)
-    assert "第 3 步" in (text or "")
-    assert "不需要您补充资料" in (text or "")
+    assert "陈总人工确认中" in (text or "")
+    assert "不需要您补资料" in (text or "")
 
 
 def test_multiple_open_cases_chooses_newest_and_tail():
