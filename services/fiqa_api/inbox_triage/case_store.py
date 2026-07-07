@@ -1309,6 +1309,37 @@ def record_h5_photo_flow_skip(
     return normalized_case
 
 
+def update_add_vehicle_workflow_state(
+    case_id: str,
+    *,
+    guided_workflow_state: str | None = None,
+    add_vehicle_phase: str | None = None,
+    s2_stage_complete_sent_at: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Update Add Vehicle guided workflow fields on case JSON (P19E-1).
+
+    No schema migration — stored in case extra / JSON document.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    if guided_workflow_state:
+        normalized_case["guided_workflow_state"] = guided_workflow_state.strip()
+    if add_vehicle_phase:
+        normalized_case["add_vehicle_phase"] = add_vehicle_phase.strip()
+    if s2_stage_complete_sent_at:
+        state = dict(normalized_case.get("h5_photo_flow_state") or {})
+        state["s2_stage_complete_sent_at"] = s2_stage_complete_sent_at
+        normalized_case["h5_photo_flow_state"] = state
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 def record_h5_photo_flow_end_card_status(
     case_id: str,
     *,
@@ -1586,6 +1617,10 @@ def append_follow_up_message(
         normalized_case["lifecycle_status"] = existing_lc
     else:
         normalized_case["lifecycle_status"] = triage_lc or existing_lc or "office_followup"
+    if isinstance(triage_result.get("known_facts"), dict) and triage_result["known_facts"]:
+        existing_facts = dict(normalized_case.get("known_facts") or {})
+        existing_facts.update({k: str(v) for k, v in triage_result["known_facts"].items() if v})
+        normalized_case["known_facts"] = existing_facts
     # Client Identity Persistence: backfill client_id for legacy cases when provided
     if not normalized_case.get("client_id") and client_id and (cid := str(client_id or "").strip()):
         normalized_case["client_id"] = cid

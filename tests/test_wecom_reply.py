@@ -57,7 +57,7 @@ def test_h5_end_card_checklist_and_text_fields():
         "h5_photo_flow_state": {},
     }
     text = build_h5_photo_phase_complete_reply(case)
-    assert "照片已收到" in text
+    assert "第 1 阶段完成" in text
     assert "✓ VIN 照片" in text
     assert "✓ 行驶证照片" in text
     assert "✓ 保险卡照片" in text

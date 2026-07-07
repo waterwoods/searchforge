@@ -1,4 +1,4 @@
-"""P19D-4B — WeCom End Card when H5 Add Vehicle photo flow completes."""
+"""P19D-4B — WeCom Stage Complete S1 when H5 Add Vehicle photo flow completes."""
 
 from __future__ import annotations
 

@@ -238,12 +238,12 @@ def _h5_photo_slots_from_case(case: dict[str, Any]) -> tuple[set[str], set[str]]
 
 
 def build_h5_photo_phase_complete_reply(case: dict[str, Any]) -> str:
-    """WeCom E2-photo End Card — photos received, text fields still needed."""
+    """WeCom Stage Complete S1 — Phase 1 photos done; prompt Phase 2 text fields."""
     completed, skipped = _h5_photo_slots_from_case(case)
     lines = [
-        "【加车资料】照片已收到 ✅",
+        "【第 1 阶段完成 ✅ · 照片资料】",
         "",
-        "我们已收到：",
+        "已收到：",
         f"✓ {_H5_PHOTO_SLOT_LABELS['vin_photo']}",
         f"✓ {_H5_PHOTO_SLOT_LABELS['registration_photo']}",
     ]
@@ -256,13 +256,76 @@ def build_h5_photo_phase_complete_reply(case: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "还差 3 项，请在本聊天打字：",
-            "1. 提车日期",
-            "2. 停放 ZIP",
+            "──────────",
+            "【下一步 · 第 2 步：补充文字信息】",
+            "",
+            "请直接在本聊天打字发送：",
+            "1. 提车日期（例：7月10日）",
+            "2. 停放 ZIP（例：92705）",
             "3. 联系电话",
             "",
             "陈总会人工查看并确认，不会自动修改您的保单。",
-            "资料齐全后我们会再通知您。",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_phase2_current_step_reply(case: dict[str, Any]) -> str:
+    """Current Step Card while Phase 2 text collection is in progress."""
+    from services.fiqa_api.wecom.add_vehicle_phase2 import (
+        PHASE2_TEXT_FIELDS,
+        _FIELD_LABELS_ZH,
+        _field_display_value,
+        phase2_text_still_needed,
+    )
+
+    collected_names = {str(x).lower() for x in (case.get("collected_fields") or [])}
+    still = phase2_text_still_needed(case)
+    has_any = any(f in collected_names for f in PHASE2_TEXT_FIELDS)
+
+    if not has_any:
+        lines = [
+            "【加车资料 · 第 2 步】",
+            "",
+            "请直接在本聊天补充：",
+            "1. 提车日期",
+            "2. 停放 ZIP",
+            "3. 联系电话",
+        ]
+        return "\n".join(lines)
+
+    lines = ["【加车资料 · 第 2 步进行中】", "", "已收到："]
+    for field in PHASE2_TEXT_FIELDS:
+        if field in collected_names:
+            lines.append(f"✓ {_FIELD_LABELS_ZH[field]} — {_field_display_value(case, field)}")
+    lines.append("")
+    if still:
+        lines.append(f"还差 {len(still)} 项：")
+        for field in still:
+            lines.append(f"○ {_FIELD_LABELS_ZH[field]} — 请直接打字回复")
+    return "\n".join(lines)
+
+
+def build_phase2_stage_complete_s2_reply(case: dict[str, Any]) -> str:
+    """Stage Complete S2 — Phase 2 text fields done; hand off to broker review."""
+    from services.fiqa_api.wecom.add_vehicle_phase2 import _FIELD_LABELS_ZH, PHASE2_TEXT_FIELDS
+
+    lines = [
+        "【第 2 阶段完成 ✅ · 文字信息】",
+        "",
+        "已收到：",
+    ]
+    for field in PHASE2_TEXT_FIELDS:
+        lines.append(f"✓ {_FIELD_LABELS_ZH[field]}")
+    lines.extend(
+        [
+            "",
+            "──────────",
+            "【下一步 · 第 3 步：陈总人工确认】",
+            "",
+            "资料已基本收齐，已转陈总审核。",
+            "陈总会人工查看，不会自动修改您的保单。",
+            "确认后我们会通过微信或电话跟进，请留意消息。",
         ]
     )
     return "\n".join(lines)

@@ -197,7 +197,7 @@ def test_ordinary_add_car_on_completed_flow_returns_followup(monkeypatch):
     assert outcome["active_case_outcome"] == "photo_flow_complete_followup"
     assert captured["menu"] is None
     assert captured["text"] is not None
-    assert "照片已收到" in captured["text"]
+    assert "第 1 阶段完成" in captured["text"]
     assert count_stored_cases() == 1
 
 

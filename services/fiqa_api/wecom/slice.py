@@ -565,6 +565,66 @@ def process_kf_msg_or_event(
                 if open_bound_case and open_bound_case.get("service_lane") == SERVICE_LANE_ADD_CAR
                 else None
             )
+
+            # P19E-1 — Phase 2 text collection after H5 photo flow complete.
+            if (
+                b0_enabled
+                and open_add_car_draft_id
+                and open_bound_case
+                and h5_photo_flow_is_complete(open_bound_case)
+                and not is_explicit_add_car_restart(str(normalized.get("text") or ""))
+            ):
+                from services.fiqa_api.wecom.add_vehicle_phase2 import (
+                    ingest_phase2_text_collection,
+                    should_handle_phase2_incoming_text,
+                )
+
+                if should_handle_phase2_incoming_text(open_bound_case, normalized, intent_result):
+                    phase2_result = ingest_phase2_text_collection(normalized, open_add_car_draft_id)
+                    reply_text = phase2_result.get("reply_text")
+                    outcome = {
+                        "msg_id": normalized.get("msg_id"),
+                        "external_userid": normalized.get("external_userid"),
+                        "detected_intent": canonical_intent(intent_result.intent),
+                        "internal_intent": intent_result.intent,
+                        "confidence": intent_result.confidence,
+                        "matched_by": intent_result.matched_by,
+                        "guided_menu_required": False,
+                        "reply_text": reply_text,
+                        "reply_sent": False,
+                        "reply_send_error": None,
+                        "case_created": phase2_result.get("case_created", False),
+                        "case_id": phase2_result.get("case_id"),
+                        "active_case_outcome": phase2_result.get("active_case_outcome"),
+                        "still_needed_fields": phase2_result.get("still_needed_fields"),
+                        "guided_workflow_state": phase2_result.get("guided_workflow_state"),
+                        "add_vehicle_phase": phase2_result.get("add_vehicle_phase"),
+                    }
+                    _log_slice(
+                        "phase2_text_collection_v1",
+                        {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                    )
+                    if reply_text:
+                        _log_slice(
+                            "reply_generated_v1",
+                            {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                        )
+                        _dispatch_reply(
+                            cfg,
+                            normalized,
+                            send_enabled=send_enabled,
+                            menu_payload=None,
+                            text_content=reply_text,
+                            outcome=outcome,
+                        )
+                    results.append(outcome)
+                    update_message_processed_outcome(
+                        msg_id,
+                        outcome=str(outcome.get("active_case_outcome") or ""),
+                        case_id=str(outcome.get("case_id") or "").strip() or None,
+                    )
+                    continue
+
             route_add_car_h5_start = _should_route_add_car_h5_start_instead_of_draft_merge(
                 b0_enabled=b0_enabled,
                 intent_result=intent_result,

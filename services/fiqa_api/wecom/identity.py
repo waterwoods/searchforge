@@ -50,11 +50,12 @@ def wecom_customer_display_label(
 _ZIP_MARKER_PATTERNS = (
     r"(?:邮编|zip\s*code|zip)[：:\s]*(\d{5})\b",
 )
-_ZIP_STANDALONE_PATTERN = re.compile(r"\b(\d{5})\b")
+_ZIP_STANDALONE_PATTERN = re.compile(r"(?<!\d)(\d{5})(?!\d)")
 
 _DATE_PATTERN = re.compile(
-    r"\b(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b"
+    r"(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}[/-]\d{1,2})(?!\d)"
 )
+_CHINESE_MONTH_DAY_PATTERN = re.compile(r"(\d{1,2})月(\d{1,2})[日号]?")
 
 _DRIVER_PATTERNS = (
     r"(?:driver name is|primary driver is|driver name|primary driver|driver is|driver)"
@@ -109,14 +110,31 @@ def extract_zip_from_text(text: str | None) -> str | None:
 
 
 def extract_delivery_date_from_text(text: str | None) -> str | None:
-    """Return a raw date token (YYYY-MM-DD or M/D/YYYY style) when present in free text."""
+    """Return a date token when present in free text (calendar, Chinese, or relative pickup)."""
     t = (text or "").strip()
     if not t:
         return None
     m = _DATE_PATTERN.search(t)
-    if not m:
-        return None
-    return m.group(1)
+    if m:
+        return m.group(1)
+    cm = _CHINESE_MONTH_DAY_PATTERN.search(t)
+    if cm:
+        return f"{cm.group(1)}月{cm.group(2)}日"
+    from services.fiqa_api.inbox_triage.date_normalization import normalize_delivery_date_or_flag
+
+    resolved, mode = normalize_delivery_date_or_flag(t)
+    if mode == "resolved" and resolved:
+        return resolved
+    if mode == "ask_exact":
+        for phrase in ("明天", "后天", "大后天", "下周一", "下周二", "下周三", "下周四", "下周五", "下周六", "下周日", "下周天"):
+            if phrase in t:
+                return phrase
+    pickup_markers = ("提车", "拿车", "delivery", "pickup", "pick up")
+    if any(marker in t.lower() or marker in t for marker in pickup_markers):
+        cm2 = _CHINESE_MONTH_DAY_PATTERN.search(t)
+        if cm2:
+            return f"{cm2.group(1)}月{cm2.group(2)}日"
+    return None
 
 
 def extract_primary_driver_from_text(text: str | None) -> str | None:

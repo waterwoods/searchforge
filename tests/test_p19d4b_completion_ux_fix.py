@@ -120,7 +120,7 @@ def test_completed_case_gets_followup_not_start_card():
     assert menu is None
     assert masked is None
     assert text is not None
-    assert "照片已收到" in text
+    assert "第 1 阶段完成" in text
     assert "提车日期" in text
     assert "不会自动修改您的保单" in text
     mock_send.assert_called_once_with(case["case_id"])
