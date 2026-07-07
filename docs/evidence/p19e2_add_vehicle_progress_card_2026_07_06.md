@@ -3,7 +3,7 @@
 **Date:** 2026-07-06  
 **Branch:** `sprint/p16-trust-layer`  
 **Type:** Local dev + deploy + live smoke prep  
-**Verdict:** **DEPLOY PASS** · **QA gate PASS** · **Andy live phone smoke PENDING**
+**Verdict:** **DEPLOY PASS** · **QA gate PASS** · **Andy live phone smoke PASS** · **P19E-2 CLOSED**
 
 ---
 
@@ -243,8 +243,70 @@ If Andy already has an active add_car case in WeCom:
 
 | Item | Status |
 |------|--------|
-| Andy phone smoke executed | **PENDING** |
-| Screenshots / exact messages | _(fill after Andy retest)_ |
+| Andy phone smoke executed | **DONE** — see [Live Phone Smoke Result](#live-phone-smoke-result--andy-wecom-test) |
+| Screenshots / exact messages | Reviewed by Andy / ChatGPT |
+
+---
+
+## Live Phone Smoke Result — Andy WeCom Test
+
+| Field | Value |
+|-------|-------|
+| **Test date** | 2026-07-07 |
+| **Backend revision** | `fiqa-api-00163-w4k` |
+| **GIT_SHA** | `67a57ccfd` |
+| **User channel** | WeCom phone live test |
+| **Screenshots** | Reviewed by Andy / ChatGPT |
+| **Result summary** | **PASS** with minor follow-up |
+
+### A. 「你好」
+
+**Expected:**
+- Active add_car case returns Progress Card
+- Not generic menu
+
+**Actual:**
+- Returned **【加车资料进度】**
+- Showed Phase 3 broker review (✅ 第 1 步 · ✅ 第 2 步 · ▶️ 第 3 步：陈总人工确认中)
+- **PASS**
+
+### B. 「进度」
+
+**Expected:**
+- Progress Card
+
+**Actual:**
+- Returned **【加车资料进度】**
+- Correctly displayed current broker review state
+- **PASS**
+
+### C. 「还差什么」
+
+**Expected:**
+- Progress Card shows missing items or no action needed
+
+**Actual:**
+- Returned **【加车资料进度】**
+- Showed no customer action needed / wait for Chen (陈总人工确认中)
+- **PASS**
+
+### D. 「我要理赔」
+
+**Expected:**
+- Ideally claim lane should win
+
+**Actual:**
+- Conservative reply: 「我已记录您的其他问题，先完成当前请求。」
+- Did **not** fall back to generic main menu (add_car state preserved)
+- **Not a blocker** for P19E-2
+- **Follow-up:** claim lane priority / lane switch polish
+
+### Overall verdict
+
+- P19E-2 Progress Card core behavior: **PASS**
+- No regression to generic greeting menu
+- User no longer loses current add_car state
+- **Follow-up:** claim lane switching should be reviewed later (out of P19E-2 scope)
 
 ---
 
@@ -255,6 +317,14 @@ If Andy already has an active add_car case in WeCom:
 | Deploy | **GO** |
 | Post-deploy QA | **GO** |
 | Logs pre-smoke | **GO** |
-| Andy live phone smoke | **PENDING** |
+| Andy live phone smoke | **GO** |
 
-**Recommendation:** Andy run Smoke A–C on WeCom; report exact messages + PASS/HOLD per row.
+---
+
+## P19E-2 Final Verdict
+
+**GO / CLOSED**
+
+**Reason:** Progress Card successfully converts vague greetings/status messages into case-state-aware replies when an active add_car case exists.
+
+**Business value:** This closes the biggest Spark-style UX gap: 「用户不知道自己在哪一步。」
