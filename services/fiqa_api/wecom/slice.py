@@ -62,6 +62,21 @@ from services.fiqa_api.wecom.media_intake import ingest_wecom_media_message, is_
 from services.fiqa_api.wecom.normalize import normalize_media_message, normalize_text_message
 from services.fiqa_api.wecom.sync_msg import pull_customer_messages
 
+from services.fiqa_api.wecom.routing_observability import (
+    DECISION_COLLECT_ADD_VEHICLE_PHASE2,
+    DECISION_DEFER_SECONDARY_TOPIC,
+    DECISION_SEND_ADD_VEHICLE_PROGRESS,
+    PRIORITY_ADD_VEHICLE_ACTIVE_PROGRESS,
+    PRIORITY_ADD_VEHICLE_PHASE2_COLLECTION,
+    PRIORITY_GENERIC_SECONDARY_TOPIC_DEFERRAL,
+    RESPONSE_ADD_VEHICLE_PHASE2_MISSING,
+    RESPONSE_ADD_VEHICLE_PROGRESS,
+    RESPONSE_SECONDARY_TOPIC_DEFERRED,
+    add_vehicle_context_for_user,
+    build_routing_decision,
+    emit_routing_decision,
+)
+
 logger = logging.getLogger(__name__)
 
 _MINIMAL_LANE_INTENTS = frozenset({"policy_review", "claim_intake", "coverage_risk_intake"})
@@ -156,6 +171,22 @@ def _add_car_start_active_outcome(
 
 def _log_slice(stage: str, payload: dict[str, Any]) -> None:
     logger.info("wecom_slice_%s %s", stage, json.dumps(payload, ensure_ascii=False))
+
+
+def _emit_slice_routing_decision(
+    *,
+    normalized: dict[str, Any],
+    intent_result: Any,
+    **kwargs: Any,
+) -> None:
+    emit_routing_decision(
+        build_routing_decision(
+            route_id=str(normalized.get("msg_id") or ""),
+            normalized=normalized,
+            incoming_intent=getattr(intent_result, "intent", None),
+            **kwargs,
+        )
+    )
 
 
 def _dispatch_reply(
@@ -665,6 +696,16 @@ def process_kf_msg_or_event(
                 minimal_result = ingest_wecom_text_to_minimal_lane(normalized, intent_result)
                 if minimal_result.get("outcome") == "secondary_topic_deferred":
                     reply_text = build_secondary_topic_deferred_reply()
+                    av_ctx = add_vehicle_context_for_user(str(normalized.get("external_userid") or ""))
+                    _emit_slice_routing_decision(
+                        normalized=normalized,
+                        intent_result=intent_result,
+                        priority_rule=PRIORITY_GENERIC_SECONDARY_TOPIC_DEFERRAL,
+                        decision=DECISION_DEFER_SECONDARY_TOPIC,
+                        reason="non_claim_secondary_topic_during_active_workflow",
+                        response_type=RESPONSE_SECONDARY_TOPIC_DEFERRED,
+                        **av_ctx,
+                    )
                 else:
                     reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
                 outcome = {
@@ -737,6 +778,22 @@ def process_kf_msg_or_event(
                 if should_handle_phase2_incoming_text(phase2_case, normalized, intent_result):
                     phase2_result = ingest_phase2_text_collection(normalized, phase2_case_id)
                     reply_text = phase2_result.get("reply_text")
+                    av_ctx = {
+                        "active_case_id": phase2_case_id,
+                        "active_workflow": "add_vehicle",
+                        "active_state": str(phase2_case.get("guided_workflow_state") or "").strip() or None,
+                        "active_phase": str(phase2_result.get("add_vehicle_phase") or "").strip() or None,
+                    }
+                    _emit_slice_routing_decision(
+                        normalized=normalized,
+                        intent_result=intent_result,
+                        priority_rule=PRIORITY_ADD_VEHICLE_PHASE2_COLLECTION,
+                        decision=DECISION_COLLECT_ADD_VEHICLE_PHASE2,
+                        reason="active_add_vehicle_workflow",
+                        response_type=RESPONSE_ADD_VEHICLE_PHASE2_MISSING,
+                        workflow_id="add_vehicle",
+                        **av_ctx,
+                    )
                     outcome = {
                         "msg_id": normalized.get("msg_id"),
                         "external_userid": normalized.get("external_userid"),
@@ -800,6 +857,22 @@ def process_kf_msg_or_event(
                         progress_case,
                         external_userid=str(normalized.get("external_userid") or ""),
                         open_case_count=open_count,
+                    )
+                    av_ctx = {
+                        "active_case_id": str(progress_case.get("case_id") or "").strip() or None,
+                        "active_workflow": "add_vehicle",
+                        "active_state": str(progress_case.get("guided_workflow_state") or "").strip() or None,
+                        "active_phase": str(progress_case.get("add_vehicle_phase") or "").strip() or None,
+                    }
+                    _emit_slice_routing_decision(
+                        normalized=normalized,
+                        intent_result=intent_result,
+                        priority_rule=PRIORITY_ADD_VEHICLE_ACTIVE_PROGRESS,
+                        decision=DECISION_SEND_ADD_VEHICLE_PROGRESS,
+                        reason="active_add_vehicle_workflow",
+                        response_type=RESPONSE_ADD_VEHICLE_PROGRESS,
+                        workflow_id="add_vehicle",
+                        **av_ctx,
                     )
                     outcome = {
                         "msg_id": normalized.get("msg_id"),

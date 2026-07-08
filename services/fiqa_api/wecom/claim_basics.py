@@ -43,6 +43,34 @@ from services.fiqa_api.wecom.claim_state import (
     transition_to_manual_handle,
 )
 from services.fiqa_api.wecom.intent import IntentResult, is_add_vehicle_status_inquiry
+from services.fiqa_api.wecom.routing_observability import (
+    DECISION_CLAIM_QUESTION_SAFE_REPLY,
+    DECISION_COLLECT_CLAIM_BASICS,
+    DECISION_CONTACT_BROKER_ACK,
+    DECISION_CONTINUE_ADD_VEHICLE,
+    DECISION_LANE_SWITCH_PROMPT,
+    DECISION_SAFETY_MANUAL_REPLY,
+    DECISION_SEND_CLAIM_C1,
+    DECISION_START_CLAIM_FLOW,
+    PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+    PRIORITY_CLAIM_CONFIRMED_START,
+    PRIORITY_CLAIM_INTERRUPT_DURING_ACTIVE_ADD_VEHICLE,
+    PRIORITY_CLAIM_QUESTION_DURING_ACTIVE_ADD_VEHICLE,
+    PRIORITY_CLAIM_START_NO_ACTIVE_CASE,
+    PRIORITY_INJURY_SAFETY_OVERRIDE,
+    PRIORITY_LANE_SWITCH_CONTACT_BROKER,
+    PRIORITY_LANE_SWITCH_CONTINUE_ADD_VEHICLE,
+    RESPONSE_CLAIM_C1,
+    RESPONSE_CLAIM_LANE_SWITCH,
+    RESPONSE_CLAIM_MISSING_BASICS,
+    RESPONSE_CLAIM_QUESTION_SAFE,
+    RESPONSE_CLAIM_SAFETY_MANUAL,
+    RESPONSE_CLAIM_START,
+    add_vehicle_context_for_user,
+    build_routing_decision,
+    claim_context_for_case,
+    emit_routing_decision,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +137,22 @@ _CLAIM_PROGRESS_MARKERS: tuple[str, ...] = (
 
 def _log_event(event: str, payload: dict[str, Any]) -> None:
     logger.info("%s %s", event, json.dumps(payload, ensure_ascii=False))
+
+
+def _emit_claim_routing_decision(
+    *,
+    normalized: dict[str, Any],
+    intent_result: IntentResult | None,
+    **kwargs: Any,
+) -> None:
+    emit_routing_decision(
+        build_routing_decision(
+            route_id=str(normalized.get("msg_id") or ""),
+            normalized=normalized,
+            incoming_intent=intent_result.intent if intent_result else None,
+            **kwargs,
+        )
+    )
 
 
 def is_explicit_claim_restart(text: str) -> bool:
@@ -179,6 +223,16 @@ def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any
     add_car_id = find_open_add_car_case_by_external_userid(ext)
 
     if is_claim_lane_switch_broker(text):
+        av_ctx = add_vehicle_context_for_user(ext)
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=None,
+            priority_rule=PRIORITY_LANE_SWITCH_CONTACT_BROKER,
+            decision=DECISION_CONTACT_BROKER_ACK,
+            reason="user_chose_contact_broker_after_lane_switch_prompt",
+            response_type="contact_broker_ack",
+            **av_ctx,
+        )
         return {
             "outcome": "claim_lane_switch_broker",
             "case_id": add_car_id,
@@ -203,6 +257,17 @@ def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any
             if progress_text:
                 reply_text = progress_text
                 active_outcome = "add_vehicle_progress_card"
+
+    av_ctx = add_vehicle_context_for_user(ext)
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=None,
+        priority_rule=PRIORITY_LANE_SWITCH_CONTINUE_ADD_VEHICLE,
+        decision=DECISION_CONTINUE_ADD_VEHICLE,
+        reason="user_chose_continue_add_vehicle_after_lane_switch_prompt",
+        response_type="add_vehicle_progress" if active_outcome == "add_vehicle_progress_card" else "add_vehicle_continue",
+        **av_ctx,
+    )
 
     return {
         "outcome": active_outcome,
@@ -507,6 +572,17 @@ def ingest_claim_basics_message(
     ):
         from services.fiqa_api.wecom.reply import build_claim_lane_switch_reply
 
+        av_ctx = add_vehicle_context_for_user(ext)
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=intent_result,
+            priority_rule=PRIORITY_CLAIM_INTERRUPT_DURING_ACTIVE_ADD_VEHICLE,
+            decision=DECISION_LANE_SWITCH_PROMPT,
+            reason="claim_start_intent_outranks_active_add_vehicle_secondary_topic",
+            response_type=RESPONSE_CLAIM_LANE_SWITCH,
+            safety_flags=("injury_mentioned",) if injury_mentioned else (),
+            **av_ctx,
+        )
         return {
             "outcome": "claim_lane_switch_prompt",
             "case_id": None,
@@ -561,6 +637,17 @@ def ingest_claim_basics_message(
             claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
             guided_workflow_state=GUIDED_STATE_COLLECTING_TEXT,
         )
+        claim_ctx = claim_context_for_case(case)
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=intent_result,
+            priority_rule=PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+            decision=DECISION_COLLECT_CLAIM_BASICS,
+            reason="active_claim_waiting_for_accident_basics",
+            response_type=RESPONSE_CLAIM_MISSING_BASICS,
+            created_case_id=case_id,
+            **claim_ctx,
+        )
         return {
             "outcome": "claim_start_no_fields",
             "case_id": case_id,
@@ -578,8 +665,62 @@ def ingest_claim_basics_message(
                 if add_car_active
                 else build_claim_safety_manual_reply()
             )
+            if add_car_active:
+                av_ctx = add_vehicle_context_for_user(ext)
+                _emit_claim_routing_decision(
+                    normalized=normalized,
+                    intent_result=intent_result,
+                    priority_rule=PRIORITY_INJURY_SAFETY_OVERRIDE,
+                    decision=DECISION_SAFETY_MANUAL_REPLY,
+                    reason="injury_marker_detected_highest_priority",
+                    response_type=RESPONSE_CLAIM_SAFETY_MANUAL,
+                    safety_flags=("injury_mentioned",),
+                    created_case_id=case_id,
+                    switched_workflow="claim",
+                    workflow_id="claim_simplified",
+                    **av_ctx,
+                )
+            else:
+                claim_ctx = claim_context_for_case(case)
+                _emit_claim_routing_decision(
+                    normalized=normalized,
+                    intent_result=intent_result,
+                    priority_rule=PRIORITY_INJURY_SAFETY_OVERRIDE,
+                    decision=DECISION_SAFETY_MANUAL_REPLY,
+                    reason="injury_marker_detected_highest_priority",
+                    response_type=RESPONSE_CLAIM_SAFETY_MANUAL,
+                    safety_flags=("injury_mentioned",),
+                    created_case_id=case_id,
+                    **claim_ctx,
+                )
         else:
             reply_text = build_claim_start_card_reply(injury_mentioned=False)
+            if add_car_active and is_claim_lane_switch_confirm(text):
+                av_ctx = add_vehicle_context_for_user(ext)
+                _emit_claim_routing_decision(
+                    normalized=normalized,
+                    intent_result=intent_result,
+                    priority_rule=PRIORITY_CLAIM_CONFIRMED_START,
+                    decision=DECISION_START_CLAIM_FLOW,
+                    reason="user_confirmed_claim_start_during_active_workflow",
+                    response_type=RESPONSE_CLAIM_START,
+                    created_case_id=case_id,
+                    switched_workflow="claim",
+                    workflow_id="claim_simplified",
+                    **av_ctx,
+                )
+            elif not add_car_active:
+                _emit_claim_routing_decision(
+                    normalized=normalized,
+                    intent_result=intent_result,
+                    priority_rule=PRIORITY_CLAIM_START_NO_ACTIVE_CASE,
+                    decision=DECISION_START_CLAIM_FLOW,
+                    reason="claim_start_intent_without_active_workflow",
+                    response_type=RESPONSE_CLAIM_START,
+                    created_case_id=case_id,
+                    workflow_id="claim_simplified",
+                    active_workflow=None,
+                )
         update_claim_workflow_state(
             case_id,
             claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
@@ -624,6 +765,34 @@ def ingest_claim_basics_message(
                 if add_car_active
                 else build_claim_safety_manual_reply()
             )
+            if add_car_active:
+                av_ctx = add_vehicle_context_for_user(ext)
+                _emit_claim_routing_decision(
+                    normalized=normalized,
+                    intent_result=intent_result,
+                    priority_rule=PRIORITY_INJURY_SAFETY_OVERRIDE,
+                    decision=DECISION_SAFETY_MANUAL_REPLY,
+                    reason="injury_marker_detected_highest_priority",
+                    response_type=RESPONSE_CLAIM_SAFETY_MANUAL,
+                    safety_flags=("injury_mentioned",),
+                    created_case_id=case_id,
+                    switched_workflow="claim",
+                    workflow_id="claim_simplified",
+                    **av_ctx,
+                )
+            else:
+                claim_ctx = claim_context_for_case(refreshed)
+                _emit_claim_routing_decision(
+                    normalized=normalized,
+                    intent_result=intent_result,
+                    priority_rule=PRIORITY_INJURY_SAFETY_OVERRIDE,
+                    decision=DECISION_SAFETY_MANUAL_REPLY,
+                    reason="injury_marker_detected_highest_priority",
+                    response_type=RESPONSE_CLAIM_SAFETY_MANUAL,
+                    safety_flags=("injury_mentioned",),
+                    created_case_id=case_id,
+                    **claim_ctx,
+                )
             kernel_view = evaluate_claim_simplified_snapshot(refreshed)
             _log_event(
                 "wecom_claim_basics_ingest_v1",
@@ -676,6 +845,29 @@ def ingest_claim_basics_message(
 
         transition = suggest_next_claim_transition(refreshed)
         kernel_step = get_claim_simplified_current_step(refreshed)
+        claim_ctx = claim_context_for_case(refreshed)
+        if active_outcome == "claim_c1_sent":
+            _emit_claim_routing_decision(
+                normalized=normalized,
+                intent_result=intent_result,
+                priority_rule=PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+                decision=DECISION_SEND_CLAIM_C1,
+                reason="active_claim_waiting_for_accident_basics",
+                response_type=RESPONSE_CLAIM_C1,
+                created_case_id=case_id,
+                **claim_ctx,
+            )
+        else:
+            _emit_claim_routing_decision(
+                normalized=normalized,
+                intent_result=intent_result,
+                priority_rule=PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+                decision=DECISION_COLLECT_CLAIM_BASICS,
+                reason="active_claim_waiting_for_accident_basics",
+                response_type=RESPONSE_CLAIM_MISSING_BASICS,
+                created_case_id=case_id,
+                **claim_ctx,
+            )
         _log_event(
             "wecom_claim_basics_ingest_v1",
             {
@@ -721,8 +913,19 @@ def ingest_claim_question_safe_reply(normalized: dict[str, Any]) -> dict[str, An
     )
 
     ext = str(normalized.get("external_userid") or "").strip()
-    if find_open_add_car_case_by_external_userid(ext):
+    add_car_active = bool(find_open_add_car_case_by_external_userid(ext))
+    if add_car_active:
         reply_text = build_claim_question_safe_reply_during_add_vehicle()
+        av_ctx = add_vehicle_context_for_user(ext)
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=None,
+            priority_rule=PRIORITY_CLAIM_QUESTION_DURING_ACTIVE_ADD_VEHICLE,
+            decision=DECISION_CLAIM_QUESTION_SAFE_REPLY,
+            reason="claim_question_handled_before_secondary_topic_deferral",
+            response_type=RESPONSE_CLAIM_QUESTION_SAFE,
+            **av_ctx,
+        )
     else:
         reply_text = build_claim_question_safe_reply()
 
