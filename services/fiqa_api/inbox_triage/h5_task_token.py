@@ -24,16 +24,28 @@ TOKEN_PREFIX: Final[str] = "h5t1."
 MODEL_VERSION: Final[str] = "h5_task_token_v1"
 DEFAULT_TTL_SECONDS: Final[int] = 86400  # 24h
 
-_SUPPORTED_SLOTS: Final[frozenset[str]] = frozenset(
+_ADD_CAR_SLOTS: Final[frozenset[str]] = frozenset(
     {"vin_photo", "registration_photo", "insurance_card_photo"}
 )
-_SUPPORTED_LANES: Final[frozenset[str]] = frozenset({"add_car"})
+_CLAIM_EVIDENCE_SLOTS: Final[frozenset[str]] = frozenset(
+    {"customer_damage_photo", "other_party_vehicle_photo", "scene_photo"}
+)
+_SUPPORTED_LANES: Final[frozenset[str]] = frozenset({"add_car", "claim"})
 FLOW_ADD_VEHICLE_PHOTO: Final[str] = "add_vehicle_photo_flow"
+FLOW_CLAIM_EVIDENCE_PACK: Final[str] = "claim_evidence_pack"
 ADD_VEHICLE_PHOTO_FLOW_SLOTS: Final[tuple[str, ...]] = (
     "vin_photo",
     "registration_photo",
     "insurance_card_photo",
 )
+CLAIM_EVIDENCE_PACK_FLOW_SLOTS: Final[tuple[str, ...]] = (
+    "customer_damage_photo",
+    "other_party_vehicle_photo",
+    "scene_photo",
+)
+
+# Backward-compatible alias for add-car-only callers
+_SUPPORTED_SLOTS: Final[frozenset[str]] = _ADD_CAR_SLOTS
 
 
 def _token_secret() -> bytes:
@@ -58,11 +70,27 @@ def external_userid_ref(external_userid: str | None) -> str:
     return digest[:8]
 
 
+def _slots_for_lane(lane_norm: str) -> frozenset[str]:
+    if lane_norm == "add_car":
+        return _ADD_CAR_SLOTS
+    if lane_norm == "claim":
+        return _CLAIM_EVIDENCE_SLOTS
+    raise ValueError(f"unsupported_lane: {lane_norm}")
+
+
 def _validate_lane_slot(lane_norm: str, slot_norm: str) -> None:
     if lane_norm not in _SUPPORTED_LANES:
         raise ValueError(f"unsupported_lane: {lane_norm}")
-    if slot_norm not in _SUPPORTED_SLOTS:
+    if slot_norm not in _slots_for_lane(lane_norm):
         raise ValueError(f"unsupported_slot: {slot_norm}")
+
+
+def _expected_flow_slots(lane_norm: str, flow_norm: str) -> tuple[str, ...] | None:
+    if lane_norm == "add_car" and flow_norm == FLOW_ADD_VEHICLE_PHOTO:
+        return ADD_VEHICLE_PHOTO_FLOW_SLOTS
+    if lane_norm == "claim" and flow_norm == FLOW_CLAIM_EVIDENCE_PACK:
+        return CLAIM_EVIDENCE_PACK_FLOW_SLOTS
+    return None
 
 
 def issue_h5_task_token(
@@ -125,10 +153,15 @@ def issue_h5_flow_token(
     if lane_norm not in _SUPPORTED_LANES:
         raise ValueError(f"unsupported_lane: {lane_norm}")
     flow_norm = (flow or "").strip()
-    if flow_norm != FLOW_ADD_VEHICLE_PHOTO:
+    if lane_norm == "add_car" and not flow_norm:
+        flow_norm = FLOW_ADD_VEHICLE_PHOTO
+    if lane_norm == "claim" and not flow_norm:
+        flow_norm = FLOW_CLAIM_EVIDENCE_PACK
+    expected_slots = _expected_flow_slots(lane_norm, flow_norm)
+    if expected_slots is None:
         raise ValueError(f"unsupported_flow: {flow_norm}")
-    slot_list = list(slots or ADD_VEHICLE_PHOTO_FLOW_SLOTS)
-    if tuple(slot_list) != ADD_VEHICLE_PHOTO_FLOW_SLOTS:
+    slot_list = list(slots or expected_slots)
+    if tuple(slot_list) != expected_slots:
         raise ValueError("invalid_flow_slots")
 
     t = time.time() if now is None else float(now)
@@ -232,7 +265,13 @@ def verify_h5_task_token(token: str, *, now: float | None = None) -> VerifiedH5T
 
     if version == 1:
         slot = str(payload.get("slot") or "").strip().lower()
-        if not slot or slot not in _SUPPORTED_SLOTS:
+        if not slot:
+            return None
+        try:
+            allowed = _slots_for_lane(lane)
+        except ValueError:
+            return None
+        if slot not in allowed:
             return None
         return VerifiedH5TaskToken(
             case_id=case_id,
@@ -247,13 +286,14 @@ def verify_h5_task_token(token: str, *, now: float | None = None) -> VerifiedH5T
 
     if version == 2:
         flow = str(payload.get("flow") or "").strip()
-        if flow != FLOW_ADD_VEHICLE_PHOTO:
+        expected_slots = _expected_flow_slots(lane, flow)
+        if expected_slots is None:
             return None
         raw_slots = payload.get("slots")
-        if not isinstance(raw_slots, list) or len(raw_slots) != 3:
+        if not isinstance(raw_slots, list) or len(raw_slots) != len(expected_slots):
             return None
         slots = tuple(str(s).strip().lower() for s in raw_slots)
-        if slots != ADD_VEHICLE_PHOTO_FLOW_SLOTS:
+        if slots != expected_slots:
             return None
         return VerifiedH5TaskToken(
             case_id=case_id,

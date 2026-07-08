@@ -9,6 +9,13 @@ export type H5FlowStep = {
   instruction: string;
   required: boolean;
   status: 'pending' | 'completed' | 'skipped';
+  required_level?: string;
+  skippable?: boolean;
+};
+
+export type H5SkipReason = {
+  key: string;
+  label: string;
 };
 
 export type H5TaskInfo = {
@@ -29,6 +36,17 @@ export type H5TaskInfo = {
   current_step?: string | null;
   step_index?: number;
   steps?: H5FlowStep[];
+  /** Claim evidence pack */
+  slot_key?: string;
+  slot_label?: string;
+  slot_title?: string;
+  required_level?: string;
+  skippable?: boolean;
+  skip_reasons?: H5SkipReason[];
+  accepted_media_types?: string[];
+  safety_copy?: string;
+  eligible_for_ocr?: boolean;
+  next_slot?: string | null;
 };
 
 export type H5UploadResult = {

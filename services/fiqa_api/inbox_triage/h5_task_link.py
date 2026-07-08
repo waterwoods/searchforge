@@ -7,6 +7,7 @@ import re
 
 from services.fiqa_api.inbox_triage.h5_task_token import (
     DEFAULT_TTL_SECONDS,
+    FLOW_CLAIM_EVIDENCE_PACK,
     TOKEN_PREFIX,
     issue_h5_flow_token,
     issue_h5_task_token,
@@ -60,6 +61,25 @@ def mint_h5_add_vehicle_photo_flow_link(
     token = issue_h5_flow_token(
         case_id=case_id,
         lane=lane,
+        external_userid=external_userid,
+        ttl_seconds=ttl_seconds,
+    )
+    base = (base_url or h5_task_frontend_base()).rstrip("/")
+    return f"{base}/task/upload/{token}"
+
+
+def mint_h5_claim_evidence_pack_link(
+    *,
+    case_id: str,
+    external_userid: str | None = None,
+    base_url: str | None = None,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+) -> str:
+    """Mint signed H5 URL for Claim evidence pack photo flow (v2, first slot)."""
+    token = issue_h5_flow_token(
+        case_id=case_id,
+        lane="claim",
+        flow=FLOW_CLAIM_EVIDENCE_PACK,
         external_userid=external_userid,
         ttl_seconds=ttl_seconds,
     )

@@ -170,10 +170,11 @@ function progressLine(task: H5TaskInfo, pageState: PageState): string {
   return `第 ${task.step_current ?? 1} 步 / 共 ${task.step_total ?? 1} 步`;
 }
 
-function isOptionalCurrentStep(task: H5TaskInfo): boolean {
+function isSkippableCurrentStep(task: H5TaskInfo): boolean {
+  if (task.skippable) return true;
   if (!isPhotoFlowTask(task) || !task.current_step || !task.steps) return false;
   const step = task.steps.find((s) => s.slot === task.current_step);
-  return step ? !step.required : false;
+  return step ? Boolean(step.skippable ?? !step.required) : false;
 }
 
 export default function H5SingleSlotUploadPage() {
@@ -296,7 +297,7 @@ export default function H5SingleSlotUploadPage() {
 
   const showCapture =
     pageState === 'ready' || pageState === 'preview' || pageState === 'uploading';
-  const showSkip = isOptionalCurrentStep(task || {}) && pageState === 'ready' && !skipping;
+  const showSkip = isSkippableCurrentStep(task || {}) && pageState === 'ready' && !skipping;
 
   return (
     <div style={styles.page}>
@@ -329,6 +330,11 @@ export default function H5SingleSlotUploadPage() {
           <div style={styles.card}>
             <div style={styles.taskLabel}>{task.task_label}</div>
             <p style={styles.instruction}>{task.instruction}</p>
+            {task.safety_copy && (
+              <p style={{ ...styles.instruction, color: '#666', fontSize: 13, marginTop: -8 }}>
+                {task.safety_copy}
+              </p>
+            )}
 
             {previewUrl && (
               <img src={previewUrl} alt="预览" style={styles.previewImg} />
