@@ -1275,6 +1275,86 @@ def append_h5_gcs_attachment_metadata(
     return normalized_case
 
 
+def record_claim_evidence_slot_received(
+    case_id: str,
+    *,
+    slot: str,
+    attachment_id: str,
+    source_channel: str = "h5_task",
+) -> dict[str, Any] | None:
+    """
+    Persist explicit claim_attachment_slots received state (P19H-3c-3C).
+
+    No schema migration — stored on case JSON document.
+    """
+    from services.fiqa_api.inbox_triage.claim_evidence_slots import patch_claim_slot_received
+
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    slot_norm = (slot or "").strip().lower()
+    patch_claim_slot_received(
+        normalized_case,
+        slot_norm,
+        attachment_id,
+        source_channel=source_channel,
+    )
+    timestamp = _utc_now_iso()
+    normalized_case["updated_at"] = timestamp
+    normalized_case["case_activity"] = [
+        _build_activity_entry(
+            "claim_evidence_slot_received",
+            f"Claim evidence slot received: {slot_norm}",
+        ),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
+def record_claim_evidence_slot_skip(
+    case_id: str,
+    *,
+    slot: str,
+    skip_reason: str,
+    source_channel: str = "h5_task",
+) -> dict[str, Any] | None:
+    """
+    Persist explicit claim_attachment_slots skipped state (P19H-3c-3C).
+
+    No schema migration — stored on case JSON document.
+    """
+    from services.fiqa_api.inbox_triage.claim_evidence_slots import patch_claim_slot_skipped
+
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    slot_norm = (slot or "").strip().lower()
+    patch_claim_slot_skipped(
+        normalized_case,
+        slot_norm,
+        skip_reason,
+        source_channel=source_channel,
+    )
+    timestamp = _utc_now_iso()
+    normalized_case["updated_at"] = timestamp
+    normalized_case["case_activity"] = [
+        _build_activity_entry(
+            "claim_evidence_slot_skipped",
+            f"Claim evidence slot skipped: {slot_norm} ({skip_reason})",
+        ),
+        *normalized_case.get("case_activity", []),
+    ][:MAX_CASE_ACTIVITY]
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 def record_h5_photo_flow_skip(
     case_id: str,
     *,

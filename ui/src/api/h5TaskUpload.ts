@@ -126,9 +126,13 @@ export async function uploadH5TaskImage(
 export async function skipH5TaskSlot(
   taskToken: string,
   slot: string,
+  skipReason?: string,
 ): Promise<H5UploadResult> {
   const form = new FormData();
   form.append('slot', slot);
+  if (skipReason) {
+    form.append('skip_reason', skipReason);
+  }
   const resp = await fetch(`${API_BASE_URL}/api/h5/tasks/${encodeURIComponent(taskToken)}/skip`, {
     method: 'POST',
     body: form,

@@ -284,7 +284,11 @@ export default function H5SingleSlotUploadPage() {
     setSkipping(true);
     setErrorText('');
     try {
-      const result = await skipH5TaskSlot(taskToken, task.current_step);
+      const defaultSkipReason =
+        task.skip_reasons && task.skip_reasons.length > 0
+          ? task.skip_reasons[0].key
+          : 'not_available';
+      const result = await skipH5TaskSlot(taskToken, task.current_step, defaultSkipReason);
       await advanceAfterUpload(result);
     } catch (err) {
       setErrorText(errorMessage(err));

@@ -212,7 +212,19 @@ def _resolve_slot_status(
     if explicit_status == "skipped" or slot_key in _h5_flow_skipped_slots(case):
         if skip_reason is None and explicit_status == "skipped":
             skip_reason = _str_or_none(explicit.get("reason"))
-        return "skipped", skip_reason, "none"
+        channel = _normalize_source_channel(explicit.get("source_channel"))
+        return "skipped", skip_reason, channel if channel != "none" else "none"
+
+    if explicit_status == "received":
+        channel = _normalize_source_channel(explicit.get("source_channel"))
+        if attachments:
+            return (
+                "received",
+                None,
+                channel if channel != "none" else _normalize_source_channel(attachments[-1].get("source")),
+            )
+        if channel != "none":
+            return "received", None, channel
 
     if attachments:
         return "received", None, _normalize_source_channel(attachments[-1].get("source"))

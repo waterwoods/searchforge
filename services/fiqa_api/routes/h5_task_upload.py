@@ -77,11 +77,12 @@ async def upload_h5_task_attachment(
 async def skip_h5_task_slot(
     task_token: str,
     slot: str = Form(...),
+    skip_reason: str | None = Form(None),
 ) -> dict[str, Any]:
-    """Skip optional flow step (insurance_card_photo only)."""
+    """Skip optional flow step (insurance_card_photo or Claim evidence slots)."""
     claims = _verify_or_403(task_token)
     try:
-        return skip_h5_flow_slot(claims, slot=slot)
+        return skip_h5_flow_slot(claims, slot=slot, skip_reason=skip_reason)
     except ValueError as exc:
         code = str(exc)
         if code in ("case_not_found",):

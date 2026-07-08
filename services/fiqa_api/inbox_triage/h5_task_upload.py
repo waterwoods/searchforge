@@ -8,8 +8,11 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
+from services.fiqa_api.inbox_triage.claim_evidence_slots import OTHER_PARTY_SKIP_REASONS, SCENE_SKIP_REASONS
 from services.fiqa_api.inbox_triage.case_store import (
     append_h5_gcs_attachment_metadata,
+    record_claim_evidence_slot_received,
+    record_claim_evidence_slot_skip,
     record_h5_photo_flow_skip,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
@@ -79,13 +82,6 @@ CLAIM_ACCEPTED_MEDIA_TYPES: tuple[str, ...] = (
     "image/heif",
 )
 
-OTHER_PARTY_SKIP_REASONS: tuple[dict[str, str], ...] = (
-    {"key": "no_other_party", "label": "没有对方车辆 / 单方事故"},
-    {"key": "not_available", "label": "当时无法拍摄"},
-    {"key": "hit_and_run", "label": "对方逃逸"},
-    {"key": "customer_not_safe_to_collect", "label": "当时不安全未能拍摄"},
-)
-
 _CLAIM_SLOT_COPY: dict[str, dict[str, Any]] = {
     "customer_damage_photo": {
         "title": "理赔资料 · 车损照片",
@@ -122,6 +118,7 @@ _CLAIM_SLOT_COPY: dict[str, dict[str, Any]] = {
         "required_level": "optional",
         "required": False,
         "skippable": True,
+        "skip_reasons": list(SCENE_SKIP_REASONS),
         "max_files": 2,
     },
 }
@@ -580,7 +577,12 @@ def _complete_flow_response(
     )
 
 
-def skip_h5_flow_slot(claims: VerifiedH5TaskToken, *, slot: str) -> dict[str, Any]:
+def skip_h5_flow_slot(
+    claims: VerifiedH5TaskToken,
+    *,
+    slot: str,
+    skip_reason: str | None = None,
+) -> dict[str, Any]:
     """Skip optional / soft-required flow slot."""
     if not claims.is_flow_token:
         raise ValueError("skip_not_supported")
@@ -595,6 +597,14 @@ def skip_h5_flow_slot(claims: VerifiedH5TaskToken, *, slot: str) -> dict[str, An
     _assert_case_eligible(case, claims)
     _assert_flow_slot_allowed(claims, case, slot_norm)
 
+    normalized_skip_reason: str | None = None
+    if _is_claim_evidence_flow(claims):
+        from services.fiqa_api.inbox_triage.claim_evidence_slots import (
+            normalize_claim_slot_skip_reason,
+        )
+
+        normalized_skip_reason = normalize_claim_slot_skip_reason(slot_norm, skip_reason)
+
     updated = record_h5_photo_flow_skip(
         claims.case_id,
         flow=str(claims.flow or FLOW_ADD_VEHICLE_PHOTO),
@@ -602,6 +612,15 @@ def skip_h5_flow_slot(claims: VerifiedH5TaskToken, *, slot: str) -> dict[str, An
     )
     if updated is None:
         raise ValueError("case_persist_failed")
+
+    if _is_claim_evidence_flow(claims) and normalized_skip_reason:
+        updated = record_claim_evidence_slot_skip(
+            claims.case_id,
+            slot=slot_norm,
+            skip_reason=normalized_skip_reason,
+        )
+        if updated is None:
+            raise ValueError("case_persist_failed")
 
     progress = _resolve_flow_progress(claims, updated)
     if progress["flow_complete"]:
@@ -700,6 +719,15 @@ def ingest_h5_slot_upload(
     updated = append_h5_gcs_attachment_metadata(claims.case_id, att_meta)
     if updated is None:
         raise ValueError("case_persist_failed")
+
+    if _is_claim_evidence_flow(claims):
+        updated = record_claim_evidence_slot_received(
+            claims.case_id,
+            slot=target_slot,
+            attachment_id=attachment_id,
+        )
+        if updated is None:
+            raise ValueError("case_persist_failed")
 
     logger.info(
         "h5_task_upload_ok %s",
