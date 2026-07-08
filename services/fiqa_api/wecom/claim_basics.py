@@ -51,14 +51,30 @@ extract_claim_accident_basics = extract_accident_basics_fields
 
 CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "我要理赔",
+    "开始理赔",
     "我撞车了",
     "出事故了",
     "发生事故了",
+    "发生车祸了",
+    "我发生车祸了",
     "车祸了",
     "事故理赔",
     "file a claim",
     "i had an accident",
     "accident claim",
+)
+
+CLAIM_LANE_SWITCH_CONFIRM_MARKERS: tuple[str, ...] = (
+    "开始理赔",
+    "start claim",
+)
+
+CLAIM_LANE_SWITCH_CONTINUE_MARKERS: tuple[str, ...] = (
+    "继续加车",
+)
+
+CLAIM_LANE_SWITCH_BROKER_MARKERS: tuple[str, ...] = (
+    "联系陈总",
 )
 
 CLAIM_QUESTION_MARKERS: tuple[str, ...] = (
@@ -112,6 +128,108 @@ def is_claim_guided_start_message(text: str) -> bool:
     if lowered in ("claim", "accident"):
         return True
     return False
+
+
+def is_claim_lane_switch_confirm(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    if lowered in ("1", "start claim"):
+        return True
+    return any(m in raw for m in CLAIM_LANE_SWITCH_CONFIRM_MARKERS)
+
+
+def is_claim_lane_switch_continue(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw == "2":
+        return True
+    return any(m in raw for m in CLAIM_LANE_SWITCH_CONTINUE_MARKERS)
+
+
+def is_claim_lane_switch_broker(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw == "3":
+        return True
+    return any(m in raw for m in CLAIM_LANE_SWITCH_BROKER_MARKERS)
+
+
+def should_route_claim_lane_switch_choice(normalized: dict[str, Any]) -> bool:
+    """Route lane-switch follow-up (continue / broker) while Add Vehicle is active."""
+    ext = str(normalized.get("external_userid") or "").strip()
+    if not find_open_add_car_case_by_external_userid(ext):
+        return False
+    text = str(normalized.get("text") or "").strip()
+    return is_claim_lane_switch_continue(text) or is_claim_lane_switch_broker(text)
+
+
+def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Handle continue-add-vehicle or broker-contact after lane-switch prompt."""
+    from services.fiqa_api.wecom.reply import (
+        build_add_vehicle_continue_reply,
+        build_lane_switch_broker_contact_reply,
+    )
+
+    text = str(normalized.get("text") or "").strip()
+    ext = str(normalized.get("external_userid") or "").strip()
+    add_car_id = find_open_add_car_case_by_external_userid(ext)
+
+    if is_claim_lane_switch_broker(text):
+        return {
+            "outcome": "claim_lane_switch_broker",
+            "case_id": add_car_id,
+            "case_created": False,
+            "reply_text": build_lane_switch_broker_contact_reply(),
+            "active_case_outcome": "claim_lane_switch_broker",
+            "service_lane": None,
+        }
+
+    reply_text = build_add_vehicle_continue_reply()
+    active_outcome = "claim_lane_switch_continue"
+    if add_car_id:
+        case = get_case_for_read(add_car_id)
+        if case:
+            from services.fiqa_api.wecom.add_vehicle_progress import build_add_vehicle_progress_reply
+
+            progress_text, _menu, _masked = build_add_vehicle_progress_reply(
+                case,
+                external_userid=ext,
+                open_case_count=1,
+            )
+            if progress_text:
+                reply_text = progress_text
+                active_outcome = "add_vehicle_progress_card"
+
+    return {
+        "outcome": active_outcome,
+        "case_id": add_car_id,
+        "case_created": False,
+        "reply_text": reply_text,
+        "active_case_outcome": active_outcome,
+        "service_lane": None,
+    }
+
+
+def _active_add_car_blocks_claim_start(
+    *,
+    text: str,
+    intent_result: IntentResult,
+    injury_mentioned: bool,
+) -> bool:
+    """True when active Add Vehicle should show lane-switch prompt instead of starting Claim."""
+    if injury_mentioned:
+        return False
+    if is_claim_lane_switch_confirm(text):
+        return False
+    if is_claim_question_not_guided_intake(text):
+        return False
+    if is_claim_guided_start_message(text):
+        return True
+    return intent_result.confidence == "high" and intent_result.intent == "claim_intake"
 
 
 # Prompt aliases
@@ -353,6 +471,7 @@ def ingest_claim_basics_message(
     from services.fiqa_api.inbox_triage.case_store import update_claim_workflow_state
     from services.fiqa_api.wecom.reply import (
         build_claim_basics_already_complete_reply,
+        build_claim_interrupt_safety_manual_reply,
         build_claim_missing_basics_reply,
         build_claim_safety_manual_reply,
         build_claim_stage_complete_c1_reply,
@@ -381,17 +500,23 @@ def ingest_claim_basics_message(
             "service_lane": SERVICE_LANE_CLAIM,
         }
 
-    if find_open_add_car_case_by_external_userid(ext) and intent_result.intent == "claim_intake":
-        from services.fiqa_api.wecom.reply import build_secondary_topic_deferred_reply
+    if find_open_add_car_case_by_external_userid(ext) and _active_add_car_blocks_claim_start(
+        text=text,
+        intent_result=intent_result,
+        injury_mentioned=injury_mentioned,
+    ):
+        from services.fiqa_api.wecom.reply import build_claim_lane_switch_reply
 
         return {
-            "outcome": "secondary_topic_deferred",
+            "outcome": "claim_lane_switch_prompt",
             "case_id": None,
             "case_created": False,
-            "reply_text": build_secondary_topic_deferred_reply(),
-            "active_case_outcome": "claim_secondary_topic_deferred",
+            "reply_text": build_claim_lane_switch_reply(),
+            "active_case_outcome": "claim_lane_switch_prompt",
             "service_lane": None,
         }
+
+    add_car_active = bool(find_open_add_car_case_by_external_userid(ext))
 
     case_id: str | None = None
     case_created = False
@@ -447,11 +572,14 @@ def ingest_claim_basics_message(
         }
 
     if case_created and not has_extractable:
-        reply_text = (
-            build_claim_safety_manual_reply()
-            if injury_mentioned
-            else build_claim_start_card_reply(injury_mentioned=False)
-        )
+        if injury_mentioned:
+            reply_text = (
+                build_claim_interrupt_safety_manual_reply()
+                if add_car_active
+                else build_claim_safety_manual_reply()
+            )
+        else:
+            reply_text = build_claim_start_card_reply(injury_mentioned=False)
         update_claim_workflow_state(
             case_id,
             claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
@@ -491,7 +619,11 @@ def ingest_claim_basics_message(
                 **transition_to_manual_handle(refreshed),
             )
             refreshed = get_case_for_read(case_id) or refreshed
-            reply_text = build_claim_safety_manual_reply()
+            reply_text = (
+                build_claim_interrupt_safety_manual_reply()
+                if add_car_active
+                else build_claim_safety_manual_reply()
+            )
             kernel_view = evaluate_claim_simplified_snapshot(refreshed)
             _log_event(
                 "wecom_claim_basics_ingest_v1",
@@ -583,13 +715,22 @@ def ingest_claim_basics_message(
 
 def ingest_claim_question_safe_reply(normalized: dict[str, Any]) -> dict[str, Any]:
     """Safe reply for claim how-to / liability questions — no guided case creation."""
-    from services.fiqa_api.wecom.reply import build_claim_question_safe_reply
+    from services.fiqa_api.wecom.reply import (
+        build_claim_question_safe_reply,
+        build_claim_question_safe_reply_during_add_vehicle,
+    )
+
+    ext = str(normalized.get("external_userid") or "").strip()
+    if find_open_add_car_case_by_external_userid(ext):
+        reply_text = build_claim_question_safe_reply_during_add_vehicle()
+    else:
+        reply_text = build_claim_question_safe_reply()
 
     return {
         "outcome": "claim_question_safe_reply",
         "case_id": None,
         "case_created": False,
-        "reply_text": build_claim_question_safe_reply(),
+        "reply_text": reply_text,
         "active_case_outcome": "claim_question_safe_reply",
         "service_lane": None,
     }

@@ -523,6 +523,69 @@ def build_claim_safety_manual_reply() -> str:
     )
 
 
+def build_claim_interrupt_safety_manual_reply() -> str:
+    """P19H-2.1 — Injury override when Add Vehicle flow is active."""
+    return "\n".join(
+        [
+            "【安全提醒】",
+            "",
+            "如果有人受伤，请先确保人身安全。",
+            "如有紧急情况，请联系当地紧急服务，并尽快联系陈总。",
+            "",
+            "我们不会在系统里判断责任或 coverage。",
+            "陈总会人工跟进。",
+        ]
+    )
+
+
+def build_claim_lane_switch_reply() -> str:
+    """P19H-2.1 — Claim interrupt prompt while Add Vehicle flow is active."""
+    return "\n".join(
+        [
+            "【理赔资料收集】",
+            "",
+            "您当前还有一个加车资料流程正在进行。",
+            "",
+            "如果这是新的事故 / 理赔事项，我们可以先开始理赔资料收集。",
+            "",
+            "请回复：",
+            "1. 开始理赔",
+            "2. 继续加车",
+            "3. 联系陈总",
+            "",
+            "我们只会先帮您整理资料，陈总会人工确认。",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    )
+
+
+def build_claim_question_safe_reply_during_add_vehicle() -> str:
+    """P19H-2.1 — Safe claim Q&A while Add Vehicle flow is active."""
+    return "\n".join(
+        [
+            "这是理赔/事故相关问题。我们不能判断责任或 coverage。",
+            "您可以回复『开始理赔』开始资料收集，或回复『继续加车』回到当前流程。",
+            "",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    )
+
+
+def build_add_vehicle_continue_reply() -> str:
+    """P19H-2.1 — Resume Add Vehicle after lane-switch choice."""
+    return "好的，我们继续加车资料流程。您可以回复：进度。"
+
+
+def build_lane_switch_broker_contact_reply() -> str:
+    """P19H-2.1 — Broker contact after lane-switch choice."""
+    return "\n".join(
+        [
+            "明白了，我们会告知陈总您希望直接沟通。",
+            "陈总会尽快人工跟进。",
+        ]
+    )
+
+
 def build_claim_question_safe_reply() -> str:
     return "\n".join(
         [

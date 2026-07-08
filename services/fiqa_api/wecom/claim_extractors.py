@@ -6,9 +6,12 @@ import re
 
 _CLAIM_COMMAND_PHRASES: tuple[str, ...] = (
     "我要理赔",
+    "开始理赔",
     "我撞车了",
     "出事故了",
     "发生事故了",
+    "发生车祸了",
+    "我发生车祸了",
     "车祸了",
     "事故理赔",
     "file a claim",
