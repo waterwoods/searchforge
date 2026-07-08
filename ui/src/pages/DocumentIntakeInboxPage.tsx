@@ -38,6 +38,15 @@ import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplay
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import {
+  CLAIM_INTAKE_SAFETY_NOTE,
+  buildClaimListSummary,
+  claimDisplayStatus,
+  claimLaneLabel,
+  isClaimGuidedCase,
+  isClaimGuidedLane,
+  resolveClaimSummary,
+} from '@/features/intake/utils/claimWorkbenchDisplay';
+import {
   countImagePreviews,
   createWorkbenchPerfSession,
   logCaseDetailLoaded,
@@ -98,7 +107,13 @@ const ACTION_BANNER_STYLE: Record<string, { background: string; border: string; 
 function isP16DocumentCase(c: SavedCase): boolean {
   if (c.workbench_archived) return false;
   const lane = (c.service_lane || '').trim();
-  if (lane === 'add_car' || lane === 'policy_review' || lane === 'claim_lite' || lane === 'coverage_risk') return true;
+  if (
+    lane === 'add_car'
+    || lane === 'policy_review'
+    || lane === 'claim_lite'
+    || lane === 'claim'
+    || lane === 'coverage_risk'
+  ) return true;
   if (c.demo_name === 'chen_kui_p18' && c.workbench_test) return true;
   const src = (c.source_text || '').toLowerCase();
   return src.includes('p16 add-car') || src.includes('p16 policy review');
@@ -115,6 +130,7 @@ function laneLabel(c: SavedCase): string {
   if (lane === 'wecom_media_intake') return 'WeCom Photo';
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
   const rt = blob?.request_type || '';
+  if (isClaimGuidedLane(lane)) return claimLaneLabel();
   if (lane === 'policy_review' || rt === 'policy_review') return 'Policy Review';
   if (lane === 'claim_lite' || rt === 'claim_intake') return 'Claim Lite';
   if (lane === 'coverage_risk' || rt === 'coverage_risk') return 'Coverage Risk';
@@ -128,6 +144,7 @@ function laneTagColor(lane: string): string {
   if (lane === 'WeCom Photo') return 'gold';
   if (lane === 'Add Car') return 'blue';
   if (lane === 'Policy Review') return 'purple';
+  if (lane === 'Claim') return 'volcano';
   if (lane === 'Claim Lite') return 'volcano';
   if (lane === 'Coverage Risk') return 'red';
   if (lane === 'Replace Vehicle') return 'cyan';
@@ -140,6 +157,9 @@ function readinessFromCase(c: SavedCase): string {
   const cat = (c.issue_category || '').toLowerCase();
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
+  if (isClaimGuidedLane(lane)) {
+    return 'BROKER_REVIEW';
+  }
   if (lane === 'claim_lite' || cat === 'claim_intake') {
     return blob?.readiness_status || 'BROKER_REVIEW';
   }
@@ -237,6 +257,9 @@ function buildSummary(c: SavedCase): string {
   const lane = (c.service_lane || '').trim();
   if (lane === 'wecom_media_intake') {
     return 'WeChat photo received — classify as add car / policy / claim / DMV';
+  }
+  if (isClaimGuidedLane(lane)) {
+    return buildClaimListSummary(c);
   }
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
@@ -357,6 +380,26 @@ function PacketField({ label, value, source }: { label: string; value?: string; 
   );
 }
 
+function ClaimAccidentBasicsCard({ caseItem }: { caseItem: SavedCase }) {
+  const summary = resolveClaimSummary(caseItem);
+  return (
+    <Card size="small" title="Claim · Accident Basics" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+        {claimDisplayStatus(caseItem)}
+      </Text>
+      <PacketField label="Time" value={summary.accident_datetime ?? undefined} />
+      <PacketField label="Location" value={summary.accident_location ?? undefined} />
+      <PacketField label="Description" value={summary.accident_description ?? undefined} />
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginTop: 8, marginBottom: 0 }}
+        message={CLAIM_INTAKE_SAFETY_NOTE}
+      />
+    </Card>
+  );
+}
+
 function BrokerCaseDetail({
   caseItem,
   blob,
@@ -395,12 +438,15 @@ function BrokerCaseDetail({
         {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
+        {isClaimGuidedCase(caseItem) ? (
+          <ClaimAccidentBasicsCard caseItem={caseItem} />
+        ) : null}
         {isWeComMedia ? (
           <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
             <PacketField label="Name" value={resolveCustomerDisplayName(caseItem)} />
             <PacketField label="Source" value="WeCom" />
           </Card>
-        ) : Object.keys(knownFacts).length > 0 ? (
+        ) : Object.keys(knownFacts).length > 0 && !isClaimGuidedCase(caseItem) ? (
           <Card size="small" title="Known Facts" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
             {Object.entries(knownFacts).map(([k, v]) => (
               <PacketField key={k} label={humanizeStructuredField(k)} value={String(v)} />

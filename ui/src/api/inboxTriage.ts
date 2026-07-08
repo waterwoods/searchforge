@@ -180,6 +180,17 @@ export interface TriageResult {
     conflict_flags?: string[];
     demo_summary?: string;
     known_facts?: Record<string, string>;
+    /** P19H-3a — Claim guided lane workbench display (GET /api/inbox/cases enrichment) */
+    workflow_id?: string;
+    workflow_phase?: string;
+    display_title?: string;
+    display_status?: string;
+    claim_summary?: {
+        accident_datetime?: string | null;
+        accident_location?: string | null;
+        accident_description?: string | null;
+    };
+    workbench_visible?: boolean;
     /** P18 Loop 1 — demo seed metadata (extra JSONB) */
     demo_name?: string;
     demo_flags?: Record<string, unknown>;
