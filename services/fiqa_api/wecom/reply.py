@@ -380,6 +380,151 @@ def build_phase2_validation_reply(
 
 
 # ---------------------------------------------------------------------------
+# P19H-2 — Claim guided workflow replies (start / basics / C1)
+# ---------------------------------------------------------------------------
+
+_CLAIM_BASICS_LABELS: dict[str, str] = {
+    "accident_datetime": "事故时间",
+    "accident_location": "事故地点",
+    "accident_description": "简单描述",
+}
+
+_CLAIM_SAFE_DISCLAIMER = "这不代表已经正式报案。"
+_CLAIM_PHOTO_NEXT_STEP_NOTE = (
+    "照片上传入口下一步会接入；现在可先把事故照片发到微信里，陈总会人工查看。"
+)
+
+
+def _claim_fact_display(case: dict[str, Any], field: str) -> str:
+    facts = case.get("known_facts") or {}
+    if isinstance(facts, dict):
+        raw = facts.get(field)
+        if raw:
+            return str(raw).strip()
+    return _CLAIM_BASICS_LABELS.get(field, field)
+
+
+def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
+    lines = [
+        "【理赔资料收集】",
+        "",
+        "很抱歉听到您发生事故。请先确认人是否安全。",
+        "",
+        "如果有人受伤，请优先联系紧急服务，并尽快联系陈总。",
+    ]
+    if not injury_mentioned:
+        lines.extend(
+            [
+                "",
+                "如果人都安全，请直接回复事故基本信息：",
+                "1. 事故时间",
+                "2. 事故地点",
+                "3. 简单描述发生了什么",
+                "",
+                "例如：",
+                "今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门。",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "我们会先帮您整理资料，陈总会人工确认。",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_claim_missing_basics_reply(case: dict[str, Any]) -> str:
+    from services.fiqa_api.wecom.claim_state import CLAIM_ACCIDENT_BASICS_FIELDS, is_accident_basics_complete
+
+    collected_names = {str(x).lower() for x in (case.get("collected_fields") or [])}
+    still = [f for f in CLAIM_ACCIDENT_BASICS_FIELDS if f.lower() not in collected_names]
+    has_any = any(f.lower() in collected_names for f in CLAIM_ACCIDENT_BASICS_FIELDS)
+
+    if not has_any:
+        return build_claim_start_card_reply(injury_mentioned=False)
+
+    lines = ["【理赔资料收集】", ""]
+    lines.append("已收到：")
+    for field in CLAIM_ACCIDENT_BASICS_FIELDS:
+        if field.lower() in collected_names:
+            lines.append(f"✅ {_CLAIM_BASICS_LABELS[field]}：{_claim_fact_display(case, field)}")
+    lines.append("")
+    if still:
+        lines.append("还需要：")
+        for field in still:
+            lines.append(f"○ {_CLAIM_BASICS_LABELS[field]}")
+        lines.append("")
+        lines.append("请直接回复，例如：")
+        lines.append("今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门。")
+        lines.append("")
+    lines.append("这只是资料收集，不代表已经正式报案。")
+    if is_accident_basics_complete(case):
+        return build_claim_basics_already_complete_reply(case)
+    return "\n".join(lines)
+
+
+def build_claim_stage_complete_c1_reply(case: dict[str, Any]) -> str:
+    lines = [
+        "【理赔资料 · 第 1 步完成 ✅】",
+        "",
+        "事故基本信息已收到。",
+        "",
+        "已记录：",
+        f"时间：{_claim_fact_display(case, 'accident_datetime')}",
+        f"地点：{_claim_fact_display(case, 'accident_location')}",
+        f"描述：{_claim_fact_display(case, 'accident_description')}",
+        "",
+        "下一步：上传事故照片。",
+        "请准备：",
+        "1. 您的车损伤照片",
+        "2. 对方车辆 / 车牌照片",
+        "3. 现场照片（可选）",
+        "",
+        _CLAIM_PHOTO_NEXT_STEP_NOTE,
+        "",
+        "目前不代表已经正式报案。",
+        "陈总会人工确认。",
+    ]
+    return "\n".join(lines)
+
+
+def build_claim_basics_already_complete_reply(case: dict[str, Any]) -> str:
+    lines = [
+        "【理赔资料 · 第 1 步已完成】",
+        "",
+        "事故基本信息已收到 ✅",
+        "",
+        f"时间：{_claim_fact_display(case, 'accident_datetime')}",
+        f"地点：{_claim_fact_display(case, 'accident_location')}",
+        "",
+        "▶️ 下一步：上传事故照片。",
+        _CLAIM_PHOTO_NEXT_STEP_NOTE,
+        "",
+        _CLAIM_SAFE_DISCLAIMER,
+    ]
+    return "\n".join(lines)
+
+
+def build_claim_question_safe_reply() -> str:
+    return "\n".join(
+        [
+            "很抱歉听到您遇到事故相关的问题。",
+            "",
+            "我们不能判断事故责任，也不能承诺 coverage 或是否该报案。",
+            "是否报案、是否能赔，需要陈总人工确认。",
+            "",
+            "如果您愿意，我们可以先帮您整理事故基本资料（时间、地点、简要描述）。",
+            "请直接回复，例如：",
+            "今天上午10点，在 Irvine Blvd 附近，对方变道刮到我左前门。",
+            "",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
 # P19E-2 — Add Vehicle Progress Card (status / resume layer)
 # ---------------------------------------------------------------------------
 

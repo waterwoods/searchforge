@@ -1345,6 +1345,43 @@ def update_add_vehicle_workflow_state(
     return normalized_case
 
 
+def update_claim_workflow_state(
+    case_id: str,
+    *,
+    guided_workflow_state: str | None = None,
+    claim_phase: str | None = None,
+    manual_handle: bool | None = None,
+    urgent: bool | None = None,
+    c1_stage_complete_sent_at: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Update Claim guided workflow fields on case JSON (P19H-2).
+
+    No schema migration — stored in case extra / JSON document.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    if guided_workflow_state:
+        normalized_case["guided_workflow_state"] = guided_workflow_state.strip()
+    if claim_phase:
+        normalized_case["claim_phase"] = claim_phase.strip()
+    if manual_handle is not None:
+        normalized_case["manual_handle"] = manual_handle
+    if urgent is not None:
+        normalized_case["urgent"] = urgent
+    if c1_stage_complete_sent_at:
+        state = dict(normalized_case.get("claim_flow_state") or {})
+        state["c1_stage_complete_sent_at"] = c1_stage_complete_sent_at
+        normalized_case["claim_flow_state"] = state
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 def record_h5_photo_flow_end_card_status(
     case_id: str,
     *,

@@ -498,6 +498,103 @@ def process_kf_msg_or_event(
                 open_bound_case_id = None
                 open_bound_case = None
 
+            # P19H-2 — Claim guided basics (before minimal claim_lite lane).
+            from services.fiqa_api.wecom.claim_basics import (
+                ingest_claim_basics_message,
+                ingest_claim_question_safe_reply,
+                should_route_claim_guided_workflow,
+                should_route_claim_question_safe_reply,
+            )
+
+            if b0_enabled and should_route_claim_question_safe_reply(normalized, intent_result):
+                question_result = ingest_claim_question_safe_reply(normalized)
+                reply_text = question_result.get("reply_text")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": False,
+                    "case_id": None,
+                    "active_case_outcome": question_result.get("active_case_outcome"),
+                    "service_lane": None,
+                }
+                _log_slice(
+                    "claim_question_safe_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                )
+                _log_slice(
+                    "reply_generated_v1",
+                    {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                )
+                _dispatch_reply(
+                    cfg,
+                    normalized,
+                    send_enabled=send_enabled,
+                    menu_payload=None,
+                    text_content=reply_text,
+                    outcome=outcome,
+                )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=None,
+                )
+                continue
+
+            if b0_enabled and should_route_claim_guided_workflow(normalized, intent_result):
+                claim_result = ingest_claim_basics_message(normalized, intent_result)
+                reply_text = claim_result.get("reply_text")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": claim_result.get("case_created", False),
+                    "case_id": claim_result.get("case_id"),
+                    "active_case_outcome": claim_result.get("active_case_outcome"),
+                    "claim_phase": claim_result.get("claim_phase"),
+                    "service_lane": claim_result.get("service_lane"),
+                    "needs_broker_manual_handle": claim_result.get("needs_broker_manual_handle"),
+                }
+                _log_slice(
+                    "claim_basics_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                )
+                if reply_text:
+                    _log_slice(
+                        "reply_generated_v1",
+                        {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                    )
+                    _dispatch_reply(
+                        cfg,
+                        normalized,
+                        send_enabled=send_enabled,
+                        menu_payload=None,
+                        text_content=reply_text,
+                        outcome=outcome,
+                    )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
+
             open_minimal_lane_id = (
                 find_open_minimal_lane_case_by_external_userid(str(normalized.get("external_userid") or ""))
                 if b0_enabled
