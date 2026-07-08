@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-08  
 **Branch:** `sprint/p16-trust-layer`  
-**Status:** **IMPLEMENTED** · **NOT DEPLOYED**
+**Status:** **DEPLOYED** (`fiqa-api-00169-wjc`) · **PHONE SMOKE PENDING**
 
 ---
 
@@ -117,7 +117,83 @@ bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 # Result: PASS
 ```
 
-No deploy performed.
+## Scenario CLI Pre-Deploy Evidence
+
+```bash
+PYTHONPATH=. python3 scripts/run_workflow_scenarios.py
+```
+
+**Result:** All 6 scenarios PASS
+
+**Highlight — `add_vehicle_to_claim_interrupt`:**
+
+| Step | Input | Routing |
+|------|-------|---------|
+| 1 | 我要理赔 | `claim_interrupt_during_active_add_vehicle` / `lane_switch_prompt` |
+| 2 | 开始理赔 | `claim_confirmed_start` / `start_claim_flow` |
+| 3 | Accident basics | `active_claim_basics_collection` / `send_claim_c1` |
+
+Pre-deploy pytest: 8/8 passed. Regression: all passed.
+
+---
+
+## Deploy Evidence
+
+| Field | Value |
+|-------|-------|
+| Branch | `sprint/p16-trust-layer` |
+| Deployed commit | `f39e46c` |
+| GIT_SHA | `f39e46cb6` |
+| Backend revision | `fiqa-api-00169-wjc` |
+| Backend URL | https://fiqa-api-g7zatxrycq-uw.a.run.app |
+| Deploy time (UTC) | 2026-07-08T06:29:17Z |
+| `/health/live` | 200 |
+| `/readyz` | 200 — `intake_core_readiness: true` |
+| Pre-deploy QA gate | PASS |
+| Post-deploy QA gate | PASS |
+| Log check | Clean — optional Qdrant/Redis warnings only |
+| Live routing log | **PENDING** until WeCom phone smoke |
+| Frontend deployed | No |
+| Schema changed | No |
+| DB logging | No |
+| Workbench UI | No |
+| Mermaid generation | No |
+
+Deploy command: `bash scripts/deploy_paid_pilot.sh`
+
+---
+
+## Andy Phone Retest Checklist
+
+*(Same as P19J-1a evidence — simulator validated these paths locally; phone confirms production.)*
+
+### Smoke A — Active Add Vehicle + Claim interrupt
+
+Context: Active Add Vehicle case open. Input: `我要理赔`
+
+Expected: Lane-switch prompt; offers 开始理赔 / 继续加车 / 联系陈总; NOT「先完成当前请求」
+
+### Smoke B — Confirm Claim start
+
+Input: `开始理赔` → 【理赔资料收集】 + accident basics prompt
+
+### Smoke C — Claim basics C1
+
+Input: accident basics one-liner → 【理赔资料 · 第 1 步完成 ✅】 + 准备事故照片; no Add Vehicle re-blocking
+
+### Smoke D — Injury
+
+Input: `有人受伤了，我要理赔` → 【安全提醒】; no C1; no deferral
+
+### Smoke E — Non-Claim secondary topic
+
+Input: `我还想问一下续保` → secondary-topic deferral
+
+### Smoke F — Routing decision log
+
+After messages, confirm `wecom_routing_decision_v1` in Cloud Logging with expected `priority_rule` values.
+
+**Status:** Deploy **GO** · Phone smoke **PENDING**
 
 ---
 
@@ -125,7 +201,7 @@ No deploy performed.
 
 | Constraint | Status |
 |------------|--------|
-| No deploy | ✅ |
+| Backend deploy only (no frontend) | ✅ |
 | No schema / DB logging | ✅ |
 | No Workbench UI | ✅ |
 | No Mermaid generation | ✅ |
@@ -147,13 +223,13 @@ No deploy performed.
 
 ## 12. Next recommended step
 
+- **Phone smoke** — run Andy checklist; confirm live `wecom_routing_decision_v1` in Cloud Logging
 - **P19J-1b** — Mermaid auto diagrams from `WorkflowDefinition`
-- **Deploy** P19J-1a routing logs + run simulator against staging after review
 
 ---
 
 ## 13. GO / HOLD
 
-**GO** — Simulator is ready for daily dev use before phone smoke. Deploy routing logs when convenient.
+**GO** — Deployed with simulator-validated paths. Run phone smoke checklist; then confirm live routing logs.
 
-**STOP** — P19J-1c scope complete.
+**STOP** — P19J-1c deploy prep complete; phone smoke pending.
