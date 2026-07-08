@@ -36,6 +36,7 @@ import {
 } from '@/api/inboxTriage';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
+import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEvidenceChecklist';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import {
   CLAIM_INTAKE_SAFETY_NOTE,
@@ -45,6 +46,7 @@ import {
   isClaimGuidedCase,
   isClaimGuidedLane,
   resolveClaimSummary,
+  resolveClaimEvidenceSummary,
 } from '@/features/intake/utils/claimWorkbenchDisplay';
 import {
   countImagePreviews,
@@ -439,7 +441,10 @@ function BrokerCaseDetail({
           <MissingItemsCard fields={missingFields} />
         ) : null}
         {isClaimGuidedCase(caseItem) ? (
-          <ClaimAccidentBasicsCard caseItem={caseItem} />
+          <>
+            <ClaimAccidentBasicsCard caseItem={caseItem} />
+            <ClaimEvidenceChecklist summary={resolveClaimEvidenceSummary(caseItem)} />
+          </>
         ) : null}
         {isWeComMedia ? (
           <Card size="small" title="Customer" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>

@@ -24,6 +24,38 @@ export interface ConversationTurn {
     text: string;
 }
 
+/** P19H-3c-3A — per-slot Claim evidence row for Workbench checklist */
+export type ClaimEvidenceSlot = {
+    slot_key: string;
+    label: string;
+    required_level: 'required' | 'soft_required' | 'optional' | string;
+    status: 'missing' | 'received' | 'skipped' | 'needs_retake' | string;
+    source_channel: string;
+    attachment_count: number;
+    latest_attachment: null | {
+        attachment_id?: string;
+        filename?: string;
+        mime_type?: string;
+        source?: string;
+        received_at?: string;
+        [key: string]: unknown;
+    };
+    skip_reason: string | null;
+    needs_broker_review: boolean;
+};
+
+/** P19H-3c-3A — Claim evidence checklist summary for Workbench drawer */
+export type ClaimEvidenceSummary = {
+    slots: ClaimEvidenceSlot[];
+    missing_required_slots: string[];
+    missing_soft_required_slots: string[];
+    received_slots: string[];
+    skipped_slots: string[];
+    completion_level: 'empty' | 'partial' | 'required_complete' | 'review_ready' | 'complete' | string;
+    broker_next_action: string;
+    summary_text: string;
+};
+
 export interface TriageResult {
     issue_category: string;
     urgency: 'low' | 'medium' | 'high' | 'critical';
@@ -190,6 +222,8 @@ export interface TriageResult {
         accident_location?: string | null;
         accident_description?: string | null;
     };
+    /** P19H-3c-3A — Claim evidence checklist summary (GET /api/inbox/cases enrichment) */
+    claim_evidence_summary?: ClaimEvidenceSummary;
     workbench_visible?: boolean;
     /** P18 Loop 1 — demo seed metadata (extra JSONB) */
     demo_name?: string;
