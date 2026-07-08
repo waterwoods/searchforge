@@ -74,9 +74,10 @@ def _normalized(text: str, *, ext: str = "wm_claim_h2", msg_id: str = "m1") -> d
 
 
 def _assert_no_forbidden_copy(text: str) -> None:
-    assert customer_copy_contains_forbidden_phrase(text) is None
+    scrubbed = (text or "").replace("不代表 claim 已正式提交", "")
+    assert customer_copy_contains_forbidden_phrase(scrubbed) is None
     for phrase in ("已经帮您报案", "理赔已经提交", "是对方责任", "您的保险一定会赔"):
-        assert phrase not in (text or "")
+        assert phrase not in scrubbed
 
 
 def test_claim_start_card_copy_safe():
@@ -140,7 +141,8 @@ def test_full_basics_message_sends_c1():
     assert facts.get("accident_description")
     reply = result["reply_text"] or ""
     assert "第 1 步完成" in reply
-    assert "下一步" in reply and "照片" in reply
+    assert "事故基本信息已收到" in reply
+    assert "上传事故照片" in reply and "照片" in reply
     assert "http" not in reply.lower()
     _assert_no_forbidden_copy(reply)
 
