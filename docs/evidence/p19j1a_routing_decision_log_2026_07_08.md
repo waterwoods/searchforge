@@ -234,7 +234,7 @@ No deploy performed this sprint.
 | Pre-deploy QA gate | PASS |
 | Post-deploy QA gate | PASS |
 | Log check | Clean — Qdrant/Redis/embedding optional warnings only; no `routing_observability` import errors |
-| Live `wecom_routing_decision_v1` | **PENDING** — no WeCom message since deploy at log check time |
+| Live `wecom_routing_decision_v1` | **CONFIRMED** — see Live WeCom Routing Log Evidence below |
 | Frontend deployed | No |
 | Schema changed | No |
 | DB logging | No |
@@ -328,7 +328,55 @@ Confirm:
 - No raw phone / email / VIN in `text_redacted_preview`
 - `external_user_hash` present (not raw `external_userid`)
 
-**Status:** Deploy **GO** · Phone smoke **PENDING** · Live routing log **PENDING**
+**Status:** Deploy **GO** · Phone smoke **PARTIAL** (core path confirmed) · Live routing log **CONFIRMED**
+
+---
+
+## Live WeCom Routing Log Evidence
+
+**Checked:** 2026-07-08 (post phone smoke on `fiqa-api-00169-wjc`)
+
+| Field | Result |
+|-------|--------|
+| Backend revision | `fiqa-api-00169-wjc` |
+| GIT_SHA | `f39e46cb6` |
+| `wecom_routing_decision_v1` found | **YES** — 3 records |
+| `claim_interrupt_during_active_add_vehicle` found | **YES** |
+| `active_claim_basics_collection` found | **YES** |
+| `claim_c1` / `send_claim_c1` found | **YES** |
+| `claim_confirmed_start` found | **NO** as separate label |
+| Routing-related errors | **NO** |
+| Privacy issues | **NO** |
+
+### Important interpretation
+
+The live path was **successful**:
+
+1. **我要理赔** (`2026-07-08T06:45:49Z`)
+   - `priority_rule`: `claim_interrupt_during_active_add_vehicle`
+   - `decision`: `lane_switch_prompt`
+   - `response_type`: `claim_lane_switch`
+   - Active Add Vehicle case: `case_b097587cab58`
+
+2. **开始理赔** (`2026-07-08T06:46:05Z`)
+   - Logged as `active_claim_basics_collection` / `collect_claim_basics`
+   - Claim case already active: `case_b8d15b3ca59a`
+   - `response_type`: `claim_missing_basics`
+
+3. **Accident basics one-liner** (`2026-07-08T06:46:40Z`)
+   - `priority_rule`: `active_claim_basics_collection`
+   - `decision`: `send_claim_c1`
+   - `response_type`: `claim_c1`
+
+### Conclusion
+
+- **Business behavior:** PASS
+- **Routing logs live in production:** PASS
+- Simulator expectation for `claim_confirmed_start` is stricter than current production label
+- This is an **observability label gap**, not a user-facing bug
+- Defer label cleanup to future P19J cleanup if needed
+
+**Live log verdict:** **PARTIAL** (3/4 expected labels; core interrupt → C1 path confirmed)
 
 ---
 
@@ -341,6 +389,6 @@ Confirm:
 
 ## 14. GO / HOLD
 
-**GO** — Deployed (`fiqa-api-00169-wjc`). Phone smoke pending to confirm live `wecom_routing_decision_v1` in Cloud Logging.
+**GO** — Deployed (`fiqa-api-00169-wjc`). Live `wecom_routing_decision_v1` confirmed in Cloud Logging. Core phone smoke path (interrupt → basics → C1) PASS.
 
-**STOP** — P19J-1a deploy complete; await phone retest.
+**STOP** — P19J-1a live log evidence closed.
