@@ -173,6 +173,8 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["wecom_open_kf_id"] = str(extra.get("wecom_open_kf_id")).strip()
     if isinstance(extra.get("h5_photo_flow_state"), dict):
         case["h5_photo_flow_state"] = dict(extra.get("h5_photo_flow_state") or {})
+    if isinstance(extra.get("claim_attachment_slots"), dict):
+        case["claim_attachment_slots"] = dict(extra.get("claim_attachment_slots") or {})
     if extra.get("guided_workflow_state"):
         case["guided_workflow_state"] = str(extra.get("guided_workflow_state")).strip()
     if extra.get("add_vehicle_phase"):
@@ -202,6 +204,7 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "wecom_external_userid",
         "wecom_open_kf_id",
         "h5_photo_flow_state",
+        "claim_attachment_slots",
         "guided_workflow_state",
         "add_vehicle_phase",
         "demo_name",

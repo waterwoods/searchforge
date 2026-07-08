@@ -46,6 +46,36 @@ def test_hydrate_extra_restores_phase2_workflow_fields():
     assert case["h5_photo_flow_state"]["end_card_sent_at"] == "2026-07-07T01:14:01Z"
 
 
+def test_build_extra_includes_claim_attachment_slots():
+    case = {
+        "claim_attachment_slots": {
+            "customer_damage_photo": {
+                "status": "received",
+                "source_channel": "h5_task",
+                "latest_attachment_id": "att_test",
+            }
+        }
+    }
+    extra = _build_extra(case)
+    assert extra["claim_attachment_slots"]["customer_damage_photo"]["status"] == "received"
+
+
+def test_hydrate_extra_restores_claim_attachment_slots():
+    case: dict = {}
+    _hydrate_extra_pilot_fields(
+        case,
+        {
+            "claim_attachment_slots": {
+                "other_party_vehicle_photo": {
+                    "status": "skipped",
+                    "skip_reason": "not_available",
+                }
+            }
+        },
+    )
+    assert case["claim_attachment_slots"]["other_party_vehicle_photo"]["status"] == "skipped"
+
+
 def test_hydrate_extra_restores_wecom_open_kf_id_and_h5_state():
     case: dict = {}
     _hydrate_extra_pilot_fields(
