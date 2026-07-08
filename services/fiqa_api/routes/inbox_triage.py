@@ -1805,6 +1805,13 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     if case is None:
         raise HTTPException(status_code=404, detail="case not found")
     assert_case_office_access_allowed(http_request, case)
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench([case])
+        case = enriched[0] if enriched else case
+    except Exception as exc:
+        logger.warning("Workbench enrich failed for case %s, returning raw case: %s", cid, exc)
     return sanitize_case_for_workbench_api(case)
 
 
