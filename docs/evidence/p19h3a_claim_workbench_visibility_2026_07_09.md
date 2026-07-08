@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-09  
 **Branch:** `sprint/p16-trust-layer`  
-**Verdict:** **LOCAL PASS** · **REGRESSION PASS** · **QA GATE PASS** · **NOT DEPLOYED**
+**Verdict:** **LOCAL PASS** · **REGRESSION PASS** · **QA GATE PASS** · **DEPLOYED** · **WORKBENCH SMOKE PASS**
 
 ---
 
@@ -133,9 +133,86 @@ Add Vehicle / Claim Lite / Policy Review UI unchanged.
 bash scripts/check_chen_kui_demo_environment.sh --cloud-api
 ```
 
-**Result: PASS** (2026-07-09) — Cloud Run `fiqa-api-00169-wjc`, QA UI HTTP 200, Cloud SQL aligned.
+**Result: PASS** (pre-deploy 2026-07-08) — Cloud Run `fiqa-api-00169-wjc`.  
+**Post-deploy: PASS** (2026-07-08) — Cloud Run `fiqa-api-00170-lgk`, alias `ui-smoky-beta`.
 
-Note: QA gate still validates seeded `claim_lite` demo row (王女士); guided `claim` lane smoke requires post-deploy phone/workbench retest.
+Note: QA gate still validates seeded `claim_lite` demo row (王女士); guided `claim` lane verified separately in Workbench smoke below.
+
+---
+
+## Deploy Evidence
+
+| Field | Value |
+|-------|-------|
+| Branch | `sprint/p16-trust-layer` |
+| Deployed commit | `29b57fe` (`29b57fe92`) |
+| Backend revision | **`fiqa-api-00170-lgk`** |
+| Backend URL | `https://fiqa-api-g7zatxrycq-uw.a.run.app` |
+| Backend GIT_SHA | `29b57fe92` (`GET /version`) |
+| Deploy script | `bash scripts/deploy_paid_pilot.sh` |
+| Deploy time (UTC) | 2026-07-08 ~16:28 UTC |
+| Frontend command | `vercel deploy --prod --yes` with `VITE_UNIFIED_INTAKE_PRODUCT_ONLY=1`, `VITE_API_BASE_URL`, `VITE_UNIFIED_INTAKE_INTAKE_API_KEY` |
+| Frontend deployment | `https://ui-p3mu44ye9-andys-projects-1f411b73.vercel.app` |
+| **Stable alias** | **`https://ui-smoky-beta.vercel.app`** |
+| `/health/live` | 200 |
+| `/readyz` | 200 (`intake_core_readiness: true`) |
+| Frontend build (local) | PASS (~20s) |
+| Frontend build (Vercel) | PASS (~35s) |
+| Frontend unit test | PASS (`claimWorkbenchDisplay.test.ts`) |
+| Backend targeted tests | PASS (P19H-3a + regressions) |
+| Scenario CLI | PASS (6/6) |
+| Pre-deploy QA gate | PASS |
+| Post-deploy QA gate | PASS |
+| DB secret | `fiqa-service-record-database-url-cloudsql-private` — unchanged |
+| Cloud SQL | `caseiq` @ `10.73.0.3` private VPC — unchanged |
+| `WECOM_SLICE_SEND_REPLY` | `1` — unchanged |
+| `H5_TASK_TOKEN_SECRET` | configured — unchanged |
+| WeCom callback / VPC / NAT | unchanged |
+| Schema changed? | **No** |
+| OCR? | **No** |
+| H5 Claim photos? | **No** |
+| Full Claim drawer? | **No** (minimal basics card only) |
+| Carrier filing? | **No** |
+
+### Log check (post-deploy)
+
+Revision `fiqa-api-00170-lgk` (~80 lines):
+
+- **No** `claim_workbench_display` / `workbench_enrichment` import errors
+- **No** `/api/inbox/cases` failures
+- **No** Postgres read facade errors
+- Expected optional warnings only: Qdrant unreachable, Redis optional, embedding warmup deferred
+
+---
+
+## Workbench Smoke Evidence
+
+**URL:** https://ui-smoky-beta.vercel.app/workbench/document-intake
+
+| Check | Result |
+|-------|--------|
+| Page loads | **YES** (HTTP 200) |
+| Claim case visible in list | **YES** |
+| Known case checked | `case_b8d15b3ca59a` (API + UI) |
+| Claim badge (`Claim`) | **YES** |
+| `accident_datetime` visible | **YES** — 今天上午10点 |
+| `accident_location` visible | **YES** — Irvine Blvd 和 Culver |
+| `accident_description` visible | **YES** — 对方变道刮到我左前门 (full line in list) |
+| Drawer minimal Claim card | **YES** — Claim · Accident Basics |
+| Safety note visible | **YES** — *This is intake only. Broker must confirm before any filing.* |
+| Add Vehicle still visible | **YES** — 陈女士 Add Car READY, 李先生 NEED_INFO, etc. |
+| Claim Lite demo unchanged | **YES** — 王女士 Claim Lite |
+
+### Production API smoke (`GET /api/inbox/cases`)
+
+- `claim_lane=1` in first page (25 cases)
+- `case_b8d15b3ca59a`: `service_lane=claim`, `workflow_phase=accident_basics_complete`, `workbench_visible=true`
+- `display_status`: *Claim Step 1 complete · Accident basics received*
+- No claim-filed language in API response
+
+### Deployed bundle check
+
+- Vercel asset `index-DjqlyphZ.js` contains `Claim Step 1 complete`, `Accident Basics`
 
 ---
 
@@ -147,7 +224,7 @@ Note: QA gate still validates seeded `claim_lite` demo row (王女士); guided `
 | No H5 Claim photos | ✅ |
 | No full Claim drawer | ✅ (minimal basics card only) |
 | No schema migration | ✅ |
-| No deploy | ✅ |
+| No deploy (implementation sprint) | ✅ (deploy done in follow-up) |
 | No WeCom callback change | ✅ |
 | Add Vehicle Workbench unchanged | ✅ |
 
@@ -158,16 +235,15 @@ Note: QA gate still validates seeded `claim_lite` demo row (王女士); guided `
 - Document Intake list filter is still client-side; relies on `service_lane=claim` (not phase filter on frontend — all non-archived `claim` lane cases show).
 - No Claim photo / Evidence Pack UI.
 - No carrier filing actions.
-- Production UI (`ui-smoky-beta`) will not show Claim until frontend deploy.
-- `case_b8d15b3ca59a` not verified against production API in this session (no prod DB mutation); fixture + ingest tests used.
+- `case_b8d15b3ca59a` verified on production API + Workbench UI post-deploy.
+- Customer name empty on production Claim case (WeCom default label 企业微信客户) — cosmetic only.
 
 ---
 
 ## 11. Next recommended step
 
-1. **Deploy** API + UI to `ui-smoky-beta` / Cloud Run
-2. **Workbench smoke:** open `/workbench/document-intake`, confirm `case_b8d15b3ca59a` (or fresh phone Claim flow) shows Claim badge + accident basics
-3. Then **P19H-3b Claim Evidence Pack** (H5 photos) as separate sprint
+1. **P19H-3b Claim Evidence Pack** (H5 photos) — separate sprint
+2. Optional Andy phone retest: fresh Claim flow → confirm Workbench row after C1
 
 ---
 
@@ -176,6 +252,7 @@ Note: QA gate still validates seeded `claim_lite` demo row (王女士); guided `
 | Gate | Verdict |
 |------|---------|
 | Code + tests | **GO** |
-| Deploy + Workbench smoke | **HOLD** until deploy + manual verification |
+| Deploy | **GO** |
+| Workbench smoke | **GO** |
 
-**STOP** — P19H-3a implementation complete; deploy explicitly out of scope for this prompt.
+**STOP** — P19H-3a deployed and Workbench Claim visibility verified.
