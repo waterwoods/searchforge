@@ -40,6 +40,7 @@ class ScenarioStep:
     expected_priority_rule: str | None = None
     expected_decision: str | None = None
     expected_response_type: str | None = None
+    expected_menu_button: str | None = None
 
 
 @dataclass
@@ -197,6 +198,24 @@ def validate_scenario_step(step: ScenarioStep, turn: RouteTurnResult) -> Scenari
                 f"response_type: expected {step.expected_response_type!r}, got {actual!r}"
             )
 
+    if step.expected_menu_button is not None:
+        menu = turn.outcome.get("menu_payload")
+        if not isinstance(menu, dict):
+            errors.append("missing menu_payload for expected H5 upload button")
+        else:
+            found = False
+            for item in menu.get("list") or []:
+                if not isinstance(item, dict) or item.get("type") != "view":
+                    continue
+                view = item.get("view") or {}
+                if step.expected_menu_button in str(view.get("content") or ""):
+                    found = True
+                    break
+            if not found:
+                errors.append(
+                    f"missing menu view button: {step.expected_menu_button!r}"
+                )
+
     if step.expected_priority_rule is not None and not decision:
         errors.append("missing routing decision log")
 
@@ -279,7 +298,7 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
                 "时间",
                 "地点",
                 "描述",
-                "准备事故照片",
+                "请点击下面按钮上传事故照片",
             ),
             expected_not_contains=(
                 "加车资料流程正在进行",
@@ -289,6 +308,7 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
             expected_priority_rule="active_claim_basics_collection",
             expected_decision="send_claim_c1",
             expected_response_type="claim_c1",
+            expected_menu_button="上传事故照片",
         ),
     ],
 )
@@ -351,10 +371,11 @@ SCENARIO_NO_ACTIVE_CLAIM_BASICS: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_c1",
             inbound_text="今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门",
-            expected_contains=("【理赔资料 · 第 1 步完成 ✅】",),
+            expected_contains=("【理赔资料 · 第 1 步完成 ✅】", "请点击下面按钮上传事故照片"),
             expected_priority_rule="active_claim_basics_collection",
             expected_decision="send_claim_c1",
             expected_response_type="claim_c1",
+            expected_menu_button="上传事故照片",
         ),
     ],
 )

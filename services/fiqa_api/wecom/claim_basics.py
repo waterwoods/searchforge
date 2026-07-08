@@ -528,6 +528,60 @@ def _create_claim_case(
     return {"case_id": case_id, "case_created": True, "outcome": "created"}
 
 
+def _build_claim_c1_h5_response(
+    case: dict[str, Any],
+    *,
+    external_userid: str | None,
+    already_complete: bool = False,
+) -> dict[str, Any]:
+    """Build Claim C1 reply with WeCom H5 evidence upload button when case_id is known."""
+    from services.fiqa_api.inbox_triage.h5_task_link import (
+        mask_h5_task_url,
+        mint_h5_claim_evidence_pack_link,
+    )
+    from services.fiqa_api.wecom.reply import (
+        build_claim_basics_already_complete_reply,
+        build_claim_c1_h5_evidence_card_payload,
+        build_claim_stage_complete_c1_reply,
+    )
+
+    text_fallback = (
+        build_claim_basics_already_complete_reply(case)
+        if already_complete
+        else build_claim_stage_complete_c1_reply(case)
+    )
+    case_id = str(case.get("case_id") or "").strip()
+    if not case_id:
+        return {
+            "reply_text": text_fallback,
+            "menu_payload": None,
+            "h5_task_link_masked": None,
+        }
+
+    try:
+        h5_url = mint_h5_claim_evidence_pack_link(
+            case_id=case_id,
+            external_userid=external_userid,
+        )
+    except ValueError:
+        return {
+            "reply_text": text_fallback,
+            "menu_payload": None,
+            "h5_task_link_masked": None,
+        }
+
+    menu = build_claim_c1_h5_evidence_card_payload(
+        h5_url=h5_url,
+        case=case,
+        already_complete=already_complete,
+    )
+    return {
+        "reply_text": menu["head_content"],
+        "menu_payload": menu,
+        "h5_task_link_masked": mask_h5_task_url(h5_url),
+    }
+
+
 def ingest_claim_basics_message(
     normalized: dict[str, Any],
     intent_result: IntentResult,
@@ -553,14 +607,25 @@ def ingest_claim_basics_message(
         case = get_case_for_read(existing_by_msg) or {}
         phase = derive_claim_phase(case)
         if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
-            reply = build_claim_basics_already_complete_reply(case)
+            c1 = _build_claim_c1_h5_response(
+                case,
+                external_userid=ext or None,
+                already_complete=True,
+            )
+            reply = c1["reply_text"]
+            menu_payload = c1["menu_payload"]
+            h5_masked = c1["h5_task_link_masked"]
         else:
             reply = build_claim_missing_basics_reply(case)
+            menu_payload = None
+            h5_masked = None
         return {
             "outcome": "duplicate_msg",
             "case_id": existing_by_msg,
             "case_created": False,
             "reply_text": reply,
+            "menu_payload": menu_payload,
+            "h5_task_link_masked": h5_masked,
             "active_case_outcome": "claim_duplicate_msg",
             "service_lane": SERVICE_LANE_CLAIM,
         }
@@ -616,12 +681,18 @@ def ingest_claim_basics_message(
 
     phase = derive_claim_phase(case)
     if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
-        reply_text = build_claim_basics_already_complete_reply(case)
+        c1 = _build_claim_c1_h5_response(
+            case,
+            external_userid=ext or None,
+            already_complete=True,
+        )
         return {
             "outcome": "claim_basics_already_complete",
             "case_id": case_id,
             "case_created": case_created,
-            "reply_text": reply_text,
+            "reply_text": c1["reply_text"],
+            "menu_payload": c1["menu_payload"],
+            "h5_task_link_masked": c1["h5_task_link_masked"],
             "active_case_outcome": "claim_basics_already_complete",
             "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
             "service_lane": SERVICE_LANE_CLAIM,
@@ -827,10 +898,24 @@ def ingest_claim_basics_message(
             )
             refreshed = get_case_for_read(case_id) or refreshed
             if sent_c1_before:
-                reply_text = build_claim_basics_already_complete_reply(refreshed)
+                c1 = _build_claim_c1_h5_response(
+                    refreshed,
+                    external_userid=ext or None,
+                    already_complete=True,
+                )
+                reply_text = c1["reply_text"]
+                menu_payload = c1["menu_payload"]
+                h5_masked = c1["h5_task_link_masked"]
                 outcome = "claim_c1_deduped"
             else:
-                reply_text = build_claim_stage_complete_c1_reply(refreshed)
+                c1 = _build_claim_c1_h5_response(
+                    refreshed,
+                    external_userid=ext or None,
+                    already_complete=False,
+                )
+                reply_text = c1["reply_text"]
+                menu_payload = c1["menu_payload"]
+                h5_masked = c1["h5_task_link_masked"]
                 outcome = "claim_c1_sent"
             active_outcome = outcome
         else:
@@ -841,6 +926,8 @@ def ingest_claim_basics_message(
             )
             refreshed = get_case_for_read(case_id) or refreshed
             reply_text = build_claim_missing_basics_reply(refreshed)
+            menu_payload = None
+            h5_masked = None
             active_outcome = "claim_basics_partial"
 
         transition = suggest_next_claim_transition(refreshed)
@@ -888,6 +975,8 @@ def ingest_claim_basics_message(
             "case_id": case_id,
             "case_created": case_created,
             "reply_text": reply_text,
+            "menu_payload": menu_payload,
+            "h5_task_link_masked": h5_masked,
             "active_case_outcome": active_outcome,
             "claim_phase": refreshed.get("claim_phase"),
             "service_lane": SERVICE_LANE_CLAIM,

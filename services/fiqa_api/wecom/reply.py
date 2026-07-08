@@ -390,9 +390,12 @@ _CLAIM_BASICS_LABELS: dict[str, str] = {
 }
 
 _CLAIM_SAFE_DISCLAIMER = "这不代表已经正式报案。"
-_CLAIM_PHOTO_NEXT_STEP_NOTE = (
-    "照片上传入口下一步会接入；现在可先把事故照片发到微信里，陈总会人工查看。"
-)
+_CLAIM_C1_H5_BUTTON = "上传事故照片"
+_CLAIM_C1_H5_TAIL = """\
+如果按钮打不开，请回复：链接
+
+这只是资料收集，不代表 claim 已正式提交。
+陈总会人工确认。"""
 
 
 def _claim_fact_display(case: dict[str, Any], field: str) -> str:
@@ -465,8 +468,8 @@ def build_claim_missing_basics_reply(case: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_claim_stage_complete_c1_reply(case: dict[str, Any]) -> str:
-    lines = [
+def _claim_c1_stage_complete_head_lines(case: dict[str, Any]) -> list[str]:
+    return [
         "【理赔资料 · 第 1 步完成 ✅】",
         "",
         "事故基本信息已收到。",
@@ -476,22 +479,16 @@ def build_claim_stage_complete_c1_reply(case: dict[str, Any]) -> str:
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         f"描述：{_claim_fact_display(case, 'accident_description')}",
         "",
-        "下一步：准备事故照片。",
+        "请点击下面按钮上传事故照片。",
         "请准备：",
         "1. 您的车损伤照片",
         "2. 对方车辆 / 车牌照片",
         "3. 现场照片（可选）",
-        "",
-        _CLAIM_PHOTO_NEXT_STEP_NOTE,
-        "",
-        "目前不代表已经正式报案。",
-        "陈总会人工确认。",
     ]
-    return "\n".join(lines)
 
 
-def build_claim_basics_already_complete_reply(case: dict[str, Any]) -> str:
-    lines = [
+def _claim_basics_already_complete_head_lines(case: dict[str, Any]) -> list[str]:
+    return [
         "【理赔资料 · 第 1 步已完成】",
         "",
         "事故基本信息已收到 ✅",
@@ -499,8 +496,50 @@ def build_claim_basics_already_complete_reply(case: dict[str, Any]) -> str:
         f"时间：{_claim_fact_display(case, 'accident_datetime')}",
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         "",
-        "▶️ 下一步：准备事故照片。",
-        _CLAIM_PHOTO_NEXT_STEP_NOTE,
+        "▶️ 下一步：上传事故照片。",
+        "请点击下面按钮上传事故照片。",
+    ]
+
+
+def build_claim_c1_h5_evidence_card_payload(
+    *,
+    h5_url: str,
+    case: dict[str, Any],
+    already_complete: bool = False,
+) -> dict[str, Any]:
+    """WeCom msgmenu: Claim C1 H5 evidence upload view button + contact broker."""
+    url = (h5_url or "").strip()
+    head_lines = (
+        _claim_basics_already_complete_head_lines(case)
+        if already_complete
+        else _claim_c1_stage_complete_head_lines(case)
+    )
+    return {
+        "head_content": "\n".join(head_lines),
+        "list": [
+            {"type": "view", "view": {"url": url, "content": _CLAIM_C1_H5_BUTTON}},
+            {
+                "type": "click",
+                "click": {"id": "claim_contact_broker", "content": "联系陈总"},
+            },
+        ],
+        "tail_content": _CLAIM_C1_H5_TAIL,
+    }
+
+
+def build_claim_stage_complete_c1_reply(case: dict[str, Any]) -> str:
+    lines = [
+        *_claim_c1_stage_complete_head_lines(case),
+        "",
+        "这只是资料收集，不代表 claim 已正式提交。",
+        "陈总会人工确认。",
+    ]
+    return "\n".join(lines)
+
+
+def build_claim_basics_already_complete_reply(case: dict[str, Any]) -> str:
+    lines = [
+        *_claim_basics_already_complete_head_lines(case),
         "",
         _CLAIM_SAFE_DISCLAIMER,
     ]

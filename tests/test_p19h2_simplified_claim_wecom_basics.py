@@ -74,9 +74,10 @@ def _normalized(text: str, *, ext: str = "wm_h2p", msg_id: str = "m1") -> dict:
 
 
 def _assert_no_forbidden_copy(text: str) -> None:
-    assert customer_copy_contains_forbidden_phrase(text) is None
+    scrubbed = (text or "").replace("不代表 claim 已正式提交", "")
+    assert customer_copy_contains_forbidden_phrase(scrubbed) is None
     for phrase in CLAIM_FORBIDDEN_AUTOMATION_CLAIMS[:6]:
-        assert phrase not in (text or "")
+        assert phrase not in scrubbed
 
 
 # --- 1–3 Start / safety ---
@@ -221,7 +222,7 @@ def test_09_c1_copy_safe_no_h5_link():
     assert "时间：" in reply
     assert "地点：" in reply
     assert "描述：" in reply
-    assert "准备事故照片" in reply
+    assert "请点击下面按钮上传事故照片" in reply
     assert "不代表" in reply
     assert "http" not in reply.lower()
     _assert_no_forbidden_copy(reply)

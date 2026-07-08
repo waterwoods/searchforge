@@ -636,6 +636,8 @@ def process_kf_msg_or_event(
             if b0_enabled and should_route_claim_guided_workflow(normalized, intent_result):
                 claim_result = ingest_claim_basics_message(normalized, intent_result)
                 reply_text = claim_result.get("reply_text")
+                menu_payload = claim_result.get("menu_payload")
+                h5_masked = claim_result.get("h5_task_link_masked")
                 outcome = {
                     "msg_id": normalized.get("msg_id"),
                     "external_userid": normalized.get("external_userid"),
@@ -653,21 +655,28 @@ def process_kf_msg_or_event(
                     "claim_phase": claim_result.get("claim_phase"),
                     "service_lane": claim_result.get("service_lane"),
                     "needs_broker_manual_handle": claim_result.get("needs_broker_manual_handle"),
+                    "menu_payload": menu_payload,
+                    "h5_task_link_masked": h5_masked,
                 }
                 _log_slice(
                     "claim_basics_v1",
-                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
                 )
-                if reply_text:
+                if reply_text or menu_payload:
                     _log_slice(
                         "reply_generated_v1",
-                        {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                        {
+                            "reply_text": reply_text or "<claim_c1_h5_msgmenu>",
+                            "guided_menu": False,
+                            "reply_format": "msgmenu" if menu_payload else "text",
+                            "h5_task_link_masked": h5_masked,
+                        },
                     )
                     _dispatch_reply(
                         cfg,
                         normalized,
                         send_enabled=send_enabled,
-                        menu_payload=None,
+                        menu_payload=menu_payload,
                         text_content=reply_text,
                         outcome=outcome,
                     )
