@@ -1,0 +1,188 @@
+"""P19I-2b — Example workflow definitions for kernel validation.
+
+Not wired into production routing yet. Lane adapters may adopt these later.
+"""
+
+from __future__ import annotations
+
+from services.fiqa_api.workflow_kernel import SlotDefinition, WorkflowDefinition
+
+ADD_VEHICLE_MINIMAL_DEFINITION = WorkflowDefinition(
+    workflow_id="add_vehicle_minimal_v1",
+    lane="add_car",
+    display_name="加车资料收集",
+    phases=("photos", "phase2_text", "broker_review"),
+    required_slots=(
+        SlotDefinition(
+            key="vin_photo",
+            label="VIN 照片",
+            required=True,
+            phase="photos",
+            slot_type="composite",
+            aliases=("vin",),
+        ),
+        SlotDefinition(
+            key="registration_photo",
+            label="行驶证照片",
+            required=True,
+            phase="photos",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="delivery_date",
+            label="提车日期",
+            required=True,
+            phase="phase2_text",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="parking_zip",
+            label="停放 ZIP",
+            required=True,
+            phase="phase2_text",
+            slot_type="field",
+            aliases=("zip",),
+        ),
+        SlotDefinition(
+            key="contact_phone",
+            label="联系电话",
+            required=True,
+            phase="phase2_text",
+            slot_type="field",
+            aliases=("phone",),
+        ),
+    ),
+    optional_slots=(
+        SlotDefinition(
+            key="insurance_card_photo",
+            label="保险卡照片",
+            required=False,
+            phase="photos",
+            slot_type="attachment",
+        ),
+    ),
+    human_review_phase="ready_for_broker_review",
+    done_phase="broker_done",
+    current_step_order=(
+        "vin_photo",
+        "registration_photo",
+        "delivery_date",
+        "parking_zip",
+        "contact_phone",
+    ),
+)
+
+CLAIM_SIMPLIFIED_DEFINITION = WorkflowDefinition(
+    workflow_id="claim_intake_v2_simplified",
+    lane="claim",
+    display_name="理赔资料收集",
+    phases=("accident_basics", "evidence_pack", "risk_confirmation"),
+    required_slots=(
+        SlotDefinition(
+            key="accident_datetime",
+            label="事故时间",
+            required=True,
+            phase="accident_basics",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="accident_location",
+            label="事故地点",
+            required=True,
+            phase="accident_basics",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="accident_description",
+            label="事故描述",
+            required=True,
+            phase="accident_basics",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="customer_damage_photo",
+            label="车损照片",
+            required=True,
+            phase="evidence_pack",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="other_party_vehicle_or_plate",
+            label="对方车辆或车牌",
+            required=True,
+            phase="evidence_pack",
+            slot_type="composite",
+            aliases=("other_party_vehicle_photo", "other_party_plate"),
+        ),
+        SlotDefinition(
+            key="anyone_injured",
+            label="是否有人受伤",
+            required=True,
+            phase="risk_confirmation",
+            slot_type="yes_no",
+        ),
+        SlotDefinition(
+            key="police_involved",
+            label="是否报警",
+            required=True,
+            phase="risk_confirmation",
+            slot_type="yes_no",
+        ),
+    ),
+    optional_slots=(
+        SlotDefinition(
+            key="other_party_insurance_card",
+            label="对方保险卡",
+            required=False,
+            phase="evidence_pack",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="other_party_license",
+            label="对方驾照",
+            required=False,
+            phase="evidence_pack",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="other_party_phone",
+            label="对方电话",
+            required=False,
+            phase="evidence_pack",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="scene_photo",
+            label="现场照片",
+            required=False,
+            phase="evidence_pack",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="police_report_photo",
+            label="警方报告照片",
+            required=False,
+            phase="risk_confirmation",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="existing_claim_number",
+            label="已有报案号",
+            required=False,
+            phase="risk_confirmation",
+            slot_type="field",
+        ),
+    ),
+    human_review_phase="intake_ready_for_broker",
+    done_phase="broker_done",
+    safety_rules=("injury_yes", "fault_question", "coverage_question"),
+    current_step_order=(
+        "accident_datetime",
+        "accident_location",
+        "accident_description",
+        "customer_damage_photo",
+        "other_party_vehicle_or_plate",
+        "anyone_injured",
+        "police_involved",
+    ),
+)
