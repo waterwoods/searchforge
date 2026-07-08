@@ -87,8 +87,13 @@ else
 fi
 RESP=$(curl -sS --max-time 30 "${HDR[@]}" "${CLOUD_API}/api/inbox/cases?limit=50" 2>/dev/null || echo '{}')
 
+CASES_JSON_FILE="$(mktemp)"
+cleanup_cases_json() { rm -f "$CASES_JSON_FILE"; }
+trap cleanup_cases_json EXIT
+printf '%s' "$RESP" > "$CASES_JSON_FILE"
+
 set +e
-PYTHONPATH=. python3 - <<'PY' "$RESP" "$CLOUD_API"
+PYTHONPATH=. python3 - <<'PY' "$CASES_JSON_FILE" "$CLOUD_API"
 import json, os, sys
 from scripts.demo_db_resolve import (
     LEGACY_NEON_SECRET,
@@ -97,9 +102,10 @@ from scripts.demo_db_resolve import (
     resolve_db_identity,
 )
 
-resp_raw = sys.argv[1]
+cases_json_path = sys.argv[1]
 cloud_api = sys.argv[2]
-d = json.loads(resp_raw or "{}")
+with open(cases_json_path, encoding="utf-8") as fh:
+    d = json.load(fh)
 total = d.get("total_count", d.get("total"))
 cases = d.get("cases") or []
 
