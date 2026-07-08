@@ -27,6 +27,12 @@ from services.fiqa_api.wecom.claim_extractors import (
     has_accident_basics_signals,
     message_mentions_injury,
 )
+from services.fiqa_api.wecom.claim_identity import (
+    ClaimIdentityDecision,
+    is_explicit_new_accident,
+    is_open_claim_candidate_for_basics,
+    resolve_claim_identity,
+)
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_ACCIDENT_BASICS_FIELDS,
     CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
@@ -44,6 +50,7 @@ from services.fiqa_api.wecom.claim_state import (
 )
 from services.fiqa_api.wecom.intent import IntentResult, is_add_vehicle_status_inquiry
 from services.fiqa_api.wecom.routing_observability import (
+    DECISION_CLAIM_IDENTITY_BROKER_CONFIRM,
     DECISION_CLAIM_QUESTION_SAFE_REPLY,
     DECISION_COLLECT_CLAIM_BASICS,
     DECISION_CONTACT_BROKER_ACK,
@@ -54,6 +61,7 @@ from services.fiqa_api.wecom.routing_observability import (
     DECISION_START_CLAIM_FLOW,
     PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
     PRIORITY_CLAIM_CONFIRMED_START,
+    PRIORITY_CLAIM_IDENTITY_BROKER_CONFIRM,
     PRIORITY_CLAIM_INTERRUPT_DURING_ACTIVE_ADD_VEHICLE,
     PRIORITY_CLAIM_QUESTION_DURING_ACTIVE_ADD_VEHICLE,
     PRIORITY_CLAIM_START_NO_ACTIVE_CASE,
@@ -61,6 +69,7 @@ from services.fiqa_api.wecom.routing_observability import (
     PRIORITY_LANE_SWITCH_CONTACT_BROKER,
     PRIORITY_LANE_SWITCH_CONTINUE_ADD_VEHICLE,
     RESPONSE_CLAIM_C1,
+    RESPONSE_CLAIM_IDENTITY_BROKER_CONFIRM,
     RESPONSE_CLAIM_LANE_SWITCH,
     RESPONSE_CLAIM_MISSING_BASICS,
     RESPONSE_CLAIM_QUESTION_SAFE,
@@ -70,6 +79,7 @@ from services.fiqa_api.wecom.routing_observability import (
     build_routing_decision,
     claim_context_for_case,
     emit_routing_decision,
+    identity_context_for_decision,
 )
 
 logger = logging.getLogger(__name__)
@@ -156,8 +166,7 @@ def _emit_claim_routing_decision(
 
 
 def is_explicit_claim_restart(text: str) -> bool:
-    lowered = (text or "").strip().lower()
-    return any(m in lowered for m in RESTART_CLAIM_MARKERS)
+    return is_explicit_new_accident(text)
 
 
 def is_claim_guided_start_message(text: str) -> bool:
@@ -349,29 +358,24 @@ def _case_sort_key(case: dict[str, Any]) -> str:
     return str(case.get("updated_at") or case.get("created_at") or "")
 
 
-def find_active_claim_case_for_basics(external_userid: str) -> dict[str, Any] | None:
-    """Newest open guided claim case for this WeCom user (not broker_done)."""
+def list_open_claim_candidates_for_basics(external_userid: str) -> list[dict[str, Any]]:
+    """All open guided claim cases for this WeCom user (not broker_done), newest first."""
     ext = (external_userid or "").strip()
     if not ext:
-        return None
+        return []
     matches: list[dict[str, Any]] = []
     for case in list_all_cases_for_read():
-        if case.get("wecom_external_userid") != ext:
-            continue
-        if case.get("case_status") == "closed":
-            continue
-        lane = str(case.get("service_lane") or "").strip().lower()
-        if lane != SERVICE_LANE_CLAIM:
-            continue
-        if case.get("broker_confirmed_at"):
-            continue
-        if derive_claim_phase(case) == CLAIM_PHASE_BROKER_DONE:
+        if not is_open_claim_candidate_for_basics(case, ext):
             continue
         matches.append(case)
-    if not matches:
-        return None
     matches.sort(key=_case_sort_key, reverse=True)
-    return matches[0]
+    return matches
+
+
+def find_active_claim_case_for_basics(external_userid: str) -> dict[str, Any] | None:
+    """Return one open claim for routing checks only — ingestion uses resolve_claim_identity()."""
+    candidates = list_open_claim_candidates_for_basics(external_userid)
+    return candidates[0] if candidates else None
 
 
 def should_route_claim_guided_workflow(
@@ -661,19 +665,62 @@ def ingest_claim_basics_message(
 
     case_id: str | None = None
     case_created = False
-    active = find_active_claim_case_for_basics(ext)
+    open_claims = list_open_claim_candidates_for_basics(ext)
+    identity_decision = resolve_claim_identity(
+        external_userid=ext,
+        incoming_text=text,
+        open_claims=open_claims,
+        channel="wecom_text",
+    )
+    if (
+        injury_mentioned
+        and identity_decision.action == "broker_confirm"
+        and len(open_claims) == 1
+    ):
+        only_id = str(open_claims[0].get("case_id") or "").strip() or None
+        identity_decision = ClaimIdentityDecision(
+            tier="A",
+            action="append_existing",
+            case_id=only_id,
+            score=90,
+            rule_ids=["ID-INJURY"],
+            reasons=["injury_override_append_single_open_claim"],
+            candidate_case_ids=[only_id] if only_id else [],
+        )
+    identity_kwargs = identity_context_for_decision(identity_decision)
 
-    if active and is_explicit_claim_restart(text):
-        active = None
+    if identity_decision.action == "broker_confirm":
+        from services.fiqa_api.wecom.reply import build_claim_identity_broker_confirm_reply
 
-    if not active:
+        claim_ctx = claim_context_for_case(open_claims[0] if len(open_claims) == 1 else None)
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=intent_result,
+            priority_rule=PRIORITY_CLAIM_IDENTITY_BROKER_CONFIRM,
+            decision=DECISION_CLAIM_IDENTITY_BROKER_CONFIRM,
+            reason="claim_identity_ambiguous_requires_broker_confirm",
+            response_type=RESPONSE_CLAIM_IDENTITY_BROKER_CONFIRM,
+            **identity_kwargs,
+            **claim_ctx,
+        )
+        return {
+            "outcome": "claim_identity_broker_confirm",
+            "case_id": identity_decision.case_id,
+            "case_created": False,
+            "reply_text": build_claim_identity_broker_confirm_reply(),
+            "active_case_outcome": "claim_identity_broker_confirm",
+            "service_lane": SERVICE_LANE_CLAIM,
+            "needs_broker_manual_handle": True,
+        }
+
+    if identity_decision.action == "create_new":
         created = _create_claim_case(normalized, injury_mentioned=injury_mentioned)
         case_id = created["case_id"]
         case_created = created["case_created"]
         case = get_case_for_read(case_id) or {}
     else:
-        case_id = str(active.get("case_id") or "").strip()
-        case = active
+        case_id = str(identity_decision.case_id or "").strip() or None
+        case = get_case_for_read(case_id) or {} if case_id else {}
 
     if injury_mentioned and case_id:
         manual_patch = transition_to_manual_handle(case)
@@ -717,6 +764,7 @@ def ingest_claim_basics_message(
             reason="active_claim_waiting_for_accident_basics",
             response_type=RESPONSE_CLAIM_MISSING_BASICS,
             created_case_id=case_id,
+            **identity_kwargs,
             **claim_ctx,
         )
         return {
@@ -749,6 +797,7 @@ def ingest_claim_basics_message(
                     created_case_id=case_id,
                     switched_workflow="claim",
                     workflow_id="claim_simplified",
+                    **identity_kwargs,
                     **av_ctx,
                 )
             else:
@@ -762,6 +811,7 @@ def ingest_claim_basics_message(
                     response_type=RESPONSE_CLAIM_SAFETY_MANUAL,
                     safety_flags=("injury_mentioned",),
                     created_case_id=case_id,
+                    **identity_kwargs,
                     **claim_ctx,
                 )
         else:
@@ -778,6 +828,7 @@ def ingest_claim_basics_message(
                     created_case_id=case_id,
                     switched_workflow="claim",
                     workflow_id="claim_simplified",
+                    **identity_kwargs,
                     **av_ctx,
                 )
             elif not add_car_active:
@@ -791,6 +842,7 @@ def ingest_claim_basics_message(
                     created_case_id=case_id,
                     workflow_id="claim_simplified",
                     active_workflow=None,
+                    **identity_kwargs,
                 )
         update_claim_workflow_state(
             case_id,
@@ -849,6 +901,7 @@ def ingest_claim_basics_message(
                     created_case_id=case_id,
                     switched_workflow="claim",
                     workflow_id="claim_simplified",
+                    **identity_kwargs,
                     **av_ctx,
                 )
             else:
@@ -862,6 +915,7 @@ def ingest_claim_basics_message(
                     response_type=RESPONSE_CLAIM_SAFETY_MANUAL,
                     safety_flags=("injury_mentioned",),
                     created_case_id=case_id,
+                    **identity_kwargs,
                     **claim_ctx,
                 )
             kernel_view = evaluate_claim_simplified_snapshot(refreshed)
@@ -942,6 +996,7 @@ def ingest_claim_basics_message(
                 reason="active_claim_waiting_for_accident_basics",
                 response_type=RESPONSE_CLAIM_C1,
                 created_case_id=case_id,
+                **identity_kwargs,
                 **claim_ctx,
             )
         else:
@@ -953,6 +1008,7 @@ def ingest_claim_basics_message(
                 reason="active_claim_waiting_for_accident_basics",
                 response_type=RESPONSE_CLAIM_MISSING_BASICS,
                 created_case_id=case_id,
+                **identity_kwargs,
                 **claim_ctx,
             )
         _log_event(

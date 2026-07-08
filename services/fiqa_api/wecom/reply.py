@@ -577,6 +577,23 @@ def build_claim_interrupt_safety_manual_reply() -> str:
     )
 
 
+def build_claim_identity_broker_confirm_reply() -> str:
+    """P19H-3c-R3 — Ask customer to confirm same vs new accident."""
+    return "\n".join(
+        [
+            "【理赔资料收集】",
+            "",
+            "我看到您这边可能已经有一个未完成的理赔记录。",
+            "为了避免把两次事故资料混在一起，请回复：",
+            "1 同一个事故，继续补资料",
+            "2 新的事故，重新开始",
+            "或直接联系陈总。",
+            "",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    )
+
+
 def build_claim_lane_switch_reply() -> str:
     """P19H-2.1 — Claim interrupt prompt while Add Vehicle flow is active."""
     return "\n".join(

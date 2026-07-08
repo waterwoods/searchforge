@@ -22,6 +22,7 @@ PRIORITY_LANE_SWITCH_CONTINUE_ADD_VEHICLE = "lane_switch_continue_add_vehicle"
 PRIORITY_LANE_SWITCH_CONTACT_BROKER = "lane_switch_contact_broker"
 PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION = "active_claim_basics_collection"
 PRIORITY_CLAIM_START_NO_ACTIVE_CASE = "claim_start_no_active_case"
+PRIORITY_CLAIM_IDENTITY_BROKER_CONFIRM = "claim_identity_broker_confirm"
 PRIORITY_ADD_VEHICLE_ACTIVE_PROGRESS = "add_vehicle_active_progress"
 PRIORITY_ADD_VEHICLE_PHASE2_COLLECTION = "add_vehicle_phase2_collection"
 PRIORITY_GENERIC_SECONDARY_TOPIC_DEFERRAL = "generic_secondary_topic_deferral"
@@ -34,6 +35,7 @@ DECISION_CLAIM_QUESTION_SAFE_REPLY = "claim_question_safe_reply"
 DECISION_CONTINUE_ADD_VEHICLE = "continue_add_vehicle"
 DECISION_CONTACT_BROKER_ACK = "contact_broker_ack"
 DECISION_COLLECT_CLAIM_BASICS = "collect_claim_basics"
+DECISION_CLAIM_IDENTITY_BROKER_CONFIRM = "claim_identity_broker_confirm"
 DECISION_SEND_CLAIM_C1 = "send_claim_c1"
 DECISION_SEND_ADD_VEHICLE_PROGRESS = "send_add_vehicle_progress"
 DECISION_COLLECT_ADD_VEHICLE_PHASE2 = "collect_add_vehicle_phase2"
@@ -45,6 +47,7 @@ RESPONSE_CLAIM_LANE_SWITCH = "claim_lane_switch"
 RESPONSE_CLAIM_START = "claim_start"
 RESPONSE_CLAIM_QUESTION_SAFE = "claim_question_safe"
 RESPONSE_CLAIM_MISSING_BASICS = "claim_missing_basics"
+RESPONSE_CLAIM_IDENTITY_BROKER_CONFIRM = "claim_identity_broker_confirm"
 RESPONSE_CLAIM_C1 = "claim_c1"
 RESPONSE_ADD_VEHICLE_PROGRESS = "add_vehicle_progress"
 RESPONSE_ADD_VEHICLE_PHASE2_MISSING = "add_vehicle_phase2_missing"
@@ -80,6 +83,13 @@ class RoutingDecision:
     text_hash: Optional[str] = None
     text_length: Optional[int] = None
     text_redacted_preview: Optional[str] = None
+
+    identity_tier: Optional[str] = None
+    identity_action: Optional[str] = None
+    identity_score: Optional[int] = None
+    identity_rule_ids: tuple[str, ...] = ()
+    identity_reasons: tuple[str, ...] = ()
+    identity_case_id: Optional[str] = None
 
     source: str = "wecom"
     version: str = "v1"
@@ -155,6 +165,18 @@ def claim_context_for_case(case: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def identity_context_for_decision(identity_decision: Any) -> dict[str, Any]:
+    """Map ClaimIdentityDecision fields into routing log kwargs."""
+    return {
+        "identity_tier": identity_decision.tier,
+        "identity_action": identity_decision.action,
+        "identity_score": identity_decision.score,
+        "identity_rule_ids": tuple(identity_decision.rule_ids or ()),
+        "identity_reasons": tuple(identity_decision.reasons or ()),
+        "identity_case_id": identity_decision.case_id,
+    }
+
+
 def build_routing_decision(
     *,
     route_id: str,
@@ -172,6 +194,12 @@ def build_routing_decision(
     created_case_id: str | None = None,
     switched_workflow: str | None = None,
     workflow_id: str | None = None,
+    identity_tier: str | None = None,
+    identity_action: str | None = None,
+    identity_score: int | None = None,
+    identity_rule_ids: tuple[str, ...] = (),
+    identity_reasons: tuple[str, ...] = (),
+    identity_case_id: str | None = None,
 ) -> RoutingDecision:
     meta = message_metadata_from_normalized(normalized)
     return RoutingDecision(
@@ -194,6 +222,12 @@ def build_routing_decision(
         text_hash=meta.get("text_hash"),
         text_length=meta.get("text_length"),
         text_redacted_preview=meta.get("text_redacted_preview"),
+        identity_tier=identity_tier,
+        identity_action=identity_action,
+        identity_score=identity_score,
+        identity_rule_ids=identity_rule_ids,
+        identity_reasons=identity_reasons,
+        identity_case_id=identity_case_id,
     )
 
 
