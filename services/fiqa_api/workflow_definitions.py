@@ -72,6 +72,138 @@ ADD_VEHICLE_MINIMAL_DEFINITION = WorkflowDefinition(
     ),
 )
 
+# P19H-1 parity — full 8 required + 5 optional slots (used by claim_state.py adapter).
+# human_review_phase stays ``claim_summary_ready`` until P19H-2' migrates to simplified model.
+CLAIM_FOUNDATION_DEFINITION = WorkflowDefinition(
+    workflow_id="claim_intake_v1_foundation",
+    lane="claim",
+    display_name="理赔资料收集 (P19H-1 foundation)",
+    phases=(
+        "accident_basics",
+        "photos",
+        "other_party",
+        "injury_police",
+        "claim_summary_ready",
+    ),
+    required_slots=(
+        SlotDefinition(
+            key="accident_datetime",
+            label="事故时间",
+            required=True,
+            phase="accident_basics",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="accident_location",
+            label="事故地点",
+            required=True,
+            phase="accident_basics",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="accident_description",
+            label="事故描述",
+            required=True,
+            phase="accident_basics",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="customer_damage_photo",
+            label="您的车损伤照片",
+            required=True,
+            phase="photos",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="other_party_vehicle_or_plate",
+            label="对方车辆 / 车牌",
+            required=True,
+            phase="photos",
+            slot_type="composite",
+            aliases=("other_party_vehicle_photo", "other_party_plate"),
+        ),
+        SlotDefinition(
+            key="other_party_info",
+            label="对方信息",
+            required=True,
+            phase="other_party",
+            slot_type="composite",
+            aliases=(
+                "other_party_insurance_card",
+                "other_party_license",
+                "other_party_vehicle_photo",
+                "other_party_plate",
+                "other_party_phone",
+                "other_party_name",
+            ),
+        ),
+        SlotDefinition(
+            key="anyone_injured",
+            label="是否有人受伤",
+            required=True,
+            phase="injury_police",
+            slot_type="yes_no",
+        ),
+        SlotDefinition(
+            key="police_involved",
+            label="是否报警",
+            required=True,
+            phase="injury_police",
+            slot_type="yes_no",
+        ),
+    ),
+    optional_slots=(
+        SlotDefinition(
+            key="scene_photo",
+            label="现场照片",
+            required=False,
+            phase="photos",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="police_report_photo",
+            label="警方报告",
+            required=False,
+            phase="injury_police",
+            slot_type="attachment",
+        ),
+        SlotDefinition(
+            key="tow_repair_info",
+            label="拖车 / 修理厂信息",
+            required=False,
+            phase="other_party",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="witness_info",
+            label="证人信息",
+            required=False,
+            phase="other_party",
+            slot_type="field",
+        ),
+        SlotDefinition(
+            key="existing_claim_number",
+            label="已有报案号",
+            required=False,
+            phase="injury_police",
+            slot_type="field",
+        ),
+    ),
+    human_review_phase="claim_summary_ready",
+    done_phase="broker_done",
+    safety_rules=("injury_yes", "manual_handle"),
+    current_step_order=(
+        "accident_datetime",
+        "accident_location",
+        "accident_description",
+        "customer_damage_photo",
+        "other_party_vehicle_or_plate",
+        "other_party_info",
+        "anyone_injured",
+        "police_involved",
+    ),
+)
+
 CLAIM_SIMPLIFIED_DEFINITION = WorkflowDefinition(
     workflow_id="claim_intake_v2_simplified",
     lane="claim",

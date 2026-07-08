@@ -10,6 +10,14 @@ from __future__ import annotations
 
 from typing import Any, Final, Literal
 
+from services.fiqa_api.workflow_definitions import CLAIM_FOUNDATION_DEFINITION
+from services.fiqa_api.workflow_kernel import (
+    WorkflowRuntimeSnapshot,
+    evaluate_required_gate,
+    what_is_collected,
+    what_is_missing,
+)
+
 # --- Lane / phase constants (recon §8) ---
 
 SERVICE_LANE_CLAIM: Final[str] = "claim"
@@ -24,6 +32,8 @@ CLAIM_PHASE_OTHER_PARTY_COMPLETE: Final[str] = "other_party_complete"
 CLAIM_PHASE_INJURY_POLICE_IN_PROGRESS: Final[str] = "injury_police_in_progress"
 CLAIM_PHASE_INJURY_POLICE_COMPLETE: Final[str] = "injury_police_complete"
 CLAIM_PHASE_SUMMARY_READY: Final[str] = "claim_summary_ready"
+# P19I-2 simplified model name — future P19H-2' migration target; not used in derive_claim_phase yet.
+CLAIM_PHASE_INTAKE_READY_FOR_BROKER: Final[str] = "intake_ready_for_broker"
 CLAIM_PHASE_BROKER_REVIEW: Final[str] = "broker_review"
 CLAIM_PHASE_BROKER_NEEDS_MORE_INFO: Final[str] = "broker_needs_more_info"
 CLAIM_PHASE_BROKER_DONE: Final[str] = "broker_done"
@@ -227,6 +237,63 @@ GUIDED_STATE_COLLECTING_TEXT: Final[str] = "collecting_text_fields"
 GUIDED_STATE_READY_FOR_BROKER_REVIEW: Final[str] = "ready_for_broker_review"
 GUIDED_STATE_BROKER_NEEDS_MORE_INFO: Final[str] = "broker_needs_more_info"
 
+_OPTIONAL_ATTACHMENT_SLOTS: Final[frozenset[str]] = frozenset(
+    field for field in CLAIM_OPTIONAL_FIELDS if field.endswith("_photo")
+)
+
+
+def _claim_snapshot_from_case_extra(case_extra: dict[str, Any]) -> WorkflowRuntimeSnapshot:
+    """Map hydrated case JSONB to kernel WorkflowRuntimeSnapshot (P19I-2c adapter)."""
+    collected_fields: dict[str, Any] = {}
+    collected_names = _collected_field_names(case_extra)
+
+    for field in CLAIM_ACCIDENT_BASICS_FIELDS:
+        if field.lower() in collected_names and is_valid_claim_required_text(_fact_value(case_extra, field)):
+            collected_fields[field] = _fact_value(case_extra, field)
+
+    for field in CLAIM_INJURY_POLICE_FIELDS:
+        if field.lower() in collected_names:
+            normalized = normalize_claim_yes_no(_fact_value(case_extra, field))
+            if normalized is not None:
+                collected_fields[field] = normalized
+
+    for key in (*CLAIM_OPTIONAL_FIELDS, "other_party_plate", "other_party_phone", "other_party_name"):
+        if key in CLAIM_INJURY_POLICE_FIELDS or key in CLAIM_ACCIDENT_BASICS_FIELDS:
+            continue
+        value = _fact_value(case_extra, key)
+        if value:
+            collected_fields[key] = value
+
+    attachments: dict[str, str] = {}
+    for slot in get_claim_attachment_slots(case_extra):
+        status = get_claim_attachment_slot_status(case_extra, slot)
+        if status == "received":
+            attachments[slot] = "received"
+        elif status == "skipped" and slot in _OPTIONAL_ATTACHMENT_SLOTS:
+            attachments[slot] = "received"
+
+    safety_flags: list[str] = []
+    if is_injury_yes(_fact_value(case_extra, "anyone_injured")):
+        safety_flags.append("injury_yes")
+    if case_extra.get("manual_handle"):
+        safety_flags.append("manual_handle")
+
+    explicit_phase = str(case_extra.get("claim_phase") or "").strip().lower()
+    return WorkflowRuntimeSnapshot(
+        workflow_id=CLAIM_FOUNDATION_DEFINITION.workflow_id,
+        lane=SERVICE_LANE_CLAIM,
+        current_phase=explicit_phase or None,
+        collected_fields=collected_fields,
+        attachments=attachments,
+        safety_flags=tuple(safety_flags),
+        human_task_status=str(case_extra.get("guided_workflow_state") or "").strip() or None,
+    )
+
+
+def _claim_collected_slot_keys(case_extra: dict[str, Any]) -> set[str]:
+    snapshot = _claim_snapshot_from_case_extra(case_extra)
+    return set(what_is_collected(CLAIM_FOUNDATION_DEFINITION, snapshot))
+
 
 def _collected_field_names(case_extra: dict[str, Any]) -> set[str]:
     return {str(x).lower() for x in (case_extra.get("collected_fields") or []) if str(x).strip()}
@@ -329,84 +396,60 @@ def _slot_is_satisfied(case_extra: dict[str, Any], slot: str) -> bool:
 
 
 def is_customer_damage_photo_complete(case_extra: dict[str, Any]) -> bool:
-    return _slot_is_received(case_extra, "customer_damage_photo")
+    return "customer_damage_photo" in _claim_collected_slot_keys(case_extra)
 
 
 def is_other_party_vehicle_or_plate_complete(case_extra: dict[str, Any]) -> bool:
-    if _slot_is_received(case_extra, "other_party_vehicle_photo"):
-        return True
-    plate = _fact_value(case_extra, "other_party_plate")
-    return bool(plate)
+    return "other_party_vehicle_or_plate" in _claim_collected_slot_keys(case_extra)
 
 
 def is_other_party_info_complete(case_extra: dict[str, Any]) -> bool:
     """At least one other-party artifact (recon §6.3 partial-OK rule)."""
-    facts = _known_facts(case_extra)
-    for slot in OTHER_PARTY_INFO_PHOTO_SLOTS:
-        if _slot_is_received(case_extra, slot):
-            return True
-    if _slot_is_received(case_extra, "other_party_vehicle_photo"):
-        return True
-    for key in ("other_party_plate", "other_party_phone", "other_party_name"):
-        if str(facts.get(key) or "").strip():
-            return True
-    return False
+    return "other_party_info" in _claim_collected_slot_keys(case_extra)
 
 
 def is_accident_basics_complete(case_extra: dict[str, Any]) -> bool:
-    return all(_text_field_satisfied(case_extra, field) for field in CLAIM_ACCIDENT_BASICS_FIELDS)
+    collected = _claim_collected_slot_keys(case_extra)
+    return all(field in collected for field in CLAIM_ACCIDENT_BASICS_FIELDS)
 
 
 def are_claim_photos_complete(case_extra: dict[str, Any]) -> bool:
-    if not is_customer_damage_photo_complete(case_extra):
-        return False
-    return is_other_party_vehicle_or_plate_complete(case_extra)
+    collected = _claim_collected_slot_keys(case_extra)
+    return "customer_damage_photo" in collected and "other_party_vehicle_or_plate" in collected
 
 
 def is_injury_police_complete(case_extra: dict[str, Any]) -> bool:
-    return all(_boolean_field_satisfied(case_extra, field) for field in CLAIM_INJURY_POLICE_FIELDS)
+    collected = _claim_collected_slot_keys(case_extra)
+    return all(field in collected for field in CLAIM_INJURY_POLICE_FIELDS)
 
 
 def _field_is_satisfied(case_extra: dict[str, Any], field: str) -> bool:
-    if field in CLAIM_ACCIDENT_BASICS_FIELDS:
-        return _text_field_satisfied(case_extra, field)
-    if field == "customer_damage_photo":
-        return is_customer_damage_photo_complete(case_extra)
-    if field == "other_party_vehicle_or_plate":
-        return is_other_party_vehicle_or_plate_complete(case_extra)
-    if field == "other_party_info":
-        return is_other_party_info_complete(case_extra)
-    if field in CLAIM_INJURY_POLICE_FIELDS:
-        return _boolean_field_satisfied(case_extra, field)
-    if field in CLAIM_OPTIONAL_FIELDS:
-        if field.endswith("_photo"):
-            return _slot_is_satisfied(case_extra, field)
-        return _text_field_satisfied(case_extra, field) or bool(_fact_value(case_extra, field))
-    return False
+    return field in _claim_collected_slot_keys(case_extra)
 
 
 def is_claim_summary_ready(case_extra: dict[str, Any]) -> bool:
     """All MVP required fields satisfied; optional gaps allowed."""
-    return all(_field_is_satisfied(case_extra, field) for field in CLAIM_REQUIRED_FIELDS)
+    snapshot = _claim_snapshot_from_case_extra(case_extra)
+    return evaluate_required_gate(CLAIM_FOUNDATION_DEFINITION, snapshot).passed
 
 
 def get_claim_collected_fields(case_extra: dict[str, Any]) -> dict[str, bool]:
     """Required + optional field satisfaction map."""
+    collected = _claim_collected_slot_keys(case_extra)
     all_fields = (*CLAIM_REQUIRED_FIELDS, *CLAIM_OPTIONAL_FIELDS)
-    return {field: _field_is_satisfied(case_extra, field) for field in all_fields}
+    return {field: field in collected for field in all_fields}
 
 
 def get_claim_missing_items(case_extra: dict[str, Any]) -> list[dict[str, str]]:
     """Missing required items for Progress Card / broker checklist."""
+    snapshot = _claim_snapshot_from_case_extra(case_extra)
     missing: list[dict[str, str]] = []
-    for field in CLAIM_REQUIRED_FIELDS:
-        if _field_is_satisfied(case_extra, field):
-            continue
+    for item in what_is_missing(CLAIM_FOUNDATION_DEFINITION, snapshot):
         missing.append(
             {
-                "field": field,
-                "label": _SLOT_LABELS_ZH.get(field, field),
-                "kind": "photo" if field.endswith("_photo") or "photo" in field else "text",
+                "field": item.key,
+                "label": item.label,
+                "kind": "photo" if item.key.endswith("_photo") or "photo" in item.key else "text",
             }
         )
     return missing
