@@ -423,7 +423,7 @@ def test_scenario_c_no_case_unassigned(monkeypatch):
     assert result["case_created"] is True
     case = get_case_by_id(result["case_id"])
     assert case.get("service_lane") == SERVICE_LANE_WECOM_MEDIA_INTAKE
-    assert "加车" in result["reply_text"]
+    assert "我要理赔" in result["reply_text"]
 
 
 def test_scenario_d_duplicate_msg_id_no_duplicate_attachment(monkeypatch):

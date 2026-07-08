@@ -87,6 +87,33 @@ export function resolveClaimEvidenceSummary(
   return summary;
 }
 
+export function formatClaimUnassignedWecomPhotosSection(summary: ClaimEvidenceSummary): {
+  summaryLine: string;
+  guidanceLine: string;
+  items: Array<{ key: string; label: string }>;
+} | null {
+  const block = summary.unassigned_wecom_photos;
+  if (!block || typeof block !== 'object' || !block.count) {
+    return null;
+  }
+  const count = block.count;
+  const items = (block.items || []).map((item, index) => {
+    const filename = (item.filename || 'wecom_image.jpg').trim();
+    const receivedAt = (item.received_at || '').trim();
+    const detail = receivedAt ? `${filename} · ${receivedAt}` : filename;
+    return {
+      key: item.attachment_id || `unassigned-${index}`,
+      label: detail,
+    };
+  });
+  return {
+    summaryLine: `已收到 ${count} 张微信照片。`,
+    guidanceLine:
+      '这些照片已进入本理赔记录，但还没有归类到：自己车损 / 对方车辆车牌 / 现场照片。请陈总人工确认。',
+    items,
+  };
+}
+
 export function formatClaimEvidenceStatusIcon(status: string): string {
   switch ((status || '').trim().toLowerCase()) {
     case 'received':

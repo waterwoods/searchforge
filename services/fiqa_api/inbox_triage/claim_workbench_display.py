@@ -338,6 +338,49 @@ def _derive_completion_level(
     return "complete"
 
 
+def _collect_unassigned_wecom_claim_photos(case: dict[str, Any]) -> list[dict[str, Any]]:
+    """WeCom claim photos bound to case but not assigned to an evidence slot."""
+    matches: list[dict[str, Any]] = []
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        if str(att.get("source") or "").strip().lower() != "wecom":
+            continue
+        slot = _attachment_slot_key(att)
+        if slot in _CLAIM_EVIDENCE_SLOT_KEYS:
+            continue
+        if slot == "unassigned" or str(att.get("flow") or "").strip().lower() == "claim_multichannel_evidence":
+            matches.append(att)
+    matches.sort(key=lambda item: str(item.get("received_at") or ""))
+    return matches
+
+
+def _build_unassigned_wecom_photos_summary(case: dict[str, Any]) -> dict[str, Any]:
+    photos = _collect_unassigned_wecom_claim_photos(case)
+    items = [
+        {
+            "attachment_id": _str_or_none(att.get("attachment_id")),
+            "filename": _str_or_none(att.get("filename")) or "wecom_image.jpg",
+            "mime_type": _str_or_none(att.get("mime_type")),
+            "source": "wecom",
+            "received_at": _str_or_none(att.get("received_at")),
+            "needs_broker_review": bool(att.get("needs_broker_review", True)),
+        }
+        for att in photos
+    ]
+    count = len(items)
+    broker_next_action = (
+        f"有 {count} 张微信照片待陈总人工归类。"
+        if count
+        else ""
+    )
+    return {
+        "count": count,
+        "items": items,
+        "broker_next_action": broker_next_action,
+    }
+
+
 def build_claim_evidence_summary(case: dict[str, Any]) -> dict[str, Any]:
     """Pure Claim evidence checklist summary for Workbench enrichment."""
     slot_state_map = _claim_slot_state_map(case)
@@ -401,7 +444,13 @@ def build_claim_evidence_summary(case: dict[str, Any]) -> dict[str, Any]:
         received_slots=received_slots,
         skipped_slots=skipped_slots,
     )
+    unassigned_wecom = _build_unassigned_wecom_photos_summary(case)
     broker_next_action = _build_broker_next_action(slot_rows, completion_level=completion_level)
+    if unassigned_wecom["count"] and unassigned_wecom.get("broker_next_action"):
+        if broker_next_action == "请继续收集理赔照片资料。":
+            broker_next_action = str(unassigned_wecom["broker_next_action"])
+        else:
+            broker_next_action = f"{broker_next_action} {unassigned_wecom['broker_next_action']}"
     summary_text = _build_summary_text(slot_rows, completion_level=completion_level)
 
     return {
@@ -413,6 +462,7 @@ def build_claim_evidence_summary(case: dict[str, Any]) -> dict[str, Any]:
         "completion_level": completion_level,
         "broker_next_action": broker_next_action,
         "summary_text": summary_text,
+        "unassigned_wecom_photos": unassigned_wecom,
     }
 
 

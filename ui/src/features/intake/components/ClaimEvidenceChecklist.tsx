@@ -3,7 +3,10 @@
  */
 import { Card, Typography } from 'antd';
 import type { ClaimEvidenceSummary } from '@/api/inboxTriage';
-import { formatClaimEvidenceSlotLine } from '@/features/intake/utils/claimWorkbenchDisplay';
+import {
+  formatClaimEvidenceSlotLine,
+  formatClaimUnassignedWecomPhotosSection,
+} from '@/features/intake/utils/claimWorkbenchDisplay';
 
 const { Text } = Typography;
 
@@ -29,6 +32,7 @@ export function ClaimEvidenceChecklist({ summary }: ClaimEvidenceChecklistProps)
 
   const summaryText = (summary.summary_text || '').trim();
   const brokerNextAction = (summary.broker_next_action || '').trim();
+  const unassignedSection = formatClaimUnassignedWecomPhotosSection(summary);
 
   return (
     <Card
@@ -58,6 +62,29 @@ export function ClaimEvidenceChecklist({ summary }: ClaimEvidenceChecklistProps)
           );
         })}
       </div>
+
+      {unassignedSection ? (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
+          <Text style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+            待分类微信照片
+          </Text>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+            {unassignedSection.summaryLine}
+          </Text>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+            {unassignedSection.guidanceLine}
+          </Text>
+          {unassignedSection.items.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {unassignedSection.items.map((item) => (
+                <Text key={item.key} type="secondary" style={{ fontSize: 12 }}>
+                  {item.label}
+                </Text>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {brokerNextAction ? (
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>

@@ -154,7 +154,7 @@ def test_01_c1_includes_h5_upload_button():
     assert result["active_case_outcome"] == "claim_c1_sent"
     reply = result["reply_text"] or ""
     assert "【理赔资料 · 第 1 步完成 ✅】" in reply
-    assert "请点击下面按钮上传事故照片" in reply
+    assert "推荐点击下面按钮" in reply
 
     menu = result.get("menu_payload")
     assert isinstance(menu, dict)

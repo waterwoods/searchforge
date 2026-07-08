@@ -44,6 +44,22 @@ export type ClaimEvidenceSlot = {
     needs_broker_review: boolean;
 };
 
+/** P19H-3d — unassigned WeCom photos pending broker slot classification */
+export type ClaimUnassignedWecomPhoto = {
+    attachment_id?: string | null;
+    filename?: string | null;
+    mime_type?: string | null;
+    source?: string;
+    received_at?: string | null;
+    needs_broker_review?: boolean;
+};
+
+export type ClaimUnassignedWecomPhotos = {
+    count: number;
+    items: ClaimUnassignedWecomPhoto[];
+    broker_next_action?: string;
+};
+
 /** P19H-3c-3A — Claim evidence checklist summary for Workbench drawer */
 export type ClaimEvidenceSummary = {
     slots: ClaimEvidenceSlot[];
@@ -54,6 +70,7 @@ export type ClaimEvidenceSummary = {
     completion_level: 'empty' | 'partial' | 'required_complete' | 'review_ready' | 'complete' | string;
     broker_next_action: string;
     summary_text: string;
+    unassigned_wecom_photos?: ClaimUnassignedWecomPhotos;
 };
 
 export interface TriageResult {

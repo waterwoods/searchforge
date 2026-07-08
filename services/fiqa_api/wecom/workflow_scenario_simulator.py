@@ -298,7 +298,7 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
                 "时间",
                 "地点",
                 "描述",
-                "请点击下面按钮上传事故照片",
+                "推荐点击下面按钮",
             ),
             expected_not_contains=(
                 "加车资料流程正在进行",
@@ -371,7 +371,7 @@ SCENARIO_NO_ACTIVE_CLAIM_BASICS: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_c1",
             inbound_text="今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门",
-            expected_contains=("【理赔资料 · 第 1 步完成 ✅】", "请点击下面按钮上传事故照片"),
+            expected_contains=("【理赔资料 · 第 1 步完成 ✅】", "推荐点击下面按钮"),
             expected_priority_rule="active_claim_basics_collection",
             expected_decision="send_claim_c1",
             expected_response_type="claim_c1",

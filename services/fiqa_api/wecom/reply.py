@@ -391,6 +391,11 @@ _CLAIM_BASICS_LABELS: dict[str, str] = {
 
 _CLAIM_SAFE_DISCLAIMER = "这不代表已经正式报案。"
 _CLAIM_C1_H5_BUTTON = "上传事故照片"
+_CLAIM_C1_PHOTO_GUIDANCE_LINES: tuple[str, ...] = (
+    "推荐点击下面按钮分步上传事故照片，这样最清楚、也不容易漏。",
+    "如果您现在不方便，也可以直接把照片发到微信里。",
+    "不用重复上传；我们会统一整理到这个理赔记录里，陈总会人工确认后跟进。",
+)
 _CLAIM_C1_H5_TAIL = """\
 如果按钮打不开，请回复：链接
 
@@ -472,18 +477,14 @@ def _claim_c1_stage_complete_head_lines(case: dict[str, Any]) -> list[str]:
     return [
         "【理赔资料 · 第 1 步完成 ✅】",
         "",
-        "事故基本信息已收到。",
+        "事故基本信息已收到 ✅",
         "",
         "已记录：",
         f"时间：{_claim_fact_display(case, 'accident_datetime')}",
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         f"描述：{_claim_fact_display(case, 'accident_description')}",
         "",
-        "请点击下面按钮上传事故照片。",
-        "请准备：",
-        "1. 您的车损伤照片",
-        "2. 对方车辆 / 车牌照片",
-        "3. 现场照片（可选）",
+        *_CLAIM_C1_PHOTO_GUIDANCE_LINES,
     ]
 
 
@@ -497,7 +498,7 @@ def _claim_basics_already_complete_head_lines(case: dict[str, Any]) -> list[str]
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         "",
         "▶️ 下一步：上传事故照片。",
-        "请点击下面按钮上传事故照片。",
+        *_CLAIM_C1_PHOTO_GUIDANCE_LINES,
     ]
 
 
@@ -806,6 +807,19 @@ _MEDIA_ACK_CLAIM = (
     "收到事故照片。请先确认人是否安全，我会把照片放到理赔服务 case 里，陈总会人工联系您。"
 )
 
+_MEDIA_ACK_CLAIM_GUIDED_BOUND = (
+    "照片已收到，我会先帮陈总整理到这个理赔记录里。"
+    "如果还缺某类照片，稍后可以继续发微信，或点按钮分步补充。"
+)
+
+_MEDIA_ACK_CLAIM_BROKER_CONFIRM = (
+    "照片已收到。为了避免把两次事故资料混在一起，陈总会人工确认后整理。"
+)
+
+_MEDIA_ACK_CLAIM_NO_OPEN = (
+    "照片已收到。如果这是理赔相关，请简单回复「我要理赔」，我会帮您开始整理。"
+)
+
 
 # P19D-1 — strict upload guardrail customer copy (no OCR language)
 _GUARD_BULK_CONFIRM = (
@@ -827,14 +841,29 @@ _GUARD_ONE_PHOTO = (
 )
 
 
+def build_claim_wecom_media_reply(*, tier: str) -> str:
+    """P19H-3d — Tier A/B/C customer ack for WeCom claim image binding."""
+    normalized = (tier or "").strip().upper()
+    if normalized == "A":
+        return _MEDIA_ACK_CLAIM_GUIDED_BOUND
+    if normalized == "B":
+        return _MEDIA_ACK_CLAIM_BROKER_CONFIRM
+    if normalized == "C":
+        return _MEDIA_ACK_CLAIM_NO_OPEN
+    return _MEDIA_ACK_UNASSIGNED
+
+
 def build_guardrail_media_reply(
     *,
     reply_kind: str,
     bound: bool,
     service_lane: str | None = None,
     binding_confidence: str = "unknown",
+    claim_media_reply_tier: str | None = None,
 ) -> str:
     """Select safe customer reply for guardrail outcome. Never mentions OCR."""
+    if claim_media_reply_tier:
+        return build_claim_wecom_media_reply(tier=claim_media_reply_tier)
     kind = (reply_kind or "single_image").strip().lower()
     if kind == "bulk_pause":
         return _GUARD_BULK_PAUSE
@@ -856,13 +885,18 @@ def build_media_intake_reply(
     bound: bool,
     service_lane: str | None = None,
     binding_confidence: str = "unknown",
+    claim_media_reply_tier: str | None = None,
 ) -> str:
     """Safe customer ack for WeCom image/file intake. Never mentions OCR."""
+    if claim_media_reply_tier:
+        return build_claim_wecom_media_reply(tier=claim_media_reply_tier)
     lane = (service_lane or "").strip()
     if bound and lane == "coverage_risk":
         return _MEDIA_ACK_COVERAGE
     if bound and lane == "claim_lite":
         return _MEDIA_ACK_CLAIM
+    if bound and lane == "claim" and binding_confidence in ("high", "medium"):
+        return _MEDIA_ACK_CLAIM_GUIDED_BOUND
     if bound and binding_confidence in ("high", "medium"):
         return _MEDIA_ACK_BOUND
     return _MEDIA_ACK_UNASSIGNED

@@ -26,6 +26,9 @@ from services.fiqa_api.inbox_triage.intake_service_lanes import (
     SERVICE_LANE_WECOM_MEDIA_INTAKE,
 )
 from services.fiqa_api.wecom.active_case_bridge import _record_wecom_evidence
+from services.fiqa_api.wecom.claim_basics import list_open_claim_candidates_for_basics
+from services.fiqa_api.wecom.claim_identity import ClaimIdentityDecision, resolve_claim_identity
+from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
 from services.fiqa_api.wecom.config import WeComKfConfig
 from services.fiqa_api.wecom.identity import wecom_customer_display_label
 from services.fiqa_api.wecom.media_download import (
@@ -34,7 +37,22 @@ from services.fiqa_api.wecom.media_download import (
     download_wecom_media,
 )
 from services.fiqa_api.wecom.media_storage import upload_wecom_media_to_gcs
-from services.fiqa_api.wecom.reply import build_guardrail_media_reply, build_media_intake_reply
+from services.fiqa_api.wecom.reply import (
+    build_guardrail_media_reply,
+    build_media_intake_reply,
+)
+from services.fiqa_api.wecom.routing_observability import (
+    DECISION_CLAIM_MEDIA_BIND,
+    DECISION_CLAIM_MEDIA_BROKER_CONFIRM,
+    DECISION_CLAIM_MEDIA_NO_MATCH,
+    PRIORITY_CLAIM_MEDIA_IDENTITY_BIND,
+    RESPONSE_CLAIM_MEDIA_BIND,
+    RESPONSE_CLAIM_MEDIA_BROKER_CONFIRM,
+    RESPONSE_CLAIM_MEDIA_NO_MATCH,
+    build_routing_decision,
+    emit_routing_decision,
+    identity_context_for_decision,
+)
 from services.fiqa_api.wecom.upload_guardrail import (
     apply_guardrail_to_attachment_metadata,
     evaluate_upload_guardrail,
@@ -43,6 +61,7 @@ from services.fiqa_api.wecom.upload_guardrail import (
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_MSGTYPES = frozenset({"image", "file"})
+_CLAIM_MULTICHANNEL_FLOW = "claim_multichannel_evidence"
 
 
 @dataclass(frozen=True)
@@ -51,6 +70,14 @@ class MediaBindingDecision:
     binding_confidence: str
     service_lane: str | None
     intake_status: str | None = None
+
+
+@dataclass(frozen=True)
+class WeComMediaBindingResult:
+    decision: MediaBindingDecision
+    claim_identity: ClaimIdentityDecision | None = None
+    claim_media_bind: bool = False
+    claim_media_reply_tier: str | None = None
 
 
 def _log_event(event: str, payload: dict[str, Any]) -> None:
@@ -147,6 +174,114 @@ def resolve_media_case_binding(external_userid: str) -> MediaBindingDecision:
         return MediaBindingDecision(str(substantive[0]["case_id"]), "medium", lane)
 
     return MediaBindingDecision(None, "unknown", None, intake_status="unassigned")
+
+
+def resolve_wecom_media_binding(
+    external_userid: str,
+    *,
+    now: datetime | None = None,
+) -> WeComMediaBindingResult:
+    """
+    P19H-3d — Claim identity-aware media binding.
+
+    Tier A append_existing binds guided Claim case; Tier B/C quarantine without silent claim bind.
+    Add Vehicle binding remains when no strong Claim match.
+    """
+    ext = (external_userid or "").strip()
+    if not ext:
+        return WeComMediaBindingResult(
+            MediaBindingDecision(None, "unknown", None, intake_status="unassigned"),
+            claim_media_reply_tier="C",
+        )
+
+    open_claims = list_open_claim_candidates_for_basics(ext)
+    claim_identity = resolve_claim_identity(
+        external_userid=ext,
+        incoming_text=None,
+        open_claims=open_claims,
+        now=now,
+        channel="wecom_media",
+    )
+
+    if claim_identity.action == "append_existing" and claim_identity.case_id:
+        return WeComMediaBindingResult(
+            decision=MediaBindingDecision(
+                str(claim_identity.case_id),
+                "high",
+                SERVICE_LANE_CLAIM,
+            ),
+            claim_identity=claim_identity,
+            claim_media_bind=True,
+            claim_media_reply_tier="A",
+        )
+
+    if claim_identity.action == "broker_confirm":
+        return WeComMediaBindingResult(
+            decision=MediaBindingDecision(None, "unknown", None, intake_status="unassigned"),
+            claim_identity=claim_identity,
+            claim_media_reply_tier="B",
+        )
+
+    legacy = resolve_media_case_binding(ext)
+    if legacy.case_id is not None:
+        return WeComMediaBindingResult(decision=legacy, claim_identity=claim_identity)
+
+    tier = "C" if not open_claims else None
+    return WeComMediaBindingResult(
+        decision=MediaBindingDecision(None, "unknown", None, intake_status="unassigned"),
+        claim_identity=claim_identity,
+        claim_media_reply_tier=tier or "C",
+    )
+
+
+def _apply_claim_unassigned_attachment_fields(att_meta: dict[str, Any]) -> dict[str, Any]:
+    updated = dict(att_meta)
+    updated["source"] = "wecom"
+    updated["flow"] = _CLAIM_MULTICHANNEL_FLOW
+    updated["slot_assignment"] = "unassigned"
+    updated["source_channel"] = "wecom"
+    updated["needs_broker_review"] = True
+    updated["eligible_for_ocr"] = False
+    updated["document_type"] = "claim_photo_unassigned"
+    updated["document_type_confidence"] = "unassigned"
+    return updated
+
+
+def _emit_claim_media_routing_decision(
+    normalized: dict[str, Any],
+    *,
+    binding_result: WeComMediaBindingResult,
+    case_id: str | None,
+) -> None:
+    identity = binding_result.claim_identity
+    if identity is None:
+        return
+    tier = binding_result.claim_media_reply_tier
+    if tier == "A":
+        decision = DECISION_CLAIM_MEDIA_BIND
+        response_type = RESPONSE_CLAIM_MEDIA_BIND
+        reason = "claim_media_identity_append_existing"
+    elif tier == "B":
+        decision = DECISION_CLAIM_MEDIA_BROKER_CONFIRM
+        response_type = RESPONSE_CLAIM_MEDIA_BROKER_CONFIRM
+        reason = "claim_media_identity_broker_confirm"
+    else:
+        decision = DECISION_CLAIM_MEDIA_NO_MATCH
+        response_type = RESPONSE_CLAIM_MEDIA_NO_MATCH
+        reason = "claim_media_identity_no_open_claim"
+    emit_routing_decision(
+        build_routing_decision(
+            route_id=str(normalized.get("msg_id") or ""),
+            normalized=normalized,
+            priority_rule=PRIORITY_CLAIM_MEDIA_IDENTITY_BIND,
+            decision=decision,
+            reason=reason,
+            response_type=response_type,
+            active_case_id=case_id,
+            workflow_id="claim_simplified",
+            **identity_context_for_decision(identity),
+        )
+    )
 
 
 def _find_open_unassigned_intake_case(external_userid: str) -> str | None:
@@ -254,13 +389,17 @@ def ingest_wecom_media_message(
     existing_case_id, existing_att = find_wecom_attachment_by_msg_id(msg_id)
     if existing_att:
         lane = None
+        claim_reply_tier = None
         if existing_case_id:
             case = get_case_for_read(existing_case_id)
             lane = str(case.get("service_lane") or "").strip() if case else None
+            if str(existing_att.get("slot_assignment") or "").strip().lower() == "unassigned":
+                claim_reply_tier = "A"
         reply = build_media_intake_reply(
-            bound=True,
+            bound=bool(existing_case_id and lane != SERVICE_LANE_WECOM_MEDIA_INTAKE),
             service_lane=lane,
             binding_confidence=str(existing_att.get("binding_confidence") or "unknown"),
+            claim_media_reply_tier=claim_reply_tier,
         )
         _log_event(
             "wecom_media_intake_duplicate_v1",
@@ -276,10 +415,13 @@ def ingest_wecom_media_message(
         }
 
     customer_label = wecom_customer_display_label(external_userid)
-    binding = resolve_media_case_binding(external_userid)
+    binding_result = resolve_wecom_media_binding(external_userid, now=_parse_received_at(normalized))
+    binding = binding_result.decision
     target_case_id = binding.case_id
     case_created = False
     bound_to_service_case = target_case_id is not None
+    claim_media_bind = binding_result.claim_media_bind
+    claim_media_reply_tier = binding_result.claim_media_reply_tier
 
     try:
         dl = download_fn or download_wecom_media
@@ -346,9 +488,11 @@ def ingest_wecom_media_message(
         received_at=received_at,
         service_lane=lane_for_guardrail,
         case_id=target_case_id,
-        slot_assignment=str(att_meta.get("document_type") or "unknown_document"),
+        slot_assignment="unassigned" if claim_media_bind else str(att_meta.get("document_type") or "unknown_document"),
     )
     att_meta = apply_guardrail_to_attachment_metadata(att_meta, guardrail)
+    if claim_media_bind:
+        att_meta = _apply_claim_unassigned_attachment_fields(att_meta)
 
     if target_case_id is None:
         had_intake = _find_open_unassigned_intake_case(external_userid)
@@ -380,13 +524,22 @@ def ingest_wecom_media_message(
         case = get_case_for_read(target_case_id)
         lane = str(case.get("service_lane") or "").strip() if case else None
 
+    tier_for_reply = claim_media_reply_tier if (claim_media_bind or not bound_to_service_case) else None
     reply_text = build_guardrail_media_reply(
         reply_kind=guardrail.reply_kind,
         bound=bound_to_service_case,
         service_lane=lane,
         binding_confidence=binding.binding_confidence,
+        claim_media_reply_tier=tier_for_reply,
     )
     active_outcome = "media_attached_to_case" if bound_to_service_case else "media_unassigned"
+
+    if binding_result.claim_media_reply_tier:
+        _emit_claim_media_routing_decision(
+            normalized,
+            binding_result=binding_result,
+            case_id=target_case_id if bound_to_service_case else None,
+        )
 
     _log_event(
         "wecom_media_intake_ok_v1",
@@ -398,6 +551,9 @@ def ingest_wecom_media_message(
             "active_case_outcome": active_outcome,
             "guardrail_status": guardrail.guardrail_status,
             "intake_status": att_meta.get("intake_status"),
+            "claim_media_reply_tier": claim_media_reply_tier,
+            "identity_tier": binding_result.claim_identity.tier if binding_result.claim_identity else None,
+            "identity_action": binding_result.claim_identity.action if binding_result.claim_identity else None,
         },
     )
     return {
@@ -412,4 +568,7 @@ def ingest_wecom_media_message(
         "storage_uri": storage["storage_uri"],
         "guardrail_status": guardrail.guardrail_status,
         "intake_status": att_meta.get("intake_status"),
+        "claim_media_reply_tier": claim_media_reply_tier,
+        "identity_tier": binding_result.claim_identity.tier if binding_result.claim_identity else None,
+        "identity_action": binding_result.claim_identity.action if binding_result.claim_identity else None,
     }

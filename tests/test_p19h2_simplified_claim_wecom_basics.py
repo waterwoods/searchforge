@@ -222,7 +222,7 @@ def test_09_c1_copy_safe_no_h5_link():
     assert "时间：" in reply
     assert "地点：" in reply
     assert "描述：" in reply
-    assert "请点击下面按钮上传事故照片" in reply
+    assert "推荐点击下面按钮" in reply
     assert "不代表" in reply
     assert "http" not in reply.lower()
     _assert_no_forbidden_copy(reply)
