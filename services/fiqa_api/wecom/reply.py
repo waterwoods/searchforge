@@ -428,7 +428,7 @@ def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
     lines.extend(
         [
             "",
-            "我们会先帮您整理资料，陈总会人工确认。",
+            "我们先帮您整理资料，陈总会人工确认。",
             _CLAIM_SAFE_DISCLAIMER,
         ]
     )
@@ -476,7 +476,7 @@ def build_claim_stage_complete_c1_reply(case: dict[str, Any]) -> str:
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         f"描述：{_claim_fact_display(case, 'accident_description')}",
         "",
-        "下一步：上传事故照片。",
+        "下一步：准备事故照片。",
         "请准备：",
         "1. 您的车损伤照片",
         "2. 对方车辆 / 车牌照片",
@@ -499,12 +499,28 @@ def build_claim_basics_already_complete_reply(case: dict[str, Any]) -> str:
         f"时间：{_claim_fact_display(case, 'accident_datetime')}",
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         "",
-        "▶️ 下一步：上传事故照片。",
+        "▶️ 下一步：准备事故照片。",
         _CLAIM_PHOTO_NEXT_STEP_NOTE,
         "",
         _CLAIM_SAFE_DISCLAIMER,
     ]
     return "\n".join(lines)
+
+
+def build_claim_safety_manual_reply() -> str:
+    return "\n".join(
+        [
+            "【理赔 · 安全优先】",
+            "",
+            "请先确保人身安全。",
+            "",
+            "如有紧急情况，请联系当地紧急服务（如 911）。",
+            "请尽快联系陈总，我们会优先人工跟进。",
+            "",
+            "我们不能在系统里判断事故责任或 coverage。",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    )
 
 
 def build_claim_question_safe_reply() -> str:

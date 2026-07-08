@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from typing import Any, Final, Literal
 
-from services.fiqa_api.workflow_definitions import CLAIM_FOUNDATION_DEFINITION
+from services.fiqa_api.workflow_definitions import CLAIM_FOUNDATION_DEFINITION, CLAIM_SIMPLIFIED_DEFINITION
 from services.fiqa_api.workflow_kernel import (
     WorkflowRuntimeSnapshot,
     evaluate_required_gate,
+    evaluate_workflow_snapshot,
+    get_current_step,
     what_is_collected,
     what_is_missing,
 )
@@ -775,3 +777,24 @@ def customer_copy_contains_forbidden_phrase(text: str) -> str | None:
         if phrase in (text or ""):
             return phrase
     return None
+
+
+def evaluate_claim_simplified_snapshot(case_extra: dict[str, Any]) -> dict[str, Any]:
+    """P19H-2' — kernel aggregate view for simplified Claim workflow (Phase 1+)."""
+    snapshot = _claim_snapshot_from_case_extra(case_extra)
+    return evaluate_workflow_snapshot(CLAIM_SIMPLIFIED_DEFINITION, snapshot)
+
+
+def get_claim_simplified_current_step(case_extra: dict[str, Any]) -> dict[str, Any]:
+    """P19H-2' — current step from CLAIM_SIMPLIFIED_DEFINITION."""
+    snapshot = _claim_snapshot_from_case_extra(case_extra)
+    step = get_current_step(CLAIM_SIMPLIFIED_DEFINITION, snapshot)
+    return {
+        "phase": step.phase,
+        "action": step.action,
+        "missing_items": [
+            {"key": item.key, "label": item.label, "phase": item.phase}
+            for item in step.missing_items
+        ],
+        "customer_message_hint": step.customer_message_hint,
+    }

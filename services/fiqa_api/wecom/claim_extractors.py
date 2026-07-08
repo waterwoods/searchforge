@@ -12,6 +12,8 @@ _CLAIM_COMMAND_PHRASES: tuple[str, ...] = (
     "车祸了",
     "事故理赔",
     "file a claim",
+    "i had an accident",
+    "accident claim",
 )
 
 _INSUFFICIENT_DESCRIPTION_ONLY: tuple[str, ...] = (
@@ -53,6 +55,9 @@ _INJURY_YES_MARKERS: tuple[str, ...] = (
     "injury",
     "hurt",
     "hospital",
+    "ambulance",
+    "医院",
+    "紧急",
 )
 
 

@@ -1,4 +1,4 @@
-"""P19H-2 — Claim WeCom guided workflow: start card + accident basics + C1."""
+"""P19H-2' — Simplified Claim WeCom: safety gate + accident basics + C1."""
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ from services.fiqa_api.wecom.claim_state import (
     GUIDED_STATE_COLLECTING_TEXT,
     SERVICE_LANE_CLAIM,
     derive_claim_phase,
+    evaluate_claim_simplified_snapshot,
+    get_claim_simplified_current_step,
     is_accident_basics_complete,
     suggest_next_claim_transition,
     transition_to_manual_handle,
@@ -43,6 +45,9 @@ from services.fiqa_api.wecom.claim_state import (
 from services.fiqa_api.wecom.intent import IntentResult, is_add_vehicle_status_inquiry
 
 logger = logging.getLogger(__name__)
+
+# Re-export extractors under prompt naming.
+extract_claim_accident_basics = extract_accident_basics_fields
 
 CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "我要理赔",
@@ -52,6 +57,8 @@ CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "车祸了",
     "事故理赔",
     "file a claim",
+    "i had an accident",
+    "accident claim",
 )
 
 CLAIM_QUESTION_MARKERS: tuple[str, ...] = (
@@ -107,6 +114,20 @@ def is_claim_guided_start_message(text: str) -> bool:
     return False
 
 
+# Prompt aliases
+is_claim_start_intent = is_claim_guided_start_message
+
+
+def _kernel_basics_missing_keys(case: dict[str, Any]) -> set[str]:
+    """Accident basics still needed per CLAIM_SIMPLIFIED_DEFINITION."""
+    view = evaluate_claim_simplified_snapshot(case)
+    return {
+        item["key"]
+        for item in view.get("missing", [])
+        if item.get("key") in CLAIM_ACCIDENT_BASICS_FIELDS
+    }
+
+
 def is_claim_substantive_with_questions(text: str) -> bool:
     """Accident facts + how-to questions → keep claim_lite minimal lane."""
     raw = (text or "").strip()
@@ -129,6 +150,9 @@ def is_claim_question_not_guided_intake(text: str) -> bool:
     if is_claim_guided_start_message(raw) and "怎么办" not in raw:
         return False
     return True
+
+
+is_claim_question_intent = is_claim_question_not_guided_intake
 
 
 def is_claim_progress_inquiry(text: str) -> bool:
@@ -330,6 +354,7 @@ def ingest_claim_basics_message(
     from services.fiqa_api.wecom.reply import (
         build_claim_basics_already_complete_reply,
         build_claim_missing_basics_reply,
+        build_claim_safety_manual_reply,
         build_claim_stage_complete_c1_reply,
         build_claim_start_card_reply,
     )
@@ -422,18 +447,24 @@ def ingest_claim_basics_message(
         }
 
     if case_created and not has_extractable:
-        reply_text = build_claim_start_card_reply(injury_mentioned=injury_mentioned)
+        reply_text = (
+            build_claim_safety_manual_reply()
+            if injury_mentioned
+            else build_claim_start_card_reply(injury_mentioned=False)
+        )
         update_claim_workflow_state(
             case_id,
             claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
             guided_workflow_state=GUIDED_STATE_COLLECTING_TEXT,
         )
         return {
-            "outcome": "claim_start_card_sent",
+            "outcome": "claim_injury_manual_handle" if injury_mentioned else "claim_start_card_sent",
             "case_id": case_id,
             "case_created": True,
             "reply_text": reply_text,
-            "active_case_outcome": "claim_start_card_sent",
+            "active_case_outcome": (
+                "claim_injury_manual_handle" if injury_mentioned else "claim_start_card_sent"
+            ),
             "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
             "service_lane": SERVICE_LANE_CLAIM,
             "needs_broker_manual_handle": injury_mentioned,
@@ -460,6 +491,28 @@ def ingest_claim_basics_message(
                 **transition_to_manual_handle(refreshed),
             )
             refreshed = get_case_for_read(case_id) or refreshed
+            reply_text = build_claim_safety_manual_reply()
+            kernel_view = evaluate_claim_simplified_snapshot(refreshed)
+            _log_event(
+                "wecom_claim_basics_ingest_v1",
+                {
+                    "msg_id": msg_id,
+                    "case_id": case_id,
+                    "outcome": "claim_injury_manual_handle",
+                    "injury_mentioned": True,
+                    "kernel_current_step": kernel_view.get("current_step"),
+                },
+            )
+            return {
+                "outcome": "attached",
+                "case_id": case_id,
+                "case_created": case_created,
+                "reply_text": reply_text,
+                "active_case_outcome": "claim_injury_manual_handle",
+                "claim_phase": refreshed.get("claim_phase"),
+                "service_lane": SERVICE_LANE_CLAIM,
+                "needs_broker_manual_handle": True,
+            }
 
         if is_accident_basics_complete(refreshed):
             sent_c1_before = _c1_already_sent(refreshed)
@@ -490,6 +543,7 @@ def ingest_claim_basics_message(
             active_outcome = "claim_basics_partial"
 
         transition = suggest_next_claim_transition(refreshed)
+        kernel_step = get_claim_simplified_current_step(refreshed)
         _log_event(
             "wecom_claim_basics_ingest_v1",
             {
@@ -501,6 +555,8 @@ def ingest_claim_basics_message(
                 "description_present": bool(extracted.get("accident_description")),
                 "basics_complete": is_accident_basics_complete(refreshed),
                 "injury_mentioned": injury_mentioned,
+                "kernel_current_step": kernel_step,
+                "kernel_basics_missing": sorted(_kernel_basics_missing_keys(refreshed)),
             },
         )
         return {
@@ -537,3 +593,27 @@ def ingest_claim_question_safe_reply(normalized: dict[str, Any]) -> dict[str, An
         "active_case_outcome": "claim_question_safe_reply",
         "service_lane": None,
     }
+
+
+def build_claim_start_reply(*, injury_mentioned: bool = False) -> str:
+    from services.fiqa_api.wecom.reply import build_claim_start_card_reply
+
+    return build_claim_start_card_reply(injury_mentioned=injury_mentioned)
+
+
+def build_claim_missing_basics_reply(case: dict[str, Any]) -> str:
+    from services.fiqa_api.wecom.reply import build_claim_missing_basics_reply as _build
+
+    return _build(case)
+
+
+def build_claim_c1_reply(case: dict[str, Any]) -> str:
+    from services.fiqa_api.wecom.reply import build_claim_stage_complete_c1_reply
+
+    return build_claim_stage_complete_c1_reply(case)
+
+
+def build_claim_safety_manual_reply() -> str:
+    from services.fiqa_api.wecom.reply import build_claim_safety_manual_reply as _build
+
+    return _build()
