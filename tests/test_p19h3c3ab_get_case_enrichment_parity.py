@@ -78,9 +78,30 @@ def _normalized(text: str, *, ext: str = "wm_claim_parity", msg_id: str = "m1") 
 
 
 def _seed_claim_basics_complete() -> dict:
+    ext = "wm_p19h3c3ab"
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext=ext, msg_id="m_start"),
+        classify_wecom_intent("我要理赔"),
+    )
+    from services.fiqa_api.wecom.claim_basics import ingest_claim_injury_quick_reply
+
+    ingest_claim_injury_quick_reply(
+        normalize_text_message(
+            {
+                "msgid": "m_inj",
+                "open_kfid": "wktest001",
+                "external_userid": ext,
+                "origin": 3,
+                "msgtype": "text",
+                "text": {"content": ""},
+                "menu_id": "claim_injury_no",
+            }
+        ),
+        injury_value="no",
+    )
     text = "今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门"
     result = ingest_claim_basics_message(
-        _normalized(text, ext="wm_p19h3c3ab", msg_id="m_claim_parity"),
+        _normalized(text, ext=ext, msg_id="m_claim_parity"),
         classify_wecom_intent(text),
     )
     assert result["active_case_outcome"] == "claim_c1_sent"

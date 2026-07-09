@@ -10,9 +10,11 @@ from services.fiqa_api.wecom.claim_state import (
     CLAIM_ACCIDENT_BASICS_FIELDS,
     CLAIM_FORBIDDEN_AUTOMATION_CLAIMS,
     CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
+    CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
     CLAIM_PHASE_BROKER_REVIEW,
     CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
     CLAIM_PHASE_MANUAL_HANDLE,
+    CLAIM_PHASE_STARTED,
     CLAIM_PHASE_SUMMARY_READY,
     CLAIM_PHOTO_FLOW_SLOTS,
     SERVICE_LANE_CLAIM,
@@ -98,14 +100,23 @@ def build_claim_display_status(case: dict[str, Any]) -> str:
     """Broker-safe status copy — intake only, never implies carrier filing."""
     phase = derive_claim_phase(case)
     if phase == CLAIM_PHASE_MANUAL_HANDLE:
-        return "Manual handle · Broker review pending"
-    if phase == CLAIM_PHASE_BROKER_REVIEW:
-        return "Broker review pending"
-    if phase in (CLAIM_PHASE_SUMMARY_READY, CLAIM_PHASE_INTAKE_READY_FOR_BROKER):
-        return "Claim intake ready · Broker review pending"
-    if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
-        return "Claim Step 1 complete · Accident basics received"
+        return "Claim · Broker Review · Manual handle"
+    if phase in (CLAIM_PHASE_BROKER_REVIEW, CLAIM_PHASE_INTAKE_READY_FOR_BROKER):
+        return "Claim · Broker Review"
+    if phase in (CLAIM_PHASE_SUMMARY_READY, CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE):
+        return "Claim · 记录中 · Broker Review pending"
+    if phase in (CLAIM_PHASE_STARTED, CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS):
+        return "Claim · 记录中"
     return "Claim intake in progress · Broker review pending"
+
+
+def build_wecom_media_intake_display_status(case: dict[str, Any]) -> str:
+    """P19H-3f-1 — Unassigned WeCom media is not a formal Claim case."""
+    return "待确认材料 · 未分配微信资料 · 不是正式 case"
+
+
+def build_wecom_media_intake_display_title() -> str:
+    return "待确认材料"
 
 
 def is_claim_workbench_visible(case: dict[str, Any]) -> bool:

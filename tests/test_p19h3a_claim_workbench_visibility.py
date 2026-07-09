@@ -74,9 +74,30 @@ def _api_client() -> TestClient:
 
 
 def _seed_claim_basics_complete() -> dict:
+    ext = "wm_p19h3a"
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext=ext, msg_id="m_start"),
+        classify_wecom_intent("我要理赔"),
+    )
+    from services.fiqa_api.wecom.claim_basics import ingest_claim_injury_quick_reply
+
+    ingest_claim_injury_quick_reply(
+        normalize_text_message(
+            {
+                "msgid": "m_inj",
+                "open_kfid": "wktest001",
+                "external_userid": ext,
+                "origin": 3,
+                "msgtype": "text",
+                "text": {"content": ""},
+                "menu_id": "claim_injury_no",
+            }
+        ),
+        injury_value="no",
+    )
     text = "今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门"
     result = ingest_claim_basics_message(
-        _normalized(text, ext="wm_p19h3a", msg_id="m_claim_full"),
+        _normalized(text, ext=ext, msg_id="m_claim_full"),
         classify_wecom_intent(text),
     )
     assert result["active_case_outcome"] == "claim_c1_sent"
@@ -181,9 +202,7 @@ def test_enrich_claim_for_workbench_sets_display_title():
     )
     assert case["display_title"] == "Claim · 理赔资料"
     assert case["workbench_visible"] is True
-    assert build_claim_display_status(case) == (
-        "Claim Step 1 complete · Accident basics received"
-    )
+    assert build_claim_display_status(case) == "Claim · 记录中 · Broker Review pending"
 
 
 def test_enrich_cases_for_workbench_marks_claim_lane_explicit():

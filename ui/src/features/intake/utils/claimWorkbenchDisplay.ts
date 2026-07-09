@@ -37,7 +37,7 @@ export function isClaimGuidedCase(c: Pick<SavedCase, 'service_lane'>): boolean {
 }
 
 export function claimLaneLabel(): string {
-  return 'Claim';
+  return 'Claim · 记录中';
 }
 
 export function resolveClaimSummary(c: SavedCase): ClaimSummary {

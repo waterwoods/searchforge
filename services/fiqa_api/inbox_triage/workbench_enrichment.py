@@ -12,8 +12,15 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from services.fiqa_api.db.service_record_settings import service_record_database_url
-from services.fiqa_api.inbox_triage.claim_workbench_display import enrich_claim_for_workbench
-from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
+from services.fiqa_api.inbox_triage.claim_workbench_display import (
+    build_wecom_media_intake_display_status,
+    build_wecom_media_intake_display_title,
+    enrich_claim_for_workbench,
+)
+from services.fiqa_api.inbox_triage.intake_service_lanes import (
+    SERVICE_LANE_ADD_CAR,
+    SERVICE_LANE_WECOM_MEDIA_INTAKE,
+)
 from services.fiqa_api.inbox_triage.service_record_consistency import compare_snapshot_with_pg
 from services.fiqa_api.inbox_triage.service_record_read import _is_add_car_lane, _to_snapshot
 from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
@@ -41,7 +48,11 @@ def enrich_cases_for_workbench(cases: list[dict[str, Any]]) -> list[dict[str, An
     for c in cases:
         row = enrich_claim_for_workbench(dict(c))
         lane = str(c.get("service_lane") or "").strip()
-        if lane == SERVICE_LANE_ADD_CAR:
+        if lane == SERVICE_LANE_WECOM_MEDIA_INTAKE:
+            row["display_title"] = build_wecom_media_intake_display_title()
+            row["display_status"] = build_wecom_media_intake_display_status(c)
+            row["workbench_lane_kind"] = "holding"
+        elif lane == SERVICE_LANE_ADD_CAR:
             row["workbench_lane_kind"] = "explicit"
         elif lane == SERVICE_LANE_CLAIM:
             row["workbench_lane_kind"] = "explicit"

@@ -34,13 +34,17 @@ _DEFAULT_WECOM_ENV: dict[str, str] = {
 @dataclass(frozen=True)
 class ScenarioStep:
     name: str
-    inbound_text: str
+    inbound_text: str = ""
+    inbound_menu_id: str | None = None
+    inbound_msgtype: str = "text"
     expected_contains: tuple[str, ...] = ()
     expected_not_contains: tuple[str, ...] = ()
     expected_priority_rule: str | None = None
     expected_decision: str | None = None
     expected_response_type: str | None = None
     expected_menu_button: str | None = None
+    expect_case_created: bool | None = None
+    expect_service_lane: str | None = None
 
 
 @dataclass
@@ -121,8 +125,55 @@ class WorkflowScenarioSession:
         bind_case_channel_identity(cid, wecom_external_userid=self.external_userid)
         return get_case_by_id(cid) or saved
 
-    def route_inbound_text(self, text: str) -> RouteTurnResult:
+    def route_inbound_text(self, text: str, *, menu_id: str | None = None) -> RouteTurnResult:
         """Route one inbound message through the real `slice.py` orchestrator."""
+        if self._cfg is None:
+            raise RuntimeError("call setup_wecom_env() before routing messages")
+
+        self._msg_counter += 1
+        msg_id = f"sim_{self.external_userid}_{self._msg_counter}"
+
+        capture = RoutingDecisionCapture()
+        routing_logger = logging.getLogger(_ROUTING_LOGGER)
+        prev_level = routing_logger.level
+        routing_logger.setLevel(logging.INFO)
+        routing_logger.addHandler(capture)
+        try:
+            def pull(_cfg: WeComKfConfig, *, token: str, open_kf_id: str) -> list[dict[str, Any]]:
+                text_obj: dict[str, Any] = {"content": text}
+                if menu_id:
+                    text_obj["menu_id"] = menu_id
+                raw: dict[str, Any] = {
+                    "msgid": msg_id,
+                    "open_kfid": self.open_kf_id,
+                    "external_userid": self.external_userid,
+                    "origin": 3,
+                    "msgtype": "text",
+                    "text": text_obj,
+                }
+                return [raw]
+
+            results = process_kf_msg_or_event(
+                self._cfg,
+                callback_token="scenario",
+                open_kf_id=self.open_kf_id,
+                pull_messages=pull,
+            )
+        finally:
+            routing_logger.removeHandler(capture)
+            routing_logger.setLevel(prev_level)
+
+        outcome = results[0] if results else {}
+        response_text = str(outcome.get("reply_text") or "")
+        return RouteTurnResult(
+            inbound_text=text or (menu_id or ""),
+            response_text=response_text,
+            routing_decision=capture.last(),
+            outcome=outcome,
+        )
+
+    def route_inbound_image(self) -> RouteTurnResult:
+        """Route one inbound image (no open claim) through slice.py."""
         if self._cfg is None:
             raise RuntimeError("call setup_wecom_env() before routing messages")
 
@@ -142,8 +193,8 @@ class WorkflowScenarioSession:
                         "open_kfid": self.open_kf_id,
                         "external_userid": self.external_userid,
                         "origin": 3,
-                        "msgtype": "text",
-                        "text": {"content": text},
+                        "msgtype": "image",
+                        "image": {"media_id": f"media_{msg_id}"},
                     }
                 ]
 
@@ -158,10 +209,9 @@ class WorkflowScenarioSession:
             routing_logger.setLevel(prev_level)
 
         outcome = results[0] if results else {}
-        response_text = str(outcome.get("reply_text") or "")
         return RouteTurnResult(
-            inbound_text=text,
-            response_text=response_text,
+            inbound_text="<image>",
+            response_text=str(outcome.get("reply_text") or ""),
             routing_decision=capture.last(),
             outcome=outcome,
         )
@@ -219,6 +269,20 @@ def validate_scenario_step(step: ScenarioStep, turn: RouteTurnResult) -> Scenari
     if step.expected_priority_rule is not None and not decision:
         errors.append("missing routing decision log")
 
+    if step.expect_case_created is not None:
+        actual = bool(turn.outcome.get("case_created"))
+        if actual != step.expect_case_created:
+            errors.append(
+                f"case_created: expected {step.expect_case_created!r}, got {actual!r}"
+            )
+
+    if step.expect_service_lane is not None:
+        actual = turn.outcome.get("service_lane")
+        if actual != step.expect_service_lane:
+            errors.append(
+                f"service_lane: expected {step.expect_service_lane!r}, got {actual!r}"
+            )
+
     return ScenarioResultStep(
         name=step.name,
         inbound_text=step.inbound_text,
@@ -236,7 +300,13 @@ def run_scenario(
 ) -> ScenarioResult:
     result_steps: list[ScenarioResultStep] = []
     for step in steps:
-        turn = session.route_inbound_text(step.inbound_text)
+        if step.inbound_msgtype == "image":
+            turn = session.route_inbound_image()
+        else:
+            turn = session.route_inbound_text(
+                step.inbound_text,
+                menu_id=step.inbound_menu_id,
+            )
         result_steps.append(validate_scenario_step(step, turn))
 
     passed = all(s.passed for s in result_steps)
@@ -285,7 +355,7 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_confirmed_start",
             inbound_text="开始理赔",
-            expected_contains=("陈总办公室的值班助手", "有没有受伤", "这不代表已经向保险公司正式报案"),
+            expected_contains=("事故记录已开始", "陈总办公室的值班助手", "有没有受伤", "这不代表已经向保险公司正式报案"),
             expected_priority_rule="claim_confirmed_start",
             expected_decision="start_claim_flow",
             expected_response_type="claim_start",
@@ -363,7 +433,7 @@ SCENARIO_NO_ACTIVE_CLAIM_BASICS: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_start",
             inbound_text="我要理赔",
-            expected_contains=("陈总办公室的值班助手", "有没有受伤"),
+            expected_contains=("事故记录已开始", "陈总办公室的值班助手", "有没有受伤"),
             expected_priority_rule="claim_start_no_active_case",
             expected_decision="start_claim_flow",
             expected_response_type="claim_start",
@@ -391,6 +461,100 @@ SCENARIO_ADD_VEHICLE_RESTART: tuple[str, list[ScenarioStep]] = (
     ],
 )
 
+# P19H-3f-1 — New customer WeChat claim boundary scenarios
+
+SCENARIO_NC1_RANDOM_PHOTO: tuple[str, list[ScenarioStep]] = (
+    "NC-1_random_photo_first",
+    [
+        ScenarioStep(
+            name="random_photo_no_claim",
+            inbound_msgtype="image",
+            expected_contains=("尚未开始事故记录", "我要理赔"),
+            expect_case_created=False,
+            expect_service_lane=None,
+        ),
+    ],
+)
+
+SCENARIO_NC2_RANDOM_NARRATIVE: tuple[str, list[ScenarioStep]] = (
+    "NC-2_random_narrative_only",
+    [
+        ScenarioStep(
+            name="costco_rear_end_narrative",
+            inbound_text="昨晚 Costco 被追尾了，后保险杠有点坏。",
+            expected_contains=("尚未开始事故记录", "我要理赔"),
+            expect_case_created=False,
+        ),
+    ],
+)
+
+SCENARIO_NC3_EXPLICIT_START: tuple[str, list[ScenarioStep]] = (
+    "NC-3_explicit_start",
+    [
+        ScenarioStep(
+            name="woyao_claim_start",
+            inbound_text="我要理赔",
+            expected_contains=(
+                "事故记录已开始",
+                "陈总办公室的值班助手",
+                "不代表已经向保险公司正式报案",
+                "有没有受伤",
+            ),
+            expect_case_created=True,
+            expect_service_lane="claim",
+        ),
+    ],
+)
+
+SCENARIO_NC4_FULL_FLOW: tuple[str, list[ScenarioStep]] = (
+    "NC-4_explicit_start_story_photo",
+    [
+        ScenarioStep(
+            name="explicit_start",
+            inbound_text="我要理赔",
+            expected_contains=("事故记录已开始", "有没有受伤"),
+            expect_case_created=True,
+            expect_service_lane="claim",
+        ),
+        ScenarioStep(
+            name="injury_no",
+            inbound_text="",
+            inbound_menu_id="claim_injury_no",
+            expected_contains=("大概什么时候", "在哪里"),
+        ),
+        ScenarioStep(
+            name="story",
+            inbound_text="今天下午三点，在 Costco 停车场出口被后车追尾，后保险杠被撞了。",
+            expected_contains=("事故信息已记录", "Costco"),
+        ),
+    ],
+)
+
+SCENARIO_NC5_INJURY_ALONE: tuple[str, list[ScenarioStep]] = (
+    "NC-5_injury_quick_reply_alone",
+    [
+        ScenarioStep(
+            name="injury_no_without_claim",
+            inbound_text="",
+            inbound_menu_id="claim_injury_no",
+            expected_contains=("我要理赔", "开始记录这次事故"),
+            expect_case_created=False,
+        ),
+    ],
+)
+
+SCENARIO_NC6_INSURANCE_QUESTION: tuple[str, list[ScenarioStep]] = (
+    "NC-6_insurance_question_only",
+    [
+        ScenarioStep(
+            name="should_i_file",
+            inbound_text="这种情况要不要报保险？",
+            expected_contains=("不能",),
+            expect_case_created=False,
+        ),
+    ],
+)
+
 ALL_PREDEFINED_SCENARIOS: tuple[tuple[str, list[ScenarioStep]], ...] = (
     SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT,
     SCENARIO_ADD_VEHICLE_INJURY_OVERRIDE,
@@ -398,6 +562,11 @@ ALL_PREDEFINED_SCENARIOS: tuple[tuple[str, list[ScenarioStep]], ...] = (
     SCENARIO_ADD_VEHICLE_SECONDARY_TOPIC,
     SCENARIO_NO_ACTIVE_CLAIM_BASICS,
     SCENARIO_ADD_VEHICLE_RESTART,
+    SCENARIO_NC2_RANDOM_NARRATIVE,
+    SCENARIO_NC3_EXPLICIT_START,
+    SCENARIO_NC4_FULL_FLOW,
+    SCENARIO_NC5_INJURY_ALONE,
+    SCENARIO_NC6_INSURANCE_QUESTION,
 )
 
 
@@ -427,6 +596,11 @@ def run_all_predefined_scenarios(
         "add_vehicle_secondary_topic": True,
         "no_active_claim_basics": False,
         "add_vehicle_restart": False,
+        "NC-2_random_narrative_only": False,
+        "NC-3_explicit_start": False,
+        "NC-4_explicit_start_story_photo": False,
+        "NC-5_injury_quick_reply_alone": False,
+        "NC-6_insurance_question_only": False,
     }
     for name, steps in ALL_PREDEFINED_SCENARIOS:
         result = run_predefined_scenario(name, list(steps), seed_add_vehicle=seed_map.get(name, False))

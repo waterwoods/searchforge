@@ -413,25 +413,19 @@ def _claim_fact_display(case: dict[str, Any], field: str) -> str:
 
 def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
     lines = [
-        "您好，我是陈总办公室的值班助手。",
+        "【事故记录已开始 ✅】",
         "",
-        "请先确认：您和车上的人现在都安全吗？有没有受伤？",
+        "我是陈总办公室的值班助手。",
+        "我会先帮陈总记录这次事故，您可以直接在微信里发文字、照片或语音。",
+        "陈总会人工确认后联系您。",
+        "",
+        "请先确认：您和车上的人有没有受伤？",
     ]
     if injury_mentioned:
         lines.extend(
             [
                 "",
                 "如果有人受伤，请优先联系紧急服务，并尽快联系陈总。",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "",
-                "如果安全，请用一条消息告诉我：",
-                "大概什么时候、在哪里、发生了什么事。",
-                "",
-                "我会先帮您记录下来，陈总会人工确认后联系您。",
             ]
         )
     lines.extend(
@@ -672,6 +666,28 @@ def build_claim_question_safe_reply() -> str:
     )
 
 
+def build_claim_holding_ack_reply() -> str:
+    """P19H-3f-1 — Holding ack for ambiguous accident text without formal start."""
+    return "\n".join(
+        [
+            "【尚未开始事故记录】",
+            "我已收到这条信息，但还没有建立正式事故记录。",
+            "如果这是理赔相关，请回复「我要理赔」或点击「开始记录这次事故」。",
+            "如果只是咨询问题，您可以继续直接问。",
+        ]
+    )
+
+
+def build_claim_injury_holding_gate_reply() -> str:
+    """P19H-3f-1 — Injury quick reply without an active formal Claim case."""
+    return "\n".join(
+        [
+            "我已收到您的安全情况。",
+            "如果这是理赔相关，请先回复「我要理赔」或点击「开始记录这次事故」，我再帮陈总建立事故记录。",
+        ]
+    )
+
+
 # ---------------------------------------------------------------------------
 # P19E-2 — Add Vehicle Progress Card (status / resume layer)
 # ---------------------------------------------------------------------------
@@ -830,7 +846,10 @@ _MEDIA_ACK_CLAIM_BROKER_CONFIRM = (
 )
 
 _MEDIA_ACK_CLAIM_NO_OPEN = (
-    "照片已收到。如果这是理赔相关，请简单回复「我要理赔」，我会帮您开始整理。"
+    "【尚未开始事故记录】\n"
+    "我已收到这条信息，但还没有建立正式事故记录。\n"
+    "如果这是理赔相关，请回复「我要理赔」或点击「开始记录这次事故」。\n"
+    "如果只是咨询问题，您可以继续直接问。"
 )
 
 

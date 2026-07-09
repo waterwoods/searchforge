@@ -335,11 +335,32 @@ def test_09_add_vehicle_unaffected():
 
 
 def test_10_injury_quick_reply():
+    norm_alone = normalize_text_message(
+        {
+            "msgid": "inj_alone",
+            "open_kfid": "wktest001",
+            "external_userid": "wm_injury_alone",
+            "origin": 3,
+            "msgtype": "text",
+            "text": {"content": ""},
+            "menu_id": "claim_injury_no",
+        }
+    )
+    alone = ingest_claim_injury_quick_reply(norm_alone, injury_value="no")
+    assert alone.get("case_created") is False
+    assert alone.get("active_case_outcome") == "claim_injury_holding_gate"
+    assert "我要理赔" in (alone.get("reply_text") or "")
+
+    ext = "wm_injury_qr"
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext=ext, msg_id="m_start"),
+        classify_wecom_intent("我要理赔"),
+    )
     norm = normalize_text_message(
         {
             "msgid": "inj_no",
             "open_kfid": "wktest001",
-            "external_userid": "wm_injury_qr",
+            "external_userid": ext,
             "origin": 3,
             "msgtype": "text",
             "text": {"content": ""},
@@ -364,6 +385,10 @@ def test_10_injury_quick_reply():
             "menu_id": "claim_injury_yes",
         }
     )
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext="wm_injury_yes", msg_id="m_start_yes"),
+        classify_wecom_intent("我要理赔"),
+    )
     result_yes = ingest_claim_injury_quick_reply(norm_yes, injury_value="yes")
     case_yes = get_case_by_id(str(result_yes["case_id"])) or {}
     assert case_yes.get("known_facts", {}).get("injury_status") == "yes"
@@ -380,6 +405,10 @@ def test_10_injury_quick_reply():
             "text": {"content": ""},
             "menu_id": "claim_injury_unknown",
         }
+    )
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext="wm_injury_unk", msg_id="m_start_unk"),
+        classify_wecom_intent("我要理赔"),
     )
     result_unk = ingest_claim_injury_quick_reply(norm_unk, injury_value="unknown")
     case_unk = get_case_by_id(str(result_unk["case_id"])) or {}

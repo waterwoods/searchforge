@@ -85,9 +85,10 @@ def _assert_no_forbidden_copy(text: str) -> None:
 
 def test_01_woyao_claim_start_safety_reply():
     reply = build_claim_start_reply()
+    assert "事故记录已开始" in reply
     assert "陈总办公室的值班助手" in reply
     assert "有没有受伤" in reply
-    assert "大概什么时候、在哪里" in reply
+    assert "这不代表已经向保险公司正式报案" in reply
     assert "这不代表已经向保险公司正式报案" in reply
     _assert_no_forbidden_copy(reply)
 
@@ -128,8 +129,30 @@ def test_03_accident_question_safe_no_liability_promise():
 
 
 def test_04_full_basics_one_message_sends_c1():
+    ext = "wm_full_solo"
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext=ext, msg_id="m_start"),
+        classify_wecom_intent("我要理赔"),
+    )
+    from services.fiqa_api.wecom.claim_basics import ingest_claim_injury_quick_reply
+    from services.fiqa_api.wecom.normalize import normalize_text_message
+
+    ingest_claim_injury_quick_reply(
+        normalize_text_message(
+            {
+                "msgid": "m_inj",
+                "open_kfid": "wktest001",
+                "external_userid": ext,
+                "origin": 3,
+                "msgtype": "text",
+                "text": {"content": ""},
+                "menu_id": "claim_injury_no",
+            }
+        ),
+        injury_value="no",
+    )
     text = "今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门"
-    normalized = _normalized(text, msg_id="m_full")
+    normalized = _normalized(text, ext=ext, msg_id="m_full")
     intent = classify_wecom_intent(text)
     result = ingest_claim_basics_message(normalized, intent)
     assert result["active_case_outcome"] == "claim_c1_sent"
@@ -166,6 +189,27 @@ def test_05_partial_time_only_no_c1():
 
 def test_06_two_message_merge_to_c1():
     ext = "wm_merge"
+    ingest_claim_basics_message(
+        _normalized("我要理赔", ext=ext, msg_id="m_start"),
+        classify_wecom_intent("我要理赔"),
+    )
+    from services.fiqa_api.wecom.claim_basics import ingest_claim_injury_quick_reply
+    from services.fiqa_api.wecom.normalize import normalize_text_message
+
+    ingest_claim_injury_quick_reply(
+        normalize_text_message(
+            {
+                "msgid": "m_inj",
+                "open_kfid": "wktest001",
+                "external_userid": ext,
+                "origin": 3,
+                "msgtype": "text",
+                "text": {"content": ""},
+                "menu_id": "claim_injury_no",
+            }
+        ),
+        injury_value="no",
+    )
     ingest_claim_basics_message(
         _normalized("今天上午10点", ext=ext, msg_id="m_m1"),
         classify_wecom_intent("今天上午10点"),

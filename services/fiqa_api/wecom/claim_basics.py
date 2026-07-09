@@ -93,16 +93,37 @@ extract_claim_accident_basics = extract_accident_basics_fields
 CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "我要理赔",
     "开始理赔",
+    "我要报理赔",
+    "我要开一个事故记录",
+    "我要记录新事故",
     "我撞车了",
+    "我出车祸了",
     "出事故了",
     "发生事故了",
     "发生车祸了",
     "我发生车祸了",
     "车祸了",
     "事故理赔",
+    "新事故",
     "file a claim",
     "i had an accident",
     "accident claim",
+)
+
+CLAIM_PASSIVE_NARRATIVE_MARKERS: tuple[str, ...] = (
+    "追尾",
+    "被撞",
+    "后保险杠",
+    "刮蹭",
+    "撞了",
+    "车祸",
+    "事故",
+    "出险",
+    "rear-end",
+    "rear ended",
+    "got hit",
+    "collision",
+    "hit and run",
 )
 
 CLAIM_LANE_SWITCH_CONFIRM_MARKERS: tuple[str, ...] = (
@@ -176,12 +197,48 @@ def is_claim_guided_start_message(text: str) -> bool:
     raw = (text or "").strip()
     if not raw:
         return False
+    lowered = raw.lower()
+    if any(m in raw or m in lowered for m in CLAIM_QUESTION_MARKERS):
+        explicit_only = (
+            "我要理赔",
+            "开始理赔",
+            "我要报理赔",
+            "新事故",
+            "重新理赔",
+            "我要记录新事故",
+            "我要开一个事故记录",
+        )
+        if not any(m in raw for m in explicit_only):
+            return False
     if is_explicit_claim_restart(raw):
         return True
     if any(m in raw for m in CLAIM_GUIDED_START_MARKERS):
         return True
     lowered = raw.lower()
     if lowered in ("claim", "accident"):
+        return True
+    # "被撞了" only counts as explicit start when phrased as a request for help.
+    if "被撞" in raw and any(
+        cue in raw for cue in ("怎么办", "帮我", "请帮", "要理赔", "开始", "记录")
+    ):
+        return True
+    return False
+
+
+def is_claim_passive_narrative(text: str) -> bool:
+    """Accident-like narrative without explicit formal start intent (P19H-3f-1)."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if is_claim_guided_start_message(raw):
+        return False
+    if is_claim_question_not_guided_intake(raw):
+        return False
+    lowered = raw.lower()
+    if any(m in raw or m in lowered for m in CLAIM_PASSIVE_NARRATIVE_MARKERS):
+        return True
+    parsed = extract_accident_basics_fields(raw)
+    if parsed.get("accident_datetime") and parsed.get("accident_location"):
         return True
     return False
 
@@ -415,7 +472,49 @@ def should_route_claim_guided_workflow(
     if is_claim_guided_start_message(text):
         return True
 
-    return has_accident_basics_signals(text)
+    return False
+
+
+def should_route_claim_holding_ack(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> bool:
+    """Route ambiguous accident-like messages to Holding ack — no formal Claim case."""
+    text = str(normalized.get("text") or "").strip()
+    ext = str(normalized.get("external_userid") or "")
+
+    if find_active_claim_case_for_basics(ext):
+        return False
+    if is_explicit_add_car_restart(text):
+        return False
+    if is_claim_guided_start_message(text):
+        return False
+    if is_claim_question_not_guided_intake(text):
+        return False
+    if is_claim_substantive_with_questions(text):
+        return False
+    if intent_result.matched_by in ("menu_number", "menu_id", "menu_text"):
+        return False
+    if is_claim_passive_narrative(text):
+        return True
+    if intent_result.confidence == "high" and intent_result.intent == "claim_intake":
+        return True
+    return False
+
+
+def ingest_claim_holding_ack(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Acknowledge ambiguous accident content without creating a formal Claim case."""
+    from services.fiqa_api.wecom.reply import build_claim_holding_ack_reply
+
+    return {
+        "outcome": "claim_holding_ack",
+        "case_id": None,
+        "case_created": False,
+        "reply_text": build_claim_holding_ack_reply(),
+        "menu_payload": None,
+        "active_case_outcome": "claim_holding_ack",
+        "service_lane": None,
+    }
 
 
 def should_route_claim_question_safe_reply(
@@ -423,9 +522,11 @@ def should_route_claim_question_safe_reply(
     intent_result: IntentResult,
 ) -> bool:
     text = str(normalized.get("text") or "").strip()
-    if intent_result.confidence != "high" or intent_result.intent != "claim_intake":
-        return False
     if find_active_claim_case_for_basics(str(normalized.get("external_userid") or "")):
+        return False
+    if is_claim_question_not_guided_intake(text):
+        return True
+    if intent_result.confidence != "high" or intent_result.intent != "claim_intake":
         return False
     return is_claim_question_not_guided_intake(text)
 
@@ -600,9 +701,18 @@ def ingest_claim_injury_quick_reply(
     case_id = str(case.get("case_id") or "").strip() if case else None
 
     if not case_id:
-        created = _create_claim_case(normalized, injury_mentioned=(value == "yes"))
-        case_id = created["case_id"]
-        case = get_case_for_read(case_id) or {}
+        from services.fiqa_api.wecom.reply import build_claim_injury_holding_gate_reply
+
+        return {
+            "outcome": "claim_injury_holding_gate",
+            "case_id": None,
+            "case_created": False,
+            "reply_text": build_claim_injury_holding_gate_reply(),
+            "menu_payload": None,
+            "active_case_outcome": "claim_injury_holding_gate",
+            "service_lane": None,
+            "needs_broker_manual_handle": False,
+        }
 
     patch_case_known_facts(case_id, {"injury_status": injury_status})
     append_claim_timeline_event(
@@ -625,11 +735,20 @@ def ingest_claim_injury_quick_reply(
     if needs_manual:
         reply_text = build_claim_safety_manual_reply()
         active_outcome = "claim_injury_manual_handle"
+    elif value == "unknown":
+        reply_text = (
+            "好的，已记录。\n\n"
+            "如果安全，请用一条消息告诉我：\n"
+            "大概什么时候、在哪里、发生了什么事。\n"
+            "不用写得很正式，说清楚就行。"
+        )
+        active_outcome = "claim_injury_reply_recorded"
     else:
         reply_text = (
-            "好的，已记录。请用一条消息告诉我大概什么时候、在哪里、发生了什么事。"
-            if value == "no"
-            else "好的，已记录。如果安全，请用一条消息告诉我大概什么时候、在哪里、发生了什么事。"
+            "好的，已记录。\n\n"
+            "请用一条消息告诉我：\n"
+            "大概什么时候、在哪里、发生了什么事。\n"
+            "不用写得很正式，说清楚就行。"
         )
         active_outcome = "claim_injury_reply_recorded"
 

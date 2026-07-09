@@ -540,10 +540,12 @@ def process_kf_msg_or_event(
             # 6. secondary-topic deferral fallback (minimal_lanes)
             from services.fiqa_api.wecom.claim_basics import (
                 ingest_claim_basics_message,
+                ingest_claim_holding_ack,
                 ingest_claim_injury_quick_reply,
                 ingest_claim_lane_switch_choice,
                 ingest_claim_question_safe_reply,
                 should_route_claim_guided_workflow,
+                should_route_claim_holding_ack,
                 should_route_claim_lane_switch_choice,
                 should_route_claim_question_safe_reply,
             )
@@ -667,6 +669,45 @@ def process_kf_msg_or_event(
                 _log_slice(
                     "reply_generated_v1",
                     {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                )
+                _dispatch_reply(
+                    cfg,
+                    normalized,
+                    send_enabled=send_enabled,
+                    menu_payload=None,
+                    text_content=reply_text,
+                    outcome=outcome,
+                )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=None,
+                )
+                continue
+
+            if b0_enabled and should_route_claim_holding_ack(normalized, intent_result):
+                holding_result = ingest_claim_holding_ack(normalized)
+                reply_text = holding_result.get("reply_text")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": False,
+                    "case_id": None,
+                    "active_case_outcome": holding_result.get("active_case_outcome"),
+                    "service_lane": None,
+                }
+                _log_slice(
+                    "claim_holding_ack_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
                 )
                 _dispatch_reply(
                     cfg,

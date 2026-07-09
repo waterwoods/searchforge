@@ -130,7 +130,7 @@ function isWorkbenchQueueCase(c: SavedCase): boolean {
 
 function laneLabel(c: SavedCase): string {
   const lane = (c.service_lane || '').trim();
-  if (lane === 'wecom_media_intake') return 'WeCom Photo';
+  if (lane === 'wecom_media_intake') return '待确认材料';
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
   const rt = blob?.request_type || '';
   if (isClaimGuidedLane(lane)) return claimLaneLabel();
@@ -144,7 +144,7 @@ function laneLabel(c: SavedCase): string {
 }
 
 function laneTagColor(lane: string): string {
-  if (lane === 'WeCom Photo') return 'gold';
+  if (lane === '待确认材料') return 'gold';
   if (lane === 'Add Car') return 'blue';
   if (lane === 'Policy Review') return 'purple';
   if (lane === 'Claim') return 'volcano';
@@ -156,7 +156,7 @@ function laneTagColor(lane: string): string {
 
 function readinessFromCase(c: SavedCase): string {
   const lane = (c.service_lane || '').trim();
-  if (lane === 'wecom_media_intake') return 'UNASSIGNED';
+  if (lane === 'wecom_media_intake') return 'HOLDING';
   const cat = (c.issue_category || '').toLowerCase();
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
@@ -195,7 +195,8 @@ function statusTag(status: string) {
   const s = status.toUpperCase();
   if (s === 'READY') return <Tag color="success">READY</Tag>;
   if (s === 'NEED_INFO') return <Tag color="warning">NEED_INFO</Tag>;
-  if (s === 'UNASSIGNED') return <Tag color="gold">UNASSIGNED</Tag>;
+  if (s === 'HOLDING') return <Tag color="gold">待确认材料</Tag>;
+  if (s === 'UNASSIGNED') return <Tag color="gold">待确认材料</Tag>;
   return <Tag color="processing">BROKER_REVIEW</Tag>;
 }
 
