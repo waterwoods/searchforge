@@ -497,6 +497,17 @@ def claim_evidence_copy_is_broker_safe(text: str) -> bool:
 InjuryStatus = Literal["yes", "no", "unknown"]
 PoliceStatus = Literal["yes", "no", "unknown"]
 BriefConfidence = Literal["low", "medium", "high"]
+HighlightLevel = Literal["important", "missing", "received"]
+HighlightKind = Literal["injury", "missing_info", "evidence", "basics"]
+
+_BRIEF_HIGHLIGHT_MISSING_LABELS: dict[str, str] = {
+    "injury_status": "还缺受伤情况确认",
+    "accident_datetime": "还缺事故时间",
+    "accident_location": "还缺事故地点",
+    "accident_description": "还缺事故经过",
+    "other_party_info": "还缺对方保险信息",
+    "photos": "还缺照片",
+}
 
 _INJURY_NO_KEYWORDS = ("没受伤", "人没事", "没有受伤", "无人受伤", "没事", "no injury")
 _INJURY_YES_KEYWORDS = ("受伤", "救护车", "医院", "疼", "骨折", "流血")
@@ -652,6 +663,65 @@ def _build_missing_info(key_facts: dict[str, Any], photo_count: int) -> list[dic
     return items
 
 
+def _build_brief_highlights(
+    key_facts: dict[str, Any],
+    *,
+    photo_count: int,
+    missing_info: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """P19H-3e-1b — deterministic factual markers for broker scan (max 5)."""
+    highlights: list[dict[str, str]] = []
+
+    def add(level: HighlightLevel, label: str, kind: HighlightKind) -> None:
+        if len(highlights) >= 5:
+            return
+        if any(item["label"] == label for item in highlights):
+            return
+        highlights.append({"level": level, "label": label, "kind": kind})
+
+    injury = str(key_facts.get("injury_status") or "unknown")
+    if injury == "yes":
+        add("important", "有人受伤，陈总需优先人工确认", "injury")
+    elif injury == "no":
+        add("important", "受伤情况已确认：没有受伤", "injury")
+    else:
+        add("missing", "还缺受伤情况确认", "injury")
+
+    if photo_count > 0:
+        add("received", f"已收到 {photo_count} 张照片", "evidence")
+
+    dt = _str_or_none(key_facts.get("accident_datetime"))
+    loc = _str_or_none(key_facts.get("accident_location"))
+    desc = _str_or_none(key_facts.get("accident_description"))
+    if dt and loc and desc:
+        add("received", "事故基本经过已记录", "basics")
+
+    for item in missing_info:
+        key = str(item.get("key") or "").strip()
+        if key == "injury_status" and injury != "unknown":
+            continue
+        label = _BRIEF_HIGHLIGHT_MISSING_LABELS.get(key)
+        if label:
+            add("missing", label, "missing_info")
+
+    return highlights[:5]
+
+
+def brief_highlights_are_broker_safe(highlights: list[dict[str, str]]) -> bool:
+    """Highlights must not imply fault, coverage, or carrier filing."""
+    forbidden = (
+        "对方全责",
+        "一定会赔",
+        "已报案",
+        "保险公司已收到",
+        "coverage approved",
+        "正式报案",
+        "已受理",
+    )
+    combined = " ".join(str(h.get("label") or "") for h in highlights)
+    return not any(phrase in combined for phrase in forbidden)
+
+
 def _build_next_best_question(missing_info: list[dict[str, str]]) -> str:
     priority_order = [
         ("injury_status", "请问有人受伤吗？"),
@@ -726,6 +796,7 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
 
     basics_complete = is_accident_basics_complete(case)
     missing_info = _build_missing_info(key_facts, photo_count)
+    highlights = _build_brief_highlights(key_facts, photo_count=photo_count, missing_info=missing_info)
     next_question = _build_next_best_question(missing_info)
     confidence = _derive_brief_confidence(
         basics_complete=basics_complete,
@@ -755,6 +826,7 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
             "unassigned_wecom_photos": unassigned_count,
         },
         "missing_info": missing_info,
+        "highlights": highlights,
         "next_best_question": next_question,
         "confidence": confidence,
         "source_event_ids": _source_event_ids(case),

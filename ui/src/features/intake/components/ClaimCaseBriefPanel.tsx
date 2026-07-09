@@ -28,6 +28,19 @@ function severityColor(severity: string): string {
   }
 }
 
+function highlightColor(level: string): string {
+  switch ((level || '').trim().toLowerCase()) {
+    case 'important':
+      return 'red';
+    case 'missing':
+      return 'orange';
+    case 'received':
+      return 'green';
+    default:
+      return 'default';
+  }
+}
+
 export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBriefPanelProps) {
   const brief = resolveClaimCaseBrief(briefProp);
   if (!brief) {
@@ -48,6 +61,7 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
   const keyFacts = brief.key_facts ?? {};
   const evidence = brief.evidence_received ?? {};
   const missing = (brief.missing_info ?? []).slice(0, 5);
+  const highlights = (brief.highlights ?? []).slice(0, 5);
   const timelinePreview = formatClaimTimelinePreview(timeline ?? [], 3);
   const photoCount = evidence.photo_count ?? 0;
 
@@ -89,6 +103,21 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
         </Text>
         <Text style={{ fontSize: 13 }}>已收 {photoCount} 张</Text>
       </div>
+
+      {highlights.length > 0 ? (
+        <div style={{ marginBottom: 12 }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+            重点速览
+          </Text>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {highlights.map((item, index) => (
+              <Tag key={`${item.kind}-${index}`} color={highlightColor(item.level)} style={{ margin: 0 }}>
+                {item.label}
+              </Tag>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {missing.length > 0 ? (
         <div style={{ marginBottom: 12 }}>

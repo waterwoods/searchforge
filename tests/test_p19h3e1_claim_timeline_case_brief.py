@@ -239,6 +239,7 @@ def test_05_build_claim_case_brief_shape():
         "key_facts",
         "evidence_received",
         "missing_info",
+        "highlights",
         "next_best_question",
         "confidence",
         "source_event_ids",
@@ -246,6 +247,8 @@ def test_05_build_claim_case_brief_shape():
     ):
         assert key in brief
     assert brief["brief_version"] == 1
+    assert isinstance(brief["highlights"], list)
+    assert len(brief["highlights"]) <= 5
 
 
 def test_06_missing_info_priority_injury_unknown():

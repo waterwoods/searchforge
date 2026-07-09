@@ -158,6 +158,7 @@ def test_01_random_photo_no_claim(cfg):
     reply = result["reply_text"] or ""
     assert "尚未开始事故记录" in reply
     assert "我要理赔" in reply
+    assert "事故记录已开始" not in reply
     case = get_case_by_id(result["case_id"]) or {}
     assert case.get("service_lane") == SERVICE_LANE_WECOM_MEDIA_INTAKE
     _assert_no_forbidden_copy(reply)
@@ -175,6 +176,7 @@ def test_02_random_narrative_no_formal_claim():
     reply = result["reply_text"] or ""
     assert "尚未开始事故记录" in reply
     assert "我要理赔" in reply
+    assert "事故记录已开始" not in reply
     _assert_no_forbidden_copy(reply)
 
 
@@ -187,6 +189,11 @@ def test_03_explicit_woyao_claim_creates_case():
     assert result["service_lane"] == SERVICE_LANE_CLAIM
     stored = get_case_by_id(result["case_id"]) or {}
     assert stored.get("service_lane") == SERVICE_LANE_CLAIM
+    reply = result.get("reply_text") or ""
+    assert "【事故记录已开始 ✅】" in reply
+    assert "陈总办公室" in reply
+    assert "有没有受伤" in reply
+    assert "不代表已经向保险公司正式报案" in reply
 
 
 def test_04_start_card_only_after_explicit_start():
@@ -196,11 +203,30 @@ def test_04_start_card_only_after_explicit_start():
     assert "事故记录已开始" in start
     assert "陈总办公室的值班助手" in start
     assert "有没有受伤" in start
+    assert "不代表已经向保险公司正式报案" in start
     result = ingest_claim_basics_message(
         _normalized("我要理赔", msg_id="m_sc"),
         classify_wecom_intent("我要理赔"),
     )
-    assert "事故记录已开始" in (result.get("reply_text") or "")
+    reply = result.get("reply_text") or ""
+    assert "事故记录已开始" in reply
+    assert "陈总办公室" in reply
+    assert "有没有受伤" in reply
+    assert "不代表已经向保险公司正式报案" in reply
+
+
+def test_13_formal_claim_paths_emit_start_card():
+    """P19H-3f-1b — any WeCom explicit-start path must emit Start Card."""
+    for text in ("我要理赔", "开始理赔", "新事故"):
+        ext = f"wm_ceremony_{text}"
+        result = ingest_claim_basics_message(
+            _normalized(text, ext=ext, msg_id=f"m_{text}"),
+            classify_wecom_intent(text),
+        )
+        assert result.get("case_created") is True, text
+        reply = result.get("reply_text") or ""
+        assert "【事故记录已开始 ✅】" in reply, text
+        assert "不代表已经向保险公司正式报案" in reply, text
 
 
 def test_05_injury_quick_reply_alone_no_case():
@@ -219,6 +245,7 @@ def test_05_injury_quick_reply_alone_no_case():
     assert result["case_created"] is False
     assert result["active_case_outcome"] == "claim_injury_holding_gate"
     assert _claim_cases() == []
+    assert "事故记录已开始" not in (result.get("reply_text") or "")
 
 
 def test_06_injury_inside_active_claim_updates_status():

@@ -48,6 +48,15 @@ A case begins only through explicit intent or controlled task entry.
 
 > 闲聊和随手发图只进 Holding；只有客户明确说要开始、或从受控入口进入，才建正式 case — Start Card 宣告开始，End Card 宣告陈总已接手，中间每一步都说清楚「记录中 ≠ 已报案」。
 
+### P19H-3f-1b — Start Card = Case Creation Ceremony (shipped contract)
+
+```text
+Formal customer-facing Claim case MUST emit Start Card.
+No Start Card means no customer-facing formal Claim case has started.
+```
+
+Equivalent Start Ceremony surfaces: WeCom explicit start · H5 Task Page · future mini program · broker-created formal case (Start Notice on next customer touch). Full contract: `docs/p19h3f1b_start_card_case_creation_ceremony.md`.
+
 ---
 
 ## 2. The Trust Problem

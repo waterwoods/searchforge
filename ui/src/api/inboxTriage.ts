@@ -93,6 +93,12 @@ export type ClaimMissingInfoItem = {
     reason: string;
 };
 
+export type ClaimBriefHighlight = {
+    level: 'important' | 'missing' | 'received' | string;
+    label: string;
+    kind: 'injury' | 'missing_info' | 'evidence' | 'basics' | string;
+};
+
 /** P19H-3e-1 — Claim Case Brief for Workbench hero panel */
 export type ClaimCaseBrief = {
     summary: string;
@@ -120,6 +126,7 @@ export type ClaimCaseBrief = {
         unassigned_wecom_photos?: number;
     };
     missing_info?: ClaimMissingInfoItem[];
+    highlights?: ClaimBriefHighlight[];
     next_best_question?: string;
     confidence?: 'low' | 'medium' | 'high' | string;
     source_event_ids?: string[];
