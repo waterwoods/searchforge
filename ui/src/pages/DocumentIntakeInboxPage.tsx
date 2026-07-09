@@ -50,6 +50,11 @@ import {
   resolveClaimEvidenceSummary,
 } from '@/features/intake/utils/claimWorkbenchDisplay';
 import {
+  resolveCaseOpenErrorMessage,
+  shouldFetchFormalCaseDetail,
+  shouldShowCaseOpenFailureToast,
+} from '@/features/intake/utils/workbenchCaseOpen';
+import {
   countImagePreviews,
   createWorkbenchPerfSession,
   logCaseDetailLoaded,
@@ -713,8 +718,16 @@ export default function DocumentIntakeInboxPage() {
     setDrawerPerfSession(session);
     setOpenId(caseId);
     if (stub) setDetail(stub);
+
+    if (!shouldFetchFormalCaseDetail(stub)) {
+      logCaseDetailLoaded(session, 0);
+      setDetailLoading(false);
+      return;
+    }
+
     setDetailLoading(true);
     const fetchStart = performance.now();
+    let detailFetchFailed = false;
     try {
       const full = await getSavedCase(caseId);
       setDetail(full);
@@ -725,7 +738,10 @@ export default function DocumentIntakeInboxPage() {
       }
       logCaseDetailLoaded(session, Math.round(performance.now() - fetchStart));
     } catch {
-      messageApi.error('Could not open case');
+      detailFetchFailed = true;
+      if (shouldShowCaseOpenFailureToast(stub, detailFetchFailed)) {
+        messageApi.error(resolveCaseOpenErrorMessage(stub));
+      }
       if (!stub) setDetail(null);
     } finally {
       setDetailLoading(false);
