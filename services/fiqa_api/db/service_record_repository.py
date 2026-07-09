@@ -191,6 +191,14 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["broker_confirmed_at"] = str(v).strip() if v else None
     if isinstance(extra.get("claim_timeline"), list):
         case["claim_timeline"] = [e for e in extra.get("claim_timeline") or [] if isinstance(e, dict)]
+    if isinstance(extra.get("claim_collision_pending"), dict):
+        case["claim_collision_pending"] = dict(extra.get("claim_collision_pending") or {})
+    if isinstance(extra.get("lane_switch_pending"), dict):
+        case["lane_switch_pending"] = dict(extra.get("lane_switch_pending") or {})
+    if isinstance(extra.get("claim_end_card_state"), dict):
+        case["claim_end_card_state"] = dict(extra.get("claim_end_card_state") or {})
+    if isinstance(extra.get("claim_flow_state"), dict):
+        case["claim_flow_state"] = dict(extra.get("claim_flow_state") or {})
 
 
 def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
@@ -217,6 +225,10 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "broker_confirmed_at",
         "claim_mentioned_at",
         "claim_timeline",
+        "claim_collision_pending",
+        "lane_switch_pending",
+        "claim_end_card_state",
+        "claim_flow_state",
     )
     return {k: case[k] for k in keys if k in case}
 
