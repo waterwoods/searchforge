@@ -16,6 +16,7 @@ from services.fiqa_api.inbox_triage.claim_workbench_display import (
     build_wecom_media_intake_display_status,
     build_wecom_media_intake_display_title,
     enrich_claim_for_workbench,
+    is_claim_broker_done,
 )
 from services.fiqa_api.inbox_triage.intake_service_lanes import (
     SERVICE_LANE_ADD_CAR,
@@ -32,15 +33,25 @@ def is_raw_inbound_case(case: dict[str, Any]) -> bool:
     return lane in _BROKER_QUEUE_EXCLUDED_LANES
 
 
+def is_broker_active_queue_case(case: dict[str, Any]) -> bool:
+    """Default broker queue: exclude raw inbound and broker-done Claim cases."""
+    if is_raw_inbound_case(case):
+        return False
+    lane = str(case.get("service_lane") or "").strip().lower()
+    if lane == SERVICE_LANE_CLAIM and is_claim_broker_done(case):
+        return False
+    return True
+
+
 def filter_broker_workbench_cases(
     cases: list[dict[str, Any]],
     *,
     include_raw_inbound: bool = False,
 ) -> list[dict[str, Any]]:
-    """Default Workbench list excludes raw inbound (wecom_media_intake)."""
+    """Default Workbench list excludes raw inbound (wecom_media_intake) and done Claims."""
     if include_raw_inbound:
         return cases
-    return [c for c in cases if not is_raw_inbound_case(c)]
+    return [c for c in cases if is_broker_active_queue_case(c)]
 from services.fiqa_api.inbox_triage.service_record_consistency import compare_snapshot_with_pg
 from services.fiqa_api.inbox_triage.service_record_read import _is_add_car_lane, _to_snapshot
 from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM

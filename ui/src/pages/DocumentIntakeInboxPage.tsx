@@ -31,6 +31,7 @@ import {
   deleteTestCase,
   getSavedCase,
   listRecentCasesPage,
+  markClaimBrokerDone,
   patchCaseWorkbench,
   type SavedCase,
 } from '@/api/inboxTriage';
@@ -42,8 +43,10 @@ import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from 
 import {
   CLAIM_INTAKE_SAFETY_NOTE,
   buildClaimListSummary,
+  claimBrokerDoneNextStep,
   claimDisplayStatus,
   claimLaneLabel,
+  isClaimBrokerDone,
   isClaimGuidedCase,
   isClaimGuidedLane,
   resolveClaimSummary,
@@ -130,6 +133,7 @@ function isP16DocumentCase(c: SavedCase): boolean {
 /** P19H-3f-1c — broker queue: formal workflow cases only (no raw inbound). */
 function isWorkbenchQueueCase(c: SavedCase): boolean {
   if (isWeComMediaIntakeLane(c.service_lane)) return false;
+  if (isClaimBrokerDone(c)) return false;
   return isP16DocumentCase(c);
 }
 
@@ -166,6 +170,7 @@ function readinessFromCase(c: SavedCase): string {
   const blob = c.p16_broker_packet as P16BrokerPacket | undefined;
 
   if (isClaimGuidedLane(lane)) {
+    if (isClaimBrokerDone(c)) return 'DONE';
     return 'BROKER_REVIEW';
   }
   if (lane === 'claim_lite' || cat === 'claim_intake') {
@@ -434,7 +439,9 @@ function BrokerCaseDetail({
   onCopyPortal,
   onDelete,
   onConfirm,
+  onClaimBrokerDone,
   confirmSaving,
+  claimBrokerDoneSaving,
   perfSession,
 }: {
   caseItem: SavedCase;
@@ -443,7 +450,9 @@ function BrokerCaseDetail({
   onCopyPortal: () => void;
   onDelete: () => void;
   onConfirm?: () => void;
+  onClaimBrokerDone?: () => void;
   confirmSaving?: boolean;
+  claimBrokerDoneSaving?: boolean;
   perfSession?: WorkbenchPerfSession | null;
 }) {
   const hasFullPacket = Boolean(blob?.packet && Object.keys(blob.packet).length > 0);
@@ -451,6 +460,8 @@ function BrokerCaseDetail({
   const missingFields = caseItem.still_needed_fields ?? [];
   const knownFacts = caseItem.known_facts ?? {};
   const showConfirm = isAddCarReadyForBroker(caseItem) && !caseItem.broker_confirmed_at;
+  const showClaimBrokerDone =
+    isClaimGuidedCase(caseItem) && !isClaimBrokerDone(caseItem) && Boolean(onClaimBrokerDone);
   const isWeComMedia = isWeComMediaIntakeLane(caseItem.service_lane);
   const attachments = caseItem.case_attachments ?? [];
 
@@ -521,6 +532,26 @@ function BrokerCaseDetail({
           >
             Confirm / Broker confirm
           </Button>
+        ) : null}
+        {showClaimBrokerDone ? (
+          <Button
+            icon={<CheckCircleOutlined />}
+            onClick={onClaimBrokerDone}
+            loading={claimBrokerDoneSaving}
+            block
+            style={{ marginBottom: 8 }}
+          >
+            陈总已确认 / 结束收集
+          </Button>
+        ) : null}
+        {isClaimBrokerDone(caseItem) ? (
+          <Alert
+            type="success"
+            showIcon
+            style={{ marginBottom: 8 }}
+            message={claimDisplayStatus(caseItem)}
+            description={claimBrokerDoneNextStep()}
+          />
         ) : null}
         {blob?.copy_text ? (
           <Button icon={<CopyOutlined />} onClick={onCopyReport} block style={{ marginBottom: 8 }}>
@@ -631,6 +662,24 @@ function BrokerCaseDetail({
             Confirm / Broker confirm
           </Button>
         ) : null}
+        {showClaimBrokerDone ? (
+          <Button
+            icon={<CheckCircleOutlined />}
+            onClick={onClaimBrokerDone}
+            loading={claimBrokerDoneSaving}
+            block
+          >
+            陈总已确认 / 结束收集
+          </Button>
+        ) : null}
+        {isClaimBrokerDone(caseItem) ? (
+          <Alert
+            type="success"
+            showIcon
+            message={claimDisplayStatus(caseItem)}
+            description={claimBrokerDoneNextStep()}
+          />
+        ) : null}
         <Button type="primary" icon={<CopyOutlined />} onClick={onCopyReport} block size="large">
           Copy Report
         </Button>
@@ -669,6 +718,7 @@ export default function DocumentIntakeInboxPage() {
   const [drawerPerfSession, setDrawerPerfSession] = useState<WorkbenchPerfSession | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
+  const [claimBrokerDoneSaving, setClaimBrokerDoneSaving] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   const loadQueue = useCallback(async () => {
@@ -784,6 +834,29 @@ export default function DocumentIntakeInboxPage() {
       messageApi.error('Could not confirm case');
     } finally {
       setConfirmSaving(false);
+    }
+  };
+
+  const handleClaimBrokerDone = async () => {
+    if (!detail?.case_id) return;
+    setClaimBrokerDoneSaving(true);
+    try {
+      const updated = await markClaimBrokerDone(detail.case_id);
+      const sent = Boolean(updated.end_card_sent);
+      const skipped = Boolean(updated.end_card_send_skipped);
+      messageApi.success(
+        sent ? '已标记陈总确认，并发送结束提醒' : '已标记陈总确认',
+      );
+      if (skipped && !updated.already_done) {
+        messageApi.info('结束提醒未发送（本地/测试环境）');
+      }
+      setOpenId(null);
+      setDetail(null);
+      await loadQueue();
+    } catch {
+      messageApi.error('无法标记陈总确认');
+    } finally {
+      setClaimBrokerDoneSaving(false);
     }
   };
 
@@ -952,7 +1025,9 @@ export default function DocumentIntakeInboxPage() {
             }}
             onDelete={() => confirmDeleteCase(detail.case_id)}
             onConfirm={() => void handleConfirmCase()}
+            onClaimBrokerDone={() => void handleClaimBrokerDone()}
             confirmSaving={confirmSaving}
+            claimBrokerDoneSaving={claimBrokerDoneSaving}
           />
           </>
         ) : detailLoading ? (

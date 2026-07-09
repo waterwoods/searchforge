@@ -11,6 +11,7 @@ from services.fiqa_api.wecom.claim_state import (
     CLAIM_FORBIDDEN_AUTOMATION_CLAIMS,
     CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
     CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+    CLAIM_PHASE_BROKER_DONE,
     CLAIM_PHASE_BROKER_REVIEW,
     CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
     CLAIM_PHASE_MANUAL_HANDLE,
@@ -96,9 +97,16 @@ def build_claim_summary(case: dict[str, Any]) -> dict[str, str | None]:
     }
 
 
+def is_claim_broker_done(case: dict[str, Any]) -> bool:
+    """True when broker/office has confirmed Claim record phase complete."""
+    return derive_claim_phase(case) == CLAIM_PHASE_BROKER_DONE
+
+
 def build_claim_display_status(case: dict[str, Any]) -> str:
     """Broker-safe status copy — intake only, never implies carrier filing."""
     phase = derive_claim_phase(case)
+    if phase == CLAIM_PHASE_BROKER_DONE:
+        return "Claim · 已确认 / 已交接"
     if phase == CLAIM_PHASE_MANUAL_HANDLE:
         return "Claim · Broker Review · Manual handle"
     if phase in (CLAIM_PHASE_BROKER_REVIEW, CLAIM_PHASE_INTAKE_READY_FOR_BROKER):
@@ -122,6 +130,8 @@ def build_wecom_media_intake_display_title() -> str:
 def is_claim_workbench_visible(case: dict[str, Any]) -> bool:
     lane = str(case.get("service_lane") or "").strip().lower()
     if lane != SERVICE_LANE_CLAIM:
+        return False
+    if is_claim_broker_done(case):
         return False
     return derive_claim_phase(case) in CLAIM_WORKBENCH_VISIBLE_PHASES
 

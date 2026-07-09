@@ -697,6 +697,33 @@ export async function confirmCaseByBroker(
     return response.data;
 }
 
+/**
+ * P19H-3f-2 — Claim True End Card when broker marks record phase done.
+ * Idempotent; second call does not resend End Card.
+ */
+export async function markClaimBrokerDone(
+    caseId: string,
+): Promise<
+    SavedCase & {
+        already_done?: boolean;
+        end_card_sent?: boolean;
+        end_card_preview?: string;
+        end_card_send_skipped?: boolean;
+        end_card_send_reason?: string;
+    }
+> {
+    const response = await request.post<
+        SavedCase & {
+            already_done?: boolean;
+            end_card_sent?: boolean;
+            end_card_preview?: string;
+            end_card_send_skipped?: boolean;
+            end_card_send_reason?: string;
+        }
+    >(`/api/inbox/cases/${caseId}/broker-done`, {});
+    return response.data;
+}
+
 export async function addSavedCaseNote(caseId: string, note: string): Promise<SavedCase> {
     const response = await request.post<SavedCase>(`/api/inbox/cases/${caseId}/notes`, {
         note: note.trim(),

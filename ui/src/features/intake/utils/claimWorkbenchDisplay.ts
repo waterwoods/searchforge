@@ -36,6 +36,20 @@ export function isClaimGuidedCase(c: Pick<SavedCase, 'service_lane'>): boolean {
   return isClaimGuidedLane(c.service_lane);
 }
 
+export const CLAIM_BROKER_DONE_PHASE = 'broker_done';
+
+export function isClaimBrokerDone(c: Pick<SavedCase, 'workflow_phase' | 'display_status' | 'service_lane'>): boolean {
+  if (!isClaimGuidedCase(c)) return false;
+  const phase = (c.workflow_phase || '').trim().toLowerCase();
+  if (phase === CLAIM_BROKER_DONE_PHASE) return true;
+  const status = (c.display_status || '').trim();
+  return status.includes('已确认') || status.includes('已交接');
+}
+
+export function claimBrokerDoneNextStep(): string {
+  return '当前收集阶段已结束';
+}
+
 export function claimLaneLabel(): string {
   return 'Claim · 记录中';
 }
@@ -128,6 +142,7 @@ const TIMELINE_TYPE_LABELS: Record<string, string> = {
   customer_photo: '客户照片',
   customer_voice_stub: '语音消息',
   basics_complete: '基本信息齐全',
+  broker_done: '陈总已确认',
 };
 
 export function formatClaimTimelinePreview(

@@ -34,11 +34,13 @@ from services.fiqa_api.inbox_triage.case_attachment_api import (
 from services.fiqa_api.inbox_triage.case_store import (
     CASE_STATUS_VALUES,
     CASE_WAITING_ON_VALUES,
+    ClaimBrokerDoneError,
     add_attachment_to_case,
     add_case_note,
     append_follow_up_message,
     delete_case,
     get_attachment_file_path,
+    mark_claim_broker_done,
     merge_light_identity_from_client_payload,
     save_case,
     update_case_customer,
@@ -1990,6 +1992,41 @@ async def patch_case_confirm(case_id: str, http_request: Request) -> dict[str, A
     updated = dict(result["case"])
     updated["done_card_sent"] = result.get("done_card_sent", False)
     updated["already_confirmed"] = result.get("already_confirmed", False)
+    return updated
+
+
+@router.post("/cases/{case_id}/broker-done")
+async def post_case_broker_done(case_id: str, http_request: Request) -> dict[str, Any]:
+    """
+    P19H-3f-2 — Claim True End Card on broker/office done.
+
+    Only formal Claim cases (service_lane=claim). Raw inbound rejected.
+    Idempotent: second POST does not duplicate broker_done timeline or End Card.
+    """
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    try:
+        result = mark_claim_broker_done(case_id, source="workbench")
+    except ClaimBrokerDoneError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result.get("outcome") == "case_not_found" or result.get("case") is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    updated = dict(result["case"])
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench([updated])
+        updated = enriched[0] if enriched else updated
+    except Exception:
+        pass
+    updated["already_done"] = result.get("already_done", False)
+    updated["end_card_sent"] = result.get("end_card_sent", False)
+    updated["end_card_preview"] = result.get("end_card_preview")
+    updated["end_card_send_skipped"] = result.get("send_skipped", True)
+    if result.get("end_card_send_reason"):
+        updated["end_card_send_reason"] = result.get("end_card_send_reason")
     return updated
 
 

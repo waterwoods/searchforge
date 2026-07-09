@@ -411,6 +411,21 @@ def _claim_fact_display(case: dict[str, Any], field: str) -> str:
     return _CLAIM_BASICS_LABELS.get(field, field)
 
 
+def build_claim_end_card_reply() -> str:
+    """P19H-3f-2 — True End Card: broker/office confirmed record phase complete."""
+    return "\n".join(
+        [
+            "【陈总已确认 ✅】",
+            "",
+            "这次事故资料已经整理完成，并交给陈总确认。",
+            "目前这份事故记录的收集阶段已结束。",
+            "如果后面有新的照片、文件或保险公司回复，您可以继续发给陈总。",
+            "",
+            "这条消息不代表保险公司已经结案，也不代表赔付结果。",
+        ]
+    )
+
+
 def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
     lines = [
         "【事故记录已开始 ✅】",

@@ -1338,6 +1338,10 @@ def _claim_timeline_is_duplicate(timeline: list[dict[str, Any]], event: dict[str
         for existing in timeline:
             if str(existing.get("event_type") or "").strip() == "claim_started":
                 return True
+    if event_type == "broker_done":
+        for existing in timeline:
+            if str(existing.get("event_type") or "").strip() == "broker_done":
+                return True
     return False
 
 
@@ -1592,6 +1596,153 @@ def update_claim_workflow_state(
     if not _persist_case_after_update(case_id, normalized_case):
         return None
     return normalized_case
+
+
+class ClaimBrokerDoneError(ValueError):
+    """Raised when broker_done is blocked for this case (P19H-3f-2)."""
+
+
+def _claim_end_card_state(case: dict[str, Any]) -> dict[str, Any]:
+    state = case.get("claim_end_card_state") or {}
+    return dict(state) if isinstance(state, dict) else {}
+
+
+def _claim_broker_done_already(case: dict[str, Any]) -> bool:
+    from services.fiqa_api.wecom.claim_state import CLAIM_PHASE_BROKER_DONE
+
+    phase = str(case.get("claim_phase") or "").strip().lower()
+    state = _claim_end_card_state(case)
+    return phase == CLAIM_PHASE_BROKER_DONE or bool(str(state.get("broker_done_at") or "").strip())
+
+
+def record_claim_end_card_status(
+    case_id: str,
+    *,
+    send_status: str,
+    sent_at: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Record Claim True End Card send outcome on case JSON (P19H-3f-2).
+
+    No schema migration — stored in claim_end_card_state.end_card_sent_at /
+    end_card_send_status.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    state = _claim_end_card_state(normalized_case)
+    state["end_card_send_status"] = (send_status or "").strip() or "unknown"
+    if sent_at:
+        state["end_card_sent_at"] = sent_at
+    normalized_case["claim_end_card_state"] = state
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
+def mark_claim_broker_done(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
+    """
+    P19H-3f-2 — Broker/office confirms Claim record phase complete.
+
+    Sets claim_phase=broker_done, appends broker_done timeline event, sends True End Card
+    once. Idempotent — second call does not duplicate timeline or resend End Card.
+    """
+    from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_WECOM_MEDIA_INTAKE
+    from services.fiqa_api.wecom.claim_end_card import try_send_claim_end_card
+    from services.fiqa_api.wecom.claim_state import (
+        CLAIM_PHASE_BROKER_DONE,
+        SERVICE_LANE_CLAIM,
+        build_claim_phase_transition_patch,
+    )
+    from services.fiqa_api.wecom.reply import build_claim_end_card_reply
+
+    cid = (case_id or "").strip()
+    preview = build_claim_end_card_reply()
+    if not cid:
+        return {
+            "outcome": "case_not_found",
+            "case": None,
+            "already_done": False,
+            "end_card_sent": False,
+            "end_card_preview": preview,
+            "send_skipped": True,
+        }
+
+    _require_case_storage_path()
+    case = _load_case_for_mutation(cid)
+    if case is None:
+        return {
+            "outcome": "case_not_found",
+            "case": None,
+            "already_done": False,
+            "end_card_sent": False,
+            "end_card_preview": preview,
+            "send_skipped": True,
+        }
+
+    lane = str(case.get("service_lane") or "").strip().lower()
+    if lane == SERVICE_LANE_WECOM_MEDIA_INTAKE:
+        raise ClaimBrokerDoneError("broker_done_blocked_raw_inbound")
+    if lane != SERVICE_LANE_CLAIM:
+        raise ClaimBrokerDoneError(f"broker_done_blocked_not_claim_lane:{lane or 'unknown'}")
+
+    already_done = _claim_broker_done_already(case)
+    if already_done:
+        return {
+            "outcome": "broker_done",
+            "case": case,
+            "already_done": True,
+            "end_card_sent": bool(_claim_end_card_state(case).get("end_card_sent_at")),
+            "end_card_preview": preview,
+            "send_skipped": True,
+        }
+
+    now = _utc_now_iso()
+    patch = build_claim_phase_transition_patch(target_phase=CLAIM_PHASE_BROKER_DONE)
+    case.update(patch)
+    end_state = _claim_end_card_state(case)
+    end_state["broker_done_at"] = now
+    end_state["broker_done_source"] = (source or "workbench").strip() or "workbench"
+    case["claim_end_card_state"] = end_state
+    case["updated_at"] = now
+
+    timeline = _claim_timeline_from_case(case)
+    broker_event = build_claim_timeline_event(
+        event_type="broker_done",
+        source_channel="workbench",
+        actor="broker",
+        text="陈总已确认，事故资料收集阶段结束",
+        metadata={"source": (source or "workbench").strip() or "workbench"},
+        created_at=now,
+    )
+    if not _claim_timeline_is_duplicate(timeline, broker_event):
+        timeline.append(broker_event)
+        case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
+
+    if not _persist_case_after_update(cid, case):
+        return {
+            "outcome": "case_not_found",
+            "case": None,
+            "already_done": False,
+            "end_card_sent": False,
+            "end_card_preview": preview,
+            "send_skipped": True,
+        }
+
+    send_result = try_send_claim_end_card(cid)
+    refreshed = _load_case_for_mutation(cid) or case
+    return {
+        "outcome": "broker_done",
+        "case": refreshed,
+        "already_done": False,
+        "end_card_sent": bool(send_result.get("sent")),
+        "end_card_preview": str(send_result.get("end_card_preview") or preview),
+        "send_skipped": bool(send_result.get("send_skipped", not send_result.get("sent"))),
+        "end_card_send_reason": send_result.get("reason"),
+    }
 
 
 def record_h5_photo_flow_end_card_status(
