@@ -53,7 +53,7 @@ from services.fiqa_api.wecom.claim_state import (
     suggest_next_claim_transition,
     transition_to_manual_handle,
 )
-from services.fiqa_api.wecom.intent import IntentResult, is_add_vehicle_status_inquiry
+from services.fiqa_api.wecom.intent import IntentResult, is_add_vehicle_status_inquiry, is_claim_status_request
 from services.fiqa_api.wecom.routing_observability import (
     DECISION_CLAIM_IDENTITY_BROKER_CONFIRM,
     DECISION_CLAIM_QUESTION_SAFE_REPLY,
@@ -1048,10 +1048,76 @@ is_claim_question_intent = is_claim_question_not_guided_intake
 
 
 def is_claim_progress_inquiry(text: str) -> bool:
-    raw = (text or "").strip().lower()
-    if is_add_vehicle_status_inquiry(text):
+    return is_claim_status_request(text)
+
+
+def should_route_claim_status_request(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> bool:
+    """Route Claim Status Card before guided basics ingestion."""
+    text = str(normalized.get("text") or "").strip()
+    if not is_claim_status_request(text):
         return False
-    return any(m in raw for m in _CLAIM_PROGRESS_MARKERS)
+    if is_claim_guided_start_message(text):
+        return False
+    return True
+
+
+def ingest_claim_status_request(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> dict[str, Any]:
+    """Return Claim Status Card for active case, or no-active guidance."""
+    from services.fiqa_api.wecom.reply import (
+        build_claim_status_card_reply,
+        build_claim_status_no_active_reply,
+    )
+
+    ext = str(normalized.get("external_userid") or "").strip()
+    active = find_active_claim_case_for_basics(ext)
+    if not active:
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=intent_result,
+            priority_rule=PRIORITY_CLAIM_START_NO_ACTIVE_CASE,
+            decision=DECISION_CLAIM_QUESTION_SAFE_REPLY,
+            reason="claim_status_request_without_active_case",
+            response_type="claim_status_no_active",
+        )
+        return {
+            "outcome": "claim_status_no_active",
+            "case_id": None,
+            "case_created": False,
+            "reply_text": build_claim_status_no_active_reply(),
+            "menu_payload": None,
+            "active_case_outcome": "claim_status_no_active",
+            "service_lane": None,
+        }
+
+    case_id = str(active.get("case_id") or "").strip() or None
+    reply_text = build_claim_status_card_reply(active)
+    claim_ctx = claim_context_for_case(active)
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=intent_result,
+        priority_rule=PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+        decision=DECISION_COLLECT_CLAIM_BASICS,
+        reason="claim_status_request_active_case",
+        response_type="claim_status_card",
+        created_case_id=case_id,
+        **claim_ctx,
+    )
+    return {
+        "outcome": "claim_status_card",
+        "case_id": case_id,
+        "case_created": False,
+        "reply_text": reply_text,
+        "menu_payload": None,
+        "active_case_outcome": "claim_status_card",
+        "claim_phase": active.get("claim_phase"),
+        "service_lane": SERVICE_LANE_CLAIM,
+    }
 
 
 def _case_sort_key(case: dict[str, Any]) -> str:
@@ -1085,6 +1151,9 @@ def should_route_claim_guided_workflow(
     """Route to Claim guided basics handler (before minimal claim_lite lane)."""
     text = str(normalized.get("text") or "").strip()
     ext = str(normalized.get("external_userid") or "")
+
+    if is_claim_status_request(text):
+        return False
 
     if is_explicit_add_car_restart(text):
         return False
@@ -1122,6 +1191,9 @@ def should_route_claim_holding_ack(
     """Route ambiguous accident-like messages to Holding ack — no formal Claim case."""
     text = str(normalized.get("text") or "").strip()
     ext = str(normalized.get("external_userid") or "")
+
+    if is_claim_status_request(text):
+        return False
 
     if find_active_claim_case_for_basics(ext):
         return False

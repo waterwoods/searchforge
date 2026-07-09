@@ -272,6 +272,38 @@ _STATUS_INQUIRY_MARKERS = (
     "where am i",
 )
 
+_CLAIM_STATUS_REQUEST_MARKERS: tuple[str, ...] = (
+    "进度",
+    "状态",
+    "现在到哪了",
+    "到哪一步了",
+    "我这个case怎么样了",
+    "理赔进度",
+    "看一下状态",
+    "查看状态",
+    "查进度",
+    "现在怎么样",
+    "资料齐了吗",
+)
+
+_CLAIM_STATUS_EXPLICIT_START_MARKERS: tuple[str, ...] = (
+    "我要理赔",
+    "我现在要理赔",
+    "我要进行理赔",
+    "开始理赔",
+    "进行理赔",
+    "我要报理赔",
+    "我要记录事故",
+    "新事故",
+    "我要记录新事故",
+)
+
+_VAGUE_NON_STATUS_MARKERS: tuple[str, ...] = (
+    "看看这个",
+    "帮我看看",
+    "这个怎么办",
+)
+
 _MENU_TEXT_MARKERS: list[tuple[WeComIntent, tuple[str, ...]]] = [
     ("add_car", ("add vehicle", "加车", "加一台车", "新车加保")),
     ("claim_intake", ("claim", "accident", "事故", "理赔", "出险")),
@@ -308,7 +340,22 @@ def is_add_vehicle_status_inquiry(text: str) -> bool:
     lowered = raw.lower()
     if is_explicit_add_car_restart(raw):
         return False
+    if is_claim_status_request(raw):
+        return False
     return _contains_any(lowered, _STATUS_INQUIRY_MARKERS)
+
+
+def is_claim_status_request(text: str) -> bool:
+    """P19H-3f-4 — Customer asks for Claim workflow status (not explicit start)."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if any(m in raw for m in _VAGUE_NON_STATUS_MARKERS):
+        return False
+    if any(m in raw for m in _CLAIM_STATUS_EXPLICIT_START_MARKERS):
+        return False
+    lowered = raw.lower()
+    return any(m in raw or m in lowered for m in _CLAIM_STATUS_REQUEST_MARKERS)
 
 
 def is_explicit_add_car_restart(text: str) -> bool:

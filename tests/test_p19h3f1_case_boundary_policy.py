@@ -321,7 +321,7 @@ def test_08_active_claim_photo_attaches(cfg):
     assert any(e.get("event_type") == "customer_photo" for e in timeline)
     reply = result["reply_text"] or ""
     assert "已记到这份事故记录里" in reply
-    assert "不用重复发" in reply
+    assert "状态" in reply
 
 
 def test_09_insurance_question_no_claim():

@@ -548,12 +548,14 @@ def process_kf_msg_or_event(
                 ingest_claim_lane_switch_choice,
                 ingest_claim_lane_switch_confirm,
                 ingest_claim_question_safe_reply,
+                ingest_claim_status_request,
                 should_route_claim_collision_choice,
                 should_route_claim_guided_workflow,
                 should_route_claim_holding_ack,
                 should_route_claim_interrupt_during_add_car,
                 should_route_claim_lane_switch_choice,
                 should_route_claim_question_safe_reply,
+                should_route_claim_status_request,
                 should_route_add_car_to_claim_lane_switch,
             )
             from services.fiqa_api.wecom.intent import CLAIM_INJURY_CLICK_INTENTS
@@ -867,6 +869,46 @@ def process_kf_msg_or_event(
                     msg_id,
                     outcome=str(outcome.get("active_case_outcome") or ""),
                     case_id=None,
+                )
+                continue
+
+            if should_route_claim_status_request(normalized, intent_result):
+                status_result = ingest_claim_status_request(normalized, intent_result)
+                reply_text = status_result.get("reply_text")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": status_result.get("case_created", False),
+                    "case_id": status_result.get("case_id"),
+                    "active_case_outcome": status_result.get("active_case_outcome"),
+                    "claim_phase": status_result.get("claim_phase"),
+                    "service_lane": status_result.get("service_lane"),
+                }
+                _log_slice(
+                    "claim_status_card_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                )
+                _dispatch_reply(
+                    cfg,
+                    normalized,
+                    send_enabled=send_enabled,
+                    menu_payload=None,
+                    text_content=reply_text,
+                    outcome=outcome,
+                )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
                 )
                 continue
 

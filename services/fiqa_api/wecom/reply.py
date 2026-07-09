@@ -380,6 +380,28 @@ def build_phase2_validation_reply(
 
 
 # ---------------------------------------------------------------------------
+# P19H-3f-4 — Unified text-frame cards (Start / Status / Confirm / Collision / End)
+# ---------------------------------------------------------------------------
+
+_WECOM_CARD_FRAME_LINE = "━━━━━━━━━━━━"
+
+
+def frame_wecom_card(
+    title: str,
+    body_lines: list[str],
+    footer_lines: list[str] | None = None,
+) -> str:
+    """Wrap customer-facing WeCom card copy in a stable mobile-friendly text frame."""
+    inner: list[str] = [title.strip(), ""]
+    inner.extend(line for line in body_lines if line is not None)
+    if footer_lines:
+        inner.append("")
+        inner.extend(line for line in footer_lines if line is not None)
+    content = "\n".join(inner).strip()
+    return f"{_WECOM_CARD_FRAME_LINE}\n{content}\n{_WECOM_CARD_FRAME_LINE}"
+
+
+# ---------------------------------------------------------------------------
 # P19H-2 — Claim guided workflow replies (start / basics / C1)
 # ---------------------------------------------------------------------------
 
@@ -413,43 +435,39 @@ def _claim_fact_display(case: dict[str, Any], field: str) -> str:
 
 def build_claim_end_card_reply() -> str:
     """P19H-3f-2 — True End Card: broker/office confirmed record phase complete."""
-    return "\n".join(
-        [
-            "【陈总已确认 ✅】",
-            "",
-            "这次事故资料已经整理完成，并交给陈总确认。",
-            "目前这份事故记录的收集阶段已结束。",
-            "如果后面有新的照片、文件或保险公司回复，您可以继续发给陈总。",
-            "",
-            "这条消息不代表保险公司已经结案，也不代表赔付结果。",
-        ]
-    )
+    body = [
+        "这次事故资料已经整理完成，并交给陈总确认。",
+        "目前这份事故记录的收集阶段已结束。",
+        "如果后面有新的照片、文件或保险公司回复，您可以继续发给陈总。",
+    ]
+    footer = [
+        "提醒：",
+        "这条消息不代表保险公司已经结案，也不代表赔付结果。",
+    ]
+    return frame_wecom_card("【陈总已确认 ✅】", body, footer)
 
 
 def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
-    lines = [
-        "【事故记录已开始 ✅】",
-        "",
+    body = [
         "我是陈总办公室的值班助手。",
         "我会先帮陈总记录这次事故，您可以直接在微信里发文字、照片或语音。",
         "陈总会人工确认后联系您。",
         "",
+        "下一步：",
         "请先确认：您和车上的人有没有受伤？",
     ]
     if injury_mentioned:
-        lines.extend(
+        body.extend(
             [
                 "",
                 "如果有人受伤，请优先联系紧急服务，并尽快联系陈总。",
             ]
         )
-    lines.extend(
-        [
-            "",
-            _CLAIM_SAFE_DISCLAIMER,
-        ]
-    )
-    return "\n".join(lines)
+    footer = [
+        "提醒：",
+        _CLAIM_SAFE_DISCLAIMER,
+    ]
+    return frame_wecom_card("【事故记录已开始 ✅】", body, footer)
 
 
 def build_claim_start_injury_menu_payload() -> dict[str, Any]:
@@ -495,10 +513,8 @@ def build_claim_missing_basics_reply(case: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _claim_c1_stage_complete_head_lines(case: dict[str, Any]) -> list[str]:
+def _claim_c1_stage_complete_body_lines(case: dict[str, Any]) -> list[str]:
     return [
-        "【事故信息已记录 ✅】",
-        "",
         f"时间：{_claim_fact_display(case, 'accident_datetime')}",
         f"地点：{_claim_fact_display(case, 'accident_location')}",
         f"经过：{_claim_fact_display(case, 'accident_description')}",
@@ -507,20 +523,14 @@ def _claim_c1_stage_complete_head_lines(case: dict[str, Any]) -> list[str]:
         "",
         "如果想分步补充资料，也可以点下面「补充事故资料」。",
     ]
+
+
+def _claim_c1_stage_complete_head_lines(case: dict[str, Any]) -> list[str]:
+    return build_claim_stage_complete_c1_reply(case).split("\n")
 
 
 def _claim_basics_already_complete_head_lines(case: dict[str, Any]) -> list[str]:
-    return [
-        "【事故信息已记录 ✅】",
-        "",
-        f"时间：{_claim_fact_display(case, 'accident_datetime')}",
-        f"地点：{_claim_fact_display(case, 'accident_location')}",
-        f"经过：{_claim_fact_display(case, 'accident_description')}",
-        "",
-        *_CLAIM_C1_PHOTO_GUIDANCE_LINES,
-        "",
-        "如果想分步补充资料，也可以点下面「补充事故资料」。",
-    ]
+    return build_claim_basics_already_complete_reply(case).split("\n")
 
 
 def build_claim_c1_h5_evidence_card_payload(
@@ -550,22 +560,23 @@ def build_claim_c1_h5_evidence_card_payload(
 
 
 def build_claim_stage_complete_c1_reply(case: dict[str, Any]) -> str:
-    lines = [
-        *_claim_c1_stage_complete_head_lines(case),
-        "",
-        "这只是资料收集，不代表 claim 已正式提交。",
-        "陈总会人工确认。",
-    ]
-    return "\n".join(lines)
+    return frame_wecom_card(
+        "【事故信息已记录 ✅】",
+        _claim_c1_stage_complete_body_lines(case),
+        footer_lines=[
+            "提醒：",
+            "这只是资料收集，不代表 claim 已正式提交。",
+            "陈总会人工确认。",
+        ],
+    )
 
 
 def build_claim_basics_already_complete_reply(case: dict[str, Any]) -> str:
-    lines = [
-        *_claim_basics_already_complete_head_lines(case),
-        "",
-        _CLAIM_SAFE_DISCLAIMER,
-    ]
-    return "\n".join(lines)
+    return frame_wecom_card(
+        "【事故信息已记录 ✅】",
+        _claim_c1_stage_complete_body_lines(case),
+        footer_lines=["提醒：", _CLAIM_SAFE_DISCLAIMER],
+    )
 
 
 def build_claim_safety_manual_reply() -> str:
@@ -602,21 +613,15 @@ def build_claim_interrupt_safety_manual_reply() -> str:
 def build_claim_identity_broker_confirm_reply(*, multiple_open: bool = False) -> str:
     """P19H-3f-3 — Claim Collision Resolver card (text fallback)."""
     if multiple_open:
-        lines = [
-            "【理赔资料收集】",
-            "",
+        body = [
             "我看到您这边已有多个未完成的事故记录。",
             "为了避免混在一起，请选择继续哪一个，或开始新的事故记录。",
             "目前建议您直接联系陈总人工处理。",
             "",
             "回复「联系陈总」或「3」。",
-            "",
-            _CLAIM_SAFE_DISCLAIMER,
         ]
     else:
-        lines = [
-            "【理赔资料收集】",
-            "",
+        body = [
             "我看到您这边已经有一个未完成的事故记录。",
             "为了避免把两次事故资料混在一起，请选择：",
             "1️⃣ 继续上一个事故，补充资料",
@@ -626,10 +631,9 @@ def build_claim_identity_broker_confirm_reply(*, multiple_open: bool = False) ->
             "回复「1」或「继续上一个事故」",
             "回复「2」或「开始新的事故记录」",
             "回复「3」或「联系陈总」",
-            "",
-            _CLAIM_SAFE_DISCLAIMER,
         ]
-    return "\n".join(lines)
+    footer = ["提醒：", _CLAIM_SAFE_DISCLAIMER]
+    return frame_wecom_card("【请选择事故记录】", body, footer)
 
 
 def build_claim_collision_resolver_menu_payload(*, multiple_open: bool = False) -> dict[str, Any]:
@@ -699,18 +703,16 @@ def build_claim_collision_multiple_open_reply() -> str:
 
 def build_claim_lane_switch_reply() -> str:
     """P19H-3f-2 — Lane switch confirm card while Add Vehicle flow is active."""
-    return "\n".join(
-        [
-            "您现在是想开始一份新的事故/理赔记录吗？",
-            "",
-            "我会先暂停当前加车资料收集，并保留已收到的加车资料。",
-            "如果您确认，我会开始事故记录。",
-            "",
-            _CLAIM_SAFE_DISCLAIMER,
-            "",
-            "您也可以回复「开始事故记录」或「继续加车」。",
-        ]
-    )
+    body = [
+        "您现在是想开始一份新的事故/理赔记录吗？",
+        "",
+        "我会先暂停当前加车资料收集，并保留已收到的加车资料。",
+        "如果您确认，我会开始事故记录。",
+        "",
+        "您也可以回复「开始事故记录」或「继续加车」。",
+    ]
+    footer = ["提醒：", _CLAIM_SAFE_DISCLAIMER]
+    return frame_wecom_card("【请确认】", body, footer)
 
 
 def build_claim_lane_switch_menu_payload() -> dict[str, Any]:
@@ -784,6 +786,138 @@ def build_claim_holding_ack_reply() -> str:
             "没有开始事故记录前，这些信息不会进入陈总的正式案件整理流程。",
         ]
     )
+
+
+def build_claim_status_no_active_reply() -> str:
+    """Status inquiry when customer has no open formal Claim case."""
+    return "\n".join(
+        [
+            "收到。",
+            "您目前还没有进行中的事故记录。",
+            "如果想正式开始，请回复「我要理赔」。",
+        ]
+    )
+
+
+def _claim_status_customer_name(case: dict[str, Any], brief: dict[str, Any]) -> str:
+    customer = brief.get("customer") or {}
+    name = str(customer.get("name") or case.get("customer_name") or "").strip()
+    return name or "微信客户"
+
+
+def _claim_status_phase_label(case: dict[str, Any]) -> str:
+    from services.fiqa_api.wecom.claim_state import (
+        CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
+        CLAIM_PHASE_BROKER_DONE,
+        CLAIM_PHASE_BROKER_REVIEW,
+        CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
+        CLAIM_PHASE_MANUAL_HANDLE,
+        derive_claim_phase,
+    )
+
+    phase = derive_claim_phase(case)
+    if phase == CLAIM_PHASE_BROKER_DONE:
+        return "陈总已确认 / 收集阶段已结束"
+    if phase in (
+        CLAIM_PHASE_BROKER_REVIEW,
+        CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
+        CLAIM_PHASE_MANUAL_HANDLE,
+    ):
+        return "待陈总确认"
+    if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
+        return "事故资料收集中（基本信息已完成）"
+    return "事故资料收集中"
+
+
+def _claim_status_injury_received_label(injury: str) -> str | None:
+    return {
+        "no": "没有受伤",
+        "yes": "有人受伤",
+        "unknown": None,
+    }.get(str(injury or "unknown").strip().lower())
+
+
+def _claim_status_received_lines(brief: dict[str, Any]) -> list[str]:
+    key_facts = brief.get("key_facts") or {}
+    evidence = brief.get("evidence_received") or {}
+    lines: list[str] = []
+
+    injury = str(key_facts.get("injury_status") or "unknown")
+    injury_label = _claim_status_injury_received_label(injury)
+    if injury_label:
+        lines.append(f"✅ 受伤情况：{injury_label}")
+
+    if _str_or_none_local(key_facts.get("accident_description")):
+        lines.append("✅ 事故经过")
+    if _str_or_none_local(key_facts.get("accident_datetime")):
+        lines.append(f"✅ 事故时间：{key_facts.get('accident_datetime')}")
+    if _str_or_none_local(key_facts.get("accident_location")):
+        lines.append(f"✅ 事故地点：{key_facts.get('accident_location')}")
+
+    photo_count = int(evidence.get("photo_count") or 0)
+    if photo_count > 0:
+        lines.append(f"✅ 照片：{photo_count} 张")
+
+    if not lines:
+        lines.append("□ 等待您补充资料")
+    return lines
+
+
+def _claim_status_missing_lines(brief: dict[str, Any]) -> list[str]:
+    missing = brief.get("missing_info") or []
+    if not missing:
+        return ["□ 暂无（如有新资料可继续发送）"]
+    return [f"□ {str(item.get('label') or item.get('key') or '待确认')}" for item in missing[:5]]
+
+
+def _claim_status_next_step(case: dict[str, Any], brief: dict[str, Any]) -> str:
+    from services.fiqa_api.wecom.claim_state import CLAIM_PHASE_BROKER_DONE, derive_claim_phase
+
+    phase = derive_claim_phase(case)
+    if phase == CLAIM_PHASE_BROKER_DONE:
+        return "收集阶段已结束；如有新资料可继续发给陈总。"
+    next_q = str(brief.get("next_best_question") or case.get("next_best_question") or "").strip()
+    if next_q:
+        return f"{next_q} 您也可以继续发照片或文字到这里。"
+    if phase in ("broker_review", "intake_ready_for_broker", "manual_handle"):
+        return "陈总会确认资料；如果您有新资料，可以继续发到这里。"
+    return "陈总会确认资料；如果您有对方保险信息，可以继续发到这里。"
+
+
+def _str_or_none_local(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def build_claim_status_card_reply(case: dict[str, Any], display: dict[str, Any] | None = None) -> str:
+    """P19H-3f-4 — Deterministic Claim Status Card from case brief / highlights."""
+    from services.fiqa_api.inbox_triage.claim_workbench_display import build_claim_case_brief
+
+    brief = display or build_claim_case_brief(case)
+    key_facts = brief.get("key_facts") or {}
+
+    body: list[str] = [
+        f"状态：{_claim_status_phase_label(case)}",
+        f"客户：{_claim_status_customer_name(case, brief)}",
+        f"事故时间：{_str_or_none_local(key_facts.get('accident_datetime')) or '待确认'}",
+        f"事故地点：{_str_or_none_local(key_facts.get('accident_location')) or '待确认'}",
+        "",
+        "已收到：",
+        *_claim_status_received_lines(brief),
+        "",
+        "还缺：",
+        *_claim_status_missing_lines(brief),
+        "",
+        "下一步：",
+        _claim_status_next_step(case, brief),
+    ]
+    footer = [
+        "提醒：",
+        "这只是事故资料记录，不代表已经向保险公司正式报案。",
+    ]
+    return frame_wecom_card("【当前状态】", body, footer)
 
 
 def build_claim_injury_holding_gate_reply() -> str:
@@ -947,8 +1081,7 @@ _MEDIA_ACK_CLAIM = (
 
 _MEDIA_ACK_CLAIM_GUIDED_BOUND = (
     "收到照片，已记到这份事故记录里 ✅\n"
-    "陈总会整理确认，不用重复发同一张。\n"
-    "您也可以继续用文字补充说明。"
+    "如需查看当前进度，请回复「状态」。"
 )
 
 _MEDIA_ACK_CLAIM_BROKER_CONFIRM = (
