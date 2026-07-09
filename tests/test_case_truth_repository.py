@@ -268,6 +268,61 @@ def test_list_recent_returns_empty_not_stale_json_when_pg_ids_fail_hydration(mon
     assert rows == []
 
 
+def test_list_all_uses_batched_queue_load_not_full_hydration(monkeypatch, tmp_path):
+    """list_all_cases_for_read must not N+1 load_full_case_from_postgres (WeCom scan hot path)."""
+    store = tmp_path / "cases.json"
+    store.write_text(json.dumps({"cases": []}), encoding="utf-8")
+    monkeypatch.setenv("UNIFIED_INTAKE_CASES_PATH", str(store))
+    monkeypatch.setenv("SERVICE_RECORD_DATABASE_URL", "postgresql://invalid")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_READS", "1")
+
+    stub = {
+        "case_id": "case_a",
+        "case_status": "new",
+        "issue_category": "claim_intake",
+        "urgency": "high",
+        "broker_next_step": "step",
+        "client_prep": "",
+        "client_reply_draft": "",
+        "manual_followup_needed": False,
+        "service_lane": "claim",
+        "wecom_external_userid": "wm_test",
+        "created_at": "2026-01-02T00:00:00Z",
+        "updated_at": "2026-01-02T00:00:00Z",
+    }
+
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_repository.list_record_ids_recent",
+        lambda _n: ["case_a"],
+    )
+    full_calls: list[str] = []
+
+    def _fake_full(rid: str):
+        full_calls.append(rid)
+        return stub
+
+    batch_calls: list[list[str]] = []
+
+    def _fake_batch(ids: list[str]):
+        batch_calls.append(list(ids))
+        return [stub] if ids else []
+
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_repository.load_full_case_from_postgres",
+        _fake_full,
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_repository.load_workbench_queue_cases_from_postgres",
+        _fake_batch,
+    )
+
+    rows = ctr.list_all_cases_for_read()
+    assert len(rows) == 1
+    assert rows[0]["case_id"] == "case_a"
+    assert full_calls == []
+    assert batch_calls == [["case_a"]]
+
+
 def test_json_path_count_and_pagination_offset(monkeypatch, tmp_path):
     """Workbench list: total_count and offset apply to JSON store when DB reads are off."""
     cases = []

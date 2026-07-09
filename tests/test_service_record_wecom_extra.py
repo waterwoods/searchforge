@@ -88,3 +88,28 @@ def test_hydrate_extra_restores_wecom_open_kf_id_and_h5_state():
     )
     assert case["wecom_open_kf_id"] == "wk_hydrate"
     assert case["h5_photo_flow_state"]["skipped_slots"] == ["insurance_card_photo"]
+
+
+def test_build_extra_includes_claim_timeline():
+    case = {
+        "claim_timeline": [
+            {"event_type": "claim_started", "text": "Claim story recording started"},
+            {"event_type": "customer_text", "text": "我要理赔", "message_id": "m1"},
+        ]
+    }
+    extra = _build_extra(case)
+    assert len(extra["claim_timeline"]) == 2
+    assert extra["claim_timeline"][0]["event_type"] == "claim_started"
+
+
+def test_hydrate_extra_restores_claim_timeline():
+    case: dict = {}
+    _hydrate_extra_pilot_fields(
+        case,
+        {
+            "claim_timeline": [
+                {"event_type": "customer_photo", "attachment_id": "att_1"},
+            ]
+        },
+    )
+    assert case["claim_timeline"][0]["event_type"] == "customer_photo"

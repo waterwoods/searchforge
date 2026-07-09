@@ -143,6 +143,9 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "conflict_flags",
         "demo_summary",
         "known_facts",
+        "claim_phase",
+        "manual_handle",
+        "urgent",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -186,6 +189,8 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
     if "broker_confirmed_at" in extra:
         v = extra.get("broker_confirmed_at")
         case["broker_confirmed_at"] = str(v).strip() if v else None
+    if isinstance(extra.get("claim_timeline"), list):
+        case["claim_timeline"] = [e for e in extra.get("claim_timeline") or [] if isinstance(e, dict)]
 
 
 def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
@@ -211,6 +216,7 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "demo_flags",
         "broker_confirmed_at",
         "claim_mentioned_at",
+        "claim_timeline",
     )
     return {k: case[k] for k in keys if k in case}
 
