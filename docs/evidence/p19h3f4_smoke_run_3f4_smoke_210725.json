@@ -1,0 +1,83 @@
+{
+  "suffix": "3f4_smoke_210725",
+  "smokes": {
+    "A_start_frame": {
+      "case_id": "case_72dc5646c22a",
+      "case_created": true,
+      "has_frame": true,
+      "has_start_title": true,
+      "has_office": true,
+      "has_injury": true,
+      "has_disclaimer": true,
+      "injury_menu": true,
+      "forbidden": [],
+      "pass": true
+    },
+    "B_status_card": {
+      "case_id": "case_20bb62c47ac8",
+      "claim_count_unchanged": true,
+      "progress_outcome": "claim_status_card",
+      "has_frame": true,
+      "has_status_title": true,
+      "sections": true,
+      "no_second_start": true,
+      "forbidden": [],
+      "pass": true
+    },
+    "C_no_active_status": {
+      "case_created": false,
+      "claim_count": 0,
+      "no_active_copy": true,
+      "suggest_start": true,
+      "no_start_card": true,
+      "pass": true
+    },
+    "D_confirm_frame": {
+      "add_car_id": "case_d24b86efe1df",
+      "prompt_outcome": "claim_lane_switch_prompt",
+      "has_frame": true,
+      "has_confirm_title": true,
+      "has_pause_add_car": true,
+      "has_start_choice": true,
+      "has_continue_add_car": true,
+      "has_disclaimer": true,
+      "no_immediate_claim": true,
+      "confirm_start_card": true,
+      "claim_id": "case_ef7fe530cee4",
+      "pass": true
+    },
+    "E_collision_frame": {
+      "existing_id": "case_c4ef1d5242f3",
+      "resolver_outcome": "claim_collision_resolver",
+      "has_frame": true,
+      "has_collision_title": true,
+      "has_choices": true,
+      "no_silent_append": true,
+      "new_claim_after_choice": true,
+      "choice_start_card": true,
+      "pass": true
+    },
+    "F_end_card": {
+      "case_id": "case_d86afb57fd18",
+      "broker_done_status": 200,
+      "has_frame": true,
+      "has_end_title": true,
+      "has_phase_end": true,
+      "has_disclaimer": true,
+      "second_status": 200,
+      "idempotent": false,
+      "forbidden": [],
+      "pass": true
+    },
+    "regression": {
+      "photo_outcome": "media_unassigned",
+      "photo_case_id": "case_46b88ca9a758",
+      "photo_lane": "wecom_media_intake",
+      "photo_hidden_from_queue": true,
+      "narrative_no_claim": true,
+      "broker_done_rejects_raw": true,
+      "pass": true
+    }
+  },
+  "all_pass": true
+}

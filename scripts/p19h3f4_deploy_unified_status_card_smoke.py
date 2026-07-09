@@ -467,7 +467,7 @@ def smoke_regression(suffix: str) -> dict:
         upload_fn=_up,
     )
     photo_case_id = str(photo.get("case_id") or "")
-    photo_case = get_case_by_id(photo_case_id) if photo_case_id else {}
+    photo_case = get_case_for_read(photo_case_id) if photo_case_id else {}
     listed = _api_get("/api/inbox/cases?limit=50")
     media_in_default = bool(
         photo_case_id
