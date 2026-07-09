@@ -85,12 +85,10 @@ def _assert_no_forbidden_copy(text: str) -> None:
 
 def test_01_woyao_claim_start_safety_reply():
     reply = build_claim_start_reply()
-    assert "【理赔资料收集】" in reply
-    assert "人是否安全" in reply
-    assert "事故时间" in reply
-    assert "事故地点" in reply
-    assert "简单描述" in reply
-    assert "不代表已经正式报案" in reply
+    assert "陈总办公室的值班助手" in reply
+    assert "有没有受伤" in reply
+    assert "大概什么时候、在哪里" in reply
+    assert "这不代表已经向保险公司正式报案" in reply
     _assert_no_forbidden_copy(reply)
 
 
@@ -110,7 +108,7 @@ def test_02_zhuangche_starts_guided_not_menu(monkeypatch):
     results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
     assert results[0]["internal_intent"] == "claim_intake"
     assert results[0]["case_created"] is True
-    assert "【理赔资料收集】" in (results[0].get("reply_text") or "")
+    assert "陈总办公室的值班助手" in (results[0].get("reply_text") or "")
 
 
 def test_03_accident_question_safe_no_liability_promise():
@@ -146,7 +144,7 @@ def test_04_full_basics_one_message_sends_c1():
     kernel = evaluate_claim_simplified_snapshot(stored)
     assert kernel["current_step"]["action"] == "collect_evidence_pack"
     reply = result["reply_text"] or ""
-    assert "第 1 步完成" in reply
+    assert "【事故信息已记录 ✅】" in reply
     _assert_no_forbidden_copy(reply)
 
 
@@ -218,11 +216,11 @@ def test_09_c1_copy_safe_no_h5_link():
         "collected_fields": ["accident_datetime", "accident_location", "accident_description"],
     }
     reply = build_claim_c1_reply(case)
-    assert "【理赔资料 · 第 1 步完成 ✅】" in reply
+    assert "【事故信息已记录 ✅】" in reply
     assert "时间：" in reply
     assert "地点：" in reply
-    assert "描述：" in reply
-    assert "推荐点击下面按钮" in reply
+    assert "经过：" in reply
+    assert "您可以继续在微信里补充" in reply
     assert "不代表" in reply
     assert "http" not in reply.lower()
     _assert_no_forbidden_copy(reply)
@@ -236,7 +234,7 @@ def test_10_active_basics_continue_asks_missing():
     ingest_claim_basics_message(_normalized("我要理赔", ext=ext, msg_id="c1"), classify_wecom_intent("我要理赔"))
     result = ingest_claim_basics_message(_normalized("继续", ext=ext, msg_id="c2"), classify_wecom_intent("继续"))
     reply = result["reply_text"] or ""
-    assert "还需要" in reply or "事故" in reply
+    assert "还需要" in reply or "事故" in reply or "大概什么时候" in reply or "有没有受伤" in reply
     assert "请选择您要办理的事项" not in reply
 
 
@@ -246,7 +244,7 @@ def test_11_basics_complete_progress_no_menu():
     ingest_claim_basics_message(_normalized(text, ext=ext, msg_id="done1"), classify_wecom_intent(text))
     result = ingest_claim_basics_message(_normalized("进度", ext=ext, msg_id="done2"), classify_wecom_intent("进度"))
     reply = result["reply_text"] or ""
-    assert "第 1 步" in reply
+    assert "【事故信息已记录 ✅】" in reply or "事故信息已记录" in reply
     assert "照片" in reply
     assert "http" not in reply.lower()
     assert "请选择您要办理的事项" not in reply

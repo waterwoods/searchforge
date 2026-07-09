@@ -82,12 +82,10 @@ def _assert_no_forbidden_copy(text: str) -> None:
 
 def test_claim_start_card_copy_safe():
     reply = build_claim_start_card_reply()
-    assert "【理赔资料收集】" in reply
-    assert "人是否安全" in reply
-    assert "事故时间" in reply
-    assert "事故地点" in reply
-    assert "简单描述" in reply
-    assert "不代表已经正式报案" in reply
+    assert "陈总办公室的值班助手" in reply
+    assert "有没有受伤" in reply
+    assert "大概什么时候、在哪里" in reply
+    assert "这不代表已经向保险公司正式报案" in reply
     _assert_no_forbidden_copy(reply)
 
 
@@ -122,7 +120,7 @@ def test_zhuangche_not_generic_menu(monkeypatch):
     assert results[0]["internal_intent"] == "claim_intake"
     assert results[0]["case_created"] is True
     assert results[0]["service_lane"] == SERVICE_LANE_CLAIM
-    assert "【理赔资料收集】" in (results[0].get("reply_text") or "")
+    assert "陈总办公室的值班助手" in (results[0].get("reply_text") or "")
 
 
 def test_full_basics_message_sends_c1():
@@ -140,9 +138,8 @@ def test_full_basics_message_sends_c1():
     assert facts.get("accident_location")
     assert facts.get("accident_description")
     reply = result["reply_text"] or ""
-    assert "第 1 步完成" in reply
-    assert "事故基本信息已收到" in reply
-    assert "上传事故照片" in reply and "照片" in reply
+    assert "【事故信息已记录 ✅】" in reply
+    assert "补充事故资料" in reply
     assert "http" not in reply.lower()
     _assert_no_forbidden_copy(reply)
 
@@ -190,8 +187,8 @@ def test_c1_copy_safe():
         "collected_fields": ["accident_datetime", "accident_location", "accident_description"],
     }
     reply = build_claim_stage_complete_c1_reply(case)
-    assert "第 1 步完成" in reply
-    assert "照片" in reply
+    assert "【事故信息已记录 ✅】" in reply
+    assert "补充事故资料" in reply or "照片" in reply
     assert "不代表" in reply
     assert "http" not in reply.lower()
     _assert_no_forbidden_copy(reply)
@@ -203,7 +200,7 @@ def test_basics_complete_progress_inquiry_no_generic_menu():
     ingest_claim_basics_message(_normalized(text, ext=ext, msg_id="m_done1"), classify_wecom_intent(text))
     result = ingest_claim_basics_message(_normalized("进度", ext=ext, msg_id="m_done2"), classify_wecom_intent("进度"))
     reply = result["reply_text"] or ""
-    assert "第 1 步" in reply
+    assert "【事故信息已记录 ✅】" in reply or "事故信息已记录" in reply
     assert "照片" in reply
     assert "http" not in reply.lower()
     assert "请选择您要办理的事项" not in reply

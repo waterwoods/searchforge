@@ -19,6 +19,10 @@ WeComIntent = Literal[
     "start_add_car_click",
     "start_add_car_decline_click",
     "start_add_car_broker_click",
+    # P19H-3e-1 — Claim injury quick-reply clicks
+    "claim_injury_no_click",
+    "claim_injury_yes_click",
+    "claim_injury_unknown_click",
 ]
 
 CanonicalIntent = Literal["add_vehicle", "claim", "coverage_risk", "policy_review", "unclear"]
@@ -35,6 +39,9 @@ _CANONICAL_INTENT: dict[WeComIntent, CanonicalIntent] = {
     "start_add_car_click": "add_vehicle",
     "start_add_car_decline_click": "unclear",
     "start_add_car_broker_click": "unclear",
+    "claim_injury_no_click": "claim",
+    "claim_injury_yes_click": "claim",
+    "claim_injury_unknown_click": "claim",
 }
 
 # Track B0.1 — Start Card click ids. Kept separate from `_MENU_CLICK_IDS`
@@ -42,13 +49,27 @@ _CANONICAL_INTENT: dict[WeComIntent, CanonicalIntent] = {
 # so a Start Card click can never be reclassified as a fresh add_car intent
 # and re-trigger a new Start Card (Rule 8 — one flow, no loops).
 START_CARD_CLICK_INTENTS = frozenset(
-    {"start_add_car_click", "start_add_car_decline_click", "start_add_car_broker_click"}
+    {
+        "start_add_car_click",
+        "start_add_car_decline_click",
+        "start_add_car_broker_click",
+    }
+)
+
+CLAIM_INJURY_CLICK_INTENTS = frozenset(
+    {"claim_injury_no_click", "claim_injury_yes_click", "claim_injury_unknown_click"}
 )
 
 _START_CARD_CLICK_IDS: dict[str, WeComIntent] = {
     "start_add_car": "start_add_car_click",
     "start_add_car_decline": "start_add_car_decline_click",
     "start_add_car_broker": "start_add_car_broker_click",
+}
+
+_CLAIM_INJURY_CLICK_IDS: dict[str, WeComIntent] = {
+    "claim_injury_no": "claim_injury_no_click",
+    "claim_injury_yes": "claim_injury_yes_click",
+    "claim_injury_unknown": "claim_injury_unknown_click",
 }
 
 
@@ -286,6 +307,11 @@ def classify_wecom_intent(text: str, *, menu_id: str | None = None) -> IntentRes
         if start_card_intent:
             return IntentResult(
                 intent=start_card_intent, confidence="high", matched_by="start_card_click_id"
+            )
+        injury_intent = _CLAIM_INJURY_CLICK_IDS.get((menu_id or "").strip().lower())
+        if injury_intent:
+            return IntentResult(
+                intent=injury_intent, confidence="high", matched_by="claim_injury_click_id"
             )
         from_menu = _menu_intent_from_id(menu_id)
         if from_menu and from_menu != "unclear":

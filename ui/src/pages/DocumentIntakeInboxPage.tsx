@@ -36,6 +36,7 @@ import {
 } from '@/api/inboxTriage';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
+import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEvidenceChecklist';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import {
@@ -382,10 +383,28 @@ function PacketField({ label, value, source }: { label: string; value?: string; 
   );
 }
 
-function ClaimAccidentBasicsCard({ caseItem }: { caseItem: SavedCase }) {
+function ClaimAccidentBasicsCard({ caseItem, collapsed = true }: { caseItem: SavedCase; collapsed?: boolean }) {
   const summary = resolveClaimSummary(caseItem);
+  const [open, setOpen] = useState(!collapsed);
   return (
-    <Card size="small" title="Claim · Accident Basics" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+    <Card
+      size="small"
+      title={
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setOpen((v) => !v);
+          }}
+          style={{ cursor: 'pointer', userSelect: 'none' }}
+        >
+          Accident Basics（详情）
+        </span>
+      }
+      style={{ marginBottom: 12, opacity: 0.9 }}
+      styles={{ body: { padding: open ? '12px 16px' : 0, display: open ? undefined : 'none' } }}
+    >
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
         {claimDisplayStatus(caseItem)}
       </Text>
@@ -442,8 +461,12 @@ function BrokerCaseDetail({
         ) : null}
         {isClaimGuidedCase(caseItem) ? (
           <>
-            <ClaimAccidentBasicsCard caseItem={caseItem} />
-            <ClaimEvidenceChecklist summary={resolveClaimEvidenceSummary(caseItem)} />
+            <ClaimCaseBriefPanel
+              brief={caseItem.claim_case_brief}
+              timeline={caseItem.claim_timeline}
+            />
+            <ClaimAccidentBasicsCard caseItem={caseItem} collapsed />
+            <ClaimEvidenceChecklist summary={resolveClaimEvidenceSummary(caseItem)} defaultCollapsed />
           </>
         ) : null}
         {isWeComMedia ? (

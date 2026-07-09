@@ -1,7 +1,10 @@
 /**
  * P19H-3c-3B — Claim evidence checklist section for Workbench drawer.
+ * P19H-3e-1 — collapsed by default (demoted below Case Brief).
  */
+import { useState } from 'react';
 import { Card, Typography } from 'antd';
+import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import type { ClaimEvidenceSummary } from '@/api/inboxTriage';
 import {
   formatClaimEvidenceSlotLine,
@@ -12,16 +15,34 @@ const { Text } = Typography;
 
 export type ClaimEvidenceChecklistProps = {
   summary?: ClaimEvidenceSummary | null;
+  defaultCollapsed?: boolean;
 };
 
-export function ClaimEvidenceChecklist({ summary }: ClaimEvidenceChecklistProps) {
+export function ClaimEvidenceChecklist({ summary, defaultCollapsed = true }: ClaimEvidenceChecklistProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  const title = (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={() => setCollapsed((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') setCollapsed((v) => !v);
+      }}
+      style={{ cursor: 'pointer', userSelect: 'none' }}
+    >
+      {collapsed ? <RightOutlined style={{ marginRight: 6, fontSize: 10 }} /> : <DownOutlined style={{ marginRight: 6, fontSize: 10 }} />}
+      照片清单（H5 分步状态）
+    </span>
+  );
+
   if (!summary || !Array.isArray(summary.slots) || summary.slots.length === 0) {
     return (
       <Card
         size="small"
-        title="理赔照片 / Evidence Checklist"
-        style={{ marginBottom: 12 }}
-        styles={{ body: { padding: '12px 16px' } }}
+        title={title}
+        style={{ marginBottom: 12, opacity: 0.92 }}
+        styles={{ body: { padding: collapsed ? 0 : '12px 16px', display: collapsed ? 'none' : undefined } }}
       >
         <Text type="secondary" style={{ fontSize: 12 }}>
           理赔照片状态暂未生成
@@ -37,9 +58,9 @@ export function ClaimEvidenceChecklist({ summary }: ClaimEvidenceChecklistProps)
   return (
     <Card
       size="small"
-      title="理赔照片 / Evidence Checklist"
-      style={{ marginBottom: 12 }}
-      styles={{ body: { padding: '12px 16px' } }}
+      title={title}
+      style={{ marginBottom: 12, opacity: 0.92 }}
+      styles={{ body: { padding: collapsed ? 0 : '12px 16px', display: collapsed ? 'none' : undefined } }}
     >
       {summaryText ? (
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>

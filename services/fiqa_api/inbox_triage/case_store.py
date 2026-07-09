@@ -30,6 +30,7 @@ MAX_STORED_CASES = 200
 MAX_CASE_NOTES = 20
 MAX_CASE_ACTIVITY = 40
 MAX_EVIDENCE_EVENTS = 50
+MAX_CLAIM_TIMELINE_EVENTS = 50
 MAX_NEXT_CONTACT_BY_LENGTH = 80
 MAX_CUSTOMER_NAME_LENGTH = 120
 MAX_CUSTOMER_PHONE_LENGTH = 40
@@ -1271,6 +1272,137 @@ def append_h5_gcs_attachment_metadata(
         *normalized_case.get("case_activity", []),
     ][:MAX_CASE_ACTIVITY]
     if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
+def _is_claim_service_lane(case: dict[str, Any]) -> bool:
+    from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
+
+    return str(case.get("service_lane") or "").strip().lower() == SERVICE_LANE_CLAIM
+
+
+def _claim_timeline_from_case(case: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = case.get("claim_timeline")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def build_claim_timeline_event(
+    *,
+    event_type: str,
+    source_channel: str = "wecom",
+    actor: str = "customer",
+    message_id: str | None = None,
+    attachment_id: str | None = None,
+    text: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    created_at: str | None = None,
+    event_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a normalized claim_timeline event dict (P19H-3e-1)."""
+    return {
+        "event_id": (event_id or f"evt_{uuid4().hex[:12]}").strip(),
+        "event_type": (event_type or "").strip(),
+        "source_channel": (source_channel or "wecom").strip() or "wecom",
+        "created_at": (created_at or _utc_now_iso()).strip(),
+        "actor": (actor or "customer").strip() or "customer",
+        "message_id": (message_id or "").strip() or None,
+        "attachment_id": (attachment_id or "").strip() or None,
+        "text": text,
+        "metadata": dict(metadata) if isinstance(metadata, dict) else {},
+    }
+
+
+def _claim_timeline_is_duplicate(timeline: list[dict[str, Any]], event: dict[str, Any]) -> bool:
+    event_type = str(event.get("event_type") or "").strip()
+    message_id = str(event.get("message_id") or "").strip()
+    if message_id:
+        for existing in timeline:
+            if str(existing.get("message_id") or "").strip() == message_id:
+                return True
+    attachment_id = str(event.get("attachment_id") or "").strip()
+    if attachment_id and event_type == "customer_photo":
+        for existing in timeline:
+            if (
+                str(existing.get("event_type") or "").strip() == "customer_photo"
+                and str(existing.get("attachment_id") or "").strip() == attachment_id
+            ):
+                return True
+    if event_type == "basics_complete":
+        for existing in timeline:
+            if str(existing.get("event_type") or "").strip() == "basics_complete":
+                return True
+    if event_type == "claim_started":
+        for existing in timeline:
+            if str(existing.get("event_type") or "").strip() == "claim_started":
+                return True
+    return False
+
+
+def append_claim_timeline_event(case_id: str, event: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Append one event to claim_timeline on an existing Claim case (JSONB/extra field).
+
+    Idempotent on message_id, customer_photo attachment_id, basics_complete, claim_started.
+    No-op for non-claim cases. Max 50 events.
+    """
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None or not _is_claim_service_lane(normalized_case):
+        return None
+
+    timeline = _claim_timeline_from_case(normalized_case)
+    normalized_event = build_claim_timeline_event(
+        event_type=str(event.get("event_type") or ""),
+        source_channel=str(event.get("source_channel") or "wecom"),
+        actor=str(event.get("actor") or "customer"),
+        message_id=event.get("message_id"),
+        attachment_id=event.get("attachment_id"),
+        text=event.get("text"),
+        metadata=event.get("metadata") if isinstance(event.get("metadata"), dict) else {},
+        created_at=str(event.get("created_at") or "").strip() or None,
+        event_id=str(event.get("event_id") or "").strip() or None,
+    )
+    if _claim_timeline_is_duplicate(timeline, normalized_event):
+        return normalized_case
+
+    timeline.append(normalized_event)
+    normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
+        return None
+    return normalized_case
+
+
+def patch_case_known_facts(case_id: str, facts_patch: dict[str, str]) -> dict[str, Any] | None:
+    """Merge string facts into case known_facts (additive, Claim-safe)."""
+    cid = (case_id or "").strip()
+    if not cid or not facts_patch:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+    existing = dict(normalized_case.get("known_facts") or {}) if isinstance(normalized_case.get("known_facts"), dict) else {}
+    changed = False
+    for key, value in facts_patch.items():
+        k = str(key or "").strip()
+        v = str(value or "").strip()
+        if not k or not v:
+            continue
+        if existing.get(k) != v:
+            existing[k] = v
+            changed = True
+    if not changed:
+        return normalized_case
+    normalized_case["known_facts"] = existing
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
         return None
     return normalized_case
 

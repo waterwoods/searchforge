@@ -10,8 +10,10 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from services.fiqa_api.inbox_triage.case_store import (
+    append_claim_timeline_event,
     append_wecom_gcs_attachment_metadata,
     bind_case_channel_identity,
+    build_claim_timeline_event,
     save_case,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import (
@@ -518,6 +520,24 @@ def ingest_wecom_media_message(
 
     if msg_id and target_case_id:
         _record_wecom_evidence(target_case_id, msg_id)
+
+    if claim_media_bind and bound_to_service_case and target_case_id:
+        append_claim_timeline_event(
+            target_case_id,
+            build_claim_timeline_event(
+                event_type="customer_photo",
+                source_channel="wecom",
+                actor="customer",
+                message_id=msg_id or None,
+                attachment_id=str(att_meta.get("attachment_id") or "").strip() or None,
+                metadata={
+                    "mime_type": att_meta.get("mime_type"),
+                    "source": "wecom",
+                    "slot_assignment": "unassigned",
+                    "needs_broker_review": True,
+                },
+            ),
+        )
 
     lane = binding.service_lane
     if target_case_id and not lane:

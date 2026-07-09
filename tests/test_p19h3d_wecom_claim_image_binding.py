@@ -178,7 +178,7 @@ def test_01_one_recent_open_claim_binds_image(cfg):
 
     assert result["active_case_outcome"] == "media_attached_to_case"
     assert result["case_id"] == cid
-    assert "照片已收到" in (result["reply_text"] or "")
+    assert "收到照片，已记到这份事故记录里" in (result["reply_text"] or "")
 
     case = get_case_by_id(cid)
     atts = case.get("case_attachments") or []
@@ -271,10 +271,10 @@ def test_06_c1_multichannel_copy():
         "collected_fields": ["accident_datetime", "accident_location", "accident_description"],
     }
     reply = build_claim_stage_complete_c1_reply(case)
-    assert "推荐点击下面按钮" in reply
-    assert "也可以直接把照片发到微信" in reply
-    assert "不用重复上传" in reply
-    assert "陈总会人工确认" in reply
+    assert "您可以继续在微信里补充说明" in reply
+    assert "陈总会整理确认" in reply
+    assert "补充事故资料" in reply
+    assert "陈总会人工确认" in reply or "陈总会整理确认" in reply
     _assert_no_forbidden_copy(reply)
 
     menu = build_claim_c1_h5_evidence_card_payload(
@@ -283,8 +283,8 @@ def test_06_c1_multichannel_copy():
         already_complete=False,
     )
     head = menu["head_content"]
-    assert "推荐点击下面按钮" in head
-    assert "上传事故照片" in str(menu.get("list") or "")
+    assert "您可以继续在微信里补充" in head
+    assert "补充事故资料" in str(menu.get("list") or "")
     _assert_no_forbidden_copy(head)
 
 
@@ -322,7 +322,7 @@ def test_07_c1_via_ingest_still_has_h5_button(monkeypatch):
     assert menu
     assert any(
         item.get("type") == "view"
-        and "上传事故照片" in str((item.get("view") or {}).get("content") or "")
+        and "补充事故资料" in str((item.get("view") or {}).get("content") or "")
         for item in menu.get("list") or []
     )
 
@@ -341,7 +341,7 @@ def test_08_routing_log_emits_identity_for_claim_image(cfg, caplog):
 
 
 def test_09_claim_media_reply_tiers():
-    assert "整理到这个理赔记录" in build_media_intake_reply(
+    assert "收到照片，已记到这份事故记录里" in build_media_intake_reply(
         bound=True,
         service_lane=SERVICE_LANE_CLAIM,
         binding_confidence="high",

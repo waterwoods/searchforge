@@ -285,7 +285,7 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_confirmed_start",
             inbound_text="开始理赔",
-            expected_contains=("【理赔资料收集】", "事故时间", "事故地点", "简单描述"),
+            expected_contains=("陈总办公室的值班助手", "有没有受伤", "这不代表已经向保险公司正式报案"),
             expected_priority_rule="claim_confirmed_start",
             expected_decision="start_claim_flow",
             expected_response_type="claim_start",
@@ -294,11 +294,11 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
             name="claim_basics_c1",
             inbound_text="今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门",
             expected_contains=(
-                "【理赔资料 · 第 1 步完成 ✅】",
+                "【事故信息已记录 ✅】",
                 "时间",
                 "地点",
-                "描述",
-                "推荐点击下面按钮",
+                "经过",
+                "您可以继续在微信里补充",
             ),
             expected_not_contains=(
                 "加车资料流程正在进行",
@@ -308,7 +308,7 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
             expected_priority_rule="active_claim_basics_collection",
             expected_decision="send_claim_c1",
             expected_response_type="claim_c1",
-            expected_menu_button="上传事故照片",
+            expected_menu_button="补充事故资料",
         ),
     ],
 )
@@ -363,7 +363,7 @@ SCENARIO_NO_ACTIVE_CLAIM_BASICS: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_start",
             inbound_text="我要理赔",
-            expected_contains=("【理赔资料收集】",),
+            expected_contains=("陈总办公室的值班助手", "有没有受伤"),
             expected_priority_rule="claim_start_no_active_case",
             expected_decision="start_claim_flow",
             expected_response_type="claim_start",
@@ -371,11 +371,11 @@ SCENARIO_NO_ACTIVE_CLAIM_BASICS: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_c1",
             inbound_text="今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门",
-            expected_contains=("【理赔资料 · 第 1 步完成 ✅】", "推荐点击下面按钮"),
+            expected_contains=("【事故信息已记录 ✅】", "您可以继续在微信里补充"),
             expected_priority_rule="active_claim_basics_collection",
             expected_decision="send_claim_c1",
             expected_response_type="claim_c1",
-            expected_menu_button="上传事故照片",
+            expected_menu_button="补充事故资料",
         ),
     ],
 )

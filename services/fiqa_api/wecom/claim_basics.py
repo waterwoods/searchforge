@@ -8,8 +8,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from services.fiqa_api.inbox_triage.case_store import (
+    append_claim_timeline_event,
     append_follow_up_message,
     bind_case_channel_identity,
+    build_claim_timeline_event,
+    patch_case_known_facts,
     save_case,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import (
@@ -509,6 +512,139 @@ def _c1_already_sent(case: dict[str, Any]) -> bool:
     return bool(str(state.get("c1_stage_complete_sent_at") or "").strip())
 
 
+def _append_claim_text_timeline(case_id: str | None, *, message_id: str, text: str) -> None:
+    if not case_id or not (text or "").strip():
+        return
+    append_claim_timeline_event(
+        case_id,
+        build_claim_timeline_event(
+            event_type="customer_text",
+            source_channel="wecom",
+            actor="customer",
+            message_id=message_id or None,
+            text=(text or "").strip(),
+        ),
+    )
+
+
+def _append_claim_started(case_id: str | None) -> None:
+    if not case_id:
+        return
+    append_claim_timeline_event(
+        case_id,
+        build_claim_timeline_event(
+            event_type="claim_started",
+            source_channel="wecom",
+            actor="customer",
+            text="Claim story recording started",
+        ),
+    )
+
+
+def _append_basics_complete_if_needed(case_id: str | None, case: dict[str, Any]) -> None:
+    if not case_id or not is_accident_basics_complete(case):
+        return
+    facts = case.get("known_facts") or {}
+    append_claim_timeline_event(
+        case_id,
+        build_claim_timeline_event(
+            event_type="basics_complete",
+            source_channel="wecom",
+            actor="system",
+            metadata={
+                "facts_snapshot": {
+                    "accident_datetime": str(facts.get("accident_datetime") or "").strip() or None,
+                    "accident_location": str(facts.get("accident_location") or "").strip() or None,
+                    "accident_description": str(facts.get("accident_description") or "").strip() or None,
+                    "injury_status": str(facts.get("injury_status") or "").strip() or None,
+                }
+            },
+        ),
+    )
+
+
+def ingest_claim_injury_quick_reply(
+    normalized: dict[str, Any],
+    *,
+    injury_value: str,
+) -> dict[str, Any]:
+    """Handle injury quick-reply button click on active Claim case."""
+    from services.fiqa_api.inbox_triage.case_store import update_claim_workflow_state
+    from services.fiqa_api.wecom.reply import (
+        build_claim_safety_manual_reply,
+        build_claim_start_card_reply,
+    )
+
+    msg_id = str(normalized.get("msg_id") or "").strip()
+    ext = str(normalized.get("external_userid") or "").strip()
+    value = (injury_value or "").strip().lower()
+
+    label_map = {
+        "no": ("没有受伤", "no"),
+        "yes": ("有人受伤", "yes"),
+        "unknown": ("不确定", "unknown"),
+    }
+    if value not in label_map:
+        return {
+            "outcome": "claim_injury_reply_invalid",
+            "case_id": None,
+            "case_created": False,
+            "reply_text": build_claim_start_card_reply(injury_mentioned=False),
+            "active_case_outcome": "claim_injury_reply_invalid",
+            "service_lane": SERVICE_LANE_CLAIM,
+        }
+
+    click_label, injury_status = label_map[value]
+    open_claims = list_open_claim_candidates_for_basics(ext)
+    case = open_claims[0] if open_claims else None
+    case_id = str(case.get("case_id") or "").strip() if case else None
+
+    if not case_id:
+        created = _create_claim_case(normalized, injury_mentioned=(value == "yes"))
+        case_id = created["case_id"]
+        case = get_case_for_read(case_id) or {}
+
+    patch_case_known_facts(case_id, {"injury_status": injury_status})
+    append_claim_timeline_event(
+        case_id,
+        build_claim_timeline_event(
+            event_type="customer_text",
+            source_channel="wecom",
+            actor="customer",
+            message_id=msg_id or None,
+            text=click_label,
+            metadata={"quick_reply_key": "injury_status", "quick_reply_value": injury_status},
+        ),
+    )
+
+    needs_manual = value == "yes"
+    if needs_manual and case_id:
+        refreshed = get_case_for_read(case_id) or case or {}
+        update_claim_workflow_state(case_id, **transition_to_manual_handle(refreshed))
+
+    if needs_manual:
+        reply_text = build_claim_safety_manual_reply()
+        active_outcome = "claim_injury_manual_handle"
+    else:
+        reply_text = (
+            "好的，已记录。请用一条消息告诉我大概什么时候、在哪里、发生了什么事。"
+            if value == "no"
+            else "好的，已记录。如果安全，请用一条消息告诉我大概什么时候、在哪里、发生了什么事。"
+        )
+        active_outcome = "claim_injury_reply_recorded"
+
+    return {
+        "outcome": "attached",
+        "case_id": case_id,
+        "case_created": not bool(open_claims),
+        "reply_text": reply_text,
+        "menu_payload": None,
+        "active_case_outcome": active_outcome,
+        "service_lane": SERVICE_LANE_CLAIM,
+        "needs_broker_manual_handle": needs_manual,
+    }
+
+
 def _create_claim_case(
     normalized: dict[str, Any],
     *,
@@ -529,6 +665,9 @@ def _create_claim_case(
             wecom_open_kf_id=str(normalized.get("open_kf_id") or "").strip() or None,
         )
     _record_wecom_evidence(case_id, str(normalized.get("msg_id") or ""))
+    _append_claim_started(case_id)
+    if text := str(normalized.get("text") or "").strip():
+        _append_claim_text_timeline(case_id, message_id=str(normalized.get("msg_id") or ""), text=text)
     return {"case_id": case_id, "case_created": True, "outcome": "created"}
 
 
@@ -599,6 +738,7 @@ def ingest_claim_basics_message(
         build_claim_safety_manual_reply,
         build_claim_stage_complete_c1_reply,
         build_claim_start_card_reply,
+        build_claim_start_injury_menu_payload,
     )
 
     msg_id = str(normalized.get("msg_id") or "").strip()
@@ -778,6 +918,7 @@ def ingest_claim_basics_message(
         }
 
     if case_created and not has_extractable:
+        menu_payload = None
         if injury_mentioned:
             reply_text = (
                 build_claim_interrupt_safety_manual_reply()
@@ -815,7 +956,9 @@ def ingest_claim_basics_message(
                     **claim_ctx,
                 )
         else:
-            reply_text = build_claim_start_card_reply(injury_mentioned=False)
+            injury_menu = build_claim_start_injury_menu_payload()
+            reply_text = injury_menu["head_content"]
+            menu_payload = injury_menu
             if add_car_active and is_claim_lane_switch_confirm(text):
                 av_ctx = add_vehicle_context_for_user(ext)
                 _emit_claim_routing_decision(
@@ -854,6 +997,7 @@ def ingest_claim_basics_message(
             "case_id": case_id,
             "case_created": True,
             "reply_text": reply_text,
+            "menu_payload": menu_payload if not injury_mentioned else None,
             "active_case_outcome": (
                 "claim_injury_manual_handle" if injury_mentioned else "claim_start_card_sent"
             ),
@@ -874,8 +1018,11 @@ def ingest_claim_basics_message(
                 "active_case_outcome": "claim_case_not_found",
                 "service_lane": None,
             }
+        _append_claim_text_timeline(case_id, message_id=msg_id, text=text)
         _record_wecom_evidence(case_id, msg_id)
         refreshed = get_case_for_read(case_id) or updated
+        _append_basics_complete_if_needed(case_id, refreshed)
+        refreshed = get_case_for_read(case_id) or refreshed
 
         if injury_mentioned:
             update_claim_workflow_state(
@@ -950,6 +1097,8 @@ def ingest_claim_basics_message(
                     datetime.now(timezone.utc).isoformat() if not sent_c1_before else None
                 ),
             )
+            refreshed = get_case_for_read(case_id) or refreshed
+            _append_basics_complete_if_needed(case_id, refreshed)
             refreshed = get_case_for_read(case_id) or refreshed
             if sent_c1_before:
                 c1 = _build_claim_c1_h5_response(

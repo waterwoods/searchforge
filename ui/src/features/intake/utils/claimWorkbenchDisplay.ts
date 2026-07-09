@@ -2,7 +2,7 @@
  * P19H-3a — Claim guided lane display helpers for Workbench document intake.
  * P19H-3c-3B — Claim evidence checklist formatting.
  */
-import type { ClaimEvidenceSlot, ClaimEvidenceSummary, SavedCase } from '@/api/inboxTriage';
+import type { ClaimCaseBrief, ClaimEvidenceSlot, ClaimEvidenceSummary, ClaimTimelineEvent, SavedCase } from '@/api/inboxTriage';
 
 export const SERVICE_LANE_CLAIM = 'claim';
 
@@ -85,6 +85,68 @@ export function resolveClaimEvidenceSummary(
     return null;
   }
   return summary;
+}
+
+export function resolveClaimCaseBrief(
+  brief?: ClaimCaseBrief | null,
+): ClaimCaseBrief | null {
+  if (!brief || typeof brief !== 'object' || !(brief.summary || '').trim()) {
+    return null;
+  }
+  return brief;
+}
+
+export function formatClaimInjuryStatus(status?: string | null): string {
+  switch ((status || '').trim().toLowerCase()) {
+    case 'yes':
+      return '有人受伤';
+    case 'no':
+      return '没有受伤';
+    case 'unknown':
+      return '尚未确认';
+    default:
+      return '尚未确认';
+  }
+}
+
+export function formatClaimPoliceStatus(status?: string | null): string {
+  switch ((status || '').trim().toLowerCase()) {
+    case 'yes':
+      return '已报警 / 提及';
+    case 'no':
+      return '未报警';
+    case 'unknown':
+      return '尚未确认';
+    default:
+      return '尚未确认';
+  }
+}
+
+const TIMELINE_TYPE_LABELS: Record<string, string> = {
+  claim_started: '开始记录',
+  customer_text: '客户文字',
+  customer_photo: '客户照片',
+  customer_voice_stub: '语音消息',
+  basics_complete: '基本信息齐全',
+};
+
+export function formatClaimTimelinePreview(
+  events: ClaimTimelineEvent[],
+  limit = 3,
+): Array<{ key: string; label: string }> {
+  const sorted = [...(events || [])].sort((a, b) =>
+    String(a.created_at || '').localeCompare(String(b.created_at || '')),
+  );
+  const recent = sorted.slice(-limit).reverse();
+  return recent.map((event, index) => {
+    const typeLabel = TIMELINE_TYPE_LABELS[event.event_type] || event.event_type || '记录';
+    const text = (event.text || '').trim();
+    const preview = text ? `：${text.slice(0, 48)}${text.length > 48 ? '…' : ''}` : '';
+    return {
+      key: event.event_id || `evt-${index}`,
+      label: `${typeLabel}${preview}`,
+    };
+  });
 }
 
 export function formatClaimUnassignedWecomPhotosSection(summary: ClaimEvidenceSummary): {

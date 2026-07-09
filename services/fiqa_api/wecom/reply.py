@@ -389,12 +389,11 @@ _CLAIM_BASICS_LABELS: dict[str, str] = {
     "accident_description": "简单描述",
 }
 
-_CLAIM_SAFE_DISCLAIMER = "这不代表已经正式报案。"
-_CLAIM_C1_H5_BUTTON = "上传事故照片"
+_CLAIM_SAFE_DISCLAIMER = "这不代表已经向保险公司正式报案。"
+_CLAIM_C1_H5_BUTTON = "补充事故资料"
 _CLAIM_C1_PHOTO_GUIDANCE_LINES: tuple[str, ...] = (
-    "推荐点击下面按钮分步上传事故照片，这样最清楚、也不容易漏。",
-    "如果您现在不方便，也可以直接把照片发到微信里。",
-    "不用重复上传；我们会统一整理到这个理赔记录里，陈总会人工确认后跟进。",
+    "您可以继续在微信里补充说明或发照片，都会记到同一份记录里。",
+    "陈总会整理确认后联系您。",
 )
 _CLAIM_C1_H5_TAIL = """\
 如果按钮打不开，请回复：链接
@@ -414,33 +413,47 @@ def _claim_fact_display(case: dict[str, Any], field: str) -> str:
 
 def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
     lines = [
-        "【理赔资料收集】",
+        "您好，我是陈总办公室的值班助手。",
         "",
-        "很抱歉听到您发生事故。请先确认人是否安全。",
-        "",
-        "如果有人受伤，请优先联系紧急服务，并尽快联系陈总。",
+        "请先确认：您和车上的人现在都安全吗？有没有受伤？",
     ]
-    if not injury_mentioned:
+    if injury_mentioned:
         lines.extend(
             [
                 "",
-                "如果人都安全，请直接回复事故基本信息：",
-                "1. 事故时间",
-                "2. 事故地点",
-                "3. 简单描述发生了什么",
+                "如果有人受伤，请优先联系紧急服务，并尽快联系陈总。",
+            ]
+        )
+    else:
+        lines.extend(
+            [
                 "",
-                "例如：",
-                "今天上午10点，在 Irvine Blvd 和 Culver 附近，对方变道刮到我左前门。",
+                "如果安全，请用一条消息告诉我：",
+                "大概什么时候、在哪里、发生了什么事。",
+                "",
+                "我会先帮您记录下来，陈总会人工确认后联系您。",
             ]
         )
     lines.extend(
         [
             "",
-            "我们先帮您整理资料，陈总会人工确认。",
             _CLAIM_SAFE_DISCLAIMER,
         ]
     )
     return "\n".join(lines)
+
+
+def build_claim_start_injury_menu_payload() -> dict[str, Any]:
+    """WeCom msgmenu: injury quick replies on Claim start (P19H-3e-1)."""
+    return {
+        "head_content": build_claim_start_card_reply(injury_mentioned=False),
+        "list": [
+            {"type": "click", "click": {"id": "claim_injury_no", "content": "没有受伤"}},
+            {"type": "click", "click": {"id": "claim_injury_yes", "content": "有人受伤"}},
+            {"type": "click", "click": {"id": "claim_injury_unknown", "content": "不确定"}},
+        ],
+        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+    }
 
 
 def build_claim_missing_basics_reply(case: dict[str, Any]) -> str:
@@ -475,30 +488,29 @@ def build_claim_missing_basics_reply(case: dict[str, Any]) -> str:
 
 def _claim_c1_stage_complete_head_lines(case: dict[str, Any]) -> list[str]:
     return [
-        "【理赔资料 · 第 1 步完成 ✅】",
+        "【事故信息已记录 ✅】",
         "",
-        "事故基本信息已收到 ✅",
-        "",
-        "已记录：",
         f"时间：{_claim_fact_display(case, 'accident_datetime')}",
         f"地点：{_claim_fact_display(case, 'accident_location')}",
-        f"描述：{_claim_fact_display(case, 'accident_description')}",
+        f"经过：{_claim_fact_display(case, 'accident_description')}",
         "",
         *_CLAIM_C1_PHOTO_GUIDANCE_LINES,
+        "",
+        "如果想分步补充资料，也可以点下面「补充事故资料」。",
     ]
 
 
 def _claim_basics_already_complete_head_lines(case: dict[str, Any]) -> list[str]:
     return [
-        "【理赔资料 · 第 1 步已完成】",
-        "",
-        "事故基本信息已收到 ✅",
+        "【事故信息已记录 ✅】",
         "",
         f"时间：{_claim_fact_display(case, 'accident_datetime')}",
         f"地点：{_claim_fact_display(case, 'accident_location')}",
+        f"经过：{_claim_fact_display(case, 'accident_description')}",
         "",
-        "▶️ 下一步：上传事故照片。",
         *_CLAIM_C1_PHOTO_GUIDANCE_LINES,
+        "",
+        "如果想分步补充资料，也可以点下面「补充事故资料」。",
     ]
 
 
@@ -808,8 +820,9 @@ _MEDIA_ACK_CLAIM = (
 )
 
 _MEDIA_ACK_CLAIM_GUIDED_BOUND = (
-    "照片已收到，我会先帮陈总整理到这个理赔记录里。"
-    "如果还缺某类照片，稍后可以继续发微信，或点按钮分步补充。"
+    "收到照片，已记到这份事故记录里 ✅\n"
+    "陈总会整理确认，不用重复发同一张。\n"
+    "您也可以继续用文字补充说明。"
 )
 
 _MEDIA_ACK_CLAIM_BROKER_CONFIRM = (

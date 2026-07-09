@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from services.fiqa_api.inbox_triage.h5_task_token import FLOW_CLAIM_EVIDENCE_PACK
 from services.fiqa_api.wecom.claim_state import (
+    CLAIM_ACCIDENT_BASICS_FIELDS,
     CLAIM_FORBIDDEN_AUTOMATION_CLAIMS,
     CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
     CLAIM_PHASE_BROKER_REVIEW,
@@ -15,6 +17,7 @@ from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHOTO_FLOW_SLOTS,
     SERVICE_LANE_CLAIM,
     derive_claim_phase,
+    is_accident_basics_complete,
 )
 
 ClaimEvidenceSlotStatus = Literal["missing", "received", "skipped", "needs_retake"]
@@ -472,8 +475,281 @@ def claim_evidence_copy_is_broker_safe(text: str) -> bool:
     for phrase in CLAIM_FORBIDDEN_AUTOMATION_CLAIMS:
         if phrase in content:
             return False
-    forbidden_extra = ("一定会赔",)
+    forbidden_extra = ("一定会赔", "对方全责", "已受理", "已报案")
     return not any(phrase in content for phrase in forbidden_extra)
+
+
+# ---------------------------------------------------------------------------
+# P19H-3e-1 — Claim Case Brief (deterministic, no LLM)
+# ---------------------------------------------------------------------------
+
+InjuryStatus = Literal["yes", "no", "unknown"]
+PoliceStatus = Literal["yes", "no", "unknown"]
+BriefConfidence = Literal["low", "medium", "high"]
+
+_INJURY_NO_KEYWORDS = ("没受伤", "人没事", "没有受伤", "无人受伤", "没事", "no injury")
+_INJURY_YES_KEYWORDS = ("受伤", "救护车", "医院", "疼", "骨折", "流血")
+_POLICE_YES_KEYWORDS = ("报警", "police", "police report", "报案号", "警号")
+_POLICE_NO_KEYWORDS = ("没报警", "未报警", "没有报警")
+_OTHER_PARTY_KEYWORDS = ("对方", "车牌", "保险卡", "driver license", "驾照", "对方车")
+
+
+def _claim_timeline_events(case: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = case.get("claim_timeline")
+    if not isinstance(raw, list):
+        return []
+    events = [e for e in raw if isinstance(e, dict)]
+    return sorted(events, key=lambda e: str(e.get("created_at") or ""))
+
+
+def _scan_timeline_text(case: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for event in _claim_timeline_events(case):
+        if str(event.get("event_type") or "") in ("customer_text", "basics_complete"):
+            text = str(event.get("text") or "").strip()
+            if text:
+                parts.append(text)
+    return " ".join(parts)
+
+
+def _resolve_injury_status(case: dict[str, Any]) -> InjuryStatus:
+    facts = _known_facts(case)
+    stored = str(facts.get("injury_status") or "").strip().lower()
+    if stored in ("yes", "no", "unknown"):
+        return stored  # type: ignore[return-value]
+    corpus = _scan_timeline_text(case)
+    if not corpus:
+        return "unknown"
+    if any(k in corpus for k in _INJURY_NO_KEYWORDS):
+        return "no"
+    if any(k in corpus for k in _INJURY_YES_KEYWORDS):
+        return "yes"
+    return "unknown"
+
+
+def _resolve_police_status(case: dict[str, Any]) -> PoliceStatus:
+    facts = _known_facts(case)
+    stored = str(facts.get("police_involved") or "").strip().lower()
+    if stored in ("yes", "no", "unknown"):
+        return stored  # type: ignore[return-value]
+    corpus = _scan_timeline_text(case)
+    if not corpus:
+        return "unknown"
+    if any(k in corpus for k in _POLICE_NO_KEYWORDS):
+        return "no"
+    if any(k in corpus for k in _POLICE_YES_KEYWORDS):
+        return "yes"
+    return "unknown"
+
+
+def _resolve_other_party_info(case: dict[str, Any]) -> str | None:
+    facts = _known_facts(case)
+    stored = str(facts.get("other_party_info") or "").strip()
+    if stored:
+        return stored
+    corpus = _scan_timeline_text(case)
+    if any(k in corpus for k in _OTHER_PARTY_KEYWORDS):
+        return "mentioned"
+    return None
+
+
+def _count_photos(case: dict[str, Any]) -> tuple[int, dict[str, int]]:
+    sources: dict[str, int] = {"wecom": 0, "h5_task": 0, "broker_upload": 0}
+    count = 0
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        mime = str(att.get("mime_type") or "").lower()
+        msgtype = str(att.get("msgtype") or "").lower()
+        if mime.startswith("image/") or msgtype == "image" or str(att.get("type") or "").endswith("photo"):
+            count += 1
+            src = _normalize_source_channel(str(att.get("source") or ""))
+            if src in sources:
+                sources[src] += 1
+            elif src == "claim_h5":
+                sources["h5_task"] += 1
+    return count, sources
+
+
+def _count_voice(case: dict[str, Any]) -> int:
+    timeline = _claim_timeline_events(case)
+    return sum(1 for e in timeline if str(e.get("event_type") or "") == "customer_voice_stub")
+
+
+def _build_brief_summary(
+    case: dict[str, Any],
+    *,
+    key_facts: dict[str, Any],
+    photo_count: int,
+) -> str:
+    facts = _known_facts(case)
+    dt = _str_or_none(key_facts.get("accident_datetime") or facts.get("accident_datetime"))
+    loc = _str_or_none(key_facts.get("accident_location") or facts.get("accident_location"))
+    desc = _str_or_none(key_facts.get("accident_description") or facts.get("accident_description"))
+    injury = key_facts.get("injury_status", "unknown")
+
+    has_basics = bool(dt and loc and desc)
+    if not has_basics:
+        return f"客户已发起理赔记录。事故时间、地点或经过仍需补充。已收到 {photo_count} 张照片。"
+
+    injury_phrase = {
+        "no": "客户表示人没事",
+        "yes": "客户表示有人受伤",
+        "unknown": "受伤情况尚未确认",
+    }.get(str(injury), "受伤情况尚未确认")
+
+    desc_short = desc[:80] + ("…" if desc and len(desc) > 80 else "") if desc else "事故经过已记录"
+    parts = [f"客户报告{dt or '时间待确认'}在{loc or '地点待确认'}{desc_short}。"]
+    parts.append(f"{injury_phrase}。")
+    parts.append(f"已收到 {photo_count} 张微信照片。")
+    other = key_facts.get("other_party_info")
+    if other:
+        parts.append("对方信息已在叙述中提及。")
+    else:
+        parts.append("对方保险信息尚未确认。")
+    return "".join(parts)
+
+
+def _build_missing_info(key_facts: dict[str, Any], photo_count: int) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+
+    def add(key: str, label: str, severity: str, reason: str) -> None:
+        if len(items) >= 5:
+            return
+        items.append({"key": key, "label": label, "severity": severity, "reason": reason})
+
+    injury = str(key_facts.get("injury_status") or "unknown")
+    if injury == "unknown":
+        add("injury_status", "是否有人受伤", "critical", "unknown")
+
+    if not _str_or_none(key_facts.get("accident_datetime")):
+        add("accident_datetime", "事故时间", "important", "missing")
+    if not _str_or_none(key_facts.get("accident_location")):
+        add("accident_location", "事故地点", "important", "missing")
+    if not _str_or_none(key_facts.get("accident_description")):
+        add("accident_description", "事故经过", "important", "missing")
+    if not key_facts.get("other_party_info"):
+        add("other_party_info", "对方车牌或保险信息", "important", "missing")
+
+    police = str(key_facts.get("police_involved") or "unknown")
+    if police == "unknown":
+        add("police_involved", "是否报警", "optional", "unknown")
+
+    if photo_count == 0:
+        add("photos", "车损或现场照片", "optional", "missing")
+
+    return items
+
+
+def _build_next_best_question(missing_info: list[dict[str, str]]) -> str:
+    priority_order = [
+        ("injury_status", "请问有人受伤吗？"),
+        ("accident_datetime", "请问事故大概是什么时候？"),
+        ("accident_location", "请问事故在哪里发生的？"),
+        ("accident_description", "能简单说一下事故是怎么发生的吗？"),
+        ("other_party_info", "请问对方车牌或保险信息拿到了吗？"),
+        ("police_involved", "请问现场有没有报警或 police report number？"),
+        ("photos", "如果方便，可以发几张车损或现场照片吗？"),
+    ]
+    missing_keys = {item["key"] for item in missing_info}
+    for key, question in priority_order:
+        if key in missing_keys:
+            return question
+    return "如果方便，可以发几张车损或现场照片吗？"
+
+
+def _derive_brief_confidence(
+    *,
+    basics_complete: bool,
+    injury: InjuryStatus,
+    photo_count: int,
+    other_party: str | None,
+    police: PoliceStatus,
+    description: str | None,
+) -> BriefConfidence:
+    if not basics_complete:
+        return "low"
+    if not description or (len(description or "") < 8 and photo_count == 0):
+        return "low"
+    if basics_complete and photo_count > 0 and injury != "unknown":
+        if other_party or police in ("yes", "no"):
+            return "high"
+    if basics_complete or photo_count > 0:
+        return "medium"
+    return "low"
+
+
+def _source_event_ids(case: dict[str, Any]) -> list[str]:
+    relevant_types = {"customer_text", "customer_photo", "basics_complete"}
+    ids: list[str] = []
+    for event in reversed(_claim_timeline_events(case)):
+        if str(event.get("event_type") or "") not in relevant_types:
+            continue
+        eid = str(event.get("event_id") or "").strip()
+        if eid:
+            ids.append(eid)
+        if len(ids) >= 5:
+            break
+    return list(reversed(ids))
+
+
+def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic Claim Case Brief for Workbench hero panel (P19H-3e-1)."""
+    facts = _known_facts(case)
+    injury = _resolve_injury_status(case)
+    police = _resolve_police_status(case)
+    other_party = _resolve_other_party_info(case)
+    photo_count, photo_sources = _count_photos(case)
+    evidence_summary = build_claim_evidence_summary(case)
+    unassigned_count = int((evidence_summary.get("unassigned_wecom_photos") or {}).get("count") or 0)
+
+    key_facts: dict[str, Any] = {
+        "accident_datetime": _str_or_none(facts.get("accident_datetime")),
+        "accident_location": _str_or_none(facts.get("accident_location")),
+        "accident_description": _str_or_none(facts.get("accident_description")),
+        "injury_status": injury,
+        "police_involved": police,
+        "other_party_info": other_party,
+        "own_vehicle_info": _str_or_none(facts.get("own_vehicle_info")),
+    }
+
+    basics_complete = is_accident_basics_complete(case)
+    missing_info = _build_missing_info(key_facts, photo_count)
+    next_question = _build_next_best_question(missing_info)
+    confidence = _derive_brief_confidence(
+        basics_complete=basics_complete,
+        injury=injury,
+        photo_count=photo_count,
+        other_party=other_party,
+        police=police,
+        description=key_facts.get("accident_description"),
+    )
+
+    return {
+        "summary": _build_brief_summary(case, key_facts=key_facts, photo_count=photo_count),
+        "customer": {
+            "name": _str_or_none(case.get("customer_name")),
+            "phone": _str_or_none(case.get("customer_phone")),
+            "wecom_external_userid": _str_or_none(case.get("wecom_external_userid")),
+        },
+        "key_facts": key_facts,
+        "evidence_received": {
+            "photo_count": photo_count,
+            "photo_sources": photo_sources,
+            "voice_count": _count_voice(case),
+            "has_basics": basics_complete,
+            "slots_received": list(evidence_summary.get("received_slots") or []),
+            "slots_missing": list(evidence_summary.get("missing_required_slots") or [])
+            + list(evidence_summary.get("missing_soft_required_slots") or []),
+            "unassigned_wecom_photos": unassigned_count,
+        },
+        "missing_info": missing_info,
+        "next_best_question": next_question,
+        "confidence": confidence,
+        "source_event_ids": _source_event_ids(case),
+        "brief_updated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "brief_version": 1,
+    }
 
 
 def enrich_claim_for_workbench(case: dict[str, Any]) -> dict[str, Any]:
@@ -491,5 +767,7 @@ def enrich_claim_for_workbench(case: dict[str, Any]) -> dict[str, Any]:
     row["display_status"] = display_status
     row["claim_summary"] = build_claim_summary(case)
     row["claim_evidence_summary"] = build_claim_evidence_summary(case)
+    row["claim_timeline"] = _claim_timeline_events(case)
+    row["claim_case_brief"] = build_claim_case_brief(case)
     row["workbench_visible"] = is_claim_workbench_visible(case)
     return row

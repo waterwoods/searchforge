@@ -73,6 +73,60 @@ export type ClaimEvidenceSummary = {
     unassigned_wecom_photos?: ClaimUnassignedWecomPhotos;
 };
 
+/** P19H-3e-1 — Claim story timeline event */
+export type ClaimTimelineEvent = {
+    event_id: string;
+    event_type: string;
+    source_channel?: string;
+    created_at?: string;
+    actor?: string;
+    message_id?: string | null;
+    attachment_id?: string | null;
+    text?: string | null;
+    metadata?: Record<string, unknown>;
+};
+
+export type ClaimMissingInfoItem = {
+    key: string;
+    label: string;
+    severity: 'critical' | 'important' | 'optional' | string;
+    reason: string;
+};
+
+/** P19H-3e-1 — Claim Case Brief for Workbench hero panel */
+export type ClaimCaseBrief = {
+    summary: string;
+    customer?: {
+        name?: string | null;
+        phone?: string | null;
+        wecom_external_userid?: string | null;
+    };
+    key_facts?: {
+        accident_datetime?: string | null;
+        accident_location?: string | null;
+        accident_description?: string | null;
+        injury_status?: 'yes' | 'no' | 'unknown' | string;
+        police_involved?: 'yes' | 'no' | 'unknown' | string;
+        other_party_info?: string | null;
+        own_vehicle_info?: string | null;
+    };
+    evidence_received?: {
+        photo_count?: number;
+        photo_sources?: Record<string, number>;
+        voice_count?: number;
+        has_basics?: boolean;
+        slots_received?: string[];
+        slots_missing?: string[];
+        unassigned_wecom_photos?: number;
+    };
+    missing_info?: ClaimMissingInfoItem[];
+    next_best_question?: string;
+    confidence?: 'low' | 'medium' | 'high' | string;
+    source_event_ids?: string[];
+    brief_updated_at?: string;
+    brief_version?: number;
+};
+
 export interface TriageResult {
     issue_category: string;
     urgency: 'low' | 'medium' | 'high' | 'critical';
@@ -241,6 +295,9 @@ export interface TriageResult {
     };
     /** P19H-3c-3A — Claim evidence checklist summary (GET /api/inbox/cases enrichment) */
     claim_evidence_summary?: ClaimEvidenceSummary;
+    /** P19H-3e-1 — Claim story timeline + case brief */
+    claim_timeline?: ClaimTimelineEvent[];
+    claim_case_brief?: ClaimCaseBrief;
     workbench_visible?: boolean;
     /** P18 Loop 1 — demo seed metadata (extra JSONB) */
     demo_name?: string;

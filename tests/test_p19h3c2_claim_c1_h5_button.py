@@ -153,14 +153,14 @@ def test_01_c1_includes_h5_upload_button():
     result = _send_basics_c1()
     assert result["active_case_outcome"] == "claim_c1_sent"
     reply = result["reply_text"] or ""
-    assert "【理赔资料 · 第 1 步完成 ✅】" in reply
-    assert "推荐点击下面按钮" in reply
+    assert "【事故信息已记录 ✅】" in reply
+    assert "您可以继续在微信里补充" in reply
 
     menu = result.get("menu_payload")
     assert isinstance(menu, dict)
     assert any(
         item.get("type") == "view"
-        and "上传事故照片" in str((item.get("view") or {}).get("content") or "")
+        and "补充事故资料" in str((item.get("view") or {}).get("content") or "")
         for item in menu.get("list") or []
     )
 
@@ -228,7 +228,7 @@ def test_03_add_vehicle_active_to_claim_c1_full_path(monkeypatch):
 
     final = results[-1]
     assert final["active_case_outcome"] == "claim_c1_sent"
-    assert "【理赔资料 · 第 1 步完成 ✅】" in (final.get("reply_text") or "")
+    assert "【事故信息已记录 ✅】" in (final.get("reply_text") or "")
     menu = final.get("menu_payload")
     assert menu
     assert _view_url_from_menu(menu)

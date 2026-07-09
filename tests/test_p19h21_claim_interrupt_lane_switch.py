@@ -109,7 +109,7 @@ def test_a_active_add_vehicle_woyao_claim_lane_switch():
     assert "开始理赔" in reply
     assert "继续加车" in reply
     assert "联系陈总" in reply
-    assert "不代表已经正式报案" in reply
+    assert "这不代表已经向保险公司正式报案" in reply or "不代表已经正式报案" in reply
     _assert_no_deferral(reply)
     _assert_no_filed_language(reply)
 
@@ -127,7 +127,7 @@ def test_b_active_add_vehicle_kaishi_claim_starts_not_deferred():
         "service_lane"
     ) == SERVICE_LANE_CLAIM
     _assert_no_deferral(reply)
-    assert "【理赔资料收集】" in reply or "安全" in reply
+    assert "【理赔资料收集】" in reply or "陈总办公室的值班助手" in reply
 
 
 # --- C. Active Add Vehicle + accident phrase ---
@@ -260,4 +260,4 @@ def test_i_no_active_case_claim_start_still_works():
     assert result["case_created"] is True
     stored = get_case_by_id(result["case_id"])
     assert stored.get("service_lane") == SERVICE_LANE_CLAIM
-    assert "【理赔资料收集】" in (result["reply_text"] or "")
+    assert "陈总办公室的值班助手" in (result["reply_text"] or "") or "【理赔资料收集】" in (result["reply_text"] or "")
