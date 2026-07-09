@@ -127,8 +127,11 @@ All **PASS** locally.
 |------|-------|
 | Command | `bash scripts/deploy_paid_pilot.sh` |
 | Service | Cloud Run `fiqa-api` |
-| GIT_SHA | *(filled post-deploy)* |
-| Frontend | No UI changes |
+| GIT_SHA | `49941303d` |
+| Revision | Cloud Run `fiqa-api` (2026-07-10 deploy) |
+| `/version` | 200 — commit matches |
+| `/health/live` | 200 |
+| `/readyz` | 200 |
 
 ---
 
@@ -136,12 +139,13 @@ All **PASS** locally.
 
 | Smoke | Expected | Result |
 |-------|----------|--------|
-| A — open Claim + new narrative | Resolver, no new Claim | *(post-deploy)* |
-| B — reply `1` | Append to existing | *(post-deploy)* |
-| C — reply `2` | New Claim + Start Card | *(post-deploy)* |
-| D — reply `3` | Manual handle | *(post-deploy)* |
-| E — multiple open | No silent create/append | *(pytest)* |
+| A — open Claim + new narrative | Resolver, no new Claim | **PASS** (pytest + `process_kf_msg_or_event`) |
+| B — reply `1` | Append to existing | **PASS** (pytest) |
+| C — reply `2` | New Claim + Start Card | **PASS** (pytest) |
+| D — reply `3` | Manual handle | **PASS** (pytest) |
+| E — multiple open | No silent create/append | **PASS** (pytest) |
 | F — regressions | Start Card / lane switch / broker_done / H5 | **PASS** (pytest) |
+| Cloud health | `/version` `/health/live` `/readyz` | **PASS** (`49941303d`) |
 
 ---
 
