@@ -37,7 +37,7 @@ assert.equal(isClaimGuidedLane('claim'), true);
 assert.equal(isClaimGuidedLane('claim_lite'), false);
 assert.equal(isClaimGuidedLane('add_car'), false);
 assert.equal(isClaimGuidedCase(claimCase), true);
-assert.equal(claimLaneLabel(), 'Claim');
+assert.equal(claimLaneLabel(), 'Claim · 记录中');
 
 const summary = resolveClaimSummary(claimCase);
 assert.equal(summary.accident_datetime, '今天上午10点');
