@@ -276,6 +276,29 @@ def is_claim_lane_switch_broker(text: str) -> bool:
     return any(m in raw for m in CLAIM_LANE_SWITCH_BROKER_MARKERS)
 
 
+def should_route_add_car_to_claim_lane_switch(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> bool:
+    """True when active Add Car must show lane-switch confirm (not minimal_lane defer).
+
+    Independent of open Claim cases — an existing Claim in broker_review must not
+    block explicit Claim start during active Add Car (production bug 2026-07-10).
+    """
+    ext = str(normalized.get("external_userid") or "").strip()
+    if not find_open_add_car_case_by_external_userid(ext):
+        return False
+    text = str(normalized.get("text") or "").strip()
+    injury_mentioned = message_mentions_injury(text)
+    if injury_mentioned and is_claim_guided_start_message(text):
+        return True
+    return _active_add_car_blocks_claim_start(
+        text=text,
+        intent_result=intent_result,
+        injury_mentioned=injury_mentioned,
+    )
+
+
 def should_route_claim_interrupt_during_add_car(
     normalized: dict[str, Any],
     intent_result: IntentResult,
@@ -286,6 +309,8 @@ def should_route_claim_interrupt_during_add_car(
     ext = str(normalized.get("external_userid") or "").strip()
     if not find_open_add_car_case_by_external_userid(ext):
         return False
+    if should_route_add_car_to_claim_lane_switch(normalized, intent_result):
+        return True
     if should_route_claim_lane_switch_choice(normalized):
         return True
     if intent_result.intent in (

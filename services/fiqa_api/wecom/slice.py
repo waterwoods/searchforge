@@ -551,6 +551,7 @@ def process_kf_msg_or_event(
                 should_route_claim_interrupt_during_add_car,
                 should_route_claim_lane_switch_choice,
                 should_route_claim_question_safe_reply,
+                should_route_add_car_to_claim_lane_switch,
             )
             from services.fiqa_api.wecom.intent import CLAIM_INJURY_CLICK_INTENTS
 
@@ -848,6 +849,67 @@ def process_kf_msg_or_event(
                 )
                 continue
 
+            if should_route_add_car_to_claim_lane_switch(normalized, intent_result):
+                claim_result = ingest_claim_basics_message(normalized, intent_result)
+                reply_text = claim_result.get("reply_text")
+                menu_payload = claim_result.get("menu_payload")
+                h5_masked = claim_result.get("h5_task_link_masked")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": claim_result.get("case_created", False),
+                    "case_id": claim_result.get("case_id"),
+                    "active_case_outcome": claim_result.get("active_case_outcome"),
+                    "claim_phase": claim_result.get("claim_phase"),
+                    "service_lane": claim_result.get("service_lane"),
+                    "needs_broker_manual_handle": claim_result.get("needs_broker_manual_handle"),
+                    "menu_payload": menu_payload,
+                    "h5_task_link_masked": h5_masked,
+                }
+                _log_slice(
+                    "add_car_claim_lane_switch_v1",
+                    {
+                        **{k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
+                        "b0_enabled": b0_enabled,
+                        "guided_workflow_gate": should_route_claim_guided_workflow(
+                            normalized, intent_result
+                        ),
+                    },
+                )
+                if reply_text or menu_payload:
+                    _log_slice(
+                        "reply_generated_v1",
+                        {
+                            "reply_text": reply_text or "<claim_lane_switch_msgmenu>",
+                            "guided_menu": False,
+                            "reply_format": "msgmenu" if menu_payload else "text",
+                            "h5_task_link_masked": h5_masked,
+                        },
+                    )
+                    _dispatch_reply(
+                        cfg,
+                        normalized,
+                        send_enabled=send_enabled,
+                        menu_payload=menu_payload,
+                        text_content=reply_text,
+                        outcome=outcome,
+                    )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
+
             open_minimal_lane_id = (
                 find_open_minimal_lane_case_by_external_userid(str(normalized.get("external_userid") or ""))
                 if b0_enabled
@@ -919,6 +981,24 @@ def process_kf_msg_or_event(
 
                 minimal_result = ingest_wecom_text_to_minimal_lane(normalized, intent_result)
                 if minimal_result.get("outcome") == "secondary_topic_deferred":
+                    _log_slice(
+                        "secondary_topic_defer_blocked_check_v1",
+                        {
+                            "msg_id": msg_id,
+                            "external_userid": normalized.get("external_userid"),
+                            "text_preview": str(normalized.get("text") or "")[:32],
+                            "lane_switch_would_route": should_route_add_car_to_claim_lane_switch(
+                                normalized, intent_result
+                            ),
+                            "interrupt_would_route": should_route_claim_interrupt_during_add_car(
+                                normalized, intent_result
+                            ),
+                            "guided_workflow_gate": should_route_claim_guided_workflow(
+                                normalized, intent_result
+                            ),
+                            "b0_enabled": b0_enabled,
+                        },
+                    )
                     reply_text = build_secondary_topic_deferred_reply()
                     av_ctx = add_vehicle_context_for_user(str(normalized.get("external_userid") or ""))
                     _emit_slice_routing_decision(

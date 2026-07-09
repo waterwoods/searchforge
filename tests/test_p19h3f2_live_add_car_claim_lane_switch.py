@@ -13,20 +13,26 @@ from services.fiqa_api.inbox_triage.case_store import (
     bind_case_channel_identity,
     get_case_by_id,
     save_case,
+    update_add_vehicle_workflow_state,
+    update_claim_workflow_state,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import list_all_cases_for_read
 from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_ADD_CAR
-from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
-from services.fiqa_api.wecom.claim_basics import (
-    ingest_claim_lane_switch_choice,
+from services.fiqa_api.wecom.claim_basics import ingest_claim_lane_switch_choice
+from services.fiqa_api.wecom.claim_state import (
+    CLAIM_PHASE_BROKER_REVIEW,
+    SERVICE_LANE_CLAIM,
 )
 from services.fiqa_api.wecom.config import load_wecom_kf_config
+from services.fiqa_api.wecom.intent import classify_wecom_intent
+from services.fiqa_api.wecom.normalize import normalize_text_message
 from services.fiqa_api.wecom.message_processed import reset_message_processed_memory_for_tests
 from services.fiqa_api.wecom.reply_dedup import reset_reply_dedup_memory_for_tests
 from services.fiqa_api.wecom.slice import process_kf_msg_or_event
 
 _DEFER_EN = "Let's finish your current request first"
 _DEFER_ZH = "先完成当前请求"
+_DEFER_BROKER = "陈总会人工跟进其他事项"
 _START_MARKER = "【事故记录已开始 ✅】"
 _CONFIRM_CARD_MARKERS = ("您现在是想开始一份新的事故/理赔记录吗", "暂停当前加车资料收集")
 
@@ -105,6 +111,32 @@ def _slice_text(
 def _assert_no_deferral(reply: str) -> None:
     assert _DEFER_EN not in reply
     assert _DEFER_ZH not in reply
+    assert _DEFER_BROKER not in reply
+
+
+def _save_add_car_broker_review(*, ext: str = "wm_prod_shape") -> dict:
+    """Match production log shape: add_car in phase_3_broker_review."""
+    saved = save_case("add car", _triage_stub(), service_lane=SERVICE_LANE_ADD_CAR)
+    cid = saved["case_id"]
+    bind_case_channel_identity(cid, wecom_external_userid=ext)
+    update_add_vehicle_workflow_state(
+        cid,
+        guided_workflow_state="ready_for_broker_review",
+        add_vehicle_phase="phase_3_broker_review",
+    )
+    return get_case_by_id(cid) or saved
+
+
+def _save_open_claim_broker_review(*, ext: str) -> dict:
+    saved = save_case("claim", _triage_stub(), service_lane=SERVICE_LANE_CLAIM)
+    cid = saved["case_id"]
+    bind_case_channel_identity(cid, wecom_external_userid=ext)
+    update_claim_workflow_state(
+        cid,
+        claim_phase=CLAIM_PHASE_BROKER_REVIEW,
+        guided_workflow_state="ready_for_broker_review",
+    )
+    return get_case_by_id(cid) or saved
 
 
 def _assert_confirm_card(result: dict) -> str:
@@ -245,3 +277,29 @@ def test_idle_woyao_claim_still_direct_start_b0_on():
     assert result.get("case_created") is True
     assert _START_MARKER in reply or "陈总办公室" in reply
     _assert_no_deferral(reply)
+
+
+def test_live_slice_add_car_broker_review_plus_open_claim_woyao_claim():
+    """Production shape: add_car broker_review + open Claim must still lane-switch."""
+    ext = "wm_prod_repro"
+    _save_add_car_broker_review(ext=ext)
+    _save_open_claim_broker_review(ext=ext)
+    result = _slice_text("我要理赔", ext=ext, msg_id="live12", b0=True)
+    _assert_confirm_card(result)
+
+
+def test_live_slice_add_car_broker_review_woyao_jinxing_claim():
+    ext = "wm_prod_repro2"
+    _save_add_car_broker_review(ext=ext)
+    _save_open_claim_broker_review(ext=ext)
+    result = _slice_text("我要进行理赔", ext=ext, msg_id="live13", b0=True)
+    _assert_confirm_card(result)
+
+
+def test_live_slice_true_other_question_still_defers():
+    ext = "wm_other_q"
+    _save_add_car_broker_review(ext=ext)
+    result = _slice_text("我还想问一下续保", ext=ext, msg_id="live14", b0=True)
+    reply = result.get("reply_text") or ""
+    assert result.get("active_case_outcome") == "secondary_topic_deferred"
+    assert _DEFER_EN in reply or _DEFER_ZH in reply
