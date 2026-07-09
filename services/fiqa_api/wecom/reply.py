@@ -617,24 +617,38 @@ def build_claim_identity_broker_confirm_reply() -> str:
 
 
 def build_claim_lane_switch_reply() -> str:
-    """P19H-2.1 — Claim interrupt prompt while Add Vehicle flow is active."""
+    """P19H-3f-2 — Lane switch confirm card while Add Vehicle flow is active."""
     return "\n".join(
         [
-            "【理赔资料收集】",
+            "您现在是想开始一份新的事故/理赔记录吗？",
             "",
-            "您当前还有一个加车资料流程正在进行。",
+            "如果是，我会先暂停当前加车资料收集，并开始事故记录。",
             "",
-            "如果这是新的事故 / 理赔事项，我们可以先开始理赔资料收集。",
+            _CLAIM_SAFE_DISCLAIMER,
             "",
             "请回复：",
-            "1. 开始理赔",
-            "2. 继续加车",
-            "3. 联系陈总",
-            "",
-            "我们只会先帮您整理资料，陈总会人工确认。",
-            _CLAIM_SAFE_DISCLAIMER,
+            "• 开始事故记录",
+            "• 继续加车",
         ]
     )
+
+
+def build_claim_lane_switch_menu_payload() -> dict[str, Any]:
+    """WeCom msgmenu: confirm or continue Add Vehicle during lane switch."""
+    return {
+        "head_content": build_claim_lane_switch_reply(),
+        "list": [
+            {
+                "type": "click",
+                "click": {"id": "lane_switch_start_claim", "content": "开始事故记录"},
+            },
+            {
+                "type": "click",
+                "click": {"id": "lane_switch_continue_add_car", "content": "继续加车"},
+            },
+        ],
+        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+    }
 
 
 def build_claim_question_safe_reply_during_add_vehicle() -> str:
@@ -650,8 +664,8 @@ def build_claim_question_safe_reply_during_add_vehicle() -> str:
 
 
 def build_add_vehicle_continue_reply() -> str:
-    """P19H-2.1 — Resume Add Vehicle after lane-switch choice."""
-    return "好的，我们继续加车资料流程。您可以回复：进度。"
+    """P19H-3f-2 — Resume Add Vehicle after lane-switch cancel."""
+    return "好的，我们继续完成加车资料。"
 
 
 def build_lane_switch_broker_contact_reply() -> str:

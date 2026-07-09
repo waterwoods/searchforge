@@ -1598,6 +1598,30 @@ def update_claim_workflow_state(
     return normalized_case
 
 
+def update_lane_switch_pending(
+    case_id: str,
+    pending: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """
+    Store or clear pending Add Car → Claim lane-switch state on case JSON (P19H-3f-2).
+
+    No schema migration — stored in lane_switch_pending on the case document.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None:
+        return None
+
+    if pending is None:
+        normalized_case.pop("lane_switch_pending", None)
+    else:
+        normalized_case["lane_switch_pending"] = dict(pending)
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
 class ClaimBrokerDoneError(ValueError):
     """Raised when broker_done is blocked for this case (P19H-3f-2)."""
 

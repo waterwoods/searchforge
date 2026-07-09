@@ -14,6 +14,7 @@ from services.fiqa_api.inbox_triage.case_store import (
     build_claim_timeline_event,
     patch_case_known_facts,
     save_case,
+    update_lane_switch_pending,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import (
     get_case_for_read,
@@ -92,18 +93,14 @@ extract_claim_accident_basics = extract_accident_basics_fields
 
 CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "我要理赔",
+    "我现在要进行理赔",
+    "进行理赔",
     "开始理赔",
     "我要报理赔",
-    "我要开一个事故记录",
+    "我要记录事故",
     "我要记录新事故",
-    "我撞车了",
-    "我出车祸了",
-    "出事故了",
-    "发生事故了",
-    "发生车祸了",
-    "我发生车祸了",
-    "车祸了",
-    "事故理赔",
+    "我要开一个事故记录",
+    "出事故了我要理赔",
     "新事故",
     "file a claim",
     "i had an accident",
@@ -127,8 +124,8 @@ CLAIM_PASSIVE_NARRATIVE_MARKERS: tuple[str, ...] = (
 )
 
 CLAIM_LANE_SWITCH_CONFIRM_MARKERS: tuple[str, ...] = (
-    "开始理赔",
-    "start claim",
+    "开始事故记录",
+    "start accident record",
 )
 
 CLAIM_LANE_SWITCH_CONTINUE_MARKERS: tuple[str, ...] = (
@@ -201,12 +198,16 @@ def is_claim_guided_start_message(text: str) -> bool:
     if any(m in raw or m in lowered for m in CLAIM_QUESTION_MARKERS):
         explicit_only = (
             "我要理赔",
+            "我现在要进行理赔",
+            "进行理赔",
             "开始理赔",
             "我要报理赔",
+            "我要记录事故",
             "新事故",
             "重新理赔",
             "我要记录新事故",
             "我要开一个事故记录",
+            "出事故了我要理赔",
         )
         if not any(m in raw for m in explicit_only):
             return False
@@ -248,7 +249,7 @@ def is_claim_lane_switch_confirm(text: str) -> bool:
     if not raw:
         return False
     lowered = raw.lower()
-    if lowered in ("1", "start claim"):
+    if lowered in ("1", "start accident record"):
         return True
     return any(m in raw for m in CLAIM_LANE_SWITCH_CONFIRM_MARKERS)
 
@@ -272,16 +273,129 @@ def is_claim_lane_switch_broker(text: str) -> bool:
 
 
 def should_route_claim_lane_switch_choice(normalized: dict[str, Any]) -> bool:
-    """Route lane-switch follow-up (continue / broker) while Add Vehicle is active."""
+    """Route lane-switch follow-up (confirm / continue / broker) while Add Vehicle is active."""
     ext = str(normalized.get("external_userid") or "").strip()
     if not find_open_add_car_case_by_external_userid(ext):
         return False
     text = str(normalized.get("text") or "").strip()
-    return is_claim_lane_switch_continue(text) or is_claim_lane_switch_broker(text)
+    return (
+        is_claim_lane_switch_confirm(text)
+        or is_claim_lane_switch_continue(text)
+        or is_claim_lane_switch_broker(text)
+    )
+
+
+def _lane_switch_pending(case: dict[str, Any] | None) -> dict[str, Any]:
+    if not case:
+        return {}
+    raw = case.get("lane_switch_pending") or {}
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _set_lane_switch_pending(case_id: str | None) -> None:
+    if not case_id:
+        return
+    update_lane_switch_pending(
+        case_id,
+        {
+            "pending_lane_switch": "add_car_to_claim",
+            "source_case_id": case_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def _clear_lane_switch_pending(case_id: str | None) -> None:
+    if case_id:
+        update_lane_switch_pending(case_id, None)
+
+
+def _mark_lane_switch_confirmed(case_id: str | None, claim_id: str) -> None:
+    if not case_id or not claim_id:
+        return
+    pending = _lane_switch_pending(get_case_for_read(case_id))
+    pending.update(
+        {
+            "pending_lane_switch": "add_car_to_claim",
+            "source_case_id": case_id,
+            "confirmed_claim_id": claim_id,
+            "confirmed_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    update_lane_switch_pending(case_id, pending)
+
+
+def ingest_claim_lane_switch_confirm(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Create formal Claim after user confirms lane switch from active Add Vehicle."""
+    from services.fiqa_api.inbox_triage.case_store import update_claim_workflow_state
+    from services.fiqa_api.wecom.reply import build_claim_start_injury_menu_payload
+
+    ext = str(normalized.get("external_userid") or "").strip()
+    add_car_id = find_open_add_car_case_by_external_userid(ext)
+    add_car_case = get_case_for_read(add_car_id) if add_car_id else None
+    pending = _lane_switch_pending(add_car_case)
+    existing_claim_id = str(pending.get("confirmed_claim_id") or "").strip() or None
+
+    if existing_claim_id:
+        case = get_case_for_read(existing_claim_id) or {}
+        injury_menu = build_claim_start_injury_menu_payload()
+        return {
+            "outcome": "claim_start_card_sent",
+            "case_id": existing_claim_id,
+            "case_created": False,
+            "reply_text": injury_menu["head_content"],
+            "menu_payload": injury_menu,
+            "active_case_outcome": "claim_start_card_sent",
+            "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+            "service_lane": SERVICE_LANE_CLAIM,
+        }
+
+    created = _create_claim_case(normalized, injury_mentioned=False)
+    case_id = str(created.get("case_id") or "").strip() or None
+    if not case_id:
+        return {
+            "outcome": "claim_case_not_found",
+            "case_id": None,
+            "case_created": False,
+            "reply_text": None,
+            "active_case_outcome": "claim_case_not_found",
+            "service_lane": None,
+        }
+
+    _mark_lane_switch_confirmed(add_car_id, case_id)
+    update_claim_workflow_state(
+        case_id,
+        claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+        guided_workflow_state=GUIDED_STATE_COLLECTING_TEXT,
+    )
+    injury_menu = build_claim_start_injury_menu_payload()
+    av_ctx = add_vehicle_context_for_user(ext)
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=None,
+        priority_rule=PRIORITY_CLAIM_CONFIRMED_START,
+        decision=DECISION_START_CLAIM_FLOW,
+        reason="user_confirmed_lane_switch_start_claim",
+        response_type=RESPONSE_CLAIM_START,
+        created_case_id=case_id,
+        switched_workflow="claim",
+        workflow_id="claim_simplified",
+        **av_ctx,
+    )
+    return {
+        "outcome": "claim_start_card_sent",
+        "case_id": case_id,
+        "case_created": True,
+        "reply_text": injury_menu["head_content"],
+        "menu_payload": injury_menu,
+        "active_case_outcome": "claim_start_card_sent",
+        "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+        "service_lane": SERVICE_LANE_CLAIM,
+    }
 
 
 def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any]:
-    """Handle continue-add-vehicle or broker-contact after lane-switch prompt."""
+    """Handle confirm / continue-add-vehicle / broker-contact after lane-switch prompt."""
     from services.fiqa_api.wecom.reply import (
         build_add_vehicle_continue_reply,
         build_lane_switch_broker_contact_reply,
@@ -290,6 +404,9 @@ def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any
     text = str(normalized.get("text") or "").strip()
     ext = str(normalized.get("external_userid") or "").strip()
     add_car_id = find_open_add_car_case_by_external_userid(ext)
+
+    if is_claim_lane_switch_confirm(text):
+        return ingest_claim_lane_switch_confirm(normalized)
 
     if is_claim_lane_switch_broker(text):
         av_ctx = add_vehicle_context_for_user(ext)
@@ -313,6 +430,7 @@ def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any
 
     reply_text = build_add_vehicle_continue_reply()
     active_outcome = "claim_lane_switch_continue"
+    _clear_lane_switch_pending(add_car_id)
     if add_car_id:
         case = get_case_for_read(add_car_id)
         if case:
@@ -354,16 +472,14 @@ def _active_add_car_blocks_claim_start(
     intent_result: IntentResult,
     injury_mentioned: bool,
 ) -> bool:
-    """True when active Add Vehicle should show lane-switch prompt instead of starting Claim."""
+    """True when active Add Vehicle should show lane-switch confirm card instead of starting Claim."""
     if injury_mentioned:
         return False
     if is_claim_lane_switch_confirm(text):
         return False
     if is_claim_question_not_guided_intake(text):
         return False
-    if is_claim_guided_start_message(text):
-        return True
-    return intent_result.confidence == "high" and intent_result.intent == "claim_intake"
+    return is_claim_guided_start_message(text)
 
 
 # Prompt aliases
@@ -898,8 +1014,11 @@ def ingest_claim_basics_message(
         intent_result=intent_result,
         injury_mentioned=injury_mentioned,
     ):
-        from services.fiqa_api.wecom.reply import build_claim_lane_switch_reply
+        from services.fiqa_api.wecom.reply import build_claim_lane_switch_menu_payload
 
+        add_car_id = find_open_add_car_case_by_external_userid(ext)
+        _set_lane_switch_pending(add_car_id)
+        lane_menu = build_claim_lane_switch_menu_payload()
         av_ctx = add_vehicle_context_for_user(ext)
         _emit_claim_routing_decision(
             normalized=normalized,
@@ -913,9 +1032,10 @@ def ingest_claim_basics_message(
         )
         return {
             "outcome": "claim_lane_switch_prompt",
-            "case_id": None,
+            "case_id": add_car_id,
             "case_created": False,
-            "reply_text": build_claim_lane_switch_reply(),
+            "reply_text": lane_menu["head_content"],
+            "menu_payload": lane_menu,
             "active_case_outcome": "claim_lane_switch_prompt",
             "service_lane": None,
         }

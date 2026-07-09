@@ -93,7 +93,7 @@ def test_01_woyao_claim_start_safety_reply():
     _assert_no_forbidden_copy(reply)
 
 
-def test_02_zhuangche_starts_guided_not_menu(monkeypatch):
+def test_02_zhuangche_holding_ack_not_menu(monkeypatch):
     monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
     monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
     monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
@@ -108,8 +108,9 @@ def test_02_zhuangche_starts_guided_not_menu(monkeypatch):
 
     results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
     assert results[0]["internal_intent"] == "claim_intake"
-    assert results[0]["case_created"] is True
-    assert "陈总办公室的值班助手" in (results[0].get("reply_text") or "")
+    assert results[0]["case_created"] is False
+    assert results[0]["active_case_outcome"] == "claim_holding_ack"
+    assert "如果您要正式开始理赔" in (results[0].get("reply_text") or "")
 
 
 def test_03_accident_question_safe_no_liability_promise():

@@ -119,9 +119,9 @@ def test_zhuangche_not_generic_menu(monkeypatch):
 
     results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
     assert results[0]["internal_intent"] == "claim_intake"
-    assert results[0]["case_created"] is True
-    assert results[0]["service_lane"] == SERVICE_LANE_CLAIM
-    assert "陈总办公室的值班助手" in (results[0].get("reply_text") or "")
+    assert results[0]["case_created"] is False
+    assert results[0]["active_case_outcome"] == "claim_holding_ack"
+    assert "如果您要正式开始理赔" in (results[0].get("reply_text") or "")
 
 
 def test_full_basics_message_sends_c1():

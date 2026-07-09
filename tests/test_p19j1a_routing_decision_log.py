@@ -158,14 +158,29 @@ def test_active_add_vehicle_woyao_claim_logs_lane_switch(caplog):
     assert "claim_start_intent" in log["reason"]
 
 
-# --- 3. Active Add Vehicle + Start Claim ---
+# --- 3. Active Add Vehicle + Start Claim intent → confirm card first ---
 
 
-def test_active_add_vehicle_kaishi_claim_logs_start(caplog):
+def test_active_add_vehicle_kaishi_claim_logs_lane_switch_prompt(caplog):
     _save_active_add_car_case()
     text = "开始理赔"
     with caplog.at_level(logging.INFO, logger="services.fiqa_api.wecom.routing_observability"):
         result = ingest_claim_basics_message(_normalized(text, msg_id="b1"), classify_wecom_intent(text))
+    assert result["case_created"] is False
+    assert result["active_case_outcome"] == "claim_lane_switch_prompt"
+    log = _last_routing_log(caplog)
+    assert log["priority_rule"] == "claim_interrupt_during_active_add_vehicle"
+    assert log["decision"] == "lane_switch_prompt"
+    assert log["response_type"] == "claim_lane_switch"
+
+
+def test_active_add_vehicle_confirm_start_logs_start(caplog):
+    from services.fiqa_api.wecom.claim_basics import ingest_claim_lane_switch_choice
+
+    _save_active_add_car_case()
+    ingest_claim_basics_message(_normalized("我要理赔", msg_id="b0"), classify_wecom_intent("我要理赔"))
+    with caplog.at_level(logging.INFO, logger="services.fiqa_api.wecom.routing_observability"):
+        result = ingest_claim_lane_switch_choice(_normalized("开始事故记录", msg_id="b1"))
     assert result["case_created"] is True
     log = _last_routing_log(caplog)
     assert log["priority_rule"] == "claim_confirmed_start"

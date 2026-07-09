@@ -24,6 +24,7 @@ from services.fiqa_api.wecom.identity import (
     extract_zip_from_text,
 )
 from services.fiqa_api.wecom.intent import (
+    LANE_SWITCH_CLICK_INTENTS,
     START_CARD_CLICK_INTENTS,
     canonical_intent,
     classify_wecom_intent,
@@ -543,6 +544,7 @@ def process_kf_msg_or_event(
                 ingest_claim_holding_ack,
                 ingest_claim_injury_quick_reply,
                 ingest_claim_lane_switch_choice,
+                ingest_claim_lane_switch_confirm,
                 ingest_claim_question_safe_reply,
                 should_route_claim_guided_workflow,
                 should_route_claim_holding_ack,
@@ -550,6 +552,60 @@ def process_kf_msg_or_event(
                 should_route_claim_question_safe_reply,
             )
             from services.fiqa_api.wecom.intent import CLAIM_INJURY_CLICK_INTENTS
+
+            if b0_enabled and intent_result.intent in LANE_SWITCH_CLICK_INTENTS:
+                if intent_result.intent == "lane_switch_start_claim_click":
+                    lane_choice_result = ingest_claim_lane_switch_confirm(normalized)
+                else:
+                    lane_choice_result = ingest_claim_lane_switch_choice(
+                        {**normalized, "text": "继续加车"}
+                    )
+                reply_text = lane_choice_result.get("reply_text")
+                menu_payload = lane_choice_result.get("menu_payload")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": lane_choice_result.get("case_created", False),
+                    "case_id": lane_choice_result.get("case_id"),
+                    "active_case_outcome": lane_choice_result.get("active_case_outcome"),
+                    "service_lane": lane_choice_result.get("service_lane"),
+                    "menu_payload": menu_payload,
+                }
+                _log_slice(
+                    "claim_lane_switch_choice_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
+                )
+                _log_slice(
+                    "reply_generated_v1",
+                    {
+                        "reply_text": reply_text or "<lane_switch_msgmenu>",
+                        "guided_menu": False,
+                        "reply_format": "msgmenu" if menu_payload else "text",
+                    },
+                )
+                _dispatch_reply(
+                    cfg,
+                    normalized,
+                    send_enabled=send_enabled,
+                    menu_payload=menu_payload,
+                    text_content=reply_text,
+                    outcome=outcome,
+                )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
 
             if b0_enabled and intent_result.intent in CLAIM_INJURY_CLICK_INTENTS:
                 injury_value_map = {
@@ -603,6 +659,7 @@ def process_kf_msg_or_event(
             if b0_enabled and should_route_claim_lane_switch_choice(normalized):
                 lane_choice_result = ingest_claim_lane_switch_choice(normalized)
                 reply_text = lane_choice_result.get("reply_text")
+                menu_payload = lane_choice_result.get("menu_payload")
                 outcome = {
                     "msg_id": normalized.get("msg_id"),
                     "external_userid": normalized.get("external_userid"),
@@ -614,24 +671,30 @@ def process_kf_msg_or_event(
                     "reply_text": reply_text,
                     "reply_sent": False,
                     "reply_send_error": None,
-                    "case_created": False,
+                    "case_created": lane_choice_result.get("case_created", False),
                     "case_id": lane_choice_result.get("case_id"),
                     "active_case_outcome": lane_choice_result.get("active_case_outcome"),
-                    "service_lane": None,
+                    "service_lane": lane_choice_result.get("service_lane"),
+                    "claim_phase": lane_choice_result.get("claim_phase"),
+                    "menu_payload": menu_payload,
                 }
                 _log_slice(
                     "claim_lane_switch_choice_v1",
-                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent")},
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
                 )
                 _log_slice(
                     "reply_generated_v1",
-                    {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                    {
+                        "reply_text": reply_text or "<lane_switch_msgmenu>",
+                        "guided_menu": False,
+                        "reply_format": "msgmenu" if menu_payload else "text",
+                    },
                 )
                 _dispatch_reply(
                     cfg,
                     normalized,
                     send_enabled=send_enabled,
-                    menu_payload=None,
+                    menu_payload=menu_payload,
                     text_content=reply_text,
                     outcome=outcome,
                 )

@@ -1,0 +1,54 @@
+{
+  "suffix": "3f2_ls_191720",
+  "timestamp": "2026-07-09T19:17:20.872607+00:00",
+  "api": {
+    "health_live": 200,
+    "readyz": 200,
+    "version": {
+      "commit": "d2e5a10c9",
+      "source": "env",
+      "service": "Unified Intake API",
+      "deployment_profile": "unified_intake_product_only"
+    }
+  },
+  "smoke_a_explicit_intent": {
+    "add_car_id": "case_b7ac15c9566e",
+    "outcome": "claim_lane_switch_prompt",
+    "case_created": false,
+    "has_confirm_copy": true,
+    "no_start_card": true,
+    "no_deferral": true,
+    "pass": true
+  },
+  "smoke_b_confirm": {
+    "add_car_id": "case_a9a9b5228c36",
+    "claim_id": "case_d7fd203bd42a",
+    "add_car_preserved": true,
+    "claim_lane": "claim",
+    "start_card": true,
+    "injury_menu": true,
+    "in_default_queue": true,
+    "pass": true
+  },
+  "smoke_c_cancel": {
+    "add_car_id": "case_54609e30c6b9",
+    "case_created": false,
+    "continue_copy": true,
+    "no_start_card": true,
+    "pass": true
+  },
+  "smoke_d_ambiguous": {
+    "outcome": "claim_holding_ack",
+    "case_created": false,
+    "no_start_card": true,
+    "pass": true
+  },
+  "smoke_e_regression": {
+    "solo_start_card": true,
+    "solo_case_created": true,
+    "photo_lane": "wecom_media_intake",
+    "photo_in_default_queue": false,
+    "pass": true
+  },
+  "all_pass": true
+}

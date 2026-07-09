@@ -23,6 +23,8 @@ WeComIntent = Literal[
     "claim_injury_no_click",
     "claim_injury_yes_click",
     "claim_injury_unknown_click",
+    "lane_switch_start_claim_click",
+    "lane_switch_continue_add_car_click",
 ]
 
 CanonicalIntent = Literal["add_vehicle", "claim", "coverage_risk", "policy_review", "unclear"]
@@ -42,6 +44,8 @@ _CANONICAL_INTENT: dict[WeComIntent, CanonicalIntent] = {
     "claim_injury_no_click": "claim",
     "claim_injury_yes_click": "claim",
     "claim_injury_unknown_click": "claim",
+    "lane_switch_start_claim_click": "claim",
+    "lane_switch_continue_add_car_click": "add_vehicle",
 }
 
 # Track B0.1 — Start Card click ids. Kept separate from `_MENU_CLICK_IDS`
@@ -60,6 +64,10 @@ CLAIM_INJURY_CLICK_INTENTS = frozenset(
     {"claim_injury_no_click", "claim_injury_yes_click", "claim_injury_unknown_click"}
 )
 
+LANE_SWITCH_CLICK_INTENTS = frozenset(
+    {"lane_switch_start_claim_click", "lane_switch_continue_add_car_click"}
+)
+
 _START_CARD_CLICK_IDS: dict[str, WeComIntent] = {
     "start_add_car": "start_add_car_click",
     "start_add_car_decline": "start_add_car_decline_click",
@@ -70,6 +78,11 @@ _CLAIM_INJURY_CLICK_IDS: dict[str, WeComIntent] = {
     "claim_injury_no": "claim_injury_no_click",
     "claim_injury_yes": "claim_injury_yes_click",
     "claim_injury_unknown": "claim_injury_unknown_click",
+}
+
+_LANE_SWITCH_CLICK_IDS: dict[str, WeComIntent] = {
+    "lane_switch_start_claim": "lane_switch_start_claim_click",
+    "lane_switch_continue_add_car": "lane_switch_continue_add_car_click",
 }
 
 
@@ -311,6 +324,11 @@ def classify_wecom_intent(text: str, *, menu_id: str | None = None) -> IntentRes
         if injury_intent:
             return IntentResult(
                 intent=injury_intent, confidence="high", matched_by="claim_injury_click_id"
+            )
+        lane_switch_intent = _LANE_SWITCH_CLICK_IDS.get((menu_id or "").strip().lower())
+        if lane_switch_intent:
+            return IntentResult(
+                intent=lane_switch_intent, confidence="high", matched_by="lane_switch_click_id"
             )
         from_menu = _menu_intent_from_id(menu_id)
         if from_menu and from_menu != "unclear":

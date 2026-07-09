@@ -218,7 +218,7 @@ def test_03_add_vehicle_active_to_claim_c1_full_path(monkeypatch):
             }
         ]
 
-    texts = ["我要理赔", "开始理赔", _BASICS_TEXT]
+    texts = ["我要理赔", "开始事故记录", _BASICS_TEXT]
     msg_counter = 0
     results = []
     for _ in texts:

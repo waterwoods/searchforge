@@ -104,43 +104,45 @@ def test_a_active_add_vehicle_woyao_claim_lane_switch():
     reply = result["reply_text"] or ""
     assert result["active_case_outcome"] == "claim_lane_switch_prompt"
     assert result["case_created"] is False
-    assert "【理赔资料收集】" in reply
-    assert "加车资料流程正在进行" in reply
-    assert "开始理赔" in reply
+    assert "事故/理赔记录" in reply
+    assert "暂停当前加车资料收集" in reply
+    assert "开始事故记录" in reply
     assert "继续加车" in reply
-    assert "联系陈总" in reply
     assert "这不代表已经向保险公司正式报案" in reply or "不代表已经正式报案" in reply
     _assert_no_deferral(reply)
     _assert_no_filed_language(reply)
 
 
-# --- B. Active Add Vehicle + 开始理赔 ---
+# --- B. Active Add Vehicle + 开始理赔 → confirm card (not immediate start) ---
 
 
-def test_b_active_add_vehicle_kaishi_claim_starts_not_deferred():
+def test_b_active_add_vehicle_kaishi_claim_shows_confirm_card():
     _save_active_add_car_case()
     text = "开始理赔"
     result = ingest_claim_basics_message(_normalized(text, msg_id="b1"), classify_wecom_intent(text))
     reply = result["reply_text"] or ""
-    assert result["case_created"] is True
-    assert result.get("service_lane") == SERVICE_LANE_CLAIM or get_case_by_id(result["case_id"]).get(
-        "service_lane"
-    ) == SERVICE_LANE_CLAIM
+    assert result["active_case_outcome"] == "claim_lane_switch_prompt"
+    assert result["case_created"] is False
+    assert "开始事故记录" in reply
     _assert_no_deferral(reply)
-    assert "【理赔资料收集】" in reply or "陈总办公室的值班助手" in reply
+    assert "【事故记录已开始 ✅】" not in reply
 
 
-# --- C. Active Add Vehicle + accident phrase ---
+# --- C. Active Add Vehicle + accident narrative → holding ack (not lane switch) ---
 
 
-def test_c_active_add_vehicle_accident_phrase_lane_switch():
+def test_c_active_add_vehicle_accident_narrative_holding_ack():
+    from services.fiqa_api.wecom.claim_basics import ingest_claim_holding_ack, should_route_claim_holding_ack
+
     _save_active_add_car_case()
     text = "我发生车祸了"
-    result = ingest_claim_basics_message(_normalized(text, msg_id="c1"), classify_wecom_intent(text))
-    reply = result["reply_text"] or ""
-    assert result["active_case_outcome"] == "claim_lane_switch_prompt"
-    _assert_no_deferral(reply)
-    assert "【理赔资料收集】" in reply
+    intent = classify_wecom_intent(text)
+    norm = _normalized(text, msg_id="c1")
+    assert should_route_claim_holding_ack(norm, intent) is True
+    result = ingest_claim_holding_ack(norm)
+    assert result["active_case_outcome"] == "claim_holding_ack"
+    assert result["case_created"] is False
+    _assert_no_deferral(result["reply_text"] or "")
 
 
 # --- D. Active Add Vehicle + injury ---
