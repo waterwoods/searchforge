@@ -141,10 +141,13 @@ def test_02_one_recent_open_claim_append():
     assert decision.action == "append_existing"
     assert decision.case_id == "case_a"
     assert decision.score >= 90
-    assert "single_recent_open_claim" in decision.reasons
+    assert decision.reasons[0] in (
+        "single_recent_open_claim",
+        "active_basics_collection_append",
+    )
 
 
-def test_03_explicit_new_accident_create_new():
+def test_03_explicit_new_accident_with_open_claim_triggers_resolver():
     case = _open_claim_case(updated_at=(_NOW - timedelta(hours=2)).isoformat())
     decision = resolve_claim_identity(
         external_userid="wm_identity",
@@ -152,10 +155,10 @@ def test_03_explicit_new_accident_create_new():
         open_claims=[case],
         now=_NOW,
     )
-    assert decision.tier == "C"
-    assert decision.action == "create_new"
-    assert decision.case_id is None
-    assert "customer_said_new_accident" in decision.reasons
+    assert decision.tier == "B"
+    assert decision.action == "broker_confirm"
+    assert decision.case_id == "case_a"
+    assert "existing_open_claim_plus_explicit_restart" in decision.reasons
 
 
 def test_04_multiple_open_claims_broker_confirm():
@@ -187,7 +190,10 @@ def test_05_old_open_claim_broker_confirm():
     assert decision.action == "broker_confirm"
     assert decision.case_id == "case_a"
     assert 50 <= decision.score < 90
-    assert "old_open_claim_requires_confirmation" in decision.reasons
+    assert decision.reasons[0] in (
+        "old_open_claim_requires_confirmation",
+        "existing_open_claim_plus_explicit_restart",
+    )
 
 
 def test_06_closed_or_broker_done_excluded():
@@ -216,12 +222,11 @@ def test_07_claim_basics_path_no_silent_newest_wins():
         _normalized("我要理赔", ext=ext, msg_id="m_multi"),
         classify_wecom_intent("我要理赔"),
     )
-    assert result["active_case_outcome"] == "claim_identity_broker_confirm"
+    assert result["active_case_outcome"] == "claim_collision_resolver"
     assert result["case_created"] is False
     reply = result["reply_text"] or ""
-    assert "未完成的理赔记录" in reply
-    assert "同一个事故" in reply
-    assert "新的事故" in reply
+    assert "未完成的事故记录" in reply or "多个未完成的事故记录" in reply
+    assert "联系陈总" in reply
 
 
 def test_08_routing_log_includes_identity_fields(caplog):

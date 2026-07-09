@@ -24,6 +24,7 @@ from services.fiqa_api.wecom.identity import (
     extract_zip_from_text,
 )
 from services.fiqa_api.wecom.intent import (
+    COLLISION_CLICK_INTENTS,
     LANE_SWITCH_CLICK_INTENTS,
     START_CARD_CLICK_INTENTS,
     canonical_intent,
@@ -541,11 +542,13 @@ def process_kf_msg_or_event(
             # 6. secondary-topic deferral fallback (minimal_lanes)
             from services.fiqa_api.wecom.claim_basics import (
                 ingest_claim_basics_message,
+                ingest_claim_collision_choice,
                 ingest_claim_holding_ack,
                 ingest_claim_injury_quick_reply,
                 ingest_claim_lane_switch_choice,
                 ingest_claim_lane_switch_confirm,
                 ingest_claim_question_safe_reply,
+                should_route_claim_collision_choice,
                 should_route_claim_guided_workflow,
                 should_route_claim_holding_ack,
                 should_route_claim_interrupt_during_add_car,
@@ -555,9 +558,121 @@ def process_kf_msg_or_event(
             )
             from services.fiqa_api.wecom.intent import CLAIM_INJURY_CLICK_INTENTS
 
-            claim_slice_routing = b0_enabled or should_route_claim_interrupt_during_add_car(
-                normalized, intent_result
+            claim_slice_routing = (
+                b0_enabled
+                or should_route_claim_interrupt_during_add_car(normalized, intent_result)
+                or should_route_claim_collision_choice(normalized)
+                or intent_result.intent in COLLISION_CLICK_INTENTS
             )
+
+            if claim_slice_routing and intent_result.intent in COLLISION_CLICK_INTENTS:
+                collision_text_map = {
+                    "collision_continue_existing_click": "继续上一个事故",
+                    "collision_start_new_claim_click": "开始新的事故记录",
+                    "collision_contact_broker_click": "联系陈总",
+                }
+                collision_result = ingest_claim_collision_choice(
+                    {**normalized, "text": collision_text_map[intent_result.intent]}
+                )
+                reply_text = collision_result.get("reply_text")
+                menu_payload = collision_result.get("menu_payload")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": collision_result.get("case_created", False),
+                    "case_id": collision_result.get("case_id"),
+                    "active_case_outcome": collision_result.get("active_case_outcome"),
+                    "service_lane": collision_result.get("service_lane"),
+                    "claim_phase": collision_result.get("claim_phase"),
+                    "needs_broker_manual_handle": collision_result.get("needs_broker_manual_handle"),
+                    "menu_payload": menu_payload,
+                }
+                _log_slice(
+                    "claim_collision_choice_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
+                )
+                _log_slice(
+                    "reply_generated_v1",
+                    {
+                        "reply_text": reply_text or "<collision_msgmenu>",
+                        "guided_menu": False,
+                        "reply_format": "msgmenu" if menu_payload else "text",
+                    },
+                )
+                _dispatch_reply(
+                    cfg,
+                    normalized,
+                    send_enabled=send_enabled,
+                    menu_payload=menu_payload,
+                    text_content=reply_text,
+                    outcome=outcome,
+                )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
+
+            if claim_slice_routing and should_route_claim_collision_choice(normalized):
+                collision_result = ingest_claim_collision_choice(normalized)
+                reply_text = collision_result.get("reply_text")
+                menu_payload = collision_result.get("menu_payload")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": collision_result.get("case_created", False),
+                    "case_id": collision_result.get("case_id"),
+                    "active_case_outcome": collision_result.get("active_case_outcome"),
+                    "service_lane": collision_result.get("service_lane"),
+                    "claim_phase": collision_result.get("claim_phase"),
+                    "needs_broker_manual_handle": collision_result.get("needs_broker_manual_handle"),
+                    "menu_payload": menu_payload,
+                }
+                _log_slice(
+                    "claim_collision_choice_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
+                )
+                _log_slice(
+                    "reply_generated_v1",
+                    {
+                        "reply_text": reply_text or "<collision_msgmenu>",
+                        "guided_menu": False,
+                        "reply_format": "msgmenu" if menu_payload else "text",
+                    },
+                )
+                _dispatch_reply(
+                    cfg,
+                    normalized,
+                    send_enabled=send_enabled,
+                    menu_payload=menu_payload,
+                    text_content=reply_text,
+                    outcome=outcome,
+                )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
 
             if claim_slice_routing and intent_result.intent in LANE_SWITCH_CLICK_INTENTS:
                 if intent_result.intent == "lane_switch_start_claim_click":

@@ -14,6 +14,7 @@ from services.fiqa_api.inbox_triage.case_store import (
     build_claim_timeline_event,
     patch_case_known_facts,
     save_case,
+    update_claim_collision_pending,
     update_lane_switch_pending,
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import (
@@ -135,6 +136,22 @@ CLAIM_LANE_SWITCH_CONTINUE_MARKERS: tuple[str, ...] = (
 )
 
 CLAIM_LANE_SWITCH_BROKER_MARKERS: tuple[str, ...] = (
+    "联系陈总",
+)
+
+CLAIM_COLLISION_CONTINUE_MARKERS: tuple[str, ...] = (
+    "继续上一个事故",
+    "同一个事故",
+    "继续补资料",
+)
+
+CLAIM_COLLISION_NEW_MARKERS: tuple[str, ...] = (
+    "开始新的事故记录",
+    "新的事故",
+    "新事故",
+)
+
+CLAIM_COLLISION_CONTACT_MARKERS: tuple[str, ...] = (
     "联系陈总",
 )
 
@@ -556,6 +573,420 @@ def ingest_claim_lane_switch_choice(normalized: dict[str, Any]) -> dict[str, Any
         "reply_text": reply_text,
         "active_case_outcome": active_outcome,
         "service_lane": None,
+    }
+
+
+# --- P19H-3f-3 Claim Collision Resolver ---
+
+
+def _claim_collision_pending(case: dict[str, Any] | None) -> dict[str, Any]:
+    if not case:
+        return {}
+    raw = case.get("claim_collision_pending") or {}
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _claim_collision_pending_active(case: dict[str, Any] | None) -> bool:
+    pending = _claim_collision_pending(case)
+    state = str(pending.get("state") or "").strip().lower()
+    if state == "resolved":
+        return False
+    return state == "pending_choice"
+
+
+def find_claim_collision_pending_for_user(external_userid: str) -> tuple[str | None, dict[str, Any]]:
+    """Return (anchor_case_id, pending_dict) when user has active collision resolver."""
+    ext = (external_userid or "").strip()
+    if not ext:
+        return None, {}
+    for case in list_open_claim_candidates_for_basics(ext):
+        pending = _claim_collision_pending(case)
+        if _claim_collision_pending_active(case):
+            return str(case.get("case_id") or "").strip() or None, pending
+    return None, {}
+
+
+def _set_claim_collision_pending(
+    case_id: str | None,
+    *,
+    trigger_text: str,
+    candidate_claim_ids: list[str],
+    reason: str,
+    msg_id: str = "",
+) -> None:
+    if not case_id:
+        return
+    case = get_case_for_read(case_id) or {}
+    if _claim_collision_pending_active(case):
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    update_claim_collision_pending(
+        case_id,
+        {
+            "state": "pending_choice",
+            "candidate_claim_ids": list(candidate_claim_ids),
+            "trigger_text": (trigger_text or "").strip(),
+            "trigger_msg_id": (msg_id or "").strip() or None,
+            "created_at": now,
+            "source": "wecom",
+            "reason": reason,
+        },
+    )
+
+
+def _clear_claim_collision_pending(case_id: str | None) -> None:
+    if case_id:
+        update_claim_collision_pending(case_id, None)
+
+
+def _mark_collision_resolved(case_id: str | None, *, choice: str, resolved_claim_id: str | None = None) -> None:
+    if not case_id:
+        return
+    pending = _claim_collision_pending(get_case_for_read(case_id))
+    pending.update(
+        {
+            "state": "resolved",
+            "choice": choice,
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    if resolved_claim_id:
+        pending["resolved_claim_id"] = resolved_claim_id
+    update_claim_collision_pending(case_id, pending)
+
+
+def is_claim_collision_continue(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw == "1":
+        return True
+    return any(m in raw for m in CLAIM_COLLISION_CONTINUE_MARKERS)
+
+
+def is_claim_collision_new(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw == "2":
+        return True
+    return any(m in raw for m in CLAIM_COLLISION_NEW_MARKERS)
+
+
+def is_claim_collision_contact(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw == "3":
+        return True
+    return any(m in raw for m in CLAIM_COLLISION_CONTACT_MARKERS)
+
+
+def find_collision_resolved_start_new_claim(external_userid: str) -> str | None:
+    ext = (external_userid or "").strip()
+    if not ext:
+        return None
+    for case in list_open_claim_candidates_for_basics(ext):
+        pending = _claim_collision_pending(case)
+        if str(pending.get("choice") or "") == "start_new":
+            resolved_id = str(pending.get("resolved_claim_id") or "").strip()
+            if resolved_id:
+                return resolved_id
+    return None
+
+
+def should_route_claim_collision_choice(normalized: dict[str, Any]) -> bool:
+    ext = str(normalized.get("external_userid") or "").strip()
+    text = str(normalized.get("text") or "").strip()
+    if is_claim_collision_new(text) and find_collision_resolved_start_new_claim(ext):
+        return True
+    anchor_id, pending = find_claim_collision_pending_for_user(ext)
+    if not anchor_id or not pending:
+        return False
+    return (
+        is_claim_collision_continue(text)
+        or is_claim_collision_new(text)
+        or is_claim_collision_contact(text)
+    )
+
+
+def _emit_collision_resolver(
+    *,
+    normalized: dict[str, Any],
+    intent_result: IntentResult | None,
+    identity_decision: ClaimIdentityDecision,
+    open_claims: list[dict[str, Any]],
+    identity_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    from services.fiqa_api.wecom.reply import build_claim_collision_resolver_menu_payload
+
+    multiple_open = len(open_claims) >= 2
+    anchor_id = (
+        str(identity_decision.case_id or "").strip()
+        or str(open_claims[0].get("case_id") or "").strip()
+        or None
+    )
+    candidate_ids = list(identity_decision.candidate_case_ids or [])
+    if not candidate_ids:
+        candidate_ids = [
+            str(c.get("case_id") or "").strip()
+            for c in open_claims
+            if str(c.get("case_id") or "").strip()
+        ]
+
+    _set_claim_collision_pending(
+        anchor_id,
+        trigger_text=str(normalized.get("text") or ""),
+        candidate_claim_ids=candidate_ids,
+        reason="existing_open_claim_plus_new_accident_like_input",
+        msg_id=str(normalized.get("msg_id") or ""),
+    )
+
+    menu = build_claim_collision_resolver_menu_payload(multiple_open=multiple_open)
+    claim_ctx = claim_context_for_case(open_claims[0] if open_claims else None)
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=intent_result,
+        priority_rule=PRIORITY_CLAIM_IDENTITY_BROKER_CONFIRM,
+        decision=DECISION_CLAIM_IDENTITY_BROKER_CONFIRM,
+        reason="claim_collision_resolver_prompt",
+        response_type=RESPONSE_CLAIM_IDENTITY_BROKER_CONFIRM,
+        **identity_kwargs,
+        **claim_ctx,
+    )
+    return {
+        "outcome": "claim_collision_resolver",
+        "case_id": anchor_id,
+        "case_created": False,
+        "reply_text": menu["head_content"],
+        "menu_payload": menu,
+        "active_case_outcome": "claim_collision_resolver",
+        "service_lane": SERVICE_LANE_CLAIM,
+        "needs_broker_manual_handle": multiple_open,
+    }
+
+
+def ingest_claim_collision_continue(
+    normalized: dict[str, Any],
+    *,
+    anchor_id: str,
+    pending: dict[str, Any],
+) -> dict[str, Any]:
+    from services.fiqa_api.wecom.reply import (
+        build_claim_collision_continue_reply,
+        build_claim_collision_multiple_open_reply,
+        build_claim_missing_basics_reply,
+    )
+
+    candidate_ids = pending.get("candidate_claim_ids") or []
+    if len(candidate_ids) != 1:
+        _mark_collision_resolved(anchor_id, choice="continue_blocked_multiple")
+        return {
+            "outcome": "claim_collision_multiple_open",
+            "case_id": anchor_id,
+            "case_created": False,
+            "reply_text": build_claim_collision_multiple_open_reply(),
+            "active_case_outcome": "claim_collision_multiple_open",
+            "service_lane": SERVICE_LANE_CLAIM,
+            "needs_broker_manual_handle": True,
+        }
+
+    target_id = str(candidate_ids[0] or "").strip()
+    trigger_text = str(pending.get("trigger_text") or "").strip()
+    trigger_msg_id = str(pending.get("trigger_msg_id") or "").strip()
+    msg_id = str(normalized.get("msg_id") or "").strip()
+
+    if trigger_text and trigger_msg_id and not find_case_by_wecom_msg_id(trigger_msg_id):
+        triage_stub = _build_claim_triage_stub(
+            get_case_for_read(target_id) or {},
+            extract_accident_basics_fields(trigger_text),
+            injury_mentioned=message_mentions_injury(trigger_text),
+        )
+        append_follow_up_message(target_id, trigger_text, triage_stub)
+        _append_claim_text_timeline(target_id, message_id=trigger_msg_id, text=trigger_text)
+        _record_wecom_evidence(target_id, trigger_msg_id)
+
+    _mark_collision_resolved(anchor_id, choice="continue_existing", resolved_claim_id=target_id)
+    _clear_claim_collision_pending(anchor_id)
+
+    case = get_case_for_read(target_id) or {}
+    reply_text = build_claim_collision_continue_reply()
+    missing = build_claim_missing_basics_reply(case)
+    if missing and "请先确认" not in reply_text:
+        reply_text = f"{reply_text}\n\n{missing}"
+
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=None,
+        priority_rule=PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+        decision=DECISION_COLLECT_CLAIM_BASICS,
+        reason="collision_resolver_continue_existing",
+        response_type=RESPONSE_CLAIM_MISSING_BASICS,
+        created_case_id=target_id,
+    )
+    return {
+        "outcome": "claim_collision_continue",
+        "case_id": target_id,
+        "case_created": False,
+        "reply_text": reply_text,
+        "active_case_outcome": "claim_collision_continue",
+        "service_lane": SERVICE_LANE_CLAIM,
+    }
+
+
+def ingest_claim_collision_new(normalized: dict[str, Any], *, anchor_id: str, pending: dict[str, Any]) -> dict[str, Any]:
+    from services.fiqa_api.wecom.reply import (
+        build_claim_collision_multiple_open_reply,
+        build_claim_start_injury_menu_payload,
+    )
+
+    candidate_ids = pending.get("candidate_claim_ids") or []
+    if len(candidate_ids) != 1:
+        _mark_collision_resolved(anchor_id, choice="new_blocked_multiple")
+        return {
+            "outcome": "claim_collision_multiple_open",
+            "case_id": anchor_id,
+            "case_created": False,
+            "reply_text": build_claim_collision_multiple_open_reply(),
+            "active_case_outcome": "claim_collision_multiple_open",
+            "service_lane": SERVICE_LANE_CLAIM,
+            "needs_broker_manual_handle": True,
+        }
+
+    existing_new_id = str(pending.get("resolved_claim_id") or "").strip()
+    if existing_new_id and str(pending.get("choice") or "") == "start_new":
+        case = get_case_for_read(existing_new_id) or {}
+        injury_menu = build_claim_start_injury_menu_payload()
+        return {
+            "outcome": "claim_start_card_sent",
+            "case_id": existing_new_id,
+            "case_created": False,
+            "reply_text": injury_menu["head_content"],
+            "menu_payload": injury_menu,
+            "active_case_outcome": "claim_start_card_sent",
+            "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+            "service_lane": SERVICE_LANE_CLAIM,
+        }
+
+    trigger_text = str(pending.get("trigger_text") or "").strip()
+    seed_normalized = dict(normalized)
+    if trigger_text:
+        seed_normalized["text"] = trigger_text
+        seed_normalized["msg_id"] = str(pending.get("trigger_msg_id") or normalized.get("msg_id") or "")
+
+    created = _create_claim_case(seed_normalized, injury_mentioned=message_mentions_injury(trigger_text))
+    case_id = str(created.get("case_id") or "").strip() or None
+    if not case_id:
+        return {
+            "outcome": "claim_case_not_found",
+            "case_id": None,
+            "case_created": False,
+            "reply_text": None,
+            "active_case_outcome": "claim_case_not_found",
+            "service_lane": None,
+        }
+
+    from services.fiqa_api.inbox_triage.case_store import update_claim_workflow_state
+
+    update_claim_workflow_state(
+        case_id,
+        claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+        guided_workflow_state=GUIDED_STATE_COLLECTING_TEXT,
+    )
+    _mark_collision_resolved(anchor_id, choice="start_new", resolved_claim_id=case_id)
+
+    injury_menu = build_claim_start_injury_menu_payload()
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=None,
+        priority_rule=PRIORITY_CLAIM_START_NO_ACTIVE_CASE,
+        decision=DECISION_START_CLAIM_FLOW,
+        reason="collision_resolver_start_new_claim",
+        response_type=RESPONSE_CLAIM_START,
+        created_case_id=case_id,
+        workflow_id="claim_simplified",
+    )
+    return {
+        "outcome": "claim_start_card_sent",
+        "case_id": case_id,
+        "case_created": True,
+        "reply_text": injury_menu["head_content"],
+        "menu_payload": injury_menu,
+        "active_case_outcome": "claim_start_card_sent",
+        "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+        "service_lane": SERVICE_LANE_CLAIM,
+    }
+
+
+def ingest_claim_collision_contact(normalized: dict[str, Any], *, anchor_id: str) -> dict[str, Any]:
+    from services.fiqa_api.wecom.reply import build_claim_collision_contact_broker_reply
+
+    _mark_collision_resolved(anchor_id, choice="contact_broker")
+    _clear_claim_collision_pending(anchor_id)
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=None,
+        priority_rule=PRIORITY_CLAIM_IDENTITY_BROKER_CONFIRM,
+        decision=DECISION_CONTACT_BROKER_ACK,
+        reason="collision_resolver_contact_broker",
+        response_type="contact_broker_ack",
+    )
+    return {
+        "outcome": "claim_collision_contact",
+        "case_id": anchor_id,
+        "case_created": False,
+        "reply_text": build_claim_collision_contact_broker_reply(),
+        "active_case_outcome": "claim_collision_contact",
+        "service_lane": SERVICE_LANE_CLAIM,
+        "needs_broker_manual_handle": True,
+    }
+
+
+def ingest_claim_collision_choice(normalized: dict[str, Any]) -> dict[str, Any]:
+    ext = str(normalized.get("external_userid") or "").strip()
+    text = str(normalized.get("text") or "").strip()
+
+    if is_claim_collision_new(text):
+        existing_new_id = find_collision_resolved_start_new_claim(ext)
+        if existing_new_id:
+            from services.fiqa_api.wecom.reply import build_claim_start_injury_menu_payload
+
+            injury_menu = build_claim_start_injury_menu_payload()
+            return {
+                "outcome": "claim_start_card_sent",
+                "case_id": existing_new_id,
+                "case_created": False,
+                "reply_text": injury_menu["head_content"],
+                "menu_payload": injury_menu,
+                "active_case_outcome": "claim_start_card_sent",
+                "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+                "service_lane": SERVICE_LANE_CLAIM,
+            }
+
+    anchor_id, pending = find_claim_collision_pending_for_user(ext)
+    if not anchor_id or not pending:
+        return {
+            "outcome": "claim_collision_no_pending",
+            "case_id": None,
+            "case_created": False,
+            "reply_text": None,
+            "active_case_outcome": "claim_collision_no_pending",
+            "service_lane": None,
+        }
+
+    if is_claim_collision_continue(text):
+        return ingest_claim_collision_continue(normalized, anchor_id=anchor_id, pending=pending)
+    if is_claim_collision_new(text):
+        return ingest_claim_collision_new(normalized, anchor_id=anchor_id, pending=pending)
+    if is_claim_collision_contact(text):
+        return ingest_claim_collision_contact(normalized, anchor_id=anchor_id)
+    return {
+        "outcome": "claim_collision_unrecognized_choice",
+        "case_id": anchor_id,
+        "case_created": False,
+        "reply_text": None,
+        "active_case_outcome": "claim_collision_unrecognized_choice",
+        "service_lane": SERVICE_LANE_CLAIM,
     }
 
 
@@ -1074,6 +1505,23 @@ def ingest_claim_basics_message(
     ext = str(normalized.get("external_userid") or "").strip()
     injury_mentioned = message_mentions_injury(text)
 
+    anchor_id, collision_pending = find_claim_collision_pending_for_user(ext)
+    if anchor_id and collision_pending and not should_route_claim_collision_choice(normalized):
+        return _emit_collision_resolver(
+            normalized=normalized,
+            intent_result=intent_result,
+            identity_decision=ClaimIdentityDecision(
+                tier="B",
+                action="broker_confirm",
+                case_id=anchor_id,
+                score=80,
+                reasons=["collision_pending_repeat_prompt"],
+                candidate_case_ids=list(collision_pending.get("candidate_claim_ids") or []),
+            ),
+            open_claims=list_open_claim_candidates_for_basics(ext),
+            identity_kwargs={},
+        )
+
     existing_by_msg = find_case_by_wecom_msg_id(msg_id)
     if existing_by_msg:
         case = get_case_for_read(existing_by_msg) or {}
@@ -1186,28 +1634,13 @@ def ingest_claim_basics_message(
     identity_kwargs = identity_context_for_decision(identity_decision)
 
     if identity_decision.action == "broker_confirm":
-        from services.fiqa_api.wecom.reply import build_claim_identity_broker_confirm_reply
-
-        claim_ctx = claim_context_for_case(open_claims[0] if len(open_claims) == 1 else None)
-        _emit_claim_routing_decision(
+        return _emit_collision_resolver(
             normalized=normalized,
             intent_result=intent_result,
-            priority_rule=PRIORITY_CLAIM_IDENTITY_BROKER_CONFIRM,
-            decision=DECISION_CLAIM_IDENTITY_BROKER_CONFIRM,
-            reason="claim_identity_ambiguous_requires_broker_confirm",
-            response_type=RESPONSE_CLAIM_IDENTITY_BROKER_CONFIRM,
-            **identity_kwargs,
-            **claim_ctx,
+            identity_decision=identity_decision,
+            open_claims=open_claims,
+            identity_kwargs=identity_kwargs,
         )
-        return {
-            "outcome": "claim_identity_broker_confirm",
-            "case_id": identity_decision.case_id,
-            "case_created": False,
-            "reply_text": build_claim_identity_broker_confirm_reply(),
-            "active_case_outcome": "claim_identity_broker_confirm",
-            "service_lane": SERVICE_LANE_CLAIM,
-            "needs_broker_manual_handle": True,
-        }
 
     if identity_decision.action == "create_new":
         created = _create_claim_case(normalized, injury_mentioned=injury_mentioned)

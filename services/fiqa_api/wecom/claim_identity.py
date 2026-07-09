@@ -23,11 +23,24 @@ EXPLICIT_NEW_ACCIDENT_MARKERS: tuple[str, ...] = (
     "another accident",
 )
 
+EXPLICIT_CONTINUATION_MARKERS: tuple[str, ...] = (
+    "继续刚才那个",
+    "还是同一个事故",
+    "同一个事故",
+    "补充一下",
+    "再发一张照片",
+    "继续上一个事故",
+    "继续补资料",
+    "还是上次那个",
+)
+
 RULE_ID_EXPLICIT_NEW_ACCIDENT = "ID-A1"
 RULE_ID_NO_OPEN_CLAIM = "ID-A2"
 RULE_ID_SINGLE_RECENT_OPEN = "ID-A3"
 RULE_ID_OLD_OPEN_CLAIM = "ID-A4"
 RULE_ID_MULTIPLE_OPEN = "ID-A5"
+RULE_ID_EXPLICIT_CONTINUATION = "ID-A6"
+RULE_ID_COLLISION_RESOLVER = "ID-A7"
 
 
 @dataclass(frozen=True)
@@ -60,6 +73,84 @@ def is_explicit_new_accident(text: str | None) -> bool:
     if not lowered:
         return False
     return any(marker in lowered for marker in EXPLICIT_NEW_ACCIDENT_MARKERS)
+
+
+def is_explicit_continuation(text: str | None) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    return any(m in raw or m in lowered for m in EXPLICIT_CONTINUATION_MARKERS)
+
+
+def _claim_has_accident_story(case: dict[str, Any]) -> bool:
+    from services.fiqa_api.wecom.claim_extractors import has_accident_basics_signals
+
+    facts = case.get("known_facts") or {}
+    if not isinstance(facts, dict):
+        facts = {}
+    if str(facts.get("accident_datetime") or "").strip() or str(facts.get("accident_location") or "").strip():
+        return True
+    timeline = case.get("claim_timeline") or []
+    if not isinstance(timeline, list):
+        return False
+    for entry in timeline:
+        if not isinstance(entry, dict) or entry.get("event_type") != "customer_text":
+            continue
+        text = str(entry.get("text") or "").strip()
+        if has_accident_basics_signals(text):
+            return True
+    return False
+
+
+def is_collision_triggering_input(text: str | None) -> bool:
+    """Accident-like or explicit claim-start content that must not auto-bind to open Claim."""
+    from services.fiqa_api.wecom.claim_extractors import (
+        extract_accident_basics_fields,
+        has_accident_basics_signals,
+    )
+
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if is_explicit_continuation(raw):
+        return False
+    if is_explicit_new_accident(raw):
+        return True
+    lowered = raw.lower()
+    guided_start_markers = (
+        "我要理赔",
+        "我现在要理赔",
+        "我要进行理赔",
+        "开始理赔",
+        "我要报理赔",
+        "我要记录事故",
+        "出事故了我要理赔",
+        "又被撞了",
+        "file a claim",
+        "i had an accident",
+    )
+    if any(m in raw or m in lowered for m in guided_start_markers):
+        return True
+    passive_markers = (
+        "追尾",
+        "被撞",
+        "撞了",
+        "车祸",
+        "事故",
+        "出险",
+        "rear-end",
+        "got hit",
+        "collision",
+    )
+    if any(m in raw or m in lowered for m in passive_markers):
+        return True
+    if has_accident_basics_signals(raw):
+        return True
+    parsed = extract_accident_basics_fields(raw)
+    if parsed.get("accident_datetime") and parsed.get("accident_location"):
+        return True
+    return False
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
@@ -139,16 +230,6 @@ def resolve_claim_identity(
             reasons=["no_external_userid"],
         )
 
-    if is_explicit_new_accident(incoming_text):
-        return ClaimIdentityDecision(
-            tier="C",
-            action="create_new",
-            case_id=None,
-            score=0,
-            rule_ids=[RULE_ID_EXPLICIT_NEW_ACCIDENT],
-            reasons=["customer_said_new_accident"],
-        )
-
     active_cases = [
         case
         for case in open_claims
@@ -168,6 +249,98 @@ def resolve_claim_identity(
             score=0,
             rule_ids=[RULE_ID_NO_OPEN_CLAIM],
             reasons=["no_open_claim"],
+        )
+
+    if len(active_cases) == 1 and is_explicit_continuation(incoming_text):
+        only_case_id = candidate_ids[0] if candidate_ids else None
+        return ClaimIdentityDecision(
+            tier="A",
+            action="append_existing",
+            case_id=only_case_id,
+            score=95,
+            rule_ids=[RULE_ID_EXPLICIT_CONTINUATION],
+            reasons=["customer_explicit_continuation"],
+            candidate_case_ids=[only_case_id] if only_case_id else [],
+        )
+
+    if len(active_cases) == 1:
+        only_case = active_cases[0]
+        only_case_id = candidate_ids[0] if candidate_ids else None
+        from services.fiqa_api.wecom.claim_state import (
+            CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+            CLAIM_PHASE_STARTED,
+            derive_claim_phase,
+            is_accident_basics_complete,
+        )
+
+        phase = derive_claim_phase(only_case)
+        basics_incomplete = not is_accident_basics_complete(only_case)
+        if basics_incomplete and phase in (
+            CLAIM_PHASE_STARTED,
+            CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+        ):
+            guided_restart_markers = (
+                "我要理赔",
+                "我现在要理赔",
+                "我要进行理赔",
+                "开始理赔",
+                "我要报理赔",
+                "我要记录新事故",
+                "新事故",
+                "又被撞了",
+            )
+            raw = (incoming_text or "").strip()
+            if any(m in raw for m in guided_restart_markers) or is_explicit_new_accident(raw):
+                return ClaimIdentityDecision(
+                    tier="B",
+                    action="broker_confirm",
+                    case_id=only_case_id,
+                    score=80,
+                    rule_ids=[RULE_ID_COLLISION_RESOLVER],
+                    reasons=["existing_open_claim_plus_explicit_restart"],
+                    candidate_case_ids=[only_case_id] if only_case_id else [],
+                )
+            return ClaimIdentityDecision(
+                tier="A",
+                action="append_existing",
+                case_id=only_case_id,
+                score=92,
+                rule_ids=[RULE_ID_SINGLE_RECENT_OPEN],
+                reasons=["active_basics_collection_append"],
+                candidate_case_ids=[only_case_id] if only_case_id else [],
+            )
+
+    if is_collision_triggering_input(incoming_text):
+        anchor_id = candidate_ids[0] if len(active_cases) == 1 else None
+        score = 50 if len(active_cases) >= 2 else 80
+        rule_ids = (
+            [RULE_ID_MULTIPLE_OPEN, RULE_ID_COLLISION_RESOLVER]
+            if len(active_cases) >= 2
+            else [RULE_ID_COLLISION_RESOLVER]
+        )
+        reasons = (
+            ["multiple_open_claims", "existing_open_claim_plus_new_accident_like_input"]
+            if len(active_cases) >= 2
+            else ["existing_open_claim_plus_new_accident_like_input"]
+        )
+        return ClaimIdentityDecision(
+            tier="B",
+            action="broker_confirm",
+            case_id=anchor_id,
+            score=score,
+            rule_ids=rule_ids,
+            reasons=reasons,
+            candidate_case_ids=candidate_ids,
+        )
+
+    if is_explicit_new_accident(incoming_text):
+        return ClaimIdentityDecision(
+            tier="C",
+            action="create_new",
+            case_id=None,
+            score=0,
+            rule_ids=[RULE_ID_EXPLICIT_NEW_ACCIDENT],
+            reasons=["customer_said_new_accident"],
         )
 
     if len(active_cases) >= 2:

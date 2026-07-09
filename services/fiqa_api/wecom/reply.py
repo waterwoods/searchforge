@@ -599,19 +599,100 @@ def build_claim_interrupt_safety_manual_reply() -> str:
     )
 
 
-def build_claim_identity_broker_confirm_reply() -> str:
-    """P19H-3c-R3 — Ask customer to confirm same vs new accident."""
-    return "\n".join(
-        [
+def build_claim_identity_broker_confirm_reply(*, multiple_open: bool = False) -> str:
+    """P19H-3f-3 — Claim Collision Resolver card (text fallback)."""
+    if multiple_open:
+        lines = [
             "【理赔资料收集】",
             "",
-            "我看到您这边可能已经有一个未完成的理赔记录。",
-            "为了避免把两次事故资料混在一起，请回复：",
-            "1 同一个事故，继续补资料",
-            "2 新的事故，重新开始",
-            "或直接联系陈总。",
+            "我看到您这边已有多个未完成的事故记录。",
+            "为了避免混在一起，请选择继续哪一个，或开始新的事故记录。",
+            "目前建议您直接联系陈总人工处理。",
+            "",
+            "回复「联系陈总」或「3」。",
             "",
             _CLAIM_SAFE_DISCLAIMER,
+        ]
+    else:
+        lines = [
+            "【理赔资料收集】",
+            "",
+            "我看到您这边已经有一个未完成的事故记录。",
+            "为了避免把两次事故资料混在一起，请选择：",
+            "1️⃣ 继续上一个事故，补充资料",
+            "2️⃣ 开始新的事故记录",
+            "3️⃣ 联系陈总人工处理",
+            "",
+            "回复「1」或「继续上一个事故」",
+            "回复「2」或「开始新的事故记录」",
+            "回复「3」或「联系陈总」",
+            "",
+            _CLAIM_SAFE_DISCLAIMER,
+        ]
+    return "\n".join(lines)
+
+
+def build_claim_collision_resolver_menu_payload(*, multiple_open: bool = False) -> dict[str, Any]:
+    """WeCom msgmenu: continue existing / start new / contact broker."""
+    head = build_claim_identity_broker_confirm_reply(multiple_open=multiple_open)
+    if multiple_open:
+        return {
+            "head_content": head,
+            "list": [
+                {
+                    "type": "click",
+                    "click": {"id": "collision_contact_broker", "content": "联系陈总"},
+                },
+            ],
+            "tail_content": _CLAIM_SAFE_DISCLAIMER,
+        }
+    return {
+        "head_content": head,
+        "list": [
+            {
+                "type": "click",
+                "click": {"id": "collision_continue_existing", "content": "继续上一个事故"},
+            },
+            {
+                "type": "click",
+                "click": {"id": "collision_start_new_claim", "content": "开始新的事故记录"},
+            },
+            {
+                "type": "click",
+                "click": {"id": "collision_contact_broker", "content": "联系陈总"},
+            },
+        ],
+        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+    }
+
+
+def build_claim_collision_continue_reply() -> str:
+    return "\n".join(
+        [
+            "好的，我会把这些内容继续记到上一份事故记录里。",
+            "请继续补充照片、对方保险信息，或其他细节。",
+        ]
+    )
+
+
+def build_claim_collision_new_claim_reply() -> str:
+    return ""
+
+
+def build_claim_collision_contact_broker_reply() -> str:
+    return "\n".join(
+        [
+            "好的，我会标记为需要陈总人工确认。",
+            "为了避免资料混在一起，我暂时不会把这条信息并入任何事故记录。",
+        ]
+    )
+
+
+def build_claim_collision_multiple_open_reply() -> str:
+    return "\n".join(
+        [
+            "您这边有多个未完成的事故记录，我无法自动判断应该归入哪一份。",
+            "请联系陈总人工确认，避免资料混在一起。",
         ]
     )
 

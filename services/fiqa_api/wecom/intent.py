@@ -25,6 +25,9 @@ WeComIntent = Literal[
     "claim_injury_unknown_click",
     "lane_switch_start_claim_click",
     "lane_switch_continue_add_car_click",
+    "collision_continue_existing_click",
+    "collision_start_new_claim_click",
+    "collision_contact_broker_click",
 ]
 
 CanonicalIntent = Literal["add_vehicle", "claim", "coverage_risk", "policy_review", "unclear"]
@@ -46,6 +49,9 @@ _CANONICAL_INTENT: dict[WeComIntent, CanonicalIntent] = {
     "claim_injury_unknown_click": "claim",
     "lane_switch_start_claim_click": "claim",
     "lane_switch_continue_add_car_click": "add_vehicle",
+    "collision_continue_existing_click": "claim",
+    "collision_start_new_claim_click": "claim",
+    "collision_contact_broker_click": "claim",
 }
 
 # Track B0.1 — Start Card click ids. Kept separate from `_MENU_CLICK_IDS`
@@ -68,6 +74,14 @@ LANE_SWITCH_CLICK_INTENTS = frozenset(
     {"lane_switch_start_claim_click", "lane_switch_continue_add_car_click"}
 )
 
+COLLISION_CLICK_INTENTS = frozenset(
+    {
+        "collision_continue_existing_click",
+        "collision_start_new_claim_click",
+        "collision_contact_broker_click",
+    }
+)
+
 _START_CARD_CLICK_IDS: dict[str, WeComIntent] = {
     "start_add_car": "start_add_car_click",
     "start_add_car_decline": "start_add_car_decline_click",
@@ -83,6 +97,12 @@ _CLAIM_INJURY_CLICK_IDS: dict[str, WeComIntent] = {
 _LANE_SWITCH_CLICK_IDS: dict[str, WeComIntent] = {
     "lane_switch_start_claim": "lane_switch_start_claim_click",
     "lane_switch_continue_add_car": "lane_switch_continue_add_car_click",
+}
+
+_COLLISION_CLICK_IDS: dict[str, WeComIntent] = {
+    "collision_continue_existing": "collision_continue_existing_click",
+    "collision_start_new_claim": "collision_start_new_claim_click",
+    "collision_contact_broker": "collision_contact_broker_click",
 }
 
 
@@ -329,6 +349,11 @@ def classify_wecom_intent(text: str, *, menu_id: str | None = None) -> IntentRes
         if lane_switch_intent:
             return IntentResult(
                 intent=lane_switch_intent, confidence="high", matched_by="lane_switch_click_id"
+            )
+        collision_intent = _COLLISION_CLICK_IDS.get((menu_id or "").strip().lower())
+        if collision_intent:
+            return IntentResult(
+                intent=collision_intent, confidence="high", matched_by="collision_click_id"
             )
         from_menu = _menu_intent_from_id(menu_id)
         if from_menu and from_menu != "unclear":
