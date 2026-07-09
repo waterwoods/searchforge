@@ -156,8 +156,8 @@ def test_01_random_photo_no_claim(cfg):
     assert result["active_case_outcome"] == "media_unassigned"
     assert _claim_cases() == []
     reply = result["reply_text"] or ""
-    assert "尚未开始事故记录" in reply
     assert "我要理赔" in reply
+    assert "没有开始事故记录前" in reply
     assert "事故记录已开始" not in reply
     case = get_case_by_id(result["case_id"]) or {}
     assert case.get("service_lane") == SERVICE_LANE_WECOM_MEDIA_INTAKE
@@ -174,8 +174,8 @@ def test_02_random_narrative_no_formal_claim():
     assert result["case_created"] is False
     assert _claim_cases() == []
     reply = result["reply_text"] or ""
-    assert "尚未开始事故记录" in reply
     assert "我要理赔" in reply
+    assert "没有开始事故记录前" in reply
     assert "事故记录已开始" not in reply
     _assert_no_forbidden_copy(reply)
 
@@ -384,7 +384,7 @@ def test_12_workbench_labels():
     assert "记录中" in build_claim_display_status(claim_case)
     media_case = {"service_lane": SERVICE_LANE_WECOM_MEDIA_INTAKE}
     media_status = build_wecom_media_intake_display_status(media_case)
-    assert "待确认材料" in media_status
+    assert "技术收件记录" in media_status
     assert "不是正式 case" in media_status
 
 

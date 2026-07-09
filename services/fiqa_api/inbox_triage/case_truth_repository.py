@@ -151,6 +151,28 @@ def count_cases_for_read() -> int:
     return 0
 
 
+def count_broker_workbench_cases_for_read() -> int:
+    """P19H-3f-1c — broker queue total excluding raw inbound (wecom_media_intake)."""
+    from services.fiqa_api.inbox_triage.workbench_enrichment import filter_broker_workbench_cases
+
+    all_cases = list_all_cases_for_read()
+    return len(filter_broker_workbench_cases(all_cases))
+
+
+def list_broker_workbench_cases_for_read(
+    limit: int = 8,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Recent broker-workbench cases (newest first), excluding raw inbound lanes."""
+    from services.fiqa_api.inbox_triage.workbench_enrichment import filter_broker_workbench_cases
+
+    safe_limit = max(1, min(int(limit or 8), 50))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+    filtered = filter_broker_workbench_cases(list_all_cases_for_read())
+    total = len(filtered)
+    return filtered[safe_offset : safe_offset + safe_limit], total
+
+
 def list_recent_cases_for_read(limit: int = 8, offset: int = 0) -> list[dict[str, Any]]:
     """Recent cases for GET /api/inbox/cases (newest first)."""
     safe_limit = max(1, min(int(limit or 8), 50))
@@ -231,6 +253,7 @@ def list_cases_for_office_enforcement_read(
     *,
     limit: int,
     offset: int,
+    exclude_raw_inbound: bool = True,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Office-scoped slice for ``GET /api/inbox/cases`` when
@@ -253,6 +276,8 @@ def list_cases_for_office_enforcement_read(
 
     strict = office_list_strict_exclude_legacy_no_org()
 
+    from services.fiqa_api.inbox_triage.workbench_enrichment import filter_broker_workbench_cases
+
     if is_production_mode() and not service_record_database_url():
         logger.warning(
             "JSON path should not be used in production (missing database URL) %s",
@@ -268,6 +293,8 @@ def list_cases_for_office_enforcement_read(
             norm = _normalize_case(dict(c))
             if case_visible_in_office_list(norm, ro):
                 scoped.append(norm)
+        if exclude_raw_inbound:
+            scoped = filter_broker_workbench_cases(scoped)
         total = len(scoped)
         return scoped[safe_offset : safe_offset + safe_limit], total
 
@@ -289,6 +316,8 @@ def list_cases_for_office_enforcement_read(
             norm = _normalize_case(dict(norm))
             _merge_workbench_flags_from_json(rid, norm)
             out.append(norm)
+        if exclude_raw_inbound:
+            out = filter_broker_workbench_cases(out)
         return out, total
     except Exception:
         logger.exception("%s signal=PG_OFFICE_LIST_EXCEPTION path=list_cases_office", _OBS)
@@ -301,6 +330,8 @@ def list_cases_for_office_enforcement_read(
             norm = _normalize_case(dict(c))
             if case_visible_in_office_list(norm, ro):
                 scoped_fb.append(norm)
+        if exclude_raw_inbound:
+            scoped_fb = filter_broker_workbench_cases(scoped_fb)
         total_fb = len(scoped_fb)
         slice_fb = scoped_fb[safe_offset : safe_offset + safe_limit]
         logger.warning(

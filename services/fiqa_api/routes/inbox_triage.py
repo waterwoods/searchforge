@@ -50,6 +50,7 @@ from services.fiqa_api.wecom.active_case_bridge import BrokerConfirmError, confi
 from services.fiqa_api.inbox_triage.case_binding import is_case_open_for_binding, resolve_active_case
 from services.fiqa_api.inbox_triage.case_truth_repository import (
     count_cases_for_read,
+    list_broker_workbench_cases_for_read,
     get_case_for_read,
     get_case_triage_stub_for_read,
     list_cases_for_phone_lookup,
@@ -1678,9 +1679,16 @@ async def get_recent_cases(
     http_request: Request,
     limit: int = Query(default=50, ge=1, le=50),
     offset: int = Query(default=0, ge=0, le=5000),
+    include_raw_inbound: bool = Query(
+        default=False,
+        description="P19H-3f-1c debug: include raw inbound (wecom_media_intake) in broker queue list",
+    ),
 ) -> dict[str, Any]:
     """
     Return recent persisted Unified Intake cases (newest first), with pagination metadata.
+
+    Default excludes pre-Start-Ceremony raw inbound (wecom_media_intake). Pass
+    include_raw_inbound=true for technical/debug views only.
 
     total_count is the full persisted queue size; limit/offset describe this response slice only.
     """
@@ -1695,10 +1703,13 @@ async def get_recent_cases(
             req_org,
             limit=limit,
             offset=offset,
+            exclude_raw_inbound=not include_raw_inbound,
         )
-    else:
+    elif include_raw_inbound:
         total = count_cases_for_read()
         raw = list_recent_cases_for_read(limit=limit, offset=offset)
+    else:
+        raw, total = list_broker_workbench_cases_for_read(limit=limit, offset=offset)
     try:
         from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
 

@@ -31,3 +31,8 @@ export function shouldShowCaseOpenFailureToast(
   if (stub && isWeComMediaIntakeLane(stub.service_lane)) return false;
   return true;
 }
+
+/** P19H-3f-1c — raw inbound lanes are excluded from broker business queue. */
+export function isBrokerBusinessQueueLane(serviceLane?: string | null): boolean {
+  return !isWeComMediaIntakeLane(serviceLane);
+}

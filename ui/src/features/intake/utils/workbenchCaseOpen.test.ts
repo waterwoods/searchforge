@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   FORMAL_CASE_OPEN_ERROR,
   INTAKE_ITEM_OPEN_ERROR,
+  isBrokerBusinessQueueLane,
   resolveCaseOpenErrorMessage,
   shouldFetchFormalCaseDetail,
   shouldShowCaseOpenFailureToast,
@@ -33,5 +34,10 @@ assert.equal(shouldShowCaseOpenFailureToast(null, true), true);
 assert.equal(resolveCaseOpenErrorMessage(wecomStub), INTAKE_ITEM_OPEN_ERROR);
 assert.equal(resolveCaseOpenErrorMessage(claimStub), FORMAL_CASE_OPEN_ERROR);
 assert.equal(resolveCaseOpenErrorMessage(null), FORMAL_CASE_OPEN_ERROR);
+
+// P19H-3f-1c — broker queue excludes raw inbound; formal lanes remain.
+assert.equal(isBrokerBusinessQueueLane('wecom_media_intake'), false);
+assert.equal(isBrokerBusinessQueueLane('claim'), true);
+assert.equal(isBrokerBusinessQueueLane('add_car'), true);
 
 console.log('workbenchCaseOpen.test: PASS');

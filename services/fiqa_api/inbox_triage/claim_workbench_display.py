@@ -111,12 +111,12 @@ def build_claim_display_status(case: dict[str, Any]) -> str:
 
 
 def build_wecom_media_intake_display_status(case: dict[str, Any]) -> str:
-    """P19H-3f-1 — Unassigned WeCom media is not a formal Claim case."""
-    return "待确认材料 · 未分配微信资料 · 不是正式 case"
+    """P19H-3f-1c — Raw inbound is not a formal Claim case or broker task."""
+    return "技术收件记录 · 未分配微信资料 · 不是正式 case"
 
 
 def build_wecom_media_intake_display_title() -> str:
-    return "待确认材料"
+    return "Raw Inbound Log"
 
 
 def is_claim_workbench_visible(case: dict[str, Any]) -> bool:

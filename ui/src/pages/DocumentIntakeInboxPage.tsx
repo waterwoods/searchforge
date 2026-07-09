@@ -127,9 +127,9 @@ function isP16DocumentCase(c: SavedCase): boolean {
   return src.includes('p16 add-car') || src.includes('p16 policy review');
 }
 
-/** P19B — include unassigned WeCom photo holding cases in the same queue. */
+/** P19H-3f-1c — broker queue: formal workflow cases only (no raw inbound). */
 function isWorkbenchQueueCase(c: SavedCase): boolean {
-  if (isWeComMediaIntakeLane(c.service_lane)) return true;
+  if (isWeComMediaIntakeLane(c.service_lane)) return false;
   return isP16DocumentCase(c);
 }
 
@@ -689,13 +689,7 @@ export default function DocumentIntakeInboxPage() {
           attachment_count: countCaseAttachments(c.case_attachments),
           raw: c,
         }));
-      mapped.sort((a, b) => {
-        const aWeCom = isWeComMediaIntakeLane(a.raw.service_lane);
-        const bWeCom = isWeComMediaIntakeLane(b.raw.service_lane);
-        if (aWeCom && !bWeCom) return -1;
-        if (!aWeCom && bWeCom) return 1;
-        return (b.updated_at || '').localeCompare(a.updated_at || '');
-      });
+      mapped.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
       setRows(mapped);
     } catch (e) {
       const msg = queueLoadErrorMessage(e);

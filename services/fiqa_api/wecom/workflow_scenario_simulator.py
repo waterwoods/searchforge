@@ -469,7 +469,7 @@ SCENARIO_NC1_RANDOM_PHOTO: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="random_photo_no_claim",
             inbound_msgtype="image",
-            expected_contains=("尚未开始事故记录", "我要理赔"),
+            expected_contains=("没有开始事故记录前", "我要理赔"),
             expect_case_created=False,
             expect_service_lane=None,
         ),
@@ -482,7 +482,7 @@ SCENARIO_NC2_RANDOM_NARRATIVE: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="costco_rear_end_narrative",
             inbound_text="昨晚 Costco 被追尾了，后保险杠有点坏。",
-            expected_contains=("尚未开始事故记录", "我要理赔"),
+            expected_contains=("没有开始事故记录前", "我要理赔"),
             expect_case_created=False,
         ),
     ],

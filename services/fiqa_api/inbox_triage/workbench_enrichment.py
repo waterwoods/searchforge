@@ -21,6 +21,26 @@ from services.fiqa_api.inbox_triage.intake_service_lanes import (
     SERVICE_LANE_ADD_CAR,
     SERVICE_LANE_WECOM_MEDIA_INTAKE,
 )
+
+# P19H-3f-1c — lanes that are raw inbound only; never broker business queue by default.
+_BROKER_QUEUE_EXCLUDED_LANES: frozenset[str] = frozenset({SERVICE_LANE_WECOM_MEDIA_INTAKE})
+
+
+def is_raw_inbound_case(case: dict[str, Any]) -> bool:
+    """True when case is pre-Start-Ceremony technical buffer, not broker work."""
+    lane = str(case.get("service_lane") or "").strip()
+    return lane in _BROKER_QUEUE_EXCLUDED_LANES
+
+
+def filter_broker_workbench_cases(
+    cases: list[dict[str, Any]],
+    *,
+    include_raw_inbound: bool = False,
+) -> list[dict[str, Any]]:
+    """Default Workbench list excludes raw inbound (wecom_media_intake)."""
+    if include_raw_inbound:
+        return cases
+    return [c for c in cases if not is_raw_inbound_case(c)]
 from services.fiqa_api.inbox_triage.service_record_consistency import compare_snapshot_with_pg
 from services.fiqa_api.inbox_triage.service_record_read import _is_add_car_lane, _to_snapshot
 from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
@@ -51,7 +71,7 @@ def enrich_cases_for_workbench(cases: list[dict[str, Any]]) -> list[dict[str, An
         if lane == SERVICE_LANE_WECOM_MEDIA_INTAKE:
             row["display_title"] = build_wecom_media_intake_display_title()
             row["display_status"] = build_wecom_media_intake_display_status(c)
-            row["workbench_lane_kind"] = "holding"
+            row["workbench_lane_kind"] = "raw_inbound"
         elif lane == SERVICE_LANE_ADD_CAR:
             row["workbench_lane_kind"] = "explicit"
         elif lane == SERVICE_LANE_CLAIM:
