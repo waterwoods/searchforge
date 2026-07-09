@@ -114,12 +114,20 @@ Includes:
 
 ---
 
-## 9. Verdict
+## 10. Deploy (post-fix)
 
-**GO** after redeploy + phone retest
+| Item | Value |
+|------|-------|
+| Commit | `448efd5` |
+| Revision | `fiqa-api-00187-252` |
+| GIT_SHA | `448efd52d` |
+| Traffic | 100% latest |
+| Smoke | `docs/evidence/p19h3f2_smoke_run_3f2_ls_195757.json` — `all_pass: true` |
+
+**Phone retest:** Send `我要理赔` during Add Car — expect `add_car_claim_lane_switch_v1` in logs (not `secondary_topic_deferred`).
 
 ---
 
-## 10. Deploy (post-fix)
+## 11. Verdict
 
-*(Updated after redeploy)*
+**GO** — redeployed; await real phone confirmation
