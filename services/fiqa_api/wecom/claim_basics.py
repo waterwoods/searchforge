@@ -93,6 +93,8 @@ extract_claim_accident_basics = extract_accident_basics_fields
 
 CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "我要理赔",
+    "我现在要理赔",
+    "我要进行理赔",
     "我现在要进行理赔",
     "进行理赔",
     "开始理赔",
@@ -198,6 +200,8 @@ def is_claim_guided_start_message(text: str) -> bool:
     if any(m in raw or m in lowered for m in CLAIM_QUESTION_MARKERS):
         explicit_only = (
             "我要理赔",
+            "我现在要理赔",
+            "我要进行理赔",
             "我现在要进行理赔",
             "进行理赔",
             "开始理赔",
@@ -272,6 +276,34 @@ def is_claim_lane_switch_broker(text: str) -> bool:
     return any(m in raw for m in CLAIM_LANE_SWITCH_BROKER_MARKERS)
 
 
+def should_route_claim_interrupt_during_add_car(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> bool:
+    """Live WeCom slice: claim interrupt must win over minimal_lane secondary-topic defer."""
+    from services.fiqa_api.wecom.intent import CLAIM_INJURY_CLICK_INTENTS
+
+    ext = str(normalized.get("external_userid") or "").strip()
+    if not find_open_add_car_case_by_external_userid(ext):
+        return False
+    if should_route_claim_lane_switch_choice(normalized):
+        return True
+    if intent_result.intent in (
+        "lane_switch_start_claim_click",
+        "lane_switch_continue_add_car_click",
+    ):
+        return True
+    if intent_result.intent in CLAIM_INJURY_CLICK_INTENTS:
+        return True
+    if should_route_claim_question_safe_reply(normalized, intent_result):
+        return True
+    if should_route_claim_holding_ack(normalized, intent_result):
+        return True
+    if should_route_claim_guided_workflow(normalized, intent_result):
+        return True
+    return False
+
+
 def should_route_claim_lane_switch_choice(normalized: dict[str, Any]) -> bool:
     """Route lane-switch follow-up (confirm / continue / broker) while Add Vehicle is active."""
     ext = str(normalized.get("external_userid") or "").strip()
@@ -292,15 +324,51 @@ def _lane_switch_pending(case: dict[str, Any] | None) -> dict[str, Any]:
     return dict(raw) if isinstance(raw, dict) else {}
 
 
-def _set_lane_switch_pending(case_id: str | None) -> None:
+def _lane_switch_pending_confirm(case: dict[str, Any] | None) -> bool:
+    pending = _lane_switch_pending(case)
+    if pending.get("confirmed_claim_id"):
+        return False
+    state = str(pending.get("state") or "").strip().lower()
+    if state == "pending_confirm":
+        return True
+    return str(pending.get("pending_lane_switch") or "").strip() == "add_car_to_claim"
+
+
+def _add_car_received_material_summary(case: dict[str, Any]) -> dict[str, bool]:
+    from services.fiqa_api.inbox_triage.h5_task_upload import h5_photo_flow_is_complete
+
+    state = case.get("h5_photo_flow_state") or {}
+    uploads = state.get("uploads") if isinstance(state.get("uploads"), list) else []
+    photo_received = bool(uploads) or h5_photo_flow_is_complete(case)
+    activity = case.get("activity_log") or []
+    customer_turns = sum(
+        1
+        for entry in activity
+        if isinstance(entry, dict) and "Customer" in str(entry.get("message") or "")
+    )
+    text_received = customer_turns > 0 or bool(str(case.get("vehicle_key") or "").strip())
+    return {"photo_received": photo_received, "text_received": text_received}
+
+
+def _set_lane_switch_pending(case_id: str | None, *, trigger_text: str = "") -> None:
     if not case_id:
         return
+    case = get_case_for_read(case_id) or {}
+    if _lane_switch_pending_confirm(case):
+        return
+    now = datetime.now(timezone.utc).isoformat()
     update_lane_switch_pending(
         case_id,
         {
+            "from_lane": "add_car",
+            "to_lane": "claim",
+            "state": "pending_confirm",
             "pending_lane_switch": "add_car_to_claim",
             "source_case_id": case_id,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "trigger_text": (trigger_text or "").strip(),
+            "created_at": now,
+            "status_before": str(case.get("guided_workflow_state") or case.get("add_vehicle_phase") or "").strip() or None,
+            "received_material_summary": _add_car_received_material_summary(case),
         },
     )
 
@@ -1017,7 +1085,31 @@ def ingest_claim_basics_message(
         from services.fiqa_api.wecom.reply import build_claim_lane_switch_menu_payload
 
         add_car_id = find_open_add_car_case_by_external_userid(ext)
-        _set_lane_switch_pending(add_car_id)
+        add_car_case = get_case_for_read(add_car_id) if add_car_id else None
+        if _lane_switch_pending_confirm(add_car_case):
+            lane_menu = build_claim_lane_switch_menu_payload()
+            av_ctx = add_vehicle_context_for_user(ext)
+            _emit_claim_routing_decision(
+                normalized=normalized,
+                intent_result=intent_result,
+                priority_rule=PRIORITY_CLAIM_INTERRUPT_DURING_ACTIVE_ADD_VEHICLE,
+                decision=DECISION_LANE_SWITCH_PROMPT,
+                reason="claim_start_repeat_while_lane_switch_pending_confirm",
+                response_type=RESPONSE_CLAIM_LANE_SWITCH,
+                safety_flags=("injury_mentioned",) if injury_mentioned else (),
+                **av_ctx,
+            )
+            return {
+                "outcome": "claim_lane_switch_prompt",
+                "case_id": add_car_id,
+                "case_created": False,
+                "reply_text": lane_menu["head_content"],
+                "menu_payload": lane_menu,
+                "active_case_outcome": "claim_lane_switch_prompt",
+                "service_lane": None,
+            }
+
+        _set_lane_switch_pending(add_car_id, trigger_text=text)
         lane_menu = build_claim_lane_switch_menu_payload()
         av_ctx = add_vehicle_context_for_user(ext)
         _emit_claim_routing_decision(

@@ -622,13 +622,12 @@ def build_claim_lane_switch_reply() -> str:
         [
             "您现在是想开始一份新的事故/理赔记录吗？",
             "",
-            "如果是，我会先暂停当前加车资料收集，并开始事故记录。",
+            "我会先暂停当前加车资料收集，并保留已收到的加车资料。",
+            "如果您确认，我会开始事故记录。",
             "",
             _CLAIM_SAFE_DISCLAIMER,
             "",
-            "请回复：",
-            "• 开始事故记录",
-            "• 继续加车",
+            "您也可以回复「开始事故记录」或「继续加车」。",
         ]
     )
 
@@ -665,7 +664,7 @@ def build_claim_question_safe_reply_during_add_vehicle() -> str:
 
 def build_add_vehicle_continue_reply() -> str:
     """P19H-3f-2 — Resume Add Vehicle after lane-switch cancel."""
-    return "好的，我们继续完成加车资料。"
+    return "好的，我们继续完成加车资料。已收到的加车资料会保留。"
 
 
 def build_lane_switch_broker_contact_reply() -> str:
