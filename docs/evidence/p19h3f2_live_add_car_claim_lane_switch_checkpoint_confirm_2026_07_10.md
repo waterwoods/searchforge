@@ -136,7 +136,32 @@ All passed locally before deploy.
 
 ---
 
-## 9. Constraints
+## 9. Deploy / production smoke
+
+| Item | Value |
+|------|-------|
+| Revision | `fiqa-api-00186-m4w` |
+| GIT_SHA | `46c170a3a` |
+| Commit | `46c170a` |
+| `/health/live` | 200 |
+| `/readyz` | 200 |
+| Frontend changed | No |
+
+**Smoke run:** `docs/evidence/p19h3f2_smoke_run_3f2_ls_194351.json` — `all_pass: true`
+
+| Scenario | Result |
+|----------|--------|
+| A — Add Car + explicit Claim | `claim_lane_switch_prompt`, no deferral |
+| B — confirm `开始事故记录` | Claim + Start Card, Add Car preserved |
+| C — cancel `继续加车` | no Claim, continue copy |
+| D — ambiguous narrative | holding ack, no Start Card |
+| E — regression | idle start + raw photo hidden |
+
+**Live slice pytest:** `tests/test_p19h3f2_live_add_car_claim_lane_switch.py` — 11 passed (includes B0-off live callback path).
+
+---
+
+## 10. Constraints
 
 - No schema migration / no new DB tables
 - No random auto Claim / no OCR / ASR / damage AI
@@ -146,7 +171,7 @@ All passed locally before deploy.
 
 ---
 
-## 10. Known limitations
+## 11. Known limitations
 
 - Inverse lane switch (active Claim → Add Car) still untested
 - Deploy smoke script still uses direct `ingest_claim_basics_message` for some scenarios (live slice covered by pytest)
@@ -154,7 +179,7 @@ All passed locally before deploy.
 
 ---
 
-## 11. Next recommended prompt
+## 12. Next recommended prompt
 
 - Pilot Demo Script / Chen readiness
 - Inverse Claim → Add Car lane switch (confirm card symmetry)
