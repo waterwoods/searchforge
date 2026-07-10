@@ -86,12 +86,12 @@ cd ui && npm run build
 
 | Item | Value |
 |------|-------|
-| Commit | _(filled after deploy)_ |
-| Backend revision | _(filled after deploy)_ |
-| GIT_SHA | _(filled after deploy)_ |
-| Frontend deploy | Yes — `intakePure.ts` changed |
-| `/health/live` | _(filled after deploy)_ |
-| `/readyz` | _(filled after deploy)_ |
+| Commit | `25e8b8e` (`25e8b8e4a`) |
+| Backend revision | `fiqa-api-00192-d4s` |
+| GIT_SHA | `25e8b8e4a` |
+| Frontend deploy | **Yes** — `ui-smoky-beta.vercel.app` (`ui-fg4beiqrw`) |
+| `/health/live` | 200 `{"ok":true}` |
+| `/readyz` | 200 `intake_core_readiness: true` |
 
 ### Post-deploy smoke (operator)
 
