@@ -211,6 +211,7 @@ def _status_command_checks(case_id: str, ext: str, *, suffix: str) -> dict[str, 
     results["supplement_ack_recorded"] = "已记录到您当前的事故记录里" in sup_reply
     results["supplement_customer_text_note"] = "客户文字补充" in sup_reply
 
+    from services.fiqa_api.wecom.config import load_wecom_kf_config
     from services.fiqa_api.wecom.media_download import WeComMediaDownloadResult
     from services.fiqa_api.wecom.media_intake import ingest_wecom_media_message
     from services.fiqa_api.wecom.normalize import normalize_media_message
