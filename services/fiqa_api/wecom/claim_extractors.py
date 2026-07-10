@@ -89,6 +89,46 @@ def has_accident_basics_signals(text: str) -> bool:
     return any(parsed.get(k) for k in ("accident_datetime", "accident_location", "accident_description"))
 
 
+_PLATE_PATTERNS: tuple[str, ...] = (
+    r"对方车牌\s*[:：是]?\s*([0-9A-Z]{4,8})",
+    r"车牌\s*[:：是]?\s*([0-9A-Z]{4,8})",
+    r"plate\s*(?:was\s*|is\s*)?([0-9A-Z]{4,8})",
+)
+
+_OTHER_PARTY_INSURANCE_PATTERN = re.compile(
+    r"对方保险\s*[:：是]?\s*([^，,。.?！!；;]{2,60})",
+    re.IGNORECASE,
+)
+
+
+def extract_claim_supplement_fields(text: str) -> dict[str, str | None]:
+    """Extract other-party plate / insurance info from post-submit Claim supplements."""
+    raw = (text or "").strip()
+    if not raw:
+        return {"other_party_plate": None, "other_party_info": None}
+
+    other_party_plate: str | None = None
+    for pat in _PLATE_PATTERNS:
+        match = re.search(pat, raw, re.IGNORECASE)
+        if match:
+            other_party_plate = match.group(1).upper()
+            break
+    if not other_party_plate:
+        match = re.search(r"\b([0-9][A-Z]{2,3}[0-9]{3,4})\b", raw, re.IGNORECASE)
+        if match and any(token in raw for token in ("车牌", "plate", "对方")):
+            other_party_plate = match.group(1).upper()
+
+    other_party_info: str | None = None
+    insurance_match = _OTHER_PARTY_INSURANCE_PATTERN.search(raw)
+    if insurance_match:
+        other_party_info = insurance_match.group(1).strip()
+
+    return {
+        "other_party_plate": other_party_plate,
+        "other_party_info": other_party_info,
+    }
+
+
 def extract_accident_basics_fields(text: str) -> dict[str, str | None]:
     """Extract accident_datetime / accident_location / accident_description from free text."""
     raw = (text or "").strip()

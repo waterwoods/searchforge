@@ -30,11 +30,13 @@ from services.fiqa_api.wecom.active_case_bridge import (
 )
 from services.fiqa_api.wecom.claim_extractors import (
     extract_accident_basics_fields,
+    extract_claim_supplement_fields,
     has_accident_basics_signals,
     message_mentions_injury,
 )
 from services.fiqa_api.wecom.claim_identity import (
     ClaimIdentityDecision,
+    is_explicit_continuation,
     is_explicit_new_accident,
     is_open_claim_candidate_for_basics,
     newest_open_claim_id,
@@ -45,7 +47,18 @@ from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
     CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
     CLAIM_PHASE_BROKER_DONE,
+    CLAIM_PHASE_BROKER_NEEDS_MORE_INFO,
+    CLAIM_PHASE_BROKER_REVIEW,
+    CLAIM_PHASE_INJURY_POLICE_COMPLETE,
+    CLAIM_PHASE_INJURY_POLICE_IN_PROGRESS,
+    CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
+    CLAIM_PHASE_MANUAL_HANDLE,
+    CLAIM_PHASE_OTHER_PARTY_COMPLETE,
+    CLAIM_PHASE_OTHER_PARTY_IN_PROGRESS,
+    CLAIM_PHASE_PHOTOS_COMPLETE,
+    CLAIM_PHASE_PHOTOS_IN_PROGRESS,
     CLAIM_PHASE_STARTED,
+    CLAIM_PHASE_SUMMARY_READY,
     GUIDED_STATE_COLLECTING_TEXT,
     SERVICE_LANE_CLAIM,
     derive_claim_phase,
@@ -126,6 +139,41 @@ CLAIM_PASSIVE_NARRATIVE_MARKERS: tuple[str, ...] = (
     "got hit",
     "collision",
     "hit and run",
+)
+
+CLAIM_SUPPLEMENT_MARKERS: tuple[str, ...] = (
+    "对方车牌",
+    "对方保险",
+    "对方信息",
+    "对方车",
+    "对方司机",
+    "补充一下",
+    "再补充",
+    "补充资料",
+    "补充",
+    "照片",
+    "车损",
+    "追尾",
+    "事故",
+    "other party",
+    "license plate",
+)
+
+_POST_SUBMIT_CLAIM_PHASES: frozenset[str] = frozenset(
+    {
+        CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
+        CLAIM_PHASE_PHOTOS_IN_PROGRESS,
+        CLAIM_PHASE_PHOTOS_COMPLETE,
+        CLAIM_PHASE_OTHER_PARTY_IN_PROGRESS,
+        CLAIM_PHASE_OTHER_PARTY_COMPLETE,
+        CLAIM_PHASE_INJURY_POLICE_IN_PROGRESS,
+        CLAIM_PHASE_INJURY_POLICE_COMPLETE,
+        CLAIM_PHASE_SUMMARY_READY,
+        CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
+        CLAIM_PHASE_BROKER_REVIEW,
+        CLAIM_PHASE_BROKER_NEEDS_MORE_INFO,
+        CLAIM_PHASE_MANUAL_HANDLE,
+    }
 )
 
 CLAIM_LANE_SWITCH_CONFIRM_MARKERS: tuple[str, ...] = (
@@ -266,6 +314,26 @@ def is_claim_passive_narrative(text: str) -> bool:
     if parsed.get("accident_datetime") and parsed.get("accident_location"):
         return True
     return False
+
+
+def is_claim_supplement_text(text: str) -> bool:
+    """WeCom follow-up that should append to the active Claim, not start Add Car."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if is_explicit_add_car_restart(raw):
+        return False
+    if is_explicit_continuation(raw):
+        return True
+    lowered = raw.lower()
+    if any(m in raw or m in lowered for m in CLAIM_SUPPLEMENT_MARKERS):
+        return True
+    supplement = extract_claim_supplement_fields(raw)
+    return bool(supplement.get("other_party_plate") or supplement.get("other_party_info"))
+
+
+def _is_post_submit_claim_phase(phase: str) -> bool:
+    return phase in _POST_SUBMIT_CLAIM_PHASES
 
 
 def is_claim_lane_switch_confirm(text: str) -> bool:
@@ -1195,9 +1263,13 @@ def should_route_claim_guided_workflow(
 
     if is_explicit_add_car_restart(text):
         return False
+    if intent_result.confidence == "high" and intent_result.intent == "add_car":
+        return False
 
     active = find_active_claim_case_for_basics(ext)
     if active:
+        if is_claim_supplement_text(text) or is_claim_passive_narrative(text):
+            return True
         phase = derive_claim_phase(active)
         if phase in (
             CLAIM_PHASE_STARTED,
@@ -1336,6 +1408,105 @@ def _build_claim_triage_stub(
             dict.fromkeys([*(case.get("workbench_tags") or []), "Urgent", "Manual Handle"])
         )
     return stub
+
+
+def _build_claim_supplement_triage_stub(
+    case: dict[str, Any],
+    supplement: dict[str, str | None],
+    *,
+    text: str,
+) -> dict[str, Any]:
+    already = _collected_field_names(case)
+    known_facts = dict(case.get("known_facts") or {}) if isinstance(case.get("known_facts"), dict) else {}
+    newly_collected: list[str] = []
+
+    for field in ("other_party_plate", "other_party_info"):
+        value = supplement.get(field)
+        if not value:
+            continue
+        if field.lower() in already:
+            continue
+        newly_collected.append(field)
+        known_facts[field] = str(value).strip()
+
+    merged_collected = list(case.get("collected_fields") or [])
+    seen = _collected_field_names(case)
+    for field in newly_collected:
+        fl = field.lower()
+        if fl not in seen:
+            merged_collected.append(field)
+            seen.add(fl)
+
+    return {
+        "issue_category": case.get("issue_category") or "claim_intake",
+        "urgency": case.get("urgency") or "high",
+        "client_prep": "",
+        "client_reply_draft": "",
+        "manual_followup_needed": True,
+        "collected_fields": newly_collected,
+        "still_needed_fields": list(case.get("still_needed_fields") or []),
+        "handoff_ready": bool(case.get("handoff_ready")),
+        "known_facts": known_facts,
+        "broker_next_step": "Customer supplemented claim details via WeCom.",
+        "follow_up_preview": (text or "")[:240],
+    }
+
+
+def _ingest_claim_post_submit_supplement(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+    *,
+    case_id: str,
+    case: dict[str, Any],
+    identity_kwargs: dict[str, Any],
+    open_claim_count: int,
+) -> dict[str, Any]:
+    from services.fiqa_api.wecom.reply import build_claim_supplement_received_reply
+
+    msg_id = str(normalized.get("msg_id") or "").strip()
+    text = str(normalized.get("text") or "").strip()
+    supplement = extract_claim_supplement_fields(text)
+    triage_stub = _build_claim_supplement_triage_stub(case, supplement, text=text)
+    append_follow_up_message(case_id, text or "(no text)", triage_stub)
+    _append_claim_text_timeline(case_id, message_id=msg_id, text=text)
+    _record_wecom_evidence(case_id, msg_id)
+
+    facts_patch = {k: v for k, v in supplement.items() if v}
+    if facts_patch:
+        patch_case_known_facts(case_id, facts_patch)
+
+    if open_claim_count >= 2:
+        _maybe_flag_multi_claim_context(
+            case_id,
+            open_claim_count=open_claim_count,
+            trigger_text=text,
+            source="wecom_text",
+        )
+
+    refreshed = get_case_for_read(case_id) or case
+    claim_ctx = claim_context_for_case(refreshed)
+    _emit_claim_routing_decision(
+        normalized=normalized,
+        intent_result=intent_result,
+        priority_rule=PRIORITY_ACTIVE_CLAIM_BASICS_COLLECTION,
+        decision=DECISION_COLLECT_CLAIM_BASICS,
+        reason="active_claim_post_submit_supplement",
+        response_type=RESPONSE_CLAIM_MISSING_BASICS,
+        created_case_id=case_id,
+        **identity_kwargs,
+        **claim_ctx,
+    )
+    return {
+        "outcome": "claim_supplement_appended",
+        "case_id": case_id,
+        "case_created": False,
+        "reply_text": build_claim_supplement_received_reply(),
+        "menu_payload": None,
+        "h5_task_link_masked": None,
+        "active_case_outcome": "claim_supplement_appended",
+        "claim_phase": refreshed.get("claim_phase"),
+        "service_lane": SERVICE_LANE_CLAIM,
+    }
 
 
 def _build_new_claim_case_stub(*, injury_mentioned: bool = False) -> dict[str, Any]:
@@ -1813,6 +1984,22 @@ def ingest_claim_basics_message(
         update_claim_workflow_state(case_id, **manual_patch)
 
     phase = derive_claim_phase(case)
+    if (
+        case_id
+        and not case_created
+        and identity_decision.action == "append_existing"
+        and _is_post_submit_claim_phase(phase)
+        and is_claim_supplement_text(text)
+    ):
+        return _ingest_claim_post_submit_supplement(
+            normalized,
+            intent_result,
+            case_id=case_id,
+            case=case,
+            identity_kwargs=identity_kwargs,
+            open_claim_count=len(open_claims),
+        )
+
     if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
         c1 = _build_claim_c1_h5_response(
             case,

@@ -348,3 +348,183 @@ def test_11_lane_switch_confirm_uses_h5_start_card():
     menu = result.get("menu_payload") or {}
     click_items = [item.get("click", {}).get("id") for item in menu.get("list", [])]
     assert "claim_injury_no" not in click_items
+
+
+def _submitted_claim(*, ext: str) -> dict:
+    saved = _open_claim(ext=ext, with_prior_story=True)
+    update_claim_workflow_state(
+        saved["case_id"],
+        claim_phase="intake_ready_for_broker",
+        guided_workflow_state="ready_for_broker_review",
+    )
+    return get_case_by_id(saved["case_id"]) or saved
+
+
+def _photo_complete_add_car(*, ext: str) -> dict:
+    from services.fiqa_api.inbox_triage.case_store import append_h5_gcs_attachment_metadata
+
+    saved = save_case(
+        "add car",
+        {**_triage_stub(), "still_needed_fields": ["delivery_date", "zip", "phone"], "collected_fields": []},
+        service_lane=SERVICE_LANE_ADD_CAR,
+    )
+    cid = saved["case_id"]
+    bind_case_channel_identity(cid, wecom_external_userid=ext)
+    for idx, slot in enumerate(("vin_photo", "registration_photo", "insurance_card_photo")):
+        append_h5_gcs_attachment_metadata(
+            cid,
+            {
+                "source": "h5_task",
+                "slot_assignment": slot,
+                "h5_upload_id": f"upload_{idx}",
+                "mime_type": "image/jpeg",
+            },
+        )
+    case = get_case_by_id(cid) or saved
+    case["h5_photo_flow_state"] = {"end_card_sent_at": "2026-07-10T12:00:00+00:00"}
+    return case
+
+
+def _add_car_count(ext: str) -> int:
+    return sum(
+        1
+        for c in list_all_cases_for_read()
+        if c.get("wecom_external_userid") == ext and c.get("service_lane") == SERVICE_LANE_ADD_CAR
+    )
+
+
+def test_12_submitted_claim_plate_supplement_appends_not_add_car():
+    ext = "wm_af_12"
+    saved = _submitted_claim(ext=ext)
+    _photo_complete_add_car(ext=ext)
+    text = "补充一下，对方车牌是 ABC123"
+    result = ingest_claim_basics_message(
+        _normalized(text, ext=ext, msg_id="m_af_12"),
+        classify_wecom_intent(text),
+    )
+    assert result["case_created"] is False
+    assert result["case_id"] == saved["case_id"]
+    assert result["active_case_outcome"] == "claim_supplement_appended"
+    assert "提车日期" not in (result.get("reply_text") or "")
+    assert _add_car_count(ext) == 1
+    case = get_case_by_id(saved["case_id"]) or {}
+    facts = case.get("known_facts") or {}
+    assert facts.get("other_party_plate") == "ABC123"
+    timeline = case.get("claim_timeline") or []
+    assert any(
+        e.get("event_type") == "customer_text" and "ABC123" in str(e.get("text") or "")
+        for e in timeline
+        if isinstance(e, dict)
+    )
+
+
+def test_13_submitted_claim_insurance_supplement_appends():
+    ext = "wm_af_13"
+    saved = _submitted_claim(ext=ext)
+    text = "补充一下，对方保险是 State Farm"
+    result = ingest_claim_basics_message(
+        _normalized(text, ext=ext, msg_id="m_af_13"),
+        classify_wecom_intent(text),
+    )
+    assert result["case_id"] == saved["case_id"]
+    assert result["active_case_outcome"] == "claim_supplement_appended"
+    facts = (get_case_by_id(saved["case_id"]) or {}).get("known_facts") or {}
+    assert facts.get("other_party_info") == "State Farm"
+
+
+def _msg(msg_id: str, content: str, *, ext: str) -> dict:
+    return {
+        "msgid": msg_id,
+        "open_kfid": "wktest001",
+        "external_userid": ext,
+        "origin": 3,
+        "msgtype": "text",
+        "text": {"content": content},
+    }
+
+
+def test_14_active_claim_explicit_add_car_still_routes_add_car(monkeypatch):
+    ext = "wm_af_14"
+    _open_claim(ext=ext, with_prior_story=True)
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    monkeypatch.setenv("H5_TASK_TOKEN_SECRET", "test-h5-secret")
+    load_wecom_kf_config.cache_clear()
+    reset_reply_dedup_memory_for_tests()
+    reset_message_processed_memory_for_tests()
+    cfg = load_wecom_kf_config()
+    text = "我要加车"
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [_msg("m_af_14", text, ext=ext)]
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+    assert results[0]["internal_intent"] == "add_car"
+    assert results[0].get("active_case_outcome") != "claim_supplement_appended"
+
+
+def test_15_no_active_claim_add_car_unchanged(monkeypatch):
+    ext = "wm_af_15"
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    monkeypatch.setenv("H5_TASK_TOKEN_SECRET", "test-h5-secret")
+    load_wecom_kf_config.cache_clear()
+    reset_reply_dedup_memory_for_tests()
+    reset_message_processed_memory_for_tests()
+    cfg = load_wecom_kf_config()
+    text = "我要加车"
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [_msg("m_af_15", text, ext=ext)]
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+    assert results[0]["internal_intent"] == "add_car"
+    assert _claim_count(ext) == 0
+
+
+def test_16_workbench_shows_submitted_claim_supplement():
+    from services.fiqa_api.inbox_triage.claim_workbench_display import enrich_claim_for_workbench
+
+    ext = "wm_af_16"
+    saved = _submitted_claim(ext=ext)
+    text = "补充一下，对方车牌是 ABC123"
+    ingest_claim_basics_message(
+        _normalized(text, ext=ext, msg_id="m_af_16"),
+        classify_wecom_intent(text),
+    )
+    case = get_case_by_id(saved["case_id"]) or {}
+    enriched = enrich_claim_for_workbench(case)
+    timeline = enriched.get("claim_timeline") or []
+    assert any("ABC123" in str(e.get("text") or "") for e in timeline if isinstance(e, dict))
+    facts = enriched.get("known_facts") or case.get("known_facts") or {}
+    assert facts.get("other_party_plate") == "ABC123"
+
+
+def test_17_slice_submitted_claim_supplement_beats_add_car_phase2(monkeypatch):
+    ext = "wm_af_17"
+    saved = _submitted_claim(ext=ext)
+    _photo_complete_add_car(ext=ext)
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+    monkeypatch.setenv("WECOM_B0_ACTIVE_WORKSPACE", "1")
+    load_wecom_kf_config.cache_clear()
+    reset_reply_dedup_memory_for_tests()
+    reset_message_processed_memory_for_tests()
+    cfg = load_wecom_kf_config()
+    text = "补充一下，对方车牌是 ABC123"
+
+    def pull(_cfg, *, token, open_kf_id):
+        return [_msg("m_af_17", text, ext=ext)]
+
+    results = process_kf_msg_or_event(cfg, callback_token="t", open_kf_id="wktest001", pull_messages=pull)
+    assert results[0]["case_id"] == saved["case_id"]
+    assert results[0].get("active_case_outcome") == "claim_supplement_appended"
+    assert "提车日期" not in (results[0].get("reply_text") or "")

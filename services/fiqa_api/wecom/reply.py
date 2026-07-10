@@ -696,6 +696,15 @@ def build_claim_collision_continue_reply() -> str:
     )
 
 
+def build_claim_supplement_received_reply() -> str:
+    return "\n".join(
+        [
+            "好的，已记到您当前的事故记录里。",
+            "您可以继续补充照片、对方保险信息，或其他细节。",
+        ]
+    )
+
+
 def build_claim_collision_new_claim_reply() -> str:
     return ""
 

@@ -138,6 +138,14 @@ def should_handle_phase2_incoming_text(
 
     if is_explicit_add_car_restart(text):
         return False
+    ext = str(normalized.get("external_userid") or "").strip()
+    from services.fiqa_api.wecom.claim_basics import (
+        find_active_claim_case_for_basics,
+        is_claim_supplement_text,
+    )
+
+    if find_active_claim_case_for_basics(ext) and is_claim_supplement_text(text):
+        return False
     if intent_result.confidence == "high" and intent_result.intent in {
         "policy_review",
         "claim_intake",
