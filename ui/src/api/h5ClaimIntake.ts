@@ -20,6 +20,9 @@ export type H5ClaimIntakeInfo = {
   injury_alert?: boolean;
   already_submitted?: boolean;
   submit_intent_id?: string;
+  upload_url?: string | null;
+  attachment_count?: number;
+  photo_count?: number;
 };
 
 export async function fetchH5ClaimIntake(taskToken: string): Promise<H5ClaimIntakeInfo> {

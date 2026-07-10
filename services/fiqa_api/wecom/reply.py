@@ -898,6 +898,7 @@ def build_claim_status_card_reply(
     display: dict[str, Any] | None = None,
     *,
     multiple_open_claims: bool = False,
+    h5_intake_url: str | None = None,
 ) -> str:
     """P19H-3f-4 — Deterministic Claim Status Card from case brief / highlights."""
     from services.fiqa_api.inbox_triage.claim_workbench_display import build_claim_case_brief
@@ -932,6 +933,9 @@ def build_claim_status_card_reply(
         "提醒：",
         "这只是事故资料记录，不代表已经向保险公司正式报案。",
     ]
+    intake_url = (h5_intake_url or "").strip()
+    if intake_url:
+        footer.insert(0, f"继续补充资料：点击打开资料填写页面\n{intake_url}")
     return frame_wecom_card("【当前状态】", body, footer)
 
 

@@ -11,7 +11,7 @@ import {
   type H5ClaimIntakeInfo,
 } from '@/api/h5ClaimIntake';
 
-type WizardStep = 'start' | 'injury' | 'time_location' | 'story' | 'vehicle_other_party' | 'review' | 'done';
+type WizardStep = 'start' | 'injury' | 'time_location' | 'story' | 'vehicle_other_party' | 'evidence' | 'review' | 'done';
 
 const styles = {
   page: {
@@ -58,6 +58,18 @@ const styles = {
     cursor: 'pointer',
   } as const,
   btnDisabled: { opacity: 0.55, cursor: 'not-allowed' } as const,
+  btnSecondary: {
+    width: '100%',
+    padding: '14px 16px',
+    fontSize: 16,
+    fontWeight: 600,
+    border: '1px solid #0d3b66',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#0d3b66',
+    cursor: 'pointer',
+    marginTop: 10,
+  } as const,
   input: {
     width: '100%',
     padding: '12px',
@@ -351,7 +363,7 @@ export default function H5ClaimIntakePage() {
               }}
               disabled={ownVehicle.length < 2 || saving}
               onClick={() =>
-                runSave('review', () =>
+                runSave('evidence', () =>
                   patchH5ClaimFields(taskToken, 'vehicle_other_party', {
                     own_vehicle_info: ownVehicle,
                     other_party_plate: otherPartyPlate,
@@ -365,6 +377,36 @@ export default function H5ClaimIntakePage() {
           </div>
         )}
 
+        {step === 'evidence' && info && (
+          <div style={styles.card}>
+            <p>
+              如有照片，请上传车损、现场、对方资料等。没有照片也可以先跳过。
+            </p>
+            {info.upload_url ? (
+              <button
+                type="button"
+                style={{ ...styles.btn, ...(saving ? styles.btnDisabled : {}) }}
+                disabled={saving}
+                onClick={() => {
+                  window.open(info.upload_url as string, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                上传照片
+              </button>
+            ) : (
+              <p style={{ fontSize: 14, color: '#666' }}>照片可通过上传入口补充</p>
+            )}
+            <button
+              type="button"
+              style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
+              disabled={saving}
+              onClick={() => setStep('review')}
+            >
+              暂时跳过，继续复核
+            </button>
+          </div>
+        )}
+
         {step === 'review' && info && (
           <div style={styles.card}>
             <h3 style={{ marginTop: 0 }}>请确认已填写内容</h3>
@@ -374,6 +416,12 @@ export default function H5ClaimIntakePage() {
               <li>地点：{accidentLocation || '—'}</li>
               <li>经过：{accidentDescription || '—'}</li>
               <li>车辆：{ownVehicle || '—'}</li>
+              <li>
+                照片：
+                {(info.photo_count ?? info.attachment_count ?? 0) > 0
+                  ? `已上传 ${info.photo_count ?? info.attachment_count} 张`
+                  : '照片可通过上传入口补充'}
+              </li>
             </ul>
             {info.missing_info.length > 0 && (
               <p style={{ color: '#c0392b', fontSize: 14 }}>
@@ -395,6 +443,9 @@ export default function H5ClaimIntakePage() {
           <div style={styles.card}>
             <h2 style={{ marginTop: 0, color: '#0d3b66' }}>已提交给陈总 ✅</h2>
             <p>陈总会人工确认后会联系您。如有新材料可继续在微信补充。</p>
+            <p style={{ fontSize: 14, color: '#666' }}>
+              如后续还有照片，可以继续通过链接补充。
+            </p>
           </div>
         )}
       </div>

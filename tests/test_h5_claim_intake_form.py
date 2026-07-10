@@ -11,7 +11,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from services.fiqa_api.inbox_triage.case_store import get_case_by_id, save_case
+from services.fiqa_api.inbox_triage.case_store import (
+    bind_case_channel_identity,
+    get_case_by_id,
+    save_case,
+)
+from services.fiqa_api.inbox_triage.claim_workbench_display import enrich_claim_for_workbench
+from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_intake_continuable
 from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_intake_form_link
 from services.fiqa_api.inbox_triage.h5_task_token import (
     FLOW_CLAIM_INTAKE_FORM,
@@ -19,11 +25,15 @@ from services.fiqa_api.inbox_triage.h5_task_token import (
     verify_h5_task_token,
 )
 from services.fiqa_api.routes.h5_task_intake import router as h5_intake_router
+from services.fiqa_api.wecom.claim_basics import ingest_claim_status_request
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
     SERVICE_LANE_CLAIM,
     derive_claim_phase,
 )
+from services.fiqa_api.wecom.intent import classify_wecom_intent
+from services.fiqa_api.wecom.normalize import normalize_text_message
+from services.fiqa_api.wecom.reply import build_claim_status_card_reply
 
 
 @pytest.fixture(autouse=True)
@@ -166,3 +176,154 @@ def test_patch_after_submit_rejected():
         json={"step": "story", "fields": {"accident_description": "尝试再次修改经过描述内容。"}},
     )
     assert blocked.status_code == 409
+
+
+def test_get_intake_returns_upload_url_and_photo_metadata(monkeypatch):
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
+    case_id = _save_claim_case("case_evidence_meta")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+
+    resp = client.get(f"/api/h5/tasks/{token}/intake")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("upload_url", "").startswith("https://example.test/task/upload/h5t1.")
+    assert body.get("attachment_count") == 0
+    assert body.get("photo_count") == 0
+    assert "evidence" in body.get("steps", [])
+
+
+def test_evidence_step_skippable_submit_without_evidence_patch():
+    case_id = _save_claim_case("case_evidence_skip")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "22222222-3333-4333-8444-555555555555"
+
+    for step, fields in [
+        ("injury", {"anyone_injured": "no"}),
+        ("time_location", {"accident_datetime": "今天上午10点", "accident_location": "Irvine Blvd"}),
+        ("story", {"accident_description": "我停在红灯前，后车追尾撞上我的车。"}),
+        ("vehicle_other_party", {"own_vehicle_info": "2020 Toyota Camry"}),
+    ]:
+        assert client.patch(
+            f"/api/h5/tasks/{token}/fields",
+            json={"step": step, "fields": fields},
+        ).status_code == 200
+
+    assert client.get(f"/api/h5/tasks/{token}/intake").json()["current_step"] == "review"
+
+    submit = client.post(
+        f"/api/h5/tasks/{token}/submit",
+        json={"submit_intent_id": intent},
+        headers={"X-Submit-Intent-Id": intent},
+    )
+    assert submit.status_code == 200
+    assert submit.json()["submitted"] is True
+
+
+def test_h5_patch_timeline_source_is_h5_task():
+    case_id = _save_claim_case("case_h5_source")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+
+    resp = client.patch(
+        f"/api/h5/tasks/{token}/fields",
+        json={"step": "injury", "fields": {"anyone_injured": "no"}},
+    )
+    assert resp.status_code == 200
+
+    case = get_case_by_id(case_id) or {}
+    events = [e for e in (case.get("claim_timeline") or []) if e.get("event_type") == "h5_step_complete"]
+    assert len(events) == 1
+    assert events[0].get("source_channel") == "h5_task"
+
+
+def test_status_card_includes_h5_continue_link_without_duplicate_case(monkeypatch):
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
+    case_id = _save_claim_case("case_status_h5")
+    bind_case_channel_identity(case_id, wecom_external_userid="wm_status_h5")
+    case = get_case_by_id(case_id) or {}
+    assert is_h5_intake_continuable(case)
+
+    reply = build_claim_status_card_reply(case, h5_intake_url=mint_h5_claim_intake_form_link(case_id=case_id))
+    assert "继续补充资料：点击打开资料填写页面" in reply
+    assert "/task/claim/h5t1." in reply
+
+    norm = normalize_text_message(
+        {
+            "msgid": "m_status_h5",
+            "open_kfid": "wktest001",
+            "external_userid": "wm_status_h5",
+            "origin": 3,
+            "msgtype": "text",
+            "text": {"content": "进度"},
+        }
+    )
+    intent = classify_wecom_intent("进度")
+    result = ingest_claim_status_request(norm, intent)
+    assert result["case_created"] is False
+    assert result["active_case_outcome"] == "claim_status_card"
+    assert "继续补充资料" in (result.get("reply_text") or "")
+
+
+def test_wecom_text_does_not_advance_h5_intake_phase():
+    case_id = _save_claim_case("case_no_ai_advance")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+
+    assert client.patch(
+        f"/api/h5/tasks/{token}/fields",
+        json={"step": "injury", "fields": {"anyone_injured": "no"}},
+    ).status_code == 200
+
+    case_before = get_case_by_id(case_id) or {}
+    state_before = dict(case_before.get("h5_intake_state") or {})
+
+    # Simulated WeCom free-text would patch known_facts elsewhere — must not auto-submit H5.
+    from services.fiqa_api.inbox_triage.case_store import patch_case_known_facts
+
+    patch_case_known_facts(case_id, {"accident_location": "微信补充的地点描述"})
+
+    case_after = get_case_by_id(case_id) or {}
+    state_after = dict(case_after.get("h5_intake_state") or {})
+    assert state_after.get("submitted_at") is None
+    assert state_before.get("field_dedup_keys") == state_after.get("field_dedup_keys")
+    assert derive_claim_phase(case_after) != CLAIM_PHASE_INTAKE_READY_FOR_BROKER
+
+
+def test_workbench_shows_h5_submit_summary_and_timeline():
+    case_id = _save_claim_case("case_workbench_h5")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "33333333-4444-4333-8444-555555555555"
+
+    for step, fields in [
+        ("injury", {"anyone_injured": "no"}),
+        ("time_location", {"accident_datetime": "今天上午10点", "accident_location": "Irvine Blvd"}),
+        ("story", {"accident_description": "我停在红灯前，后车追尾撞上我的车。"}),
+        ("vehicle_other_party", {"own_vehicle_info": "2020 Toyota Camry"}),
+    ]:
+        assert client.patch(
+            f"/api/h5/tasks/{token}/fields",
+            json={"step": step, "fields": fields},
+        ).status_code == 200
+
+    assert client.post(
+        f"/api/h5/tasks/{token}/submit",
+        json={"submit_intent_id": intent},
+        headers={"X-Submit-Intent-Id": intent},
+    ).status_code == 200
+
+    case = get_case_by_id(case_id) or {}
+    row = enrich_claim_for_workbench(case)
+    brief = row.get("claim_case_brief") or {}
+    key_facts = brief.get("key_facts") or {}
+    assert key_facts.get("accident_location") == "Irvine Blvd"
+    assert key_facts.get("own_vehicle_info") == "2020 Toyota Camry"
+    assert row.get("workflow_phase") == CLAIM_PHASE_INTAKE_READY_FOR_BROKER
+    assert row.get("workbench_visible") is True
+
+    timeline = row.get("claim_timeline") or []
+    event_types = [str(e.get("event_type")) for e in timeline]
+    assert "customer_submitted_intake" in event_types
+    assert isinstance(brief.get("missing_info"), list)

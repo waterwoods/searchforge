@@ -1116,9 +1116,23 @@ def ingest_claim_status_request(
         }
 
     case_id = str(active.get("case_id") or "").strip() or None
+    h5_intake_url: str | None = None
+    from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_intake_continuable
+    from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_intake_form_link
+
+    if is_h5_intake_continuable(active):
+        try:
+            h5_intake_url = mint_h5_claim_intake_form_link(
+                case_id=case_id or "",
+                external_userid=ext or None,
+            )
+        except ValueError:
+            h5_intake_url = None
+
     reply_text = build_claim_status_card_reply(
         active,
         multiple_open_claims=len(open_claims) > 1,
+        h5_intake_url=h5_intake_url,
     )
     claim_ctx = claim_context_for_case(active)
     _emit_claim_routing_decision(

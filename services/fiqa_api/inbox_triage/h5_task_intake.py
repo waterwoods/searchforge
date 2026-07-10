@@ -16,6 +16,7 @@ from services.fiqa_api.inbox_triage.case_store import (
 )
 from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
 from services.fiqa_api.inbox_triage.claim_workbench_display import build_claim_case_brief
+from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_evidence_pack_link
 from services.fiqa_api.inbox_triage.h5_task_token import (
     FLOW_CLAIM_INTAKE_FORM,
     VerifiedH5TaskToken,
@@ -43,6 +44,7 @@ CLAIM_INTAKE_STEPS: Final[tuple[str, ...]] = (
     "time_location",
     "story",
     "vehicle_other_party",
+    "evidence",
     "review",
     "done",
 )
@@ -99,6 +101,9 @@ def _step_complete(case: dict[str, Any], step: str) -> bool:
         return len(desc) >= 10
     if step == "vehicle_other_party":
         return len(str(facts.get("own_vehicle_info") or "").strip()) >= 2
+    if step == "evidence":
+        # Optional step — skip allowed; never blocks submit or review.
+        return True
     return False
 
 
@@ -175,6 +180,30 @@ def _collected_keys_for_patch(step: str, facts_patch: dict[str, str]) -> list[st
     return keys
 
 
+def _h5_attachment_photo_count(case: dict[str, Any]) -> int:
+    count = 0
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        if str(att.get("source") or "").strip().lower() != "h5_task":
+            continue
+        mime = str(att.get("mime_type") or "").lower()
+        msgtype = str(att.get("msgtype") or "").lower()
+        if mime.startswith("image/") or msgtype == "image":
+            count += 1
+    return count
+
+
+def is_h5_intake_continuable(case: dict[str, Any]) -> bool:
+    """True when customer can resume Claim H5 structured intake (not yet submitted)."""
+    if str(case.get("service_lane") or "").strip().lower() != "claim":
+        return False
+    phase = derive_claim_phase(case)
+    if phase in _H5_SUBMIT_TERMINAL_PHASES:
+        return False
+    return not _is_submitted(case)
+
+
 def _field_value_hash(step: str, facts_patch: dict[str, str]) -> str:
     joined = "|".join(f"{k}={facts_patch[k]}" for k in sorted(facts_patch))
     digest = hashlib.sha256(f"{step}:{joined}".encode("utf-8")).hexdigest()[:16]
@@ -188,6 +217,16 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
     brief = build_claim_case_brief(case)
     current = _current_step(case)
     submitted = _is_submitted(case)
+    photo_count = _h5_attachment_photo_count(case)
+    upload_url: str | None = None
+    try:
+        ext_uid = str(case.get("wecom_external_userid") or "").strip() or None
+        upload_url = mint_h5_claim_evidence_pack_link(
+            case_id=claims.case_id,
+            external_userid=ext_uid,
+        )
+    except ValueError:
+        upload_url = None
     return {
         "lane": claims.lane,
         "flow": claims.flow or FLOW_CLAIM_INTAKE_FORM,
@@ -203,6 +242,9 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "key_facts": brief.get("key_facts") or {},
         "missing_info": get_claim_missing_items(case),
         "injury_alert": is_injury_yes(_injury_value(case)),
+        "upload_url": upload_url,
+        "attachment_count": photo_count,
+        "photo_count": photo_count,
     }
 
 
