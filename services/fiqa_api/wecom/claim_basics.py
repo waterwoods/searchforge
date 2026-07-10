@@ -1637,7 +1637,7 @@ def _ingest_claim_post_submit_supplement(
         "outcome": "claim_supplement_appended",
         "case_id": case_id,
         "case_created": False,
-        "reply_text": build_claim_supplement_received_reply(h5_intake_url=h5_intake_url),
+        "reply_text": build_claim_supplement_received_reply(case=refreshed, h5_intake_url=h5_intake_url),
         "menu_payload": None,
         "h5_task_link_masked": None,
         "active_case_outcome": "claim_supplement_appended",

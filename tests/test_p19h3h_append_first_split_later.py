@@ -498,7 +498,8 @@ def test_16_workbench_shows_submitted_claim_supplement():
         _normalized(text, ext=ext, msg_id="m_af_16"),
         classify_wecom_intent(text),
     )
-    assert "/task/claim/h5t1." in (result.get("reply_text") or "")
+    assert "已记录" in (result.get("reply_text") or "")
+    assert "/task/claim/h5t1." not in (result.get("reply_text") or "")
     case = get_case_by_id(saved["case_id"]) or {}
     enriched = enrich_claim_for_workbench(case)
     timeline = enriched.get("claim_timeline") or []

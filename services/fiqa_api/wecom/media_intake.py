@@ -434,8 +434,10 @@ def ingest_wecom_media_message(
         lane = None
         claim_reply_tier = None
         h5_intake_url = None
+        case_for_reply = None
         if existing_case_id:
             case = get_case_for_read(existing_case_id)
+            case_for_reply = case
             lane = str(case.get("service_lane") or "").strip() if case else None
             if str(existing_att.get("slot_assignment") or "").strip().lower() == "unassigned":
                 claim_reply_tier = "A"
@@ -448,6 +450,7 @@ def ingest_wecom_media_message(
             service_lane=lane,
             binding_confidence=str(existing_att.get("binding_confidence") or "unknown"),
             claim_media_reply_tier=claim_reply_tier,
+            case=case_for_reply,
             h5_intake_url=h5_intake_url,
         )
         _log_event(
@@ -606,6 +609,7 @@ def ingest_wecom_media_message(
 
     tier_for_reply = claim_media_reply_tier if (claim_media_bind or not bound_to_service_case) else None
     h5_intake_url = None
+    case_for_reply = get_case_for_read(target_case_id) if target_case_id else None
     if _claim_media_should_offer_h5_link(
         tier_for_reply=tier_for_reply,
         bound_to_service_case=bound_to_service_case,
@@ -622,6 +626,7 @@ def ingest_wecom_media_message(
         service_lane=lane,
         binding_confidence=binding.binding_confidence,
         claim_media_reply_tier=tier_for_reply,
+        case=case_for_reply,
         h5_intake_url=h5_intake_url,
     )
     active_outcome = "media_attached_to_case" if bound_to_service_case else "media_unassigned"

@@ -215,7 +215,8 @@ def test_submitted_claim_supplement_plate_no_legacy():
     reply = result.get("reply_text") or ""
     _assert_no_legacy(reply)
     assert result["case_id"] == saved["case_id"]
-    assert "/task/claim/h5t1." in reply
+    assert "已记录" in reply
+    assert "/task/claim/h5t1." not in reply
 
 
 def test_add_car_preserved(monkeypatch):

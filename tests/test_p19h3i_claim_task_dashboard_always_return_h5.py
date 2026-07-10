@@ -128,7 +128,7 @@ def test_submitted_claim_status_commands_return_h5_continue_link(text: str):
     assert "/task/claim/h5t1." in reply
 
 
-def test_submitted_claim_supplement_plate_ack_includes_h5_link():
+def test_submitted_claim_supplement_plate_ack_short_no_raw_h5():
     ext = "wm_3i_plate"
     saved = _submitted_claim(ext=ext)
     text = "补充一下，对方车牌是 ABC123"
@@ -139,12 +139,17 @@ def test_submitted_claim_supplement_plate_ack_includes_h5_link():
     reply = result.get("reply_text") or ""
     assert result["active_case_outcome"] == "claim_supplement_appended"
     assert result["case_id"] == saved["case_id"]
-    assert "已记录到您当前的事故记录里" in reply
-    assert "/task/claim/h5t1." in reply
-    assert "客户文字补充" in reply
+    assert "已记录到您当前的事故资料里" in reply
+    assert "/task/claim/h5t1." not in reply
+    assert "进度" in reply or "链接" in reply
 
 
-def test_submitted_claim_insurance_supplement_ack_includes_h5_link():
+def test_submitted_claim_supplement_plate_ack_includes_h5_link():
+    """Backward-compat alias — P19H-3j uses short ack without raw URL."""
+    test_submitted_claim_supplement_plate_ack_short_no_raw_h5()
+
+
+def test_submitted_claim_insurance_supplement_ack_short_no_raw_h5():
     ext = "wm_3i_insurance"
     saved = _submitted_claim(ext=ext)
     text = "对方保险是 State Farm"
@@ -154,7 +159,13 @@ def test_submitted_claim_insurance_supplement_ack_includes_h5_link():
     )
     reply = result.get("reply_text") or ""
     assert result["case_id"] == saved["case_id"]
-    assert "/task/claim/h5t1." in reply
+    assert "已记录" in reply
+    assert "/task/claim/h5t1." not in reply
+
+
+def test_submitted_claim_insurance_supplement_ack_includes_h5_link():
+    """Backward-compat alias — P19H-3j uses short ack without raw URL."""
+    test_submitted_claim_insurance_supplement_ack_short_no_raw_h5()
 
 
 def _msg(msg_id: str, content: str, *, ext: str) -> dict:

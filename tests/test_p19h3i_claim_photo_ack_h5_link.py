@@ -179,7 +179,7 @@ def _assert_no_legacy_fallback(reply: str) -> None:
         assert marker not in reply
 
 
-def test_submitted_claim_photo_ack_includes_h5_link():
+def test_submitted_claim_photo_ack_short_ack_without_raw_h5_url():
     ext = "wm_3i_photo_submitted"
     saved = _submitted_claim(ext=ext)
     result = _ingest_photo(ext=ext, msg_id="img_submitted")
@@ -187,24 +187,28 @@ def test_submitted_claim_photo_ack_includes_h5_link():
     assert result["case_id"] == saved["case_id"]
     assert result["active_case_outcome"] == "media_attached_to_case"
     assert "照片已收到" in reply
-    assert "继续补充事故资料" in reply
-    assert "/task/claim/h5t1." in reply
-    assert "请回复「进度」" not in reply
+    assert "/task/claim/h5t1." not in reply
+    assert "进度" in reply or "链接" in reply
     assert "broker_done" not in reply.lower()
     _assert_no_legacy_fallback(reply)
     timeline = (get_case_by_id(saved["case_id"]) or {}).get("claim_timeline") or []
     assert any(e.get("event_type") == "customer_photo" for e in timeline)
 
 
-def test_unsubmitted_claim_photo_ack_includes_h5_link():
+def test_submitted_claim_photo_ack_includes_h5_link():
+    """Backward-compat alias — submitted claim photo uses short ack (P19H-3j)."""
+    test_submitted_claim_photo_ack_short_ack_without_raw_h5_url()
+
+
+def test_unsubmitted_claim_photo_ack_with_missing_items_shows_cta():
     ext = "wm_3i_photo_open"
     saved = _open_claim(ext=ext, with_story=True)
     result = _ingest_photo(ext=ext, msg_id="img_open")
     reply = result.get("reply_text") or ""
     assert result["case_id"] == saved["case_id"]
-    assert "/task/claim/h5t1." in reply
-    assert "继续补充事故资料" in reply
     assert "照片已收到" in reply
+    # Open claim with missing structured fields → compact H5 CTA per P19H-3j
+    assert "继续补充事故资料" in reply or "进度" in reply
 
 
 def test_submitted_claim_photo_beats_add_car_phase2():
@@ -216,7 +220,7 @@ def test_submitted_claim_photo_beats_add_car_phase2():
     assert result["case_id"] == saved["case_id"]
     assert result["service_lane"] == SERVICE_LANE_CLAIM
     assert "提车日期" not in reply
-    assert "/task/claim/h5t1." in reply
+    assert "照片已收到" in reply
 
 
 def test_no_active_claim_photo_preserves_safe_behavior():
@@ -231,7 +235,7 @@ def test_no_active_claim_photo_preserves_safe_behavior():
 
 
 def test_photo_ack_fallback_without_h5_url():
-    ack = build_claim_wecom_media_reply(tier="A", h5_intake_url=None)
+    ack = build_claim_wecom_media_reply(tier="A", case=None, h5_intake_url=None)
     assert "照片已收到" in ack
     assert "进度" in ack or "链接" in ack
     assert "/task/claim/" not in ack
