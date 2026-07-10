@@ -1,41 +1,104 @@
-# P19H-3h-1F — Append-first, Split-later Manual WeCom Checklist
+# P19H-3h-1G — Append-first, Split-later Manual WeCom Checklist
 
 **Date:** 2026-07-10  
 **Policy:** Append-first, Split-later (先归档，后拆分)  
-**Prerequisite:** Backend deploy with P19H-3h-1F patch  
-**Environment:** Chen pilot WeCom KF (post-deploy)
+**Backend deployed:** `a119bb247` · `fiqa-api-00195-9lz`  
+**Prerequisite:** P19H-3h-1F append-first patch live on pilot backend  
+**Environment:** Chen pilot WeCom KF
 
 ---
 
 ## Pre-check
 
-- [ ] Branch `sprint/p16-trust-layer` deployed to pilot backend
-- [ ] Claim H5 MVP live (`p19h-claim-h5-mvp-predeploy-20260710` baseline)
+- [ ] Backend revision `fiqa-api-00195-9lz` (GIT_SHA `a119bb247`) serving 100% traffic
+- [ ] Claim H5 MVP frontend live at `https://ui-smoky-beta.vercel.app`
 - [ ] Broker Workbench accessible for timeline verification
 
 ---
 
-## Manual retest steps
+## Manual WeCom test
 
-| # | Customer action | Expected | Pass |
-|---|-----------------|----------|------|
-| 1 | Send「我要理赔」 | H5 Start Card / intake link; no injury menu for new case | |
-| 2 | Send ordinary accident narrative (e.g. 昨天在 Santa Ana 红绿灯被追尾) | Append ack or H5 continue; **no**「新事故？」confirm | |
-| 3 | Send「进度」 | Status Card with current phase | |
-| 4 | Send「补充一下，对方保险是 State Farm」 | Append to current Claim; no collision card | |
-| 5 | Send「这是另一个事故」 | Explicit confirm card **or** broker warning; not silent new case | |
-| 6 | Open Broker Workbench | Timeline shows all supplements; no duplicate case unless step 5 confirmed new | |
-| 7 | (If multi-open exists) Ordinary supplement | Appends to newest Claim; `possible_multi_claim_context` flag on Workbench | |
+### 1. Send: 我要理赔
 
----
+**Expected:**
+- Start Card should show H5 Claim intake link.
+- It should **not** show legacy injury menu as the primary path.
 
-## Workbench verification
+| Pass |
+|------|
+| |
 
-- [ ] All WeCom supplements visible on single Claim timeline
-- [ ] `possible_multi_claim_context` shown when multiple open Claims exist
-- [ ] No customer-facing multi-case picker
-- [ ] H5 continue link on Status Card when intake not submitted
-- [ ] No H5 continue link after H5 submit / broker review phase
+### 2. Click H5 link
+
+**Expected:**
+- H5 Claim page opens.
+- Steps are clear.
+
+| Pass |
+|------|
+| |
+
+### 3. Return to WeCom and send ordinary narrative
+
+Send: `昨天在 Santa Ana 红绿灯被追尾，对方是 State Farm。`
+
+**Expected:**
+- It should append to current Claim.
+- It should **NOT** ask「继续当前事故还是开始新事故」.
+
+| Pass |
+|------|
+| |
+
+### 4. Send supplement
+
+Send: `补充一下，对方车牌是 ABC123。`
+
+**Expected:**
+- Append to current Claim.
+- No new-case confirm.
+
+| Pass |
+|------|
+| |
+
+### 5. Send status request
+
+Send: `进度`
+
+**Expected:**
+- Status Card appears.
+- If H5 not submitted, it includes H5 continue link.
+- If H5 submitted, no incorrect continue link.
+
+| Pass |
+|------|
+| |
+
+### 6. Send explicit new accident
+
+Send: `这是另一个事故，不是刚才那个。`
+
+**Expected:**
+- It may trigger explicit new accident confirm or broker warning.
+- This is the **rare exception** — not the default for ordinary supplements.
+
+| Pass |
+|------|
+| |
+
+### 7. Open Broker Workbench
+
+**Expected:**
+- One current Claim row is visible.
+- Timeline contains H5/task/chat supplements.
+- No duplicate claim created for ordinary supplements.
+- `possible_multi_claim_context` or similar broker flag appears only if relevant.
+- `broker_done` remains manual.
+
+| Pass |
+|------|
+| |
 
 ---
 
