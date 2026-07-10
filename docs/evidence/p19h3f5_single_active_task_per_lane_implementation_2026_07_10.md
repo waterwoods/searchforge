@@ -111,11 +111,44 @@ PYTHONPATH=. python3 -m pytest tests -q -k "h5"                                 
 
 ## 11. Deployment result
 
-*(Updated after deploy)*
+| Field | Value |
+|-------|-------|
+| Deployed revision | `fiqa-api-00191-xx7` |
+| GIT_SHA | `7ec685527` |
+| Implementation commit | `7ec6855` |
+| Service URL | `https://fiqa-api-g7zatxrycq-uw.a.run.app` |
+| `/health/live` | 200 OK |
+| `/readyz` | 200 OK (`intake_core_readiness: true`) |
+| Frontend deployed | **No** (no UI files changed) |
+
+### Cloud smoke (`scripts/p19h3f5_deploy_single_active_task_smoke.py`)
+
+| Check | Result |
+|-------|--------|
+| Start Card framed | PASS |
+| Status Card | PASS |
+| Multi-open ordinary append (no picker) | PASS |
+| Multi-open「新的事故」→ Confirm | PASS |
+| Confirm 2 → new Claim + Start Card | PASS |
+| Random photo before start hidden | PASS |
+| Add Car → Claim lane-switch | PASS |
+| Broker Done End Card preview | PASS |
+| **Overall** | **PASS** |
+
+### QA gate (`check_chen_kui_demo_environment.sh --cloud-api`)
+
+- API health / readyz: **PASS**
+- Core P19H-3f-5 smoke: **PASS**
+- Known seed drift (demo names / field tags): **FAIL** — pre-existing; does not block this sprint's routing policy
+
+### Logs
+
+- Deploy smoke + ingest paths: **no claim-route 500s observed**
+- Live WeChat validation: **pending** (Andy)
 
 ---
 
-## 12. Known limitations
+*STOP — evidence post-deploy*
 
 - Add Car “another vehicle” Confirm Card not fully implemented (restart markers only)
 - Broker merge/move UI deferred
