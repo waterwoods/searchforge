@@ -46,6 +46,36 @@ def _load_cloudrun_env() -> None:
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
+def _ensure_h5_token_secret_for_deploy() -> None:
+    """Load H5_TASK_TOKEN_SECRET from Secret Manager when missing (deploy smoke)."""
+    if (os.getenv("H5_TASK_TOKEN_SECRET") or "").strip():
+        return
+    project = (os.getenv("PROJECT_ID") or "optimal-disk-472305-e2").strip()
+    secret_name = (os.getenv("CLOUD_RUN_SECRET_H5_TASK_TOKEN") or "fiqa-h5-task-token-secret").strip()
+    try:
+        import subprocess
+
+        proc = subprocess.run(
+            [
+                "gcloud",
+                "secrets",
+                "versions",
+                "access",
+                "latest",
+                f"--secret={secret_name}",
+                f"--project={project}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            os.environ["H5_TASK_TOKEN_SECRET"] = proc.stdout.strip()
+    except Exception:
+        pass
+
+
 def _api_headers() -> dict[str, str]:
     key = (os.getenv("UNIFIED_INTAKE_INTAKE_API_KEY") or "").strip()
     return {"X-Unified-Intake-Api-Key": key} if key else {}
@@ -338,6 +368,7 @@ def run_in_process_smoke() -> dict[str, Any]:
 def run_http_smoke(base_url: str, *, use_qa_db: bool) -> dict[str, Any]:
     if use_qa_db or _is_deploy_url(base_url):
         _load_cloudrun_env()
+        _ensure_h5_token_secret_for_deploy()
         os.environ["ENV"] = "prod"
         from scripts.demo_db_resolve import apply_qa_postgres_env
 
