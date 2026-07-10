@@ -1152,10 +1152,29 @@ _MEDIA_ACK_CLAIM = (
     "收到事故照片。请先确认人是否安全，我会把照片放到理赔服务 case 里，陈总会人工联系您。"
 )
 
-_MEDIA_ACK_CLAIM_GUIDED_BOUND = (
-    "收到照片，已记到这份事故记录里 ✅\n"
-    "如需查看或继续补充，请回复「进度」或「链接」打开事故资料页面。"
-)
+def _build_claim_media_ack_guided_bound(*, h5_intake_url: str | None = None) -> str:
+    lines = [
+        "好的，照片已收到，并记录到您当前的事故资料里。",
+    ]
+    url = (h5_intake_url or "").strip()
+    if url:
+        lines.extend(
+            [
+                "您可以继续打开事故资料页面补充信息：",
+                "【继续补充事故资料】",
+                url,
+            ]
+        )
+    else:
+        lines.append("您也可以回复「进度」或「链接」打开事故资料页面。")
+    lines.extend(
+        [
+            "",
+            "提醒：",
+            "这只是资料收集，不代表已经正式向保险公司报案。",
+        ]
+    )
+    return "\n".join(lines)
 
 _MEDIA_ACK_CLAIM_BROKER_CONFIRM = (
     "照片已收到。为了避免把两次事故资料混在一起，陈总会人工确认后整理。"
@@ -1188,11 +1207,11 @@ _GUARD_ONE_PHOTO = (
 )
 
 
-def build_claim_wecom_media_reply(*, tier: str) -> str:
+def build_claim_wecom_media_reply(*, tier: str, h5_intake_url: str | None = None) -> str:
     """P19H-3d — Tier A/B/C customer ack for WeCom claim image binding."""
     normalized = (tier or "").strip().upper()
     if normalized == "A":
-        return _MEDIA_ACK_CLAIM_GUIDED_BOUND
+        return _build_claim_media_ack_guided_bound(h5_intake_url=h5_intake_url)
     if normalized == "B":
         return _MEDIA_ACK_CLAIM_BROKER_CONFIRM
     if normalized == "C":
@@ -1207,10 +1226,14 @@ def build_guardrail_media_reply(
     service_lane: str | None = None,
     binding_confidence: str = "unknown",
     claim_media_reply_tier: str | None = None,
+    h5_intake_url: str | None = None,
 ) -> str:
     """Select safe customer reply for guardrail outcome. Never mentions OCR."""
     if claim_media_reply_tier:
-        return build_claim_wecom_media_reply(tier=claim_media_reply_tier)
+        return build_claim_wecom_media_reply(
+            tier=claim_media_reply_tier,
+            h5_intake_url=h5_intake_url,
+        )
     kind = (reply_kind or "single_image").strip().lower()
     if kind == "bulk_pause":
         return _GUARD_BULK_PAUSE
@@ -1233,17 +1256,21 @@ def build_media_intake_reply(
     service_lane: str | None = None,
     binding_confidence: str = "unknown",
     claim_media_reply_tier: str | None = None,
+    h5_intake_url: str | None = None,
 ) -> str:
     """Safe customer ack for WeCom image/file intake. Never mentions OCR."""
     if claim_media_reply_tier:
-        return build_claim_wecom_media_reply(tier=claim_media_reply_tier)
+        return build_claim_wecom_media_reply(
+            tier=claim_media_reply_tier,
+            h5_intake_url=h5_intake_url,
+        )
     lane = (service_lane or "").strip()
     if bound and lane == "coverage_risk":
         return _MEDIA_ACK_COVERAGE
     if bound and lane == "claim_lite":
         return _MEDIA_ACK_CLAIM
     if bound and lane == "claim" and binding_confidence in ("high", "medium"):
-        return _MEDIA_ACK_CLAIM_GUIDED_BOUND
+        return _build_claim_media_ack_guided_bound(h5_intake_url=h5_intake_url)
     if bound and binding_confidence in ("high", "medium"):
         return _MEDIA_ACK_BOUND
     return _MEDIA_ACK_UNASSIGNED

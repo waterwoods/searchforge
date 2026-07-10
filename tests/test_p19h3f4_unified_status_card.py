@@ -250,10 +250,15 @@ def test_basics_complete_reply_is_framed_stage_complete():
 
 
 def test_photo_ack_short_without_full_status_card():
-    ack = build_claim_wecom_media_reply(tier="A")
-    assert "收到照片" in ack
+    ack = build_claim_wecom_media_reply(
+        tier="A",
+        h5_intake_url="https://example.test/task/claim/h5t1.test",
+    )
+    assert "照片已收到" in ack
     assert "【当前状态】" not in ack
-    assert "进度" in ack or "链接" in ack
+    assert "继续补充事故资料" in ack
+    assert "/task/claim/h5t1." in ack
+    assert "请回复「进度」" not in ack
 
 
 def test_random_text_does_not_create_claim():

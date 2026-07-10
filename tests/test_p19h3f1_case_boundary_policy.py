@@ -76,6 +76,8 @@ def _json_store(monkeypatch):
     os.environ["UNIFIED_INTAKE_JSON_CASE_WRITES"] = "1"
     os.environ.pop("UNIFIED_INTAKE_DB_PRIMARY_WRITES", None)
     monkeypatch.delenv("SERVICE_RECORD_DATABASE_URL", raising=False)
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
+    monkeypatch.setenv("H5_TASK_TOKEN_SECRET", "test-h5-secret")
     yield
     os.environ.pop("UNIFIED_INTAKE_CASES_PATH", None)
 
@@ -317,8 +319,9 @@ def test_08_active_claim_photo_attaches(cfg):
     timeline = case.get("claim_timeline") or []
     assert any(e.get("event_type") == "customer_photo" for e in timeline)
     reply = result["reply_text"] or ""
-    assert "已记到这份事故记录里" in reply
-    assert "状态" in reply
+    assert "照片已收到" in reply
+    assert "继续补充事故资料" in reply
+    assert "/task/claim/h5t1." in reply
 
 
 def test_09_insurance_question_no_claim():

@@ -211,6 +211,46 @@ def _status_command_checks(case_id: str, ext: str, *, suffix: str) -> dict[str, 
     results["supplement_ack_recorded"] = "已记录到您当前的事故记录里" in sup_reply
     results["supplement_customer_text_note"] = "客户文字补充" in sup_reply
 
+    from services.fiqa_api.wecom.media_download import WeComMediaDownloadResult
+    from services.fiqa_api.wecom.media_intake import ingest_wecom_media_message
+    from services.fiqa_api.wecom.normalize import normalize_media_message
+
+    def _fake_download(_cfg, **kwargs):
+        return WeComMediaDownloadResult(
+            content=b"fake-image-bytes",
+            content_type="image/jpeg",
+            filename="photo.jpg",
+        )
+
+    def _fake_upload(**kwargs):
+        return {
+            "storage_uri": "gs://test-bucket/wecom/photo.jpg",
+            "mime_type": "image/jpeg",
+            "filename": "photo.jpg",
+        }
+
+    photo_norm = normalize_media_message(
+        {
+            "msgid": f"m_3i_photo_{suffix}",
+            "open_kfid": "wktest001",
+            "external_userid": ext,
+            "origin": 3,
+            "msgtype": "image",
+            "image": {"media_id": f"mid_photo_{suffix}"},
+        }
+    )
+    photo_result = ingest_wecom_media_message(
+        photo_norm,
+        load_wecom_kf_config(),
+        download_fn=_fake_download,
+        upload_fn=_fake_upload,
+    )
+    photo_reply = photo_result.get("reply_text") or ""
+    results["photo_ack_outcome"] = photo_result.get("active_case_outcome")
+    results["photo_ack_has_h5_link"] = "/task/claim/" in photo_reply
+    results["photo_ack_has_continue_cta"] = "继续补充事故资料" in photo_reply
+    results["photo_ack_recorded"] = "照片已收到" in photo_reply
+
     add_norm = normalize_text_message(
         {
             "msgid": f"m_3i_add_car_{suffix}",
@@ -294,6 +334,9 @@ def run_smoke(base_url: str, *, use_qa_db: bool) -> dict[str, Any]:
         "status_no_duplicate_cases",
         "supplement_has_h5_link",
         "supplement_ack_recorded",
+        "photo_ack_has_h5_link",
+        "photo_ack_has_continue_cta",
+        "photo_ack_recorded",
         "workbench_visible",
         "timeline_has_state_farm",
         "broker_done_false",

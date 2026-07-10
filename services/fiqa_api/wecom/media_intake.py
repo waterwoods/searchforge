@@ -63,6 +63,47 @@ from services.fiqa_api.wecom.upload_guardrail import (
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_MSGTYPES = frozenset({"image", "file"})
+
+
+def _mint_claim_media_h5_intake_url(
+    *,
+    case_id: str | None,
+    external_userid: str | None,
+) -> str | None:
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
+    from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_task_dashboard_available
+    from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_intake_form_link
+
+    case = get_case_for_read(cid)
+    if not case or not is_h5_task_dashboard_available(case):
+        return None
+    try:
+        return mint_h5_claim_intake_form_link(
+            case_id=cid,
+            external_userid=(external_userid or "").strip() or None,
+        )
+    except ValueError:
+        return None
+
+
+def _claim_media_should_offer_h5_link(
+    *,
+    tier_for_reply: str | None,
+    bound_to_service_case: bool,
+    lane: str | None,
+    binding_confidence: str,
+) -> bool:
+    if tier_for_reply == "A":
+        return True
+    if tier_for_reply:
+        return False
+    return (
+        bound_to_service_case
+        and (lane or "").strip() == SERVICE_LANE_CLAIM
+        and binding_confidence in ("high", "medium")
+    )
 _CLAIM_MULTICHANNEL_FLOW = "claim_multichannel_evidence"
 
 
@@ -392,16 +433,22 @@ def ingest_wecom_media_message(
     if existing_att:
         lane = None
         claim_reply_tier = None
+        h5_intake_url = None
         if existing_case_id:
             case = get_case_for_read(existing_case_id)
             lane = str(case.get("service_lane") or "").strip() if case else None
             if str(existing_att.get("slot_assignment") or "").strip().lower() == "unassigned":
                 claim_reply_tier = "A"
+                h5_intake_url = _mint_claim_media_h5_intake_url(
+                    case_id=existing_case_id,
+                    external_userid=external_userid,
+                )
         reply = build_media_intake_reply(
             bound=bool(existing_case_id and lane != SERVICE_LANE_WECOM_MEDIA_INTAKE),
             service_lane=lane,
             binding_confidence=str(existing_att.get("binding_confidence") or "unknown"),
             claim_media_reply_tier=claim_reply_tier,
+            h5_intake_url=h5_intake_url,
         )
         _log_event(
             "wecom_media_intake_duplicate_v1",
@@ -558,12 +605,24 @@ def ingest_wecom_media_message(
         lane = str(case.get("service_lane") or "").strip() if case else None
 
     tier_for_reply = claim_media_reply_tier if (claim_media_bind or not bound_to_service_case) else None
+    h5_intake_url = None
+    if _claim_media_should_offer_h5_link(
+        tier_for_reply=tier_for_reply,
+        bound_to_service_case=bound_to_service_case,
+        lane=lane,
+        binding_confidence=binding.binding_confidence,
+    ):
+        h5_intake_url = _mint_claim_media_h5_intake_url(
+            case_id=target_case_id,
+            external_userid=external_userid,
+        )
     reply_text = build_guardrail_media_reply(
         reply_kind=guardrail.reply_kind,
         bound=bound_to_service_case,
         service_lane=lane,
         binding_confidence=binding.binding_confidence,
         claim_media_reply_tier=tier_for_reply,
+        h5_intake_url=h5_intake_url,
     )
     active_outcome = "media_attached_to_case" if bound_to_service_case else "media_unassigned"
 
