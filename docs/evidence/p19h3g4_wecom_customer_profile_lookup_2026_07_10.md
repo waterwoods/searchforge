@@ -111,10 +111,12 @@ No UI file changes — frontend deploy not required.
 
 | Item | Value |
 |------|-------|
-| Commit | _(filled post-deploy)_ |
-| Backend revision | _(filled post-deploy)_ |
-| GIT_SHA | _(filled post-deploy)_ |
+| Commit | `a96d8ee` (`a96d8eef6`) |
+| Backend revision | `fiqa-api-00193-b5q` |
+| GIT_SHA | `a96d8eef6` |
 | Frontend deploy | **No** — backend-only |
+| `/health/live` | 200 `{"ok":true}` |
+| `/readyz` | 200 `intake_core_readiness: true` |
 
 ---
 
