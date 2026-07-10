@@ -72,6 +72,56 @@ def wecom_customer_display_label(
     return "企业微信客户"
 
 
+def _customer_identity_from_case(case: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(case, dict):
+        return {}
+    extra = case.get("extra")
+    if not isinstance(extra, dict):
+        return {}
+    identity = extra.get("customer_identity")
+    return identity if isinstance(identity, dict) else {}
+
+
+def resolve_wecom_workbench_display_name(
+    case: dict[str, Any] | None,
+    *,
+    customer_name: str | None = None,
+    customer_phone: str | None = None,
+    external_userid: str | None = None,
+) -> str:
+    """
+    Broker Workbench display priority:
+    broker_manual_display_name (future) > wecom_remark (future) > wecom_nickname
+    > meaningful customer_name > suffix fallback > generic.
+    """
+    identity = _customer_identity_from_case(case)
+    broker_manual = str(identity.get("broker_manual_display_name") or "").strip()
+    if broker_manual:
+        return broker_manual[:128]
+    wecom_remark = str(identity.get("wecom_remark") or "").strip()
+    if wecom_remark:
+        return wecom_remark[:128]
+    nickname = str(identity.get("wecom_nickname") or "").strip()
+    if nickname:
+        return nickname[:128]
+
+    name = (customer_name if customer_name is not None else (case or {}).get("customer_name") or "").strip()
+    if name and not is_generic_wecom_customer_name(name):
+        return name[:128]
+
+    ext = (
+        external_userid
+        if external_userid is not None
+        else str((case or {}).get("wecom_external_userid") or "").strip()
+    )
+    phone = (
+        customer_phone
+        if customer_phone is not None
+        else str((case or {}).get("customer_phone") or "").strip()
+    )
+    return wecom_customer_display_label(ext, customer_name=name or None, customer_phone=phone)
+
+
 def wecom_customer_facing_display_name(customer_name: str | None) -> str:
     """
     Customer-facing WeCom reply label — no external_userid suffix in chat copy.

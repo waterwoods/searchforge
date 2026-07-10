@@ -134,6 +134,14 @@ def sanitize_case_attachments_for_api(case_id: str, case: dict[str, Any]) -> lis
     return [sanitize_attachment_for_api(case_id, att) for att in raw if isinstance(att, dict)]
 
 
+def _sanitize_customer_identity_for_api(identity: Any) -> dict[str, Any] | None:
+    if not isinstance(identity, dict):
+        return None
+    safe = dict(identity)
+    safe.pop("wecom_external_userid", None)
+    return safe
+
+
 def sanitize_case_for_workbench_api(case: dict[str, Any]) -> dict[str, Any]:
     """Return case dict safe for workbench API responses."""
     row = dict(case)
@@ -143,6 +151,13 @@ def sanitize_case_for_workbench_api(case: dict[str, Any]) -> dict[str, Any]:
     if isinstance(ext, str) and ext.strip():
         # Mask — never send full external_userid to frontend.
         row["wecom_external_userid"] = None
+    extra = row.get("extra")
+    if isinstance(extra, dict):
+        extra_copy = dict(extra)
+        identity = _sanitize_customer_identity_for_api(extra_copy.get("customer_identity"))
+        if identity is not None:
+            extra_copy["customer_identity"] = identity
+        row["extra"] = extra_copy
     return row
 
 

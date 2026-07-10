@@ -1079,9 +1079,22 @@ def bind_case_channel_identity(
     if kf_id and normalized_case.get("wecom_open_kf_id") != kf_id:
         normalized_case["wecom_open_kf_id"] = kf_id
         changed = True
+    from services.fiqa_api.wecom.customer_profile import (
+        fetch_kf_customer_profile,
+        merge_customer_identity,
+        should_fetch_kf_customer_profile,
+    )
     from services.fiqa_api.wecom.identity import (
         is_generic_wecom_customer_name,
+        resolve_wecom_workbench_display_name,
         wecom_customer_display_label,
+    )
+
+    extra = dict(normalized_case.get("extra") or {}) if isinstance(normalized_case.get("extra"), dict) else {}
+    customer_identity = (
+        dict(extra.get("customer_identity") or {})
+        if isinstance(extra.get("customer_identity"), dict)
+        else {}
     )
 
     if is_generic_wecom_customer_name(str(normalized_case.get("customer_name") or "")):
@@ -1089,6 +1102,28 @@ def bind_case_channel_identity(
         if normalized_case.get("customer_name") != label:
             normalized_case["customer_name"] = _truncate(label, MAX_CUSTOMER_NAME_LENGTH)
             changed = True
+
+    profile: dict[str, Any] | None = None
+    if should_fetch_kf_customer_profile(customer_identity):
+        profile = fetch_kf_customer_profile(ext)
+        merged_identity = merge_customer_identity(customer_identity, profile, external_userid=ext)
+        if merged_identity != customer_identity:
+            extra["customer_identity"] = merged_identity
+            normalized_case["extra"] = extra
+            customer_identity = merged_identity
+            changed = True
+
+        nickname = str(merged_identity.get("wecom_nickname") or "").strip()
+        if nickname and is_generic_wecom_customer_name(str(normalized_case.get("customer_name") or "")):
+            display = resolve_wecom_workbench_display_name(
+                normalized_case,
+                customer_name=nickname,
+                external_userid=ext,
+            )
+            if normalized_case.get("customer_name") != display:
+                normalized_case["customer_name"] = _truncate(display, MAX_CUSTOMER_NAME_LENGTH)
+                changed = True
+
     if not changed:
         return normalized_case
     normalized_case["updated_at"] = _utc_now_iso()
