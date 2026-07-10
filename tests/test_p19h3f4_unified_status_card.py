@@ -163,7 +163,8 @@ def test_end_card_has_frame_and_required_phrases():
 def test_collision_resolver_card_has_frame_and_choices():
     reply = build_claim_identity_broker_confirm_reply(multiple_open=False)
     assert "━━━━━━━━━━━━" in reply
-    assert "继续上一个事故" in reply
+    assert "【请确认】" in reply
+    assert "继续当前事故" in reply
     assert "开始新的事故记录" in reply
     assert "联系陈总" in reply
 

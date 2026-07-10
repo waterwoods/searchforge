@@ -538,6 +538,19 @@ def ingest_wecom_media_message(
                 },
             ),
         )
+        open_claim_count = len(list_open_claim_candidates_for_basics(external_userid))
+        if open_claim_count >= 2:
+            from services.fiqa_api.inbox_triage.case_store import add_case_risk_flag
+
+            add_case_risk_flag(
+                target_case_id,
+                "possible_multi_claim_context",
+                workbench_tag="possible_multi_claim_context",
+                details={"open_claim_count": open_claim_count, "source": "wecom_media"},
+                activity_note=(
+                    "系统：该客户有多份未完成事故记录；本条已按最近活跃事故记录归档，请 broker 核对。"
+                ),
+            )
 
     lane = binding.service_lane
     if target_case_id and not lane:

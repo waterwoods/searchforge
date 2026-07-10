@@ -611,51 +611,33 @@ def build_claim_interrupt_safety_manual_reply() -> str:
 
 
 def build_claim_identity_broker_confirm_reply(*, multiple_open: bool = False) -> str:
-    """P19H-3f-3 — Claim Collision Resolver card (text fallback)."""
-    if multiple_open:
-        body = [
-            "我看到您这边已有多个未完成的事故记录。",
-            "为了避免混在一起，请选择继续哪一个，或开始新的事故记录。",
-            "目前建议您直接联系陈总人工处理。",
-            "",
-            "回复「联系陈总」或「3」。",
-        ]
-    else:
-        body = [
-            "我看到您这边已经有一个未完成的事故记录。",
-            "为了避免把两次事故资料混在一起，请选择：",
-            "1️⃣ 继续上一个事故，补充资料",
-            "2️⃣ 开始新的事故记录",
-            "3️⃣ 联系陈总人工处理",
-            "",
-            "回复「1」或「继续上一个事故」",
-            "回复「2」或「开始新的事故记录」",
-            "回复「3」或「联系陈总」",
-        ]
+    """P19H-3f-5 — Single Active Task Confirm Card (strong new-accident signal)."""
+    _ = multiple_open  # unified copy — no multi-open picker dead-end
+    body = [
+        "您是要继续当前这份事故记录，还是开始一份新的事故记录？",
+        "",
+        "1️⃣ 继续当前事故",
+        "2️⃣ 开始新的事故记录",
+        "3️⃣ 联系陈总",
+        "",
+        "回复「1」或「继续当前事故」",
+        "回复「2」或「开始新的事故记录」",
+        "回复「3」或「联系陈总」",
+    ]
     footer = ["提醒：", _CLAIM_SAFE_DISCLAIMER]
-    return frame_wecom_card("【请选择事故记录】", body, footer)
+    return frame_wecom_card("【请确认】", body, footer)
 
 
 def build_claim_collision_resolver_menu_payload(*, multiple_open: bool = False) -> dict[str, Any]:
-    """WeCom msgmenu: continue existing / start new / contact broker."""
-    head = build_claim_identity_broker_confirm_reply(multiple_open=multiple_open)
-    if multiple_open:
-        return {
-            "head_content": head,
-            "list": [
-                {
-                    "type": "click",
-                    "click": {"id": "collision_contact_broker", "content": "联系陈总"},
-                },
-            ],
-            "tail_content": _CLAIM_SAFE_DISCLAIMER,
-        }
+    """WeCom msgmenu: continue current / start new / contact broker."""
+    _ = multiple_open
+    head = build_claim_identity_broker_confirm_reply(multiple_open=False)
     return {
         "head_content": head,
         "list": [
             {
                 "type": "click",
-                "click": {"id": "collision_continue_existing", "content": "继续上一个事故"},
+                "click": {"id": "collision_continue_existing", "content": "继续当前事故"},
             },
             {
                 "type": "click",
@@ -891,7 +873,12 @@ def _str_or_none_local(value: Any) -> str | None:
     return text or None
 
 
-def build_claim_status_card_reply(case: dict[str, Any], display: dict[str, Any] | None = None) -> str:
+def build_claim_status_card_reply(
+    case: dict[str, Any],
+    display: dict[str, Any] | None = None,
+    *,
+    multiple_open_claims: bool = False,
+) -> str:
     """P19H-3f-4 — Deterministic Claim Status Card from case brief / highlights."""
     from services.fiqa_api.inbox_triage.claim_workbench_display import build_claim_case_brief
 
@@ -913,6 +900,14 @@ def build_claim_status_card_reply(case: dict[str, Any], display: dict[str, Any] 
         "下一步：",
         _claim_status_next_step(case, brief),
     ]
+    if multiple_open_claims:
+        body.extend(
+            [
+                "",
+                "我会先按最近这份事故记录为您整理进度。",
+                "如果不是同一个事故，请回复「新的事故」。",
+            ]
+        )
     footer = [
         "提醒：",
         "这只是事故资料记录，不代表已经向保险公司正式报案。",

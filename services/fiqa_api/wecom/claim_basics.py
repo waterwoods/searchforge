@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from services.fiqa_api.inbox_triage.case_store import (
+    add_case_risk_flag,
     append_claim_timeline_event,
     append_follow_up_message,
     bind_case_channel_identity,
@@ -36,6 +37,7 @@ from services.fiqa_api.wecom.claim_identity import (
     ClaimIdentityDecision,
     is_explicit_new_accident,
     is_open_claim_candidate_for_basics,
+    newest_open_claim_id,
     resolve_claim_identity,
 )
 from services.fiqa_api.wecom.claim_state import (
@@ -141,6 +143,7 @@ CLAIM_LANE_SWITCH_BROKER_MARKERS: tuple[str, ...] = (
 
 CLAIM_COLLISION_CONTINUE_MARKERS: tuple[str, ...] = (
     "继续上一个事故",
+    "继续当前事故",
     "同一个事故",
     "继续补资料",
 )
@@ -710,6 +713,30 @@ def should_route_claim_collision_choice(normalized: dict[str, Any]) -> bool:
     )
 
 
+def _maybe_flag_multi_claim_context(
+    case_id: str | None,
+    *,
+    open_claim_count: int,
+    trigger_text: str = "",
+    source: str = "wecom_text",
+) -> None:
+    if not case_id or open_claim_count < 2:
+        return
+    add_case_risk_flag(
+        case_id,
+        "possible_multi_claim_context",
+        workbench_tag="possible_multi_claim_context",
+        details={
+            "open_claim_count": open_claim_count,
+            "source": source,
+            "trigger_text_preview": (trigger_text or "")[:120] or None,
+        },
+        activity_note=(
+            "系统：该客户有多份未完成事故记录；本条已按最近活跃事故记录归档，请 broker 核对。"
+        ),
+    )
+
+
 def _emit_collision_resolver(
     *,
     normalized: dict[str, Any],
@@ -742,7 +769,7 @@ def _emit_collision_resolver(
         msg_id=str(normalized.get("msg_id") or ""),
     )
 
-    menu = build_claim_collision_resolver_menu_payload(multiple_open=multiple_open)
+    menu = build_claim_collision_resolver_menu_payload(multiple_open=False)
     claim_ctx = claim_context_for_case(open_claims[0] if open_claims else None)
     _emit_claim_routing_decision(
         normalized=normalized,
@@ -762,7 +789,7 @@ def _emit_collision_resolver(
         "menu_payload": menu,
         "active_case_outcome": "claim_collision_resolver",
         "service_lane": SERVICE_LANE_CLAIM,
-        "needs_broker_manual_handle": multiple_open,
+        "needs_broker_manual_handle": False,
     }
 
 
@@ -779,8 +806,11 @@ def ingest_claim_collision_continue(
     )
 
     candidate_ids = pending.get("candidate_claim_ids") or []
-    if len(candidate_ids) != 1:
-        _mark_collision_resolved(anchor_id, choice="continue_blocked_multiple")
+    target_id = str(newest_open_claim_id(
+        [get_case_for_read(cid) or {"case_id": cid} for cid in candidate_ids if str(cid).strip()]
+    ) or (candidate_ids[0] if candidate_ids else "") or "").strip()
+    if not target_id:
+        _mark_collision_resolved(anchor_id, choice="continue_blocked_no_target")
         return {
             "outcome": "claim_collision_multiple_open",
             "case_id": anchor_id,
@@ -791,7 +821,6 @@ def ingest_claim_collision_continue(
             "needs_broker_manual_handle": True,
         }
 
-    target_id = str(candidate_ids[0] or "").strip()
     trigger_text = str(pending.get("trigger_text") or "").strip()
     trigger_msg_id = str(pending.get("trigger_msg_id") or "").strip()
     msg_id = str(normalized.get("msg_id") or "").strip()
@@ -841,17 +870,7 @@ def ingest_claim_collision_new(normalized: dict[str, Any], *, anchor_id: str, pe
     )
 
     candidate_ids = pending.get("candidate_claim_ids") or []
-    if len(candidate_ids) != 1:
-        _mark_collision_resolved(anchor_id, choice="new_blocked_multiple")
-        return {
-            "outcome": "claim_collision_multiple_open",
-            "case_id": anchor_id,
-            "case_created": False,
-            "reply_text": build_claim_collision_multiple_open_reply(),
-            "active_case_outcome": "claim_collision_multiple_open",
-            "service_lane": SERVICE_LANE_CLAIM,
-            "needs_broker_manual_handle": True,
-        }
+    _ = candidate_ids  # multi-open allowed — always create new Claim on choice 2
 
     existing_new_id = str(pending.get("resolved_claim_id") or "").strip()
     if existing_new_id and str(pending.get("choice") or "") == "start_new":
@@ -1075,6 +1094,7 @@ def ingest_claim_status_request(
     )
 
     ext = str(normalized.get("external_userid") or "").strip()
+    open_claims = list_open_claim_candidates_for_basics(ext)
     active = find_active_claim_case_for_basics(ext)
     if not active:
         _emit_claim_routing_decision(
@@ -1096,7 +1116,10 @@ def ingest_claim_status_request(
         }
 
     case_id = str(active.get("case_id") or "").strip() or None
-    reply_text = build_claim_status_card_reply(active)
+    reply_text = build_claim_status_card_reply(
+        active,
+        multiple_open_claims=len(open_claims) > 1,
+    )
     claim_ctx = claim_context_for_case(active)
     _emit_claim_routing_decision(
         normalized=normalized,
@@ -1722,6 +1745,13 @@ def ingest_claim_basics_message(
     else:
         case_id = str(identity_decision.case_id or "").strip() or None
         case = get_case_for_read(case_id) or {} if case_id else {}
+        if case_id and len(open_claims) >= 2 and identity_decision.action == "append_existing":
+            _maybe_flag_multi_claim_context(
+                case_id,
+                open_claim_count=len(open_claims),
+                trigger_text=text,
+                source="wecom_text",
+            )
 
     if injury_mentioned and case_id:
         manual_patch = transition_to_manual_handle(case)

@@ -17,10 +17,19 @@ RECENT_OPEN_CLAIM_WINDOW_HOURS = 72
 EXPLICIT_NEW_ACCIDENT_MARKERS: tuple[str, ...] = (
     "新事故",
     "另一次事故",
+    "另一个事故",
     "重新理赔",
+    "重新开一个",
     "新的事故",
+    "不是上次那个",
+    "不是同一个事故",
+    "今天又撞了",
+    "又发生一个事故",
     "new accident",
     "another accident",
+    "different accident",
+    "not the same accident",
+    "start a new claim",
 )
 
 EXPLICIT_CONTINUATION_MARKERS: tuple[str, ...] = (
@@ -41,6 +50,7 @@ RULE_ID_OLD_OPEN_CLAIM = "ID-A4"
 RULE_ID_MULTIPLE_OPEN = "ID-A5"
 RULE_ID_EXPLICIT_CONTINUATION = "ID-A6"
 RULE_ID_COLLISION_RESOLVER = "ID-A7"
+RULE_ID_ACTIVE_APPEND_MULTI = "ID-A8"
 
 
 @dataclass(frozen=True)
@@ -145,8 +155,6 @@ def is_collision_triggering_input(text: str | None) -> bool:
     )
     if any(m in raw or m in lowered for m in passive_markers):
         return True
-    if has_accident_basics_signals(raw):
-        return True
     parsed = extract_accident_basics_fields(raw)
     if parsed.get("accident_datetime") and parsed.get("accident_location"):
         return True
@@ -169,6 +177,21 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
 
 def _case_recency_datetime(case: dict[str, Any]) -> datetime | None:
     return _parse_iso_datetime(str(case.get("updated_at") or case.get("created_at") or ""))
+
+
+def _sort_open_claims_newest_first(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        cases,
+        key=lambda case: str(case.get("updated_at") or case.get("created_at") or ""),
+        reverse=True,
+    )
+
+
+def newest_open_claim_id(open_claims: list[dict[str, Any]]) -> str | None:
+    sorted_cases = _sort_open_claims_newest_first(open_claims)
+    if not sorted_cases:
+        return None
+    return str(sorted_cases[0].get("case_id") or "").strip() or None
 
 
 def is_closed_or_terminal_claim(case: dict[str, Any]) -> bool:
@@ -230,16 +253,19 @@ def resolve_claim_identity(
             reasons=["no_external_userid"],
         )
 
-    active_cases = [
-        case
-        for case in open_claims
-        if is_open_claim_candidate_for_basics(case, ext)
-    ]
+    active_cases = _sort_open_claims_newest_first(
+        [
+            case
+            for case in open_claims
+            if is_open_claim_candidate_for_basics(case, ext)
+        ]
+    )
     candidate_ids = [
         str(case.get("case_id") or "").strip()
         for case in active_cases
         if str(case.get("case_id") or "").strip()
     ]
+    newest_case_id = candidate_ids[0] if candidate_ids else None
 
     if not active_cases:
         return ClaimIdentityDecision(
@@ -311,7 +337,6 @@ def resolve_claim_identity(
             )
 
     if is_collision_triggering_input(incoming_text):
-        anchor_id = candidate_ids[0] if len(active_cases) == 1 else None
         score = 50 if len(active_cases) >= 2 else 80
         rule_ids = (
             [RULE_ID_MULTIPLE_OPEN, RULE_ID_COLLISION_RESOLVER]
@@ -326,7 +351,7 @@ def resolve_claim_identity(
         return ClaimIdentityDecision(
             tier="B",
             action="broker_confirm",
-            case_id=anchor_id,
+            case_id=newest_case_id,
             score=score,
             rule_ids=rule_ids,
             reasons=reasons,
@@ -335,22 +360,23 @@ def resolve_claim_identity(
 
     if is_explicit_new_accident(incoming_text):
         return ClaimIdentityDecision(
-            tier="C",
-            action="create_new",
-            case_id=None,
-            score=0,
-            rule_ids=[RULE_ID_EXPLICIT_NEW_ACCIDENT],
+            tier="B",
+            action="broker_confirm",
+            case_id=newest_case_id,
+            score=80,
+            rule_ids=[RULE_ID_EXPLICIT_NEW_ACCIDENT, RULE_ID_COLLISION_RESOLVER],
             reasons=["customer_said_new_accident"],
+            candidate_case_ids=candidate_ids,
         )
 
     if len(active_cases) >= 2:
         return ClaimIdentityDecision(
-            tier="B",
-            action="broker_confirm",
-            case_id=None,
-            score=50,
-            rule_ids=[RULE_ID_MULTIPLE_OPEN],
-            reasons=["multiple_open_claims"],
+            tier="A",
+            action="append_existing",
+            case_id=newest_case_id,
+            score=88,
+            rule_ids=[RULE_ID_ACTIVE_APPEND_MULTI],
+            reasons=["multiple_open_claims", "active_append_newest"],
             candidate_case_ids=candidate_ids,
         )
 

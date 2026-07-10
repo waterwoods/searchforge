@@ -1,0 +1,58 @@
+{
+  "sprint": "P19H-3f-5",
+  "generated_at": "2026-07-10T01:37:36.279054+00:00",
+  "verdict": "PASS",
+  "scenarios": {
+    "A_no_open_passive_holding": {
+      "outcome": "claim_holding_ack",
+      "claim_count": 0,
+      "pass": true
+    },
+    "B_start_claim_start_card": {
+      "outcome": "claim_start_card_sent",
+      "has_start": true,
+      "pass": true
+    },
+    "C_claim_supplement_append": {
+      "case_id": "case_900b6d3c8aeb",
+      "outcome": "claim_basics_partial",
+      "pass": true
+    },
+    "D_claim_status_card": {
+      "case_id": "case_4d2d02e8fa2d",
+      "has_status": true,
+      "pass": true
+    },
+    "E_multi_open_ordinary_append_flag": {
+      "case_id": "case_c12af0d9526d",
+      "risk_flag": true,
+      "pass": true
+    },
+    "F_multi_open_photo_bind_flag": {
+      "case_id": "case_07bc65270777",
+      "outcome": "media_attached_to_case",
+      "risk_flag": true,
+      "pass": true
+    },
+    "G_multi_open_new_accident_confirm": {
+      "outcome": "claim_collision_resolver",
+      "has_confirm": true,
+      "pass": true
+    },
+    "H_confirm_2_new_claim_start": {
+      "outcome": "claim_start_card_sent",
+      "claim_count_delta": 1,
+      "has_start": true,
+      "pass": true
+    },
+    "I_add_car_claim_lane_switch": {
+      "outcome": "claim_lane_switch_prompt",
+      "pass": true
+    },
+    "J_broker_done_end_card": {
+      "broker_done": true,
+      "end_card": true,
+      "pass": true
+    }
+  }
+}

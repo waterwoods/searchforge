@@ -1411,6 +1411,61 @@ def patch_case_known_facts(case_id: str, facts_patch: dict[str, str]) -> dict[st
     return normalized_case
 
 
+def add_case_risk_flag(
+    case_id: str,
+    flag_name: str,
+    *,
+    details: dict[str, Any] | None = None,
+    workbench_tag: str | None = None,
+    activity_note: str | None = None,
+) -> dict[str, Any] | None:
+    """Append a broker-side risk flag / workbench tag without schema migration."""
+    cid = (case_id or "").strip()
+    flag = (flag_name or "").strip()
+    if not cid or not flag:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+
+    changed = False
+    risk_flags = list(normalized_case.get("risk_flags") or [])
+    if flag not in risk_flags:
+        risk_flags.append(flag)
+        normalized_case["risk_flags"] = risk_flags
+        changed = True
+
+    tag = (workbench_tag or flag).strip()
+    workbench_tags = list(normalized_case.get("workbench_tags") or [])
+    if tag and tag not in workbench_tags:
+        workbench_tags.append(tag)
+        normalized_case["workbench_tags"] = workbench_tags
+        changed = True
+
+    if details:
+        extra = dict(normalized_case.get("extra") or {}) if isinstance(normalized_case.get("extra"), dict) else {}
+        flag_details = dict(extra.get("risk_flag_details") or {}) if isinstance(extra.get("risk_flag_details"), dict) else {}
+        flag_details[flag] = details
+        extra["risk_flag_details"] = flag_details
+        normalized_case["extra"] = extra
+        changed = True
+
+    if activity_note:
+        normalized_case["case_activity"] = [
+            _build_activity_entry("system_note", activity_note),
+            *normalized_case.get("case_activity", []),
+        ][:MAX_CASE_ACTIVITY]
+        changed = True
+
+    if not changed:
+        return normalized_case
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
+        return None
+    return normalized_case
+
+
 def record_claim_evidence_slot_received(
     case_id: str,
     *,

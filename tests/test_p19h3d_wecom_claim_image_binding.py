@@ -207,24 +207,23 @@ def test_02_no_open_claim_image_only_no_claim_created(cfg):
     assert claim_cases == []
 
 
-def test_03_multiple_open_claims_no_silent_bind(cfg, caplog):
+def test_03_multiple_open_claims_bind_newest_with_flag(cfg, caplog):
     ext = "wm_h3d_multi"
     _open_recent_claim(ext=ext)
-    _open_recent_claim(ext=ext)
+    newest = _open_recent_claim(ext=ext)
 
     with caplog.at_level(logging.INFO):
         norm = normalize_media_message(_image_msg("img_multi", external_userid=ext))
         result = ingest_wecom_media_message(norm, cfg, download_fn=_fake_download, upload_fn=_fake_upload)
 
-    assert result["active_case_outcome"] == "media_unassigned"
-    assert "混在一起" in (result["reply_text"] or "")
-
-    for case in list_all_cases_for_read():
-        if case.get("service_lane") == SERVICE_LANE_CLAIM:
-            assert not (case.get("case_attachments") or [])
+    assert result["active_case_outcome"] == "media_attached_to_case"
+    assert result["case_id"] == newest
+    case = get_case_by_id(newest)
+    assert (case.get("case_attachments") or [])
+    assert "possible_multi_claim_context" in (case.get("risk_flags") or [])
 
     logs = _routing_logs(caplog)
-    assert any(log.get("identity_action") == "broker_confirm" for log in logs)
+    assert any(log.get("identity_action") == "append_existing" for log in logs)
 
 
 def test_04_add_vehicle_unaffected(cfg):

@@ -39,7 +39,7 @@ from services.fiqa_api.wecom.slice import process_kf_msg_or_event
 
 _NOW = datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
 _START_MARKER = "【事故记录已开始 ✅】"
-_RESOLVER_MARKERS = ("未完成的事故记录", "继续上一个事故", "开始新的事故记录")
+_RESOLVER_MARKERS = ("【请确认】", "继续当前事故", "开始新的事故记录")
 _ACCIDENT_NARRATIVE = "昨天7月8号，我们在 Santa Ana 红绿灯停下来，后车没停撞了我们。"
 
 
@@ -291,10 +291,10 @@ def test_08_broker_done_plus_woyao_claim_allows_new_start():
     assert _START_MARKER in (result.get("reply_text") or "")
 
 
-def test_09_multiple_open_claims_no_silent_append_or_create():
+def test_09_multiple_open_claims_strong_signal_resolver_choice_works():
     ext = "wm_col_i"
-    _open_claim(ext=ext, with_prior_story=True)
-    _open_claim(ext=ext, with_prior_story=True)
+    older = _open_claim(ext=ext, with_prior_story=True)
+    newer = _open_claim(ext=ext, with_prior_story=True)
     result = ingest_claim_basics_message(
         _normalized(_ACCIDENT_NARRATIVE, ext=ext),
         classify_wecom_intent(_ACCIDENT_NARRATIVE),
@@ -303,7 +303,8 @@ def test_09_multiple_open_claims_no_silent_append_or_create():
     assert result["case_created"] is False
     assert _claim_count(ext) == 2
     choice = ingest_claim_collision_choice(_normalized("1", ext=ext, msg_id="m_bad"))
-    assert choice["active_case_outcome"] == "claim_collision_multiple_open"
+    assert choice["active_case_outcome"] == "claim_collision_continue"
+    assert choice["case_id"] == newer["case_id"]
     assert _claim_count(ext) == 2
 
 

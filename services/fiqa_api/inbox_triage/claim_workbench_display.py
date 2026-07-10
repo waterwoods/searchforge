@@ -817,6 +817,12 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
         description=key_facts.get("accident_description"),
     )
 
+    if "possible_multi_claim_context" in list(case.get("risk_flags") or []):
+        highlights.insert(
+            0,
+            "该客户有多份未完成事故记录；系统已按最近活跃事故继续整理，请核对是否重复。",
+        )
+
     return {
         "summary": _build_brief_summary(case, key_facts=key_facts, photo_count=photo_count),
         "customer": {
