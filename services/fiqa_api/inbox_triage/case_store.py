@@ -1079,6 +1079,16 @@ def bind_case_channel_identity(
     if kf_id and normalized_case.get("wecom_open_kf_id") != kf_id:
         normalized_case["wecom_open_kf_id"] = kf_id
         changed = True
+    from services.fiqa_api.wecom.identity import (
+        is_generic_wecom_customer_name,
+        wecom_customer_display_label,
+    )
+
+    if is_generic_wecom_customer_name(str(normalized_case.get("customer_name") or "")):
+        label = wecom_customer_display_label(ext)
+        if normalized_case.get("customer_name") != label:
+            normalized_case["customer_name"] = _truncate(label, MAX_CUSTOMER_NAME_LENGTH)
+            changed = True
     if not changed:
         return normalized_case
     normalized_case["updated_at"] = _utc_now_iso()

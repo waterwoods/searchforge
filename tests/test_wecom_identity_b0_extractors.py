@@ -90,11 +90,15 @@ class TestWecomCustomerDisplayLabel:
     def test_known_name_wins(self) -> None:
         assert wecom_customer_display_label("wm_x", customer_name="张先生") == "张先生"
 
-    def test_external_userid_suffix(self) -> None:
+    def test_external_userid_suffix_last6(self) -> None:
+        assert wecom_customer_display_label("abc123456") == "微信客户 · 123456"
         assert (
             wecom_customer_display_label("wmtLevSgAA25eirbmJC3r-nfQBCrmxcw")
-            == "企业微信客户（尾号 mxcw）"
+            == "微信客户 · Crmxcw"
         )
+
+    def test_short_external_userid_uses_whole_value(self) -> None:
+        assert wecom_customer_display_label("wm_x") == "微信客户 · wm_x"
 
     def test_generic_fallback(self) -> None:
         assert wecom_customer_display_label(None) == "企业微信客户"

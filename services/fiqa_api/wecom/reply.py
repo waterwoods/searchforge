@@ -782,9 +782,11 @@ def build_claim_status_no_active_reply() -> str:
 
 
 def _claim_status_customer_name(case: dict[str, Any], brief: dict[str, Any]) -> str:
+    from services.fiqa_api.wecom.identity import wecom_customer_facing_display_name
+
     customer = brief.get("customer") or {}
     name = str(customer.get("name") or case.get("customer_name") or "").strip()
-    return name or "微信客户"
+    return wecom_customer_facing_display_name(name)
 
 
 def _claim_status_phase_label(case: dict[str, Any]) -> str:

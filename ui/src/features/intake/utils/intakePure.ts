@@ -356,8 +356,10 @@ export function polishWecomCustomerDisplayLabel(label: string): string {
     const trimmed = (label || '').trim();
     if (!trimmed) return trimmed;
     const legacySuffix = trimmed.match(/^WeCom · …(.+)$/);
-    if (legacySuffix) return `企业微信客户（尾号 ${legacySuffix[1]}）`;
+    if (legacySuffix) return `微信客户 · ${legacySuffix[1]}`;
     if (trimmed === 'WeCom Customer') return '企业微信客户';
+    const legacyWecom = trimmed.match(/^企业微信客户（尾号 (.+)）$/);
+    if (legacyWecom) return `微信客户 · ${legacyWecom[1]}`;
     return trimmed;
 }
 
@@ -369,11 +371,6 @@ export function resolveCustomerDisplayName(
     if (name) return name;
     const phone = (caseItem.customer_phone || '').trim();
     if (phone) return phone;
-    const ext = (caseItem.wecom_external_userid || '').trim();
-    if (ext) {
-        const suffix = ext.length > 4 ? ext.slice(-4) : ext;
-        return `企业微信客户（尾号 ${suffix}）`;
-    }
     return '企业微信客户';
 }
 

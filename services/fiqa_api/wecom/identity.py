@@ -18,6 +18,32 @@ _PHONE_PATTERNS = (
 
 _VIN_PATTERN = re.compile(r"\b([A-HJ-NPR-Z0-9]{17})\b", re.IGNORECASE)
 
+_GENERIC_WECOM_LABELS = frozenset({"企业微信客户", "微信客户"})
+_LEGACY_SUFFIX_PATTERN = re.compile(r"^企业微信客户（尾号 .+）$")
+_AUTO_SUFFIX_PATTERN = re.compile(r"^微信客户 · .+$")
+
+
+def is_generic_wecom_customer_name(name: str | None) -> bool:
+    """True when customer_name is empty or an auto/placeholder WeCom label."""
+    n = (name or "").strip()
+    if not n:
+        return True
+    if n in _GENERIC_WECOM_LABELS:
+        return True
+    if _LEGACY_SUFFIX_PATTERN.match(n):
+        return True
+    if _AUTO_SUFFIX_PATTERN.match(n):
+        return True
+    return False
+
+
+def wecom_external_userid_display_suffix(external_userid: str | None) -> str:
+    """Last up-to-6 chars of external_userid — safe for broker UI, not full id."""
+    ext = (external_userid or "").strip()
+    if not ext:
+        return ""
+    return ext[-6:] if len(ext) > 6 else ext
+
 
 def wecom_customer_display_label(
     external_userid: str | None,
@@ -41,9 +67,24 @@ def wecom_customer_display_label(
         return phone[:32]
     ext = (external_userid or "").strip()
     if ext:
-        suffix = ext[-4:] if len(ext) > 4 else ext
-        return f"企业微信客户（尾号 {suffix}）"
+        suffix = wecom_external_userid_display_suffix(ext)
+        return f"微信客户 · {suffix}"
     return "企业微信客户"
+
+
+def wecom_customer_facing_display_name(customer_name: str | None) -> str:
+    """
+    Customer-facing WeCom reply label — no external_userid suffix in chat copy.
+    Workbench uses full wecom_customer_display_label via customer_name instead.
+    """
+    name = (customer_name or "").strip()
+    if not name:
+        return "微信客户"
+    if name.startswith("微信客户 ·"):
+        return "微信客户"
+    if name in _GENERIC_WECOM_LABELS or _LEGACY_SUFFIX_PATTERN.match(name):
+        return "微信客户"
+    return name[:128]
 
 # Track B0.2 (contract §4.2) — ZIP, delivery date, primary driver.
 # Same pattern as phone/VIN above: adapter-local regex, no triage import,
