@@ -258,8 +258,8 @@ def test_11_done_case_display_label():
 def test_12_start_card_policy_still_passes():
     start = build_claim_start_card_reply()
     assert "【事故记录已开始" in start
-    assert "不代表已经向保险公司正式报案" in start
-    _assert_no_forbidden_copy(start.replace("不代表已经向保险公司正式报案", ""))
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in start
+    _assert_no_forbidden_copy(start.replace("这只是资料收集，不代表已经正式向保险公司报案。", ""))
 
 
 def test_13_raw_inbound_hidden_policy_still_passes(cfg):

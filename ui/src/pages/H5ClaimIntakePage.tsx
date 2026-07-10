@@ -58,6 +58,43 @@ const styles = {
     color: '#fff',
     cursor: 'pointer',
   } as const,
+  btnPrimarySubmit: {
+    width: '100%',
+    padding: '18px 16px',
+    fontSize: 18,
+    fontWeight: 700,
+    border: 'none',
+    borderRadius: 12,
+    background: '#0d3b66',
+    color: '#fff',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(13, 59, 102, 0.35)',
+  } as const,
+  submitBlock: {
+    background: '#eef4fa',
+    border: '2px solid #0d3b66',
+    borderRadius: 12,
+    padding: '16px 14px',
+    marginBottom: 20,
+  } as const,
+  submitSubtext: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 1.55,
+    marginTop: 10,
+    marginBottom: 0,
+    textAlign: 'center' as const,
+  } as const,
+  reviewWarning: {
+    background: '#fff3cd',
+    border: '1px solid #e6b800',
+    borderRadius: 8,
+    padding: '12px 14px',
+    marginBottom: 16,
+    fontSize: 14,
+    lineHeight: 1.55,
+    color: '#5c4a00',
+  } as const,
   btnDisabled: { opacity: 0.55, cursor: 'not-allowed' } as const,
   btnSecondary: {
     width: '100%',
@@ -150,6 +187,16 @@ export default function H5ClaimIntakePage() {
       cancelled = true;
     };
   }, [taskToken, hydrateFields]);
+
+  useEffect(() => {
+    if (step !== 'review' || submitting) return undefined;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [step, submitting]);
 
   const progressLabel = useMemo(() => {
     if (!info) return '';
@@ -456,6 +503,24 @@ export default function H5ClaimIntakePage() {
 
         {step === 'review' && info && (
           <div style={styles.card}>
+            <div style={styles.reviewWarning}>
+              还没有提交，返回微信不会把资料交给陈总。请先在下面点「提交给陈总审核」。
+            </div>
+
+            <div style={styles.submitBlock}>
+              <button
+                type="button"
+                style={{ ...styles.btnPrimarySubmit, ...(submitting ? styles.btnDisabled : {}) }}
+                disabled={submitting}
+                onClick={handleSubmit}
+              >
+                {submitting ? '提交中，请稍等…' : '提交给陈总审核'}
+              </button>
+              <p style={styles.submitSubtext}>
+                提交后，陈总会在工作台看到资料，你也会在微信收到「资料已提交」确认。
+              </p>
+            </div>
+
             <h3 style={{ marginTop: 0 }}>请确认已填写内容</h3>
             <p style={styles.sectionTitle}>已填资料</p>
             <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0 }}>
@@ -506,18 +571,9 @@ export default function H5ClaimIntakePage() {
                 目前主要资料已收到，陈总会进一步确认。
               </p>
             )}
-            <p style={styles.sectionTitle}>提交提醒</p>
-            <p style={{ margin: '0 0 12px', lineHeight: 1.6, fontSize: 14, color: '#666' }}>
-              提交后陈总会查看资料并联系您。这只是资料收集，不代表已经正式向保险公司报案。
+            <p style={{ margin: '12px 0 0', lineHeight: 1.6, fontSize: 13, color: '#666' }}>
+              这只是资料收集，不代表已经正式向保险公司报案。
             </p>
-            <button
-              type="button"
-              style={{ ...styles.btn, ...(submitting ? styles.btnDisabled : {}) }}
-              disabled={submitting}
-              onClick={handleSubmit}
-            >
-              {submitting ? '提交中，请稍等…' : '提交给陈总审核'}
-            </button>
           </div>
         )}
 

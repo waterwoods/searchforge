@@ -425,6 +425,11 @@ _CLAIM_BASICS_LABELS: dict[str, str] = {
 }
 
 _CLAIM_SAFE_DISCLAIMER = "这不代表已经向保险公司正式报案。"
+_CLAIM_CARD_DISCLAIMER_FOOTER: list[str] = [
+    "提醒：",
+    "这只是资料收集，不代表已经正式向保险公司报案。",
+]
+_WECOM_H5_LINK_TAIL = "如果按钮打不开，请回复：链接"
 _CLAIM_C1_H5_BUTTON = "补充事故资料"
 _CLAIM_C1_PHOTO_GUIDANCE_LINES: tuple[str, ...] = (
     "您可以继续在微信里补充说明或发照片，都会记到同一份记录里。",
@@ -460,14 +465,12 @@ def build_claim_end_card_reply() -> str:
     return frame_wecom_card("【陈总已确认 ✅】", body, footer)
 
 
-def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
+def _claim_start_card_body_lines(*, injury_mentioned: bool = False) -> list[str]:
     body = [
-        "我是陈总办公室的值班助手。",
-        "我会先帮陈总记录这次事故，您可以直接在微信里发文字、照片或语音。",
-        "陈总会人工确认后联系您。",
+        "请点击下面链接填写事故资料。",
+        "填写完成后，请在页面里点「提交给陈总审核」。",
         "",
-        "下一步：",
-        "请先确认：您和车上的人有没有受伤？",
+        "你也可以继续在微信里发送文字或照片作为补充。",
     ]
     if injury_mentioned:
         body.extend(
@@ -476,11 +479,15 @@ def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
                 "如果有人受伤，请优先联系紧急服务，并尽快联系陈总。",
             ]
         )
-    footer = [
-        "提醒：",
-        _CLAIM_SAFE_DISCLAIMER,
-    ]
-    return frame_wecom_card("【事故记录已开始 ✅】", body, footer)
+    return body
+
+
+def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
+    return frame_wecom_card(
+        "【事故记录已开始 ✅】",
+        _claim_start_card_body_lines(injury_mentioned=injury_mentioned),
+        _CLAIM_CARD_DISCLAIMER_FOOTER,
+    )
 
 
 def build_claim_start_injury_menu_payload() -> dict[str, Any]:
@@ -492,25 +499,23 @@ def build_claim_start_injury_menu_payload() -> dict[str, Any]:
             {"type": "click", "click": {"id": "claim_injury_yes", "content": "有人受伤"}},
             {"type": "click", "click": {"id": "claim_injury_unknown", "content": "不确定"}},
         ],
-        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+        "tail_content": _WECOM_H5_LINK_TAIL,
     }
 
 
 def build_claim_start_h5_intake_card_payload(*, h5_url: str) -> dict[str, Any]:
     """WeCom msgmenu: Claim Start Card with H5 structured intake as primary CTA (P19H-3h)."""
     url = (h5_url or "").strip()
-    body = [
-        "我是陈总办公室的值班助手。",
-        "请按步骤填写事故资料，陈总会人工确认。",
-        "",
-        "您也可以继续在微信发文字或照片作为补充。",
-    ]
     return {
-        "head_content": frame_wecom_card("【事故记录已开始 ✅】", body, footer_lines=[]),
+        "head_content": frame_wecom_card(
+            "【事故记录已开始 ✅】",
+            _claim_start_card_body_lines(injury_mentioned=False),
+            _CLAIM_CARD_DISCLAIMER_FOOTER,
+        ),
         "list": [
             {"type": "view", "view": {"url": url, "content": "打开资料填写页面"}},
         ],
-        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+        "tail_content": _WECOM_H5_LINK_TAIL,
     }
 
 
@@ -655,8 +660,7 @@ def build_claim_identity_broker_confirm_reply(*, multiple_open: bool = False) ->
         "回复「2」或「开始新的事故记录」",
         "回复「3」或「联系陈总」",
     ]
-    footer = ["提醒：", _CLAIM_SAFE_DISCLAIMER]
-    return frame_wecom_card("【请确认】", body, footer)
+    return frame_wecom_card("【请确认】", body, _CLAIM_CARD_DISCLAIMER_FOOTER)
 
 
 def build_claim_collision_resolver_menu_payload(*, multiple_open: bool = False) -> dict[str, Any]:
@@ -679,7 +683,7 @@ def build_claim_collision_resolver_menu_payload(*, multiple_open: bool = False) 
                 "click": {"id": "collision_contact_broker", "content": "联系陈总"},
             },
         ],
-        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+        "tail_content": _WECOM_H5_LINK_TAIL,
     }
 
 
@@ -724,8 +728,7 @@ def build_claim_lane_switch_reply() -> str:
         "",
         "您也可以回复「开始事故记录」或「继续加车」。",
     ]
-    footer = ["提醒：", _CLAIM_SAFE_DISCLAIMER]
-    return frame_wecom_card("【请确认】", body, footer)
+    return frame_wecom_card("【请确认】", body, _CLAIM_CARD_DISCLAIMER_FOOTER)
 
 
 def build_claim_lane_switch_menu_payload() -> dict[str, Any]:
@@ -742,7 +745,7 @@ def build_claim_lane_switch_menu_payload() -> dict[str, Any]:
                 "click": {"id": "lane_switch_continue_add_car", "content": "继续加车"},
             },
         ],
-        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+        "tail_content": _WECOM_H5_LINK_TAIL,
     }
 
 
@@ -820,28 +823,31 @@ def _claim_status_customer_name(case: dict[str, Any], brief: dict[str, Any]) -> 
     return wecom_customer_facing_display_name(name)
 
 
+def _is_h5_intake_submitted(case: dict[str, Any]) -> bool:
+    state = case.get("h5_intake_state") or {}
+    if isinstance(state, dict) and str(state.get("submitted_at") or "").strip():
+        return True
+    from services.fiqa_api.wecom.claim_state import CLAIM_PHASE_INTAKE_READY_FOR_BROKER, derive_claim_phase
+
+    return derive_claim_phase(case) == CLAIM_PHASE_INTAKE_READY_FOR_BROKER
+
+
 def _claim_status_phase_label(case: dict[str, Any]) -> str:
     from services.fiqa_api.wecom.claim_state import (
-        CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
         CLAIM_PHASE_BROKER_DONE,
         CLAIM_PHASE_BROKER_REVIEW,
-        CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
         CLAIM_PHASE_MANUAL_HANDLE,
         derive_claim_phase,
     )
 
     phase = derive_claim_phase(case)
     if phase == CLAIM_PHASE_BROKER_DONE:
-        return "陈总已确认 / 收集阶段已结束"
-    if phase in (
-        CLAIM_PHASE_BROKER_REVIEW,
-        CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
-        CLAIM_PHASE_MANUAL_HANDLE,
-    ):
-        return "待陈总确认"
-    if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
-        return "事故资料收集中（基本信息已完成）"
-    return "事故资料收集中"
+        return "陈总已确认"
+    if _is_h5_intake_submitted(case):
+        return "已提交给陈总审核"
+    if phase in (CLAIM_PHASE_BROKER_REVIEW, CLAIM_PHASE_MANUAL_HANDLE):
+        return "等待陈总查看"
+    return "资料收集中"
 
 
 def _claim_status_injury_received_label(injury: str) -> str | None:
@@ -891,12 +897,14 @@ def _claim_status_next_step(case: dict[str, Any], brief: dict[str, Any]) -> str:
     phase = derive_claim_phase(case)
     if phase == CLAIM_PHASE_BROKER_DONE:
         return "收集阶段已结束；如有新资料可继续发给陈总。"
+    if _is_h5_intake_submitted(case):
+        return "陈总会查看后联系你；如有新资料可继续发到微信。"
     next_q = str(brief.get("next_best_question") or case.get("next_best_question") or "").strip()
     if next_q:
         return f"{next_q} 您也可以继续发照片或文字到这里。"
     if phase in ("broker_review", "intake_ready_for_broker", "manual_handle"):
         return "陈总会确认资料；如果您有新资料，可以继续发到这里。"
-    return "陈总会确认资料；如果您有对方保险信息，可以继续发到这里。"
+    return "请打开资料填写页面完成并提交；也可继续在微信补充照片或文字。"
 
 
 def _str_or_none_local(value: Any) -> str | None:
@@ -921,9 +929,6 @@ def build_claim_status_card_reply(
 
     body: list[str] = [
         f"状态：{_claim_status_phase_label(case)}",
-        f"客户：{_claim_status_customer_name(case, brief)}",
-        f"事故时间：{_str_or_none_local(key_facts.get('accident_datetime')) or '待确认'}",
-        f"事故地点：{_str_or_none_local(key_facts.get('accident_location')) or '待确认'}",
         "",
         "已收到：",
         *_claim_status_received_lines(brief),
@@ -942,10 +947,7 @@ def build_claim_status_card_reply(
                 "如果不是同一个事故，请回复「新的事故」。",
             ]
         )
-    footer = [
-        "提醒：",
-        "这只是事故资料记录，不代表已经向保险公司正式报案。",
-    ]
+    footer = list(_CLAIM_CARD_DISCLAIMER_FOOTER)
     intake_url = (h5_intake_url or "").strip()
     if intake_url:
         footer.insert(0, f"继续补充资料：点击打开资料填写页面\n{intake_url}")

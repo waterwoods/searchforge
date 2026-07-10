@@ -203,7 +203,7 @@ def test_invariant_03_explicit_start_emits_start_card_before_timeline_story():
     assert result["case_created"] is True
     reply = result.get("reply_text") or ""
     assert _START_MARKER in reply
-    assert "有没有受伤" in reply
+    assert "提交给陈总审核" in reply
     case = get_case_by_id(result["case_id"]) or {}
     timeline = case.get("claim_timeline") or []
     types = {e.get("event_type") for e in timeline}
@@ -358,5 +358,5 @@ def test_invariant_11_lane_switch_confirm_before_start_card():
 def test_invariant_12_start_card_ceremony_copy():
     start = build_claim_start_card_reply()
     assert "事故记录已开始" in start
-    assert "不代表已经向保险公司正式报案" in start
-    assert "陈总办公室" in start
+    assert "提交给陈总审核" in start
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in start

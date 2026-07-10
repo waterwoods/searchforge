@@ -107,7 +107,7 @@ def test_active_add_car_xianzai_jinxing_claim_confirm_card():
     assert "暂停当前加车资料收集" in reply
     assert "开始事故记录" in reply
     assert "继续加车" in reply
-    assert "这不代表已经向保险公司正式报案" in reply
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in reply
     _assert_no_deferral(reply)
     _assert_no_start_card(reply, result.get("menu_payload"))
 
@@ -130,8 +130,7 @@ def test_confirm_start_accident_record_creates_claim_start_card():
     assert result["case_created"] is True
     assert result["active_case_outcome"] == "claim_start_card_sent"
     assert _START_MARKER in reply
-    assert "陈总办公室" in reply
-    assert "有没有受伤" in reply
+    assert "提交给陈总审核" in reply
     assert result.get("menu_payload") is not None
     assert get_case_by_id(add_car["case_id"]) is not None
     claim = get_case_by_id(result["case_id"])

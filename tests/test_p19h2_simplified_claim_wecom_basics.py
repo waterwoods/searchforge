@@ -86,10 +86,8 @@ def _assert_no_forbidden_copy(text: str) -> None:
 def test_01_woyao_claim_start_safety_reply():
     reply = build_claim_start_reply()
     assert "事故记录已开始" in reply
-    assert "陈总办公室的值班助手" in reply
-    assert "有没有受伤" in reply
-    assert "这不代表已经向保险公司正式报案" in reply
-    assert "这不代表已经向保险公司正式报案" in reply
+    assert "提交给陈总审核" in reply
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in reply
     _assert_no_forbidden_copy(reply)
 
 

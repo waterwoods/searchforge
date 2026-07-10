@@ -30,8 +30,10 @@ from services.fiqa_api.wecom.reply import (
     build_claim_identity_broker_confirm_reply,
     build_claim_lane_switch_reply,
     build_claim_start_card_reply,
+    build_claim_start_h5_intake_card_payload,
     build_claim_status_card_reply,
     build_claim_wecom_media_reply,
+    build_h5_submit_confirmation_reply,
     frame_wecom_card,
 )
 from services.fiqa_api.wecom.slice import process_kf_msg_or_event
@@ -145,12 +147,31 @@ def test_frame_wecom_card_wraps_title_and_body():
 
 
 def test_start_card_has_frame_and_required_phrases():
+    """Production Start Card — H5-first copy (P19H-3h card design system)."""
     reply = build_claim_start_card_reply()
     assert "━━━━━━━━━━━━" in reply
     assert "【事故记录已开始 ✅】" in reply
-    assert "陈总办公室" in reply
-    assert "有没有受伤" in reply
-    assert "不代表已经向保险公司正式报案" in reply
+    assert "提交给陈总审核" in reply
+    assert "打开资料填写页面" not in reply  # plain-text fallback; H5 button is on msgmenu
+    assert reply.count("这只是资料收集，不代表已经正式向保险公司报案。") == 1
+    assert "有没有受伤" not in reply
+
+
+def test_h5_start_card_menu_has_primary_cta_and_single_disclaimer():
+    menu = build_claim_start_h5_intake_card_payload(h5_url="https://example.test/task/claim/h5t1.x")
+    head = menu["head_content"]
+    assert "【事故记录已开始 ✅】" in head
+    assert "提交给陈总审核" in head
+    assert head.count("这只是资料收集，不代表已经正式向保险公司报案。") == 1
+    assert menu["list"][0]["view"]["content"] == "打开资料填写页面"
+    assert "这只是资料收集" not in (menu.get("tail_content") or "")
+
+
+def test_submit_confirmation_distinct_from_broker_done():
+    reply = build_h5_submit_confirmation_reply()
+    assert "【资料已提交 ✅】" in reply
+    assert "陈总已确认" not in reply
+    assert reply.count("这只是资料收集，不代表已经正式向保险公司报案。") == 1
 
 
 def test_end_card_has_frame_and_required_phrases():

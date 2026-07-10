@@ -191,9 +191,8 @@ def test_03_explicit_woyao_claim_creates_case():
     assert stored.get("service_lane") == SERVICE_LANE_CLAIM
     reply = result.get("reply_text") or ""
     assert "【事故记录已开始 ✅】" in reply
-    assert "陈总办公室" in reply
-    assert "有没有受伤" in reply
-    assert "不代表已经向保险公司正式报案" in reply
+    assert "提交给陈总审核" in reply
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in reply
 
 
 def test_04_start_card_only_after_explicit_start():
@@ -201,18 +200,16 @@ def test_04_start_card_only_after_explicit_start():
     assert "事故记录已开始" not in holding
     start = build_claim_start_card_reply()
     assert "事故记录已开始" in start
-    assert "陈总办公室的值班助手" in start
-    assert "有没有受伤" in start
-    assert "不代表已经向保险公司正式报案" in start
+    assert "提交给陈总审核" in start
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in start
     result = ingest_claim_basics_message(
         _normalized("我要理赔", msg_id="m_sc"),
         classify_wecom_intent("我要理赔"),
     )
     reply = result.get("reply_text") or ""
     assert "事故记录已开始" in reply
-    assert "陈总办公室" in reply
-    assert "有没有受伤" in reply
-    assert "不代表已经向保险公司正式报案" in reply
+    assert "提交给陈总审核" in reply
+    assert "这只是资料收集，不代表已经正式向保险公司报案。" in reply
 
 
 def test_13_formal_claim_paths_emit_start_card():
@@ -226,7 +223,7 @@ def test_13_formal_claim_paths_emit_start_card():
         assert result.get("case_created") is True, text
         reply = result.get("reply_text") or ""
         assert "【事故记录已开始 ✅】" in reply, text
-        assert "不代表已经向保险公司正式报案" in reply, text
+        assert "这只是资料收集，不代表已经正式向保险公司报案。" in reply, text
 
 
 def test_05_injury_quick_reply_alone_no_case():

@@ -354,7 +354,11 @@ SCENARIO_ADD_VEHICLE_TO_CLAIM_INTERRUPT: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_confirmed_start",
             inbound_text="开始事故记录",
-            expected_contains=("事故记录已开始", "陈总办公室的值班助手", "有没有受伤", "这不代表已经向保险公司正式报案"),
+            expected_contains=(
+                "事故记录已开始",
+                "提交给陈总审核",
+                "这只是资料收集，不代表已经正式向保险公司报案",
+            ),
             expected_priority_rule="claim_confirmed_start",
             expected_decision="start_claim_flow",
             expected_response_type="claim_start",
@@ -432,7 +436,11 @@ SCENARIO_NO_ACTIVE_CLAIM_BASICS: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="claim_start",
             inbound_text="我要理赔",
-            expected_contains=("事故记录已开始", "陈总办公室的值班助手", "有没有受伤"),
+            expected_contains=(
+                "事故记录已开始",
+                "提交给陈总审核",
+                "这只是资料收集，不代表已经正式向保险公司报案",
+            ),
             expected_priority_rule="claim_start_no_active_case",
             expected_decision="start_claim_flow",
             expected_response_type="claim_start",
@@ -495,9 +503,8 @@ SCENARIO_NC3_EXPLICIT_START: tuple[str, list[ScenarioStep]] = (
             inbound_text="我要理赔",
             expected_contains=(
                 "事故记录已开始",
-                "陈总办公室的值班助手",
-                "不代表已经向保险公司正式报案",
-                "有没有受伤",
+                "提交给陈总审核",
+                "这只是资料收集，不代表已经正式向保险公司报案",
             ),
             expect_case_created=True,
             expect_service_lane="claim",
@@ -511,7 +518,7 @@ SCENARIO_NC4_FULL_FLOW: tuple[str, list[ScenarioStep]] = (
         ScenarioStep(
             name="explicit_start",
             inbound_text="我要理赔",
-            expected_contains=("事故记录已开始", "有没有受伤"),
+            expected_contains=("事故记录已开始", "提交给陈总审核"),
             expect_case_created=True,
             expect_service_lane="claim",
         ),

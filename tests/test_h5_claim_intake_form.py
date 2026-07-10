@@ -369,6 +369,19 @@ def test_status_card_omits_continue_link_after_h5_submit():
     reply = result.get("reply_text") or ""
     assert result["case_created"] is False
     assert "继续补充资料" not in reply
+    assert "已提交给陈总审核" in reply
+
+
+def test_status_card_shows_submitted_phase_label():
+    case_id = _save_claim_case("case_status_phase")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "99999999-aaaa-4333-8444-555555555555"
+    _complete_h5_intake(client, token, intent)
+    case = get_case_by_id(case_id) or {}
+    reply = build_claim_status_card_reply(case)
+    assert "状态：已提交给陈总审核" in reply
+    assert "继续补充资料" not in reply
 
 
 def _complete_h5_intake(client: TestClient, token: str, intent: str) -> dict:

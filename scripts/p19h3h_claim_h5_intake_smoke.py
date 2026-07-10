@@ -246,6 +246,24 @@ def _workbench_checks(case_id: str, client: Any | None = None) -> dict[str, Any]
     }
 
 
+def _wecom_card_copy_checks() -> dict[str, Any]:
+    from services.fiqa_api.wecom.reply import (
+        build_claim_start_h5_intake_card_payload,
+        build_h5_submit_confirmation_reply,
+    )
+
+    start_menu = build_claim_start_h5_intake_card_payload(h5_url="https://example.test/task/claim/h5t1.x")
+    start_head = start_menu.get("head_content") or ""
+    submit_reply = build_h5_submit_confirmation_reply()
+    return {
+        "start_has_submit_instruction": "提交给陈总审核" in start_head,
+        "start_has_h5_button": start_menu["list"][0]["view"]["content"] == "打开资料填写页面",
+        "start_disclaimer_once": start_head.count("这只是资料收集，不代表已经正式向保险公司报案。") == 1,
+        "submit_confirmation_not_broker_done": "陈总已确认" not in submit_reply,
+        "submit_confirmation_has_title": "【资料已提交 ✅】" in submit_reply,
+    }
+
+
 def _status_card_checks_open(case_id: str, ext: str) -> dict[str, Any]:
     from services.fiqa_api.inbox_triage.case_store import get_case_by_id
     from services.fiqa_api.inbox_triage.case_truth_repository import list_all_cases_for_read
@@ -347,6 +365,7 @@ def run_in_process_smoke() -> dict[str, Any]:
 
     checks = {
         **h5,
+        **{f"card_{k}": v for k, v in _wecom_card_copy_checks().items()},
         **{f"status_{k}": v for k, v in status_open.items()},
         **{f"wb_{k}": v for k, v in wb.items()},
         **{f"status_{k}": v for k, v in status_submitted.items()},
