@@ -257,8 +257,8 @@ def test_04_confirm_choice_2_creates_new_claim_start_card():
     ext = "wm_sat_04"
     _open_claim(ext=ext, with_prior_story=True)
     ingest_claim_basics_message(
-        _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m_trig"),
-        classify_wecom_intent(_ACCIDENT_NARRATIVE),
+        _normalized("新的事故", ext=ext, msg_id="m_trig"),
+        classify_wecom_intent("新的事故"),
     )
     result = ingest_claim_collision_choice(_normalized("2", ext=ext, msg_id="m_new"))
     assert result["active_case_outcome"] == "claim_start_card_sent"

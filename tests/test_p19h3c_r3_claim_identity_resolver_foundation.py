@@ -158,7 +158,7 @@ def test_03_explicit_new_accident_with_open_claim_triggers_resolver():
     assert decision.tier == "B"
     assert decision.action == "broker_confirm"
     assert decision.case_id == "case_a"
-    assert "existing_open_claim_plus_explicit_restart" in decision.reasons
+    assert "customer_said_new_accident" in decision.reasons
 
 
 def test_04_multiple_open_claims_append_newest():
@@ -177,7 +177,8 @@ def test_04_multiple_open_claims_append_newest():
     assert set(decision.candidate_case_ids) == {"case_a", "case_b"}
 
 
-def test_05_old_open_claim_broker_confirm():
+def test_05_old_open_claim_append_first():
+    """Append-first: stale open Claim still appends; old policy was broker_confirm."""
     case = _open_claim_case(updated_at=(_NOW - timedelta(hours=100)).isoformat())
     decision = resolve_claim_identity(
         external_userid="wm_identity",
@@ -185,14 +186,10 @@ def test_05_old_open_claim_broker_confirm():
         open_claims=[case],
         now=_NOW,
     )
-    assert decision.tier == "B"
-    assert decision.action == "broker_confirm"
+    assert decision.tier == "A"
+    assert decision.action == "append_existing"
     assert decision.case_id == "case_a"
-    assert 50 <= decision.score < 90
-    assert decision.reasons[0] in (
-        "old_open_claim_requires_confirmation",
-        "existing_open_claim_plus_explicit_restart",
-    )
+    assert decision.reasons[0] == "old_open_claim_append_first"
 
 
 def test_06_closed_or_broker_done_excluded():
@@ -210,7 +207,8 @@ def test_06_closed_or_broker_done_excluded():
     assert "no_open_claim" in decision.reasons
 
 
-def test_07_claim_basics_path_multi_open_woyao_claim_still_resolver():
+def test_07_claim_basics_path_multi_open_woyao_claim_appends_newest():
+    """Append-first: multi-open 我要理赔 appends to newest; old policy was collision resolver."""
     ext = "wm_multi_claim"
     first = save_case("claim one", _claim_stub(), service_lane=SERVICE_LANE_CLAIM)
     second = save_case("claim two", _claim_stub(), service_lane=SERVICE_LANE_CLAIM)
@@ -221,11 +219,9 @@ def test_07_claim_basics_path_multi_open_woyao_claim_still_resolver():
         _normalized("我要理赔", ext=ext, msg_id="m_multi"),
         classify_wecom_intent("我要理赔"),
     )
-    assert result["active_case_outcome"] == "claim_collision_resolver"
+    assert result["active_case_outcome"] != "claim_collision_resolver"
     assert result["case_created"] is False
-    reply = result["reply_text"] or ""
-    assert "【请确认】" in reply
-    assert "继续当前事故" in reply
+    assert result["case_id"] == second["case_id"]
 
 
 def test_08_routing_log_includes_identity_fields(caplog):
@@ -237,8 +233,8 @@ def test_08_routing_log_includes_identity_fields(caplog):
     bind_case_channel_identity(second["case_id"], wecom_external_userid=ext)
 
     ingest_claim_basics_message(
-        _normalized("我要理赔", ext=ext, msg_id="m_route"),
-        classify_wecom_intent("我要理赔"),
+        _normalized("新的事故", ext=ext, msg_id="m_route"),
+        classify_wecom_intent("新的事故"),
     )
 
     identity_logs = [
@@ -250,8 +246,7 @@ def test_08_routing_log_includes_identity_fields(caplog):
     payload = identity_logs[-1]
     assert payload["identity_tier"] == "B"
     assert payload["identity_action"] == "broker_confirm"
-    assert payload["identity_score"] == 50
-    assert "multiple_open_claims" in payload.get("identity_reasons", [])
+    assert "customer_said_new_accident" in payload.get("identity_reasons", [])
 
 
 def test_09_append_recent_single_open_claim_integration():

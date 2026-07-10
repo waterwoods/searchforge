@@ -441,7 +441,6 @@ def _mark_lane_switch_confirmed(case_id: str | None, claim_id: str) -> None:
 def ingest_claim_lane_switch_confirm(normalized: dict[str, Any]) -> dict[str, Any]:
     """Create formal Claim after user confirms lane switch from active Add Vehicle."""
     from services.fiqa_api.inbox_triage.case_store import update_claim_workflow_state
-    from services.fiqa_api.wecom.reply import build_claim_start_injury_menu_payload
 
     ext = str(normalized.get("external_userid") or "").strip()
     add_car_id = find_open_add_car_case_by_external_userid(ext)
@@ -450,14 +449,17 @@ def ingest_claim_lane_switch_confirm(normalized: dict[str, Any]) -> dict[str, An
     existing_claim_id = str(pending.get("confirmed_claim_id") or "").strip() or None
 
     if existing_claim_id:
-        case = get_case_for_read(existing_claim_id) or {}
-        injury_menu = build_claim_start_injury_menu_payload()
+        start_h5 = _build_claim_start_h5_intake_response(
+            existing_claim_id,
+            external_userid=ext,
+        )
         return {
             "outcome": "claim_start_card_sent",
             "case_id": existing_claim_id,
             "case_created": False,
-            "reply_text": injury_menu["head_content"],
-            "menu_payload": injury_menu,
+            "reply_text": start_h5["reply_text"],
+            "menu_payload": start_h5["menu_payload"],
+            "h5_task_link_masked": start_h5.get("h5_task_link_masked"),
             "active_case_outcome": "claim_start_card_sent",
             "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
             "service_lane": SERVICE_LANE_CLAIM,
@@ -481,7 +483,7 @@ def ingest_claim_lane_switch_confirm(normalized: dict[str, Any]) -> dict[str, An
         claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
         guided_workflow_state=GUIDED_STATE_COLLECTING_TEXT,
     )
-    injury_menu = build_claim_start_injury_menu_payload()
+    start_h5 = _build_claim_start_h5_intake_response(case_id, external_userid=ext)
     av_ctx = add_vehicle_context_for_user(ext)
     _emit_claim_routing_decision(
         normalized=normalized,
@@ -499,8 +501,9 @@ def ingest_claim_lane_switch_confirm(normalized: dict[str, Any]) -> dict[str, An
         "outcome": "claim_start_card_sent",
         "case_id": case_id,
         "case_created": True,
-        "reply_text": injury_menu["head_content"],
-        "menu_payload": injury_menu,
+        "reply_text": start_h5["reply_text"],
+        "menu_payload": start_h5["menu_payload"],
+        "h5_task_link_masked": start_h5.get("h5_task_link_masked"),
         "active_case_outcome": "claim_start_card_sent",
         "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
         "service_lane": SERVICE_LANE_CLAIM,
@@ -864,24 +867,22 @@ def ingest_claim_collision_continue(
 
 
 def ingest_claim_collision_new(normalized: dict[str, Any], *, anchor_id: str, pending: dict[str, Any]) -> dict[str, Any]:
-    from services.fiqa_api.wecom.reply import (
-        build_claim_collision_multiple_open_reply,
-        build_claim_start_injury_menu_payload,
-    )
+    from services.fiqa_api.wecom.reply import build_claim_collision_multiple_open_reply
 
     candidate_ids = pending.get("candidate_claim_ids") or []
     _ = candidate_ids  # multi-open allowed — always create new Claim on choice 2
 
+    ext = str(normalized.get("external_userid") or "").strip()
     existing_new_id = str(pending.get("resolved_claim_id") or "").strip()
     if existing_new_id and str(pending.get("choice") or "") == "start_new":
-        case = get_case_for_read(existing_new_id) or {}
-        injury_menu = build_claim_start_injury_menu_payload()
+        start_h5 = _build_claim_start_h5_intake_response(existing_new_id, external_userid=ext)
         return {
             "outcome": "claim_start_card_sent",
             "case_id": existing_new_id,
             "case_created": False,
-            "reply_text": injury_menu["head_content"],
-            "menu_payload": injury_menu,
+            "reply_text": start_h5["reply_text"],
+            "menu_payload": start_h5["menu_payload"],
+            "h5_task_link_masked": start_h5.get("h5_task_link_masked"),
             "active_case_outcome": "claim_start_card_sent",
             "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
             "service_lane": SERVICE_LANE_CLAIM,
@@ -914,7 +915,7 @@ def ingest_claim_collision_new(normalized: dict[str, Any], *, anchor_id: str, pe
     )
     _mark_collision_resolved(anchor_id, choice="start_new", resolved_claim_id=case_id)
 
-    injury_menu = build_claim_start_injury_menu_payload()
+    start_h5 = _build_claim_start_h5_intake_response(case_id, external_userid=ext)
     _emit_claim_routing_decision(
         normalized=normalized,
         intent_result=None,
@@ -929,8 +930,9 @@ def ingest_claim_collision_new(normalized: dict[str, Any], *, anchor_id: str, pe
         "outcome": "claim_start_card_sent",
         "case_id": case_id,
         "case_created": True,
-        "reply_text": injury_menu["head_content"],
-        "menu_payload": injury_menu,
+        "reply_text": start_h5["reply_text"],
+        "menu_payload": start_h5["menu_payload"],
+        "h5_task_link_masked": start_h5.get("h5_task_link_masked"),
         "active_case_outcome": "claim_start_card_sent",
         "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
         "service_lane": SERVICE_LANE_CLAIM,
@@ -968,15 +970,14 @@ def ingest_claim_collision_choice(normalized: dict[str, Any]) -> dict[str, Any]:
     if is_claim_collision_new(text):
         existing_new_id = find_collision_resolved_start_new_claim(ext)
         if existing_new_id:
-            from services.fiqa_api.wecom.reply import build_claim_start_injury_menu_payload
-
-            injury_menu = build_claim_start_injury_menu_payload()
+            start_h5 = _build_claim_start_h5_intake_response(existing_new_id, external_userid=ext)
             return {
                 "outcome": "claim_start_card_sent",
                 "case_id": existing_new_id,
                 "case_created": False,
-                "reply_text": injury_menu["head_content"],
-                "menu_payload": injury_menu,
+                "reply_text": start_h5["reply_text"],
+                "menu_payload": start_h5["menu_payload"],
+                "h5_task_link_masked": start_h5.get("h5_task_link_masked"),
                 "active_case_outcome": "claim_start_card_sent",
                 "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
                 "service_lane": SERVICE_LANE_CLAIM,

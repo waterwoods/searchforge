@@ -5,7 +5,7 @@
 **Lane:** Claim (`service_lane: claim`)  
 **Flow token:** `FLOW_CLAIM_INTAKE_FORM` (new)  
 **Route:** `/task/claim/:taskToken`  
-**Pattern:** Spark Driver「trip」— one stage, one primary action
+**Pattern:** Spark Driver「trip」— one stage, one primary action (production-grade task workflow, not standalone app)
 
 ---
 
@@ -19,7 +19,9 @@ Start → Injury → Time+Location → Story → Vehicle/Other → Evidence → 
 
 **Design principles:**
 
+- **Production-grade workflow product, not AI demo** — shippable, sellable, time-saving; main flow = H5 + state machine; AI assist only; idempotent + evidence-backed; broker confirms `broker_done` (see architecture doc §Production-grade)
 - **Structured Task First, AI Assist Second** — state machine controls flow; H5 is structured execution; AI is draft/assist only (see architecture doc §Core principle)
+- **Append-first, Split-later** — ordinary WeCom/H5 supplements append to current Claim; split/merge/archive is backend/broker (see architecture doc §Append-first)
 - One primary button per screen
 - Button disables + spinner on action
 - Back navigation allowed (except after final submit)
@@ -36,6 +38,8 @@ Start → Injury → Time+Location → Story → Vehicle/Other → Evidence → 
 | 3 | WeCom free text / photos | **Supplemental / provisional** — merge to case; may pre-fill H5; never skip wizard steps |
 | 4 | AI extraction from chat | **Draft only** — Workbench hint; broker confirms |
 
+**Append-first rule:** Passive accident narrative, photos, and supplements **append** to the active Claim timeline without customer collision prompts. H5 continue link offered on Status / missing / append when intake is continuable. Only strong explicit new-accident language triggers rare WeCom confirm.
+
 **Implementation guardrails for tomorrow:**
 
 - Do **not** advance H5 steps based on WeCom/AI extraction alone
@@ -43,6 +47,10 @@ Start → Injury → Time+Location → Story → Vehicle/Other → Evidence → 
 - Do **not** build WeCom msgmenu as primary field collection for new Claims
 - WeCom injury quick-reply: legacy only; new cases → H5 Step 2
 - Workbench brief may show AI-suggested fields; **broker_done** remains manual Chen trust anchor
+- Every step write → `claim_timeline` with `source_channel: h5_task` (production evidence chain)
+- Production changes require test + smoke + rollback consideration before deploy
+
+**Spark Driver takeaway:** One trip, one primary action, clear completion — because **task cards and state machines** make production workflows trustworthy. AI chat does not. Production standards > demo effects.
 
 ---
 

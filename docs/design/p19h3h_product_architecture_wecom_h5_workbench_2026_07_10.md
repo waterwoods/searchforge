@@ -19,6 +19,25 @@ Customers experience something closer to **Walmart Spark Driver**: one screen, o
 
 This is **record collection and broker handoff memory** — not carrier filing, CRM, liability engine, or coverage automation. Every surface reinforces: *这不代表已经向保险公司正式报案*.
 
+### Core principle — Production-grade workflow product, not AI demo
+
+**做可上线、可卖钱、能省时间的 production 产品，不做 AI 炫技 demo。**
+
+We are not building a product to prove AI can chat or guess intent. We are building a **production-grade workflow product** — live-ready, reusable, sellable, and time-saving for brokers and customers.
+
+| Production bar | Requirement |
+|----------------|-------------|
+| UX | Stable, clear, low wait, low confusion |
+| Main flow | H5 Task Page · buttons · fields · upload · submit · state machine |
+| AI role | Backend assist only — summary, missing items, risk hints, broker draft |
+| Reliability | Idempotent · anti double-click · anti duplicate submit · recoverable errors |
+| Auditability | Timeline / evidence chain on every key action |
+| Broker authority | Final confirmation retained; `broker_done` never automated |
+| Ship discipline | Test · smoke · rollback · performance · real UX on every change |
+| Commercial value | Less repeat asking · less missing materials · less broker review time · higher handling efficiency |
+
+**Spark Driver takeaway:** The inspiration is **production-grade task workflow** — task cards, state machines, evidence chains, explicit feedback, exception control — **not** building a standalone app. **AI is a capability, not the productized flow.** Production standards are higher than demo effects.
+
 ### Core principle — Structured Task First, AI Assist Second
 
 **结构化任务优先，AI 理解辅助。**
@@ -45,6 +64,26 @@ The customer-facing main path must **not** depend on AI interpreting free text. 
 **Why:** Like Walmart Spark Driver, smoothness comes from a clear task state machine — not free chat. Users speak less, guess less, wait less. The system misjudges less, forks less, repeats less. Brokers trust structured data.
 
 **Claim H5 MVP implementation must enforce this.** No chat-driven step collection, no LLM-controlled phase transitions, no treating WeCom narrative as primary intake.
+
+**Both principles together:** *Structured Task First* defines architecture; *Production-grade workflow product* defines the quality bar. A feature that satisfies architecture but fails idempotency, evidence chain, or broker trust is still **not shippable**.
+
+### Core principle — Append-first, Split-later
+
+**先归档，后拆分。**
+
+Customer-facing UX should not make users manage multiple incidents/cases. For Claim/Add Car, ordinary inbound content should append to the current lane/task timeline. AI, broker, and backoffice can later classify, split, merge, archive, or flag if needed. This reduces customer cognitive burden and keeps the workflow production-grade.
+
+| Layer | Append-first behavior |
+|-------|----------------------|
+| **WeCom customer** | One current task thread; ordinary text/photos supplement the active Claim |
+| **H5 Task Page** | Primary structured intake; WeCom chat merges as supplemental timeline events |
+| **Identity resolver** | Passive accident words append; only strong explicit new-accident signals prompt confirm |
+| **Broker Workbench** | `possible_multi_claim_context` / split hints visible; no customer multi-case picker |
+| **AI / backoffice** | May propose split/merge/archive — never the default customer interruption |
+
+**Ordinary append (no customer confirm):** 事故, 追尾, 被撞, 时间+地点, 车牌, 照片, 补充一下, 对方保险, repeat「我要理赔」on open Claim (H5 continue link).
+
+**Rare customer confirm:**「这是另一个事故」「不是刚才那个事故」「又发生了一次新的事故」「重新开一个理赔」— prefer broker warning unless intent is unmistakable.
 
 ---
 
@@ -225,6 +264,8 @@ Channel entry (WeCom / SMS / email / web)
 ---
 
 ## 7. Chen pilot objective
+
+**Commercial value (production bar, not demo):** Every surface must measurably reduce repeat asking, missing materials, broker review time, and handling friction. If a change does not move one of these needles, it is not production-grade.
 
 | Pain today | Target with WeCom + H5 + Workbench |
 |------------|-------------------------------------|

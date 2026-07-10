@@ -47,6 +47,67 @@ State machine (`claim_state.py`) controls flow. AI extracts and summarizes — i
 
 ---
 
+## 1c. Core product principle — Production-grade workflow product, not AI demo
+
+**做可上线、可卖钱、能省时间的 production 产品，不做 AI 炫技 demo。**
+
+This project is **not** about showcasing that AI can chat or guess intent. It is about building a **production-grade workflow product** that can go live, be reused, sold, and save time for brokers and customers.
+
+**Relationship to §1b:** *Structured Task First, AI Assist Second* defines **how** the workflow is built. *Production-grade workflow product* defines **the bar** — shippable, sellable, time-saving — not a demo that impresses in a meeting but fails in pilot.
+
+| # | Production requirement | How we satisfy it |
+|---|------------------------|-------------------|
+| 1 | **Stable, clear UX** — low wait, low confusion | H5 wizard, disabled buttons, loading states, Status Card sync |
+| 2 | **Main flow = structured surfaces** | H5 Task Page + buttons + fields + upload + submit + state machine |
+| 3 | **AI = backend assist only** | Summary, missing items, risk hints, broker draft — never the customer main path |
+| 4 | **Idempotent, recoverable** | Submit keys, phase guards, photo hash dedup, error retry paths |
+| 5 | **Timeline / evidence chain** | `claim_timeline` on every key action; source tags (`h5_task`, `wecom`, `broker`) |
+| 6 | **Broker final confirmation** | `broker_done` is manual Chen action — never automated |
+| 7 | **Ship discipline** | Test, smoke, rollback, performance, real UX before every production change |
+| 8 | **Clear commercial value** | Less repeat asking · less missing materials · less broker review time · higher handling efficiency |
+
+**Spark Driver — what we take from it:**
+
+| Spark Driver teaches | What we do **not** copy |
+|----------------------|-------------------------|
+| Production-grade **task workflow** — one task, one action, visible progress | Building a standalone driver app |
+| Task cards, state machine, evidence chain, clear feedback, exception control | Chatbot-as-product or AI-as-main-UI |
+| Tap once, know it worked | Demo wow factor over reliability |
+
+**AI is a capability, not the productized flow.** Good products win on task cards, state machines, evidence chains, explicit feedback, and exception control — not on how clever the LLM sounds. **Production standards are higher than demo effects.**
+
+**Claim H5 MVP:** Every implementation choice must pass both §1b (structured task first) and §1c (production bar). If a feature looks impressive in a demo but adds confusion, duplicate submits, or untrusted automation — **do not ship it**.
+
+---
+
+## 1d. Core product principle — Append-first, Split-later
+
+**先归档，后拆分。**
+
+Customer-facing UX should not make users manage multiple incidents/cases. For Claim/Add Car, ordinary inbound content should append to the current lane/task timeline. AI, broker, and backoffice can later classify, split, merge, archive, or flag if needed. This reduces customer cognitive burden and keeps the workflow production-grade.
+
+**Relationship to §1b and §1c:** *Structured Task First* defines how tasks execute; *Production-grade* defines the ship bar; *Append-first, Split-later* defines **customer cognitive load** — one current thread, backend decides exceptions.
+
+| Rule | Meaning |
+|------|---------|
+| **Customers are not case managers** | Customer side has one current task /资料收集 thread — not multiple open incidents to pick from |
+| **Collect first, classify later** | Ordinary WeCom text, photos, supplements default **append** to active Claim timeline |
+| **Backend splits when needed** | AI / broker / backoffice may split, merge, archive, or flag risk — off the customer main path |
+| **Collision prompts are rare** | Only **strong explicit** new-accident signals interrupt (e.g.「这是另一个事故」「重新开一个理赔」) |
+| **Passive words never interrupt** | 事故 / 追尾 / 被撞 / 时间+地点 / 车牌 / 照片 / 补充一下 → append, not「新事故？」confirm |
+| **Broker sees risk** | Workbench may show `possible_multi_claim_context` / split-needed hints; no customer multi-case picker |
+| **H5-first new start** | New Claim starts via H5 Start Card; legacy injury menu remains for legacy cases only |
+
+**Strong explicit signals (customer confirm or broker warning):**
+
+- 「这是另一个事故」「不是刚才那个事故」「又发生了一次新的事故」「重新开一个理赔」
+- `new accident` / `another accident` / `separate accident`
+- Even then, prefer broker warning or backoffice review unless customer intent is unmistakable
+
+**Claim H5 MVP:** WeCom supplements merge into the same case timeline; H5 continue link on Status / missing / append ack when intake is continuable. Add Car follows the same principle in docs — implementation deferred.
+
+---
+
 ## 2. Why this is better than pure WeCom chat
 
 | Pure chat | WeCom + H5 |
@@ -82,14 +143,17 @@ WeCom stays for **trust and ceremony**. H5 owns **formal资料补全**.
 
 ## 5. Spark Driver principles → our product
 
+**Spark Driver inspiration = production-grade task workflow, not「let's build an app.」** Walmart's driver experience works because of task cards, state machines, evidence chains, explicit feedback, and exception control — not because it is a chatbot. We translate that pattern into broker intake; AI is a backend capability, not the productized flow itself.
+
 | Spark Driver | Our translation |
 |--------------|-----------------|
 | One task at a time | Single Active Task per lane |
 | One primary action per screen | H5 wizard: one「下一步」/「提交」|
 | Clear progress | Step counter + 已收到/还缺 |
 | Complete trip → clear payout status | Submit →「已提交给陈总」→ End Card |
-| Exceptions off main path | Collision / lane-switch Confirm Cards in WeCom |
+| Exceptions off main path | Collision / lane-switch Confirm Cards in WeCom — **rare**; append-first default (§1d) |
 | Tap once, know it worked | Idempotent submit + disabled button |
+| Production reliability over demo polish | Smoke tests, rollback, broker trust anchor — not AI showcase |
 
 ---
 
@@ -136,7 +200,9 @@ WeCom stays for **trust and ceremony**. H5 owns **formal资料补全**.
 
 ## 8. Smooth UX principles (non-negotiable)
 
-0. **Structured Task First, AI Assist Second** — see §1b; state machine controls flow; H5 owns structured intake; AI draft only
+0. **Production-grade workflow product, not AI demo** — see §1c; shippable, sellable, time-saving bar above demo effects
+0b. **Structured Task First, AI Assist Second** — see §1b; state machine controls flow; H5 owns structured intake; AI draft only
+0c. **Append-first, Split-later** — see §1d; ordinary inbound appends to current lane; split/merge/archive is backend/broker
 1. **幂等** — double-click safe everywhere
 2. **短确认** — WeCom acks are one line, not full cards
 3. **状态卡同步** — Status Card and H5 read same phase/missing
@@ -229,8 +295,8 @@ See: `p19h3h_smooth_ux_idempotency_async_design_2026_07_10.md`
 | Item | Verdict |
 |------|---------|
 | Design complete | ✅ |
-| Core principle recorded (Structured Task First) | ✅ |
-| Implementation tomorrow | **GO** (must obey §1b) |
+| Core principles recorded (Structured Task First + Production-grade + Append-first) | ✅ |
+| Implementation tomorrow | **GO** (must obey §1b + §1c + §1d) |
 | Claim H5 MVP | **GO** |
 | Add Car H5 | **GO** after Claim stable |
 | Mini program / app | **HOLD** |

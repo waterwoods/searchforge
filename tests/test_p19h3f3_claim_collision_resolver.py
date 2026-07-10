@@ -177,32 +177,32 @@ def _slice_text(text: str, *, ext: str = "wm_collision", msg_id: str = "m1") -> 
     return results[0]
 
 
-def test_01_open_claim_plus_accident_narrative_shows_resolver_no_new_claim():
+def test_01_open_claim_plus_accident_narrative_appends_no_collision():
+    """Append-first (P19H-3h): passive narrative appends; old policy was collision-first."""
     ext = "wm_col_a"
-    _open_claim(ext=ext, with_prior_story=True)
+    saved = _open_claim(ext=ext, with_prior_story=True)
     result = ingest_claim_basics_message(
         _normalized(_ACCIDENT_NARRATIVE, ext=ext),
         classify_wecom_intent(_ACCIDENT_NARRATIVE),
     )
-    assert result["active_case_outcome"] == "claim_collision_resolver"
     assert result["case_created"] is False
+    assert result["case_id"] == saved["case_id"]
+    assert result["active_case_outcome"] != "claim_collision_resolver"
     assert _claim_count(ext) == 1
-    reply = result.get("reply_text") or ""
-    assert any(m in reply for m in _RESOLVER_MARKERS)
-    assert _START_MARKER not in reply
-    case = get_case_by_id(result["case_id"])
-    assert case.get("claim_collision_pending", {}).get("state") == "pending_choice"
+    assert _START_MARKER not in (result.get("reply_text") or "")
 
 
-def test_02_open_claim_plus_woyao_claim_shows_resolver():
+def test_02_open_claim_plus_woyao_claim_appends_not_resolver():
+    """Append-first: repeat 我要理赔 on open Claim resends/continues, not collision."""
     ext = "wm_col_b"
-    _open_claim(ext=ext, with_prior_story=True)
+    saved = _open_claim(ext=ext, with_prior_story=True)
     result = ingest_claim_basics_message(
         _normalized("我要理赔", ext=ext),
         classify_wecom_intent("我要理赔"),
     )
-    assert result["active_case_outcome"] == "claim_collision_resolver"
     assert result["case_created"] is False
+    assert result["case_id"] == saved["case_id"]
+    assert result["active_case_outcome"] != "claim_collision_resolver"
     assert _claim_count(ext) == 1
 
 
@@ -210,8 +210,8 @@ def test_03_choice_continue_appends_no_new_claim():
     ext = "wm_col_c"
     saved = _open_claim(ext=ext, with_prior_story=True)
     ingest_claim_basics_message(
-        _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m_trig"),
-        classify_wecom_intent(_ACCIDENT_NARRATIVE),
+        _normalized("新的事故", ext=ext, msg_id="m_trig"),
+        classify_wecom_intent("新的事故"),
     )
     result = ingest_claim_collision_choice(_normalized("1", ext=ext, msg_id="m_choice"))
     assert result["active_case_outcome"] == "claim_collision_continue"
@@ -225,8 +225,8 @@ def test_04_choice_new_creates_claim_and_start_card():
     ext = "wm_col_d"
     _open_claim(ext=ext, with_prior_story=True)
     ingest_claim_basics_message(
-        _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m_trig"),
-        classify_wecom_intent(_ACCIDENT_NARRATIVE),
+        _normalized("新的事故", ext=ext, msg_id="m_trig"),
+        classify_wecom_intent("新的事故"),
     )
     result = ingest_claim_collision_choice(_normalized("2", ext=ext, msg_id="m_new"))
     assert result["active_case_outcome"] == "claim_start_card_sent"
@@ -239,8 +239,8 @@ def test_05_choice_contact_no_new_claim():
     ext = "wm_col_e"
     saved = _open_claim(ext=ext, with_prior_story=True)
     ingest_claim_basics_message(
-        _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m_trig"),
-        classify_wecom_intent(_ACCIDENT_NARRATIVE),
+        _normalized("新的事故", ext=ext, msg_id="m_trig"),
+        classify_wecom_intent("新的事故"),
     )
     result = ingest_claim_collision_choice(_normalized("3", ext=ext, msg_id="m_contact"))
     assert result["active_case_outcome"] == "claim_collision_contact"
@@ -250,9 +250,10 @@ def test_05_choice_contact_no_new_claim():
     assert "陈总人工确认" in (result.get("reply_text") or "")
 
 
-def test_06_repeated_resolver_prompt_no_duplicate_claim():
+def test_06_repeated_narrative_appends_no_duplicate_claim():
+    """Append-first: repeated passive narrative appends; no collision repeat prompt."""
     ext = "wm_col_f"
-    _open_claim(ext=ext, with_prior_story=True)
+    saved = _open_claim(ext=ext, with_prior_story=True)
     ingest_claim_basics_message(
         _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m1"),
         classify_wecom_intent(_ACCIDENT_NARRATIVE),
@@ -261,7 +262,8 @@ def test_06_repeated_resolver_prompt_no_duplicate_claim():
         _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m2"),
         classify_wecom_intent(_ACCIDENT_NARRATIVE),
     )
-    assert result["active_case_outcome"] == "claim_collision_resolver"
+    assert result["active_case_outcome"] != "claim_collision_resolver"
+    assert result["case_id"] == saved["case_id"]
     assert _claim_count(ext) == 1
 
 
@@ -269,8 +271,8 @@ def test_07_repeated_choice_two_only_one_new_claim():
     ext = "wm_col_g"
     _open_claim(ext=ext, with_prior_story=True)
     ingest_claim_basics_message(
-        _normalized(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m_trig"),
-        classify_wecom_intent(_ACCIDENT_NARRATIVE),
+        _normalized("新的事故", ext=ext, msg_id="m_trig"),
+        classify_wecom_intent("新的事故"),
     )
     ingest_claim_collision_choice(_normalized("2", ext=ext, msg_id="m_new1"))
     ingest_claim_collision_choice(_normalized("2", ext=ext, msg_id="m_new2"))
@@ -296,8 +298,8 @@ def test_09_multiple_open_claims_strong_signal_resolver_choice_works():
     older = _open_claim(ext=ext, with_prior_story=True)
     newer = _open_claim(ext=ext, with_prior_story=True)
     result = ingest_claim_basics_message(
-        _normalized(_ACCIDENT_NARRATIVE, ext=ext),
-        classify_wecom_intent(_ACCIDENT_NARRATIVE),
+        _normalized("新的事故", ext=ext),
+        classify_wecom_intent("新的事故"),
     )
     assert result["active_case_outcome"] == "claim_collision_resolver"
     assert result["case_created"] is False
@@ -339,12 +341,11 @@ def test_12_broker_done_end_card_still_works():
 
 def test_13_live_callback_path_process_kf_msg_or_event():
     ext = "wm_col_m"
-    _open_claim(ext=ext, with_prior_story=True)
+    saved = _open_claim(ext=ext, with_prior_story=True)
     result = _slice_text(_ACCIDENT_NARRATIVE, ext=ext, msg_id="m_live")
-    assert result.get("active_case_outcome") == "claim_collision_resolver"
+    assert result.get("active_case_outcome") != "claim_collision_resolver"
     assert result.get("case_created") is False
-    choice = _slice_text("1", ext=ext, msg_id="m_live_choice")
-    assert choice.get("active_case_outcome") == "claim_collision_continue"
+    assert result.get("case_id") == saved["case_id"]
 
 
 def test_14_explicit_continuation_appends_without_resolver():

@@ -16,6 +16,26 @@ Customer experience must feel like **Spark Driver**, not a fragile chatbot:
 - Exceptions (collision, multi-open) never corrupt the happy path
 - Backend can evolve sync → async without changing customer contract
 
+**Production bar:** Spark Driver inspiration is **production-grade task workflow** — task cards, state machines, evidence chains, explicit feedback, exception control — not a chatbot demo. Smooth UX is how we meet the production standard; demo polish without reliability is **out of scope**.
+
+---
+
+## Core principle — Production-grade workflow product, not AI demo
+
+**做可上线、可卖钱、能省时间的 production 产品，不做 AI 炫技 demo。**
+
+Idempotency, loading states, async evolution, and error recovery exist because **production products** must survive real networks, real double-taps, and real broker trust — not because they look good in a demo.
+
+| Production requirement | This document's answer |
+|------------------------|------------------------|
+| Stable, clear, low-confusion UX | Loading/disabled (§E), 短确认 (§B), Status sync (§C) |
+| Structured main flow | H5 PATCH/submit authoritative; AI/chat supplemental |
+| Idempotent, recoverable | §A keys, §G definitions, §H risky interactions |
+| Evidence on key actions | Timeline events on submit, field save, photo upload |
+| Ship discipline | Implementation checklist, metrics, smoke before deploy |
+
+**AI is a capability, not the productized flow.** Faster chatbot replies do not satisfy the production bar. Deterministic task progression with AI behind the scenes does.
+
 ---
 
 ## Core principle — Structured Task First, AI Assist Second
@@ -46,6 +66,20 @@ H5 submit/field  >  H5 confirmed facts  >  WeCom supplemental  >  AI draft
 When chat and H5 disagree on the same `known_facts` key, **H5 wins** (see risky interaction #8). AI-extracted values never auto-advance the H5 wizard or phase without structured confirmation.
 
 **Claim H5 MVP:** All idempotency and async patterns below assume this principle — sync H5 writes are authoritative; WeCom/AI paths are assist layers that must not fork the happy path.
+
+### Core principle — Append-first, Split-later
+
+**先归档，后拆分。**
+
+Customer-facing UX should not make users manage multiple incidents/cases. For Claim/Add Car, ordinary inbound content should append to the current lane/task timeline. AI, broker, and backoffice can later classify, split, merge, archive, or flag if needed. This reduces customer cognitive burden and keeps the workflow production-grade.
+
+| Smooth UX implication | Append-first rule |
+|-----------------------|-------------------|
+| **短确认** | Append ack is one line — not a Collision Card for passive accident words |
+| **幂等** | Re-sent supplements dedupe; repeat「我要理赔」resends H5 continue, not new case |
+| **状态卡同步** | Status / missing / append replies include H5 continue when intake continuable |
+| **异常不污染主路径** | Collision Confirm is **rare** — strong explicit new accident only |
+| **Multi-open** | Append to newest active Claim + broker `possible_multi_claim_context` flag |
 
 ---
 
@@ -320,7 +354,8 @@ broker_done:{case_id}
 
 ## Implementation checklist (Phase 1 MVP)
 
-- [ ] **Principle:** State machine controls phase; H5 structured input authoritative; AI/WeCom supplemental only
+- [ ] **Principle (production):** Production-grade workflow product — idempotent, recoverable, evidence-backed; not AI demo
+- [ ] **Principle (architecture):** State machine controls phase; H5 structured input authoritative; AI/WeCom supplemental only
 - [ ] Client: `submitting` state on all H5 primary buttons
 - [ ] Client: `submit_intent_id` UUID per submit attempt
 - [ ] Server: submit idempotency store (case_id + intent_id)

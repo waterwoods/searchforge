@@ -18,6 +18,37 @@ Without a complete evidence chain:
 
 **Evidence chain = who said what, when, through which channel, with what confidence.**
 
+### Core principle — Production-grade workflow product, not AI demo
+
+**做可上线、可卖钱、能省时间的 production 产品，不做 AI 炫技 demo。**
+
+Evidence chain and broker review are **production requirements**, not nice-to-have audit features. A workflow product that brokers cannot trust, audit, or sell on is an AI demo — not shippable software.
+
+| Production requirement | Evidence chain role |
+|------------------------|---------------------|
+| Key actions auditable | Timeline on every H5 submit, field save, photo upload, broker action |
+| Broker final authority | `broker_done` manual only — timeline records Chen's explicit confirmation |
+| Commercial value | Broker reviews structured brief in ~10s instead of scrolling 50 WeChat messages |
+| AI as assist, not flow | AI-extracted facts tagged provisional; H5/broker confirmation upgrades authority |
+| Ship discipline | Design-level test matrix (§10) + smoke before production deploy |
+
+**Together with Structured Task First:** Structured surfaces produce authoritative facts; evidence chain proves what happened; broker review closes the loop. **AI is a capability that enriches the brief — not a substitute for timeline, confirmation, or `broker_done`.**
+
+**Spark Driver parallel:** Drivers trust payout because every trip action is logged and exceptions are visible. Brokers trust intake because every customer action is logged and exceptions are flagged — not because AI summarized a chat thread.
+
+### Core principle — Append-first, Split-later
+
+**先归档，后拆分。**
+
+Customer-facing UX should not make users manage multiple incidents/cases. For Claim/Add Car, ordinary inbound content should append to the current lane/task timeline. AI, broker, and backoffice can later classify, split, merge, archive, or flag if needed. This reduces customer cognitive burden and keeps the workflow production-grade.
+
+| Evidence chain role | Append-first |
+|---------------------|--------------|
+| **Timeline** | All ordinary supplements append as `customer_text` / media events on current case |
+| **Broker review** | `possible_multi_claim_context` flags when multiple open Claims exist — broker splits later |
+| **Authority** | Passive accident narrative stays provisional until H5/broker confirms |
+| **Exceptions** | Strong explicit new-accident signals may create confirm event — logged in timeline |
+
 ---
 
 ## 2. What is stored
@@ -242,7 +273,7 @@ Broker Done
     → case leaves active queue
 ```
 
-**No auto broker_done.** Chen must explicitly confirm — manual trust anchor.
+**No auto broker_done.** Chen must explicitly confirm — manual trust anchor. This is **non-negotiable production policy** (§1c): automation of broker confirmation would convert a sellable workflow product into an untrusted AI demo.
 
 ---
 
