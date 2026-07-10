@@ -369,3 +369,128 @@ def test_status_card_omits_continue_link_after_h5_submit():
     reply = result.get("reply_text") or ""
     assert result["case_created"] is False
     assert "继续补充资料" not in reply
+
+
+def _complete_h5_intake(client: TestClient, token: str, intent: str) -> dict:
+    for step, fields in [
+        ("injury", {"anyone_injured": "no"}),
+        ("time_location", {"accident_datetime": "今天上午10点", "accident_location": "Irvine Blvd"}),
+        ("story", {"accident_description": "我停在红灯前，后车追尾撞上我的车。"}),
+        ("vehicle_other_party", {"own_vehicle_info": "2020 Toyota Camry"}),
+    ]:
+        assert client.patch(
+            f"/api/h5/tasks/{token}/fields",
+            json={"step": step, "fields": fields},
+        ).status_code == 200
+    resp = client.post(
+        f"/api/h5/tasks/{token}/submit",
+        json={"submit_intent_id": intent},
+        headers={"X-Submit-Intent-Id": intent},
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_submit_returns_completion_summary_and_done_fields():
+    case_id = _save_claim_case("case_completion_summary")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "55555555-6666-4333-8444-555555555555"
+
+    body = _complete_h5_intake(client, token, intent)
+    assert body["submitted"] is True
+    summary = body.get("completion_summary") or {}
+    assert summary.get("title") == "已提交给陈总 ✅"
+    assert "受伤情况" in (summary.get("received") or [])
+    assert "照片数量：0 张" in (summary.get("received") or [])
+    assert summary.get("next_step")
+    assert summary.get("disclaimer")
+
+
+def test_submit_idempotent_does_not_duplicate_wecom_confirmation_marker(monkeypatch):
+    from services.fiqa_api.wecom.config import load_wecom_kf_config
+
+    load_wecom_kf_config.cache_clear()
+    monkeypatch.setenv("WECOM_SLICE_SEND_REPLY", "1")
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+
+    case_id = _save_claim_case("case_wecom_confirm_dedup")
+    bind_case_channel_identity(
+        case_id,
+        wecom_external_userid="wm_h5_submit_confirm",
+        wecom_open_kf_id="wktest001",
+    )
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "66666666-7777-4333-8444-555555555555"
+    sent: list[str] = []
+
+    monkeypatch.setattr(
+        "services.fiqa_api.wecom.h5_submit_confirmation.send_text_reply",
+        lambda *_a, **_k: sent.append("ok") or {"errcode": 0},
+    )
+
+    first = _complete_h5_intake(client, token, intent)
+    assert first.get("wecom_confirmation_sent") is True
+    case1 = get_case_by_id(case_id) or {}
+    state1 = case1.get("h5_intake_state") or {}
+    assert state1.get("h5_submit_confirmation_sent_at")
+
+    second = client.post(
+        f"/api/h5/tasks/{token}/submit",
+        json={"submit_intent_id": intent},
+        headers={"X-Submit-Intent-Id": intent},
+    ).json()
+    assert second.get("already_submitted") is True
+    assert len(sent) == 1
+
+    case2 = get_case_by_id(case_id) or {}
+    timeline2 = case2.get("claim_timeline") or []
+    assert sum(1 for e in timeline2 if e.get("event_type") == "customer_submitted_intake") == 1
+
+
+def test_h5_submit_confirmation_is_not_broker_done(monkeypatch):
+    monkeypatch.setenv("WECOM_SLICE_SEND_REPLY", "1")
+    monkeypatch.setenv("WECOM_KF_TOKEN", "tok")
+    monkeypatch.setenv("WECOM_KF_ENCODING_AES_KEY", "a" * 43)
+    monkeypatch.setenv("WECOM_CORP_ID", "wwtest")
+    monkeypatch.setenv("WECOM_KF_SECRET", "secret")
+
+    case_id = _save_claim_case("case_not_broker_done")
+    bind_case_channel_identity(
+        case_id,
+        wecom_external_userid="wm_not_broker_done",
+        wecom_open_kf_id="wktest001",
+    )
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "77777777-8888-4333-8444-555555555555"
+
+    monkeypatch.setattr(
+        "services.fiqa_api.wecom.h5_submit_confirmation.send_text_reply",
+        lambda *_a, **_k: {"errcode": 0},
+    )
+
+    _complete_h5_intake(client, token, intent)
+    case = get_case_by_id(case_id) or {}
+    assert derive_claim_phase(case) == CLAIM_PHASE_INTAKE_READY_FOR_BROKER
+    assert derive_claim_phase(case) != "broker_done"
+    timeline = case.get("claim_timeline") or []
+    assert not any(e.get("event_type") == "broker_done" for e in timeline)
+
+
+def test_submit_without_wecom_identity_still_succeeds():
+    case_id = _save_claim_case("case_no_wecom")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "88888888-9999-4333-8444-555555555555"
+
+    body = _complete_h5_intake(client, token, intent)
+    assert body["submitted"] is True
+    assert body.get("wecom_confirmation_sent") is False
+    case = get_case_by_id(case_id) or {}
+    state = case.get("h5_intake_state") or {}
+    assert not state.get("h5_submit_confirmation_sent_at")

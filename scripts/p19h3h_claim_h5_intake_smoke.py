@@ -180,6 +180,9 @@ def _run_h5_flow_checks(client: Any, token: str, *, http_mode: bool = False) -> 
     checks["submit_status"] = r_submit.status_code
     submit_body = r_submit.json()
     checks["submitted"] = submit_body.get("submitted") is True
+    summary = submit_body.get("completion_summary") or {}
+    checks["submit_has_completion_summary"] = summary.get("title") == "已提交给陈总 ✅"
+    checks["submit_has_received_list"] = isinstance(summary.get("received"), list) and len(summary.get("received") or []) >= 1
 
     r_dup = client.post(
         f"/api/h5/tasks/{token}/submit",
@@ -188,6 +191,21 @@ def _run_h5_flow_checks(client: Any, token: str, *, http_mode: bool = False) -> 
     )
     checks["submit_idempotent"] = (
         r_dup.status_code == 200 and r_dup.json().get("already_submitted") is True
+    )
+
+    from services.fiqa_api.inbox_triage.case_store import get_case_by_id
+
+    submitted_case = get_case_by_id(checks.get("case_id") or "") or {}
+    h5_state = submitted_case.get("h5_intake_state") or {}
+    timeline = submitted_case.get("claim_timeline") or []
+    checks["broker_done_false"] = submitted_case.get("claim_phase") != "broker_done"
+    checks["single_submitted_timeline_event"] = sum(
+        1 for e in timeline if e.get("event_type") == "customer_submitted_intake"
+    ) == 1
+    checks["confirmation_marker_optional"] = (
+        not submitted_case.get("wecom_external_userid")
+        or bool(h5_state.get("h5_submit_confirmation_sent_at"))
+        or h5_state.get("h5_submit_confirmation_send_status") == "skipped_no_channel"
     )
 
     checks["flow_is_claim_intake_form"] = data0.get("flow") == FLOW_CLAIM_INTAKE_FORM

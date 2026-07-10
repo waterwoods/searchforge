@@ -401,6 +401,19 @@ def frame_wecom_card(
     return f"{_WECOM_CARD_FRAME_LINE}\n{content}\n{_WECOM_CARD_FRAME_LINE}"
 
 
+def build_h5_submit_confirmation_reply() -> str:
+    """P19H-3h — Customer H5 submit ack (not broker_done End Card)."""
+    return frame_wecom_card(
+        "【资料已提交 ✅】",
+        [
+            "已收到你的事故资料，陈总会查看后联系你。",
+            "",
+            "你仍然可以继续补充照片或资料。",
+        ],
+        ["提醒：这只是资料收集，不代表已经正式向保险公司报案。"],
+    )
+
+
 # ---------------------------------------------------------------------------
 # P19H-2 — Claim guided workflow replies (start / basics / C1)
 # ---------------------------------------------------------------------------

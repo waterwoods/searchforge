@@ -31,6 +31,7 @@ from services.fiqa_api.wecom.claim_state import (
     get_claim_missing_items,
     is_injury_yes,
 )
+from services.fiqa_api.wecom.h5_submit_confirmation import try_send_h5_submit_confirmation
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,17 @@ _H5_SUBMIT_TERMINAL_PHASES: Final[frozenset[str]] = frozenset(
         CLAIM_PHASE_BROKER_DONE,
     }
 )
+
+_H5_RECEIVED_STEP_LABELS: Final[tuple[tuple[str, str], ...]] = (
+    ("injury", "受伤情况"),
+    ("time_location", "事故时间/地点"),
+    ("story", "事故经过"),
+    ("vehicle_other_party", "车辆/对方信息"),
+)
+
+_H5_DONE_NEXT_STEP: Final[str] = "陈总会查看资料，如还需要补充，会通过微信联系你。"
+_H5_DONE_DISCLAIMER: Final[str] = "这只是资料收集，不代表已经正式向保险公司报案。"
+_H5_DONE_MISSING_CLEAR: Final[str] = "目前主要资料已收到，陈总会进一步确认。"
 
 
 def _load_claim_case(case_id: str) -> dict[str, Any]:
@@ -180,6 +192,44 @@ def _collected_keys_for_patch(step: str, facts_patch: dict[str, str]) -> list[st
     return keys
 
 
+def _build_completion_summary(case: dict[str, Any]) -> dict[str, Any]:
+    received = [
+        label for step, label in _H5_RECEIVED_STEP_LABELS if _step_complete(case, step)
+    ]
+    photo_count = _h5_attachment_photo_count(case)
+    received.append(f"照片数量：{photo_count} 张")
+    missing_items = get_claim_missing_items(case)
+    missing_labels = [str(m.get("label") or "").strip() for m in missing_items if str(m.get("label") or "").strip()]
+    return {
+        "title": "已提交给陈总 ✅",
+        "message": "你的事故资料已经提交给陈总审核。",
+        "received": received,
+        "missing": missing_labels,
+        "missing_clear_message": _H5_DONE_MISSING_CLEAR if not missing_labels else None,
+        "next_step": _H5_DONE_NEXT_STEP,
+        "disclaimer": _H5_DONE_DISCLAIMER,
+    }
+
+
+def _wecom_confirmation_fields(case: dict[str, Any], send_result: dict[str, Any] | None = None) -> dict[str, Any]:
+    state = _h5_intake_state(case)
+    sent_marker = bool(str(state.get("h5_submit_confirmation_sent_at") or "").strip())
+    if send_result is not None:
+        sent = bool(send_result.get("sent"))
+        pending = bool(send_result.get("pending")) or (
+            not sent and send_result.get("reason") not in ("already_sent", "outbox_dedup")
+        )
+        return {
+            "wecom_confirmation_sent": sent,
+            "wecom_confirmation_pending": pending and not sent,
+            "wecom_confirmation_reason": send_result.get("reason"),
+        }
+    return {
+        "wecom_confirmation_sent": sent_marker,
+        "wecom_confirmation_pending": not sent_marker and bool(case.get("wecom_external_userid")),
+    }
+
+
 def _h5_attachment_photo_count(case: dict[str, Any]) -> int:
     count = 0
     for att in case.get("case_attachments") or []:
@@ -245,6 +295,7 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "upload_url": upload_url,
         "attachment_count": photo_count,
         "photo_count": photo_count,
+        "completion_summary": _build_completion_summary(case),
     }
 
 
@@ -320,6 +371,7 @@ def submit_intake_form(
             **intake_info_for_token(claims),
             "already_submitted": True,
             "submit_intent_id": intent,
+            **_wecom_confirmation_fields(case),
         }
 
     if not _minimum_submit_ready(case):
@@ -331,6 +383,7 @@ def submit_intake_form(
             **intake_info_for_token(claims),
             "already_submitted": True,
             "submit_intent_id": intent,
+            **_wecom_confirmation_fields(case),
         }
 
     append_claim_timeline_event(
@@ -359,13 +412,18 @@ def submit_intake_form(
     submit_state["submitted"] = True
     update_case_h5_intake_state(claims.case_id, submit_state)
 
+    confirm_result = try_send_h5_submit_confirmation(claims.case_id)
+    refreshed_case = _load_claim_case(claims.case_id)
+
     logger.info(
-        "h5_claim_intake_submit_ok case_id=%s intent=%s",
+        "h5_claim_intake_submit_ok case_id=%s intent=%s wecom_sent=%s",
         claims.case_id,
         intent[:8],
+        confirm_result.get("sent"),
     )
     return {
         **intake_info_for_token(claims),
         "already_submitted": False,
         "submit_intent_id": intent,
+        **_wecom_confirmation_fields(refreshed_case, confirm_result),
     }

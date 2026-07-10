@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   fetchH5ClaimIntake,
+  mapH5ClaimError,
   newSubmitIntentId,
   patchH5ClaimFields,
   submitH5ClaimIntake,
@@ -106,6 +107,8 @@ export default function H5ClaimIntakePage() {
   const [step, setStep] = useState<WizardStep>('start');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitIntentRef = useRef<string>(newSubmitIntentId());
 
@@ -161,39 +164,48 @@ export default function H5ClaimIntakePage() {
       setInfo(data);
       setStep(nextStep);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'save_failed');
+      const code = e instanceof Error ? e.message : 'save_failed';
+      setError(mapH5ClaimError(code, '保存失败，请检查网络后重试。'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleSubmit = async () => {
-    setSaving(true);
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
     try {
       const data = await submitH5ClaimIntake(taskToken, submitIntentRef.current);
       setInfo(data);
       setStep('done');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'submit_failed');
+      const code = e instanceof Error ? e.message : 'submit_failed';
+      setError(mapH5ClaimError(code, '提交失败，请重试。如果仍失败，可以继续在微信里联系陈总。'));
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
-  const refreshPhotoCount = async () => {
-    setSaving(true);
+  const refreshStatus = async () => {
+    setRefreshing(true);
     setError(null);
     try {
       const data = await fetchH5ClaimIntake(taskToken);
       setInfo(data);
       hydrateFields(data);
+      if (data.submitted) {
+        setStep('done');
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'refresh_failed');
+      const code = e instanceof Error ? e.message : 'network_error';
+      setError(mapH5ClaimError(code, '刷新失败，请检查网络后重试。'));
     } finally {
-      setSaving(false);
+      setRefreshing(false);
     }
   };
+
+  const busy = saving || submitting || refreshing;
 
   const photoCount = info?.photo_count ?? info?.attachment_count ?? 0;
 
@@ -211,17 +223,23 @@ export default function H5ClaimIntakePage() {
     return (
       <div style={styles.page}>
         <div style={styles.header}>
-          <h1 style={{ margin: 0, fontSize: 18 }}>链接已过期</h1>
+          <h1 style={{ margin: 0, fontSize: 18 }}>链接已失效</h1>
         </div>
         <div style={styles.body}>
           <div style={styles.card}>
-            <p>请在微信回复「进度」获取新链接。</p>
+            <p>{mapH5ClaimError('invalid_or_expired_task_link')}</p>
           </div>
         </div>
         <div style={styles.footer}>此记录用于陈总办公室整理事故信息，不代表已向保险公司正式报案。</div>
       </div>
     );
   }
+
+  const completion = info?.completion_summary;
+  const missingLabels =
+    completion?.missing?.length
+      ? completion.missing
+      : (info?.missing_info || []).map((m) => m.label).filter(Boolean);
 
   return (
     <div style={styles.page}>
@@ -233,7 +251,7 @@ export default function H5ClaimIntakePage() {
 
       <div style={styles.body}>
         {error && error !== 'invalid_or_expired_task_link' && (
-          <div style={styles.error}>保存失败，请重试（{error}）</div>
+          <div style={styles.error}>{error}</div>
         )}
 
         {step === 'start' && (
@@ -419,11 +437,11 @@ export default function H5ClaimIntakePage() {
             )}
             <button
               type="button"
-              style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
-              disabled={saving}
-              onClick={() => refreshPhotoCount()}
+              style={{ ...styles.btnSecondary, ...(busy ? styles.btnDisabled : {}) }}
+              disabled={busy}
+              onClick={() => refreshStatus()}
             >
-              {saving ? '刷新中…' : '刷新照片数量'}
+              {refreshing ? '刷新中…' : '刷新资料状态'}
             </button>
             <button
               type="button"
@@ -441,11 +459,14 @@ export default function H5ClaimIntakePage() {
             <h3 style={{ marginTop: 0 }}>请确认已填写内容</h3>
             <p style={styles.sectionTitle}>已填资料</p>
             <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0 }}>
-              <li>受伤：{injury === 'yes' ? '有人受伤' : injury === 'no' ? '没有受伤' : '不确定'}</li>
+              <li>受伤：{injury === 'yes' ? '有人受伤' : injury === 'no' ? '没有受伤' : injury ? '不确定' : '—'}</li>
               <li>时间：{accidentDatetime || '—'}</li>
               <li>地点：{accidentLocation || '—'}</li>
               <li>经过：{accidentDescription || '—'}</li>
               <li>车辆：{ownVehicle || '—'}</li>
+              {(otherPartyPlate || otherPartyInfo) && (
+                <li>对方：{[otherPartyPlate, otherPartyInfo].filter(Boolean).join(' / ')}</li>
+              )}
             </ul>
             <p style={styles.sectionTitle}>照片</p>
             <p style={{ margin: '0 0 8px', lineHeight: 1.6 }}>
@@ -456,40 +477,121 @@ export default function H5ClaimIntakePage() {
             {info.upload_url && (
               <button
                 type="button"
-                style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
-                disabled={saving}
-                onClick={() => refreshPhotoCount()}
+                style={{ ...styles.btnSecondary, ...(busy ? styles.btnDisabled : {}) }}
+                disabled={busy}
+                onClick={() => {
+                  window.open(info.upload_url as string, '_blank', 'noopener,noreferrer');
+                }}
               >
-                {saving ? '刷新中…' : '刷新照片数量'}
+                继续上传照片
               </button>
-            )}
-            <p style={styles.hint}>提交前您还可以继续补充照片或修改上一步内容。</p>
-            {info.missing_info.length > 0 && (
-              <p style={{ color: '#c0392b', fontSize: 14 }}>
-                还缺：{info.missing_info.map((m) => m.label).join('、')}
-              </p>
             )}
             <button
               type="button"
-              style={{ ...styles.btn, ...(saving ? styles.btnDisabled : {}) }}
-              disabled={saving}
+              style={{ ...styles.btnSecondary, ...(busy ? styles.btnDisabled : {}) }}
+              disabled={busy}
+              onClick={() => refreshStatus()}
+            >
+              {refreshing ? '刷新中…' : '刷新资料状态'}
+            </button>
+            <p style={styles.sectionTitle}>还缺什么</p>
+            {missingLabels.length > 0 ? (
+              <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0, color: '#c0392b' }}>
+                {missingLabels.map((label) => (
+                  <li key={label}>{label}</li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ margin: '0 0 8px', lineHeight: 1.6 }}>
+                目前主要资料已收到，陈总会进一步确认。
+              </p>
+            )}
+            <p style={styles.sectionTitle}>提交提醒</p>
+            <p style={{ margin: '0 0 12px', lineHeight: 1.6, fontSize: 14, color: '#666' }}>
+              提交后陈总会查看资料并联系您。这只是资料收集，不代表已经正式向保险公司报案。
+            </p>
+            <button
+              type="button"
+              style={{ ...styles.btn, ...(submitting ? styles.btnDisabled : {}) }}
+              disabled={submitting}
               onClick={handleSubmit}
             >
-              {saving ? '提交中…' : '提交给陈总确认'}
+              {submitting ? '提交中，请稍等…' : '提交给陈总审核'}
             </button>
           </div>
         )}
 
-        {step === 'done' && (
+        {step === 'done' && info && (
           <div style={styles.card}>
-            <h2 style={{ marginTop: 0, color: '#0d3b66' }}>已提交给陈总 ✅</h2>
-            <p>陈总会人工确认后会联系您。</p>
-            <p style={{ fontSize: 14, color: '#666' }}>
-              此记录用于陈总办公室整理事故信息，不代表已经向保险公司正式报案。
+            <h2 style={{ marginTop: 0, color: '#0d3b66' }}>
+              {completion?.title || '已提交给陈总 ✅'}
+            </h2>
+            <p>{completion?.message || '你的事故资料已经提交给陈总审核。'}</p>
+
+            <p style={styles.sectionTitle}>已收到</p>
+            <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0 }}>
+              {(completion?.received || []).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+
+            <p style={styles.sectionTitle}>还缺</p>
+            {missingLabels.length > 0 ? (
+              <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0 }}>
+                {missingLabels.map((label) => (
+                  <li key={label}>{label}</li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ margin: '0 0 8px', lineHeight: 1.6 }}>
+                {completion?.missing_clear_message || '目前主要资料已收到，陈总会进一步确认。'}
+              </p>
+            )}
+
+            <p style={styles.sectionTitle}>下一步</p>
+            <p style={{ margin: '0 0 12px', lineHeight: 1.6 }}>
+              {completion?.next_step || '陈总会查看资料，如还需要补充，会通过微信联系你。'}
             </p>
-            <p style={{ fontSize: 14, color: '#666' }}>
-              如后续还有照片，可以继续通过上传链接或微信补充。
+
+            <p style={styles.sectionTitle}>提醒</p>
+            <p style={{ margin: '0 0 16px', lineHeight: 1.6, fontSize: 14, color: '#666' }}>
+              {completion?.disclaimer || '这只是资料收集，不代表已经正式向保险公司报案。'}
             </p>
+
+            {info.upload_url && (
+              <button
+                type="button"
+                style={{ ...styles.btn, ...(busy ? styles.btnDisabled : {}) }}
+                disabled={busy}
+                onClick={() => {
+                  window.open(info.upload_url as string, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                继续上传照片
+              </button>
+            )}
+            <button
+              type="button"
+              style={{ ...styles.btnSecondary, ...(busy ? styles.btnDisabled : {}) }}
+              disabled={busy}
+              onClick={() => refreshStatus()}
+            >
+              {refreshing ? '刷新中…' : '刷新资料状态'}
+            </button>
+            <button
+              type="button"
+              style={{ ...styles.btnSecondary, ...(busy ? styles.btnDisabled : {}) }}
+              disabled={busy}
+              onClick={() => {
+                try {
+                  window.close();
+                } catch {
+                  // ignore
+                }
+              }}
+            >
+              返回微信
+            </button>
           </div>
         )}
       </div>
