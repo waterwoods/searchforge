@@ -39,6 +39,7 @@ _INTENT_REPLIES: dict[WeComIntent, str] = {
         "了解，您想加车。经纪人会审核并确认后续步骤。请尽量发送购车合同或行驶证。"
     ),
     "claim_intake": (
+        # LEGACY EMERGENCY ONLY — normal Claim start/H5 commands route via H5 card builders.
         "Please confirm everyone is safe first. I will record the accident details for your broker — "
         "Chen Kui's team will contact you soon. We cannot advise whether to file a claim online.\n"
         "收到，请先确认人是否安全。我先帮您记录事故信息，陈总会尽快人工联系您。"

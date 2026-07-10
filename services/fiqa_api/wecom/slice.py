@@ -543,6 +543,7 @@ def process_kf_msg_or_event(
             from services.fiqa_api.wecom.claim_basics import (
                 ingest_claim_basics_message,
                 ingest_claim_collision_choice,
+                ingest_claim_h5_canonical_entry,
                 ingest_claim_holding_ack,
                 ingest_claim_injury_quick_reply,
                 ingest_claim_lane_switch_choice,
@@ -551,6 +552,7 @@ def process_kf_msg_or_event(
                 ingest_claim_status_request,
                 should_route_claim_collision_choice,
                 should_route_claim_guided_workflow,
+                should_route_claim_h5_canonical_entry,
                 should_route_claim_holding_ack,
                 should_route_claim_interrupt_during_add_car,
                 should_route_claim_lane_switch_choice,
@@ -1067,6 +1069,61 @@ def process_kf_msg_or_event(
                 )
                 continue
 
+            if should_route_claim_h5_canonical_entry(normalized, intent_result):
+                canonical_result = ingest_claim_h5_canonical_entry(normalized, intent_result)
+                reply_text = canonical_result.get("reply_text")
+                menu_payload = canonical_result.get("menu_payload")
+                h5_masked = canonical_result.get("h5_task_link_masked")
+                outcome = {
+                    "msg_id": normalized.get("msg_id"),
+                    "external_userid": normalized.get("external_userid"),
+                    "detected_intent": canonical_intent(intent_result.intent),
+                    "internal_intent": intent_result.intent,
+                    "confidence": intent_result.confidence,
+                    "matched_by": intent_result.matched_by,
+                    "guided_menu_required": False,
+                    "reply_text": reply_text,
+                    "reply_sent": False,
+                    "reply_send_error": None,
+                    "case_created": canonical_result.get("case_created", False),
+                    "case_id": canonical_result.get("case_id"),
+                    "active_case_outcome": canonical_result.get("active_case_outcome"),
+                    "claim_phase": canonical_result.get("claim_phase"),
+                    "service_lane": canonical_result.get("service_lane"),
+                    "needs_broker_manual_handle": canonical_result.get("needs_broker_manual_handle"),
+                    "menu_payload": menu_payload,
+                    "h5_task_link_masked": h5_masked,
+                }
+                _log_slice(
+                    "claim_h5_canonical_entry_v1",
+                    {k: outcome[k] for k in outcome if k not in ("reply_text", "internal_intent", "menu_payload")},
+                )
+                if reply_text or menu_payload:
+                    _log_slice(
+                        "reply_generated_v1",
+                        {
+                            "reply_text": reply_text or "<claim_h5_canonical_msgmenu>",
+                            "guided_menu": False,
+                            "reply_format": "msgmenu" if menu_payload else "text",
+                            "h5_task_link_masked": h5_masked,
+                        },
+                    )
+                    _dispatch_reply(
+                        cfg,
+                        normalized,
+                        send_enabled=send_enabled,
+                        menu_payload=menu_payload,
+                        text_content=reply_text,
+                        outcome=outcome,
+                    )
+                results.append(outcome)
+                update_message_processed_outcome(
+                    msg_id,
+                    outcome=str(outcome.get("active_case_outcome") or ""),
+                    case_id=str(outcome.get("case_id") or "").strip() or None,
+                )
+                continue
+
             open_minimal_lane_id = (
                 find_open_minimal_lane_case_by_external_userid(str(normalized.get("external_userid") or ""))
                 if b0_enabled
@@ -1137,6 +1194,8 @@ def process_kf_msg_or_event(
                     continue
 
                 minimal_result = ingest_wecom_text_to_minimal_lane(normalized, intent_result)
+                menu_payload = None
+                h5_masked = None
                 if minimal_result.get("outcome") == "secondary_topic_deferred":
                     _log_slice(
                         "secondary_topic_defer_blocked_check_v1",
@@ -1168,7 +1227,22 @@ def process_kf_msg_or_event(
                         **av_ctx,
                     )
                 else:
-                    reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
+                    if should_route_claim_h5_canonical_entry(normalized, intent_result):
+                        canonical_result = ingest_claim_h5_canonical_entry(normalized, intent_result)
+                        reply_text = canonical_result.get("reply_text")
+                        menu_payload = canonical_result.get("menu_payload")
+                        h5_masked = canonical_result.get("h5_task_link_masked")
+                        minimal_result = {
+                            "outcome": canonical_result.get("active_case_outcome"),
+                            "case_id": canonical_result.get("case_id"),
+                            "case_created": canonical_result.get("case_created", False),
+                            "readiness_gate": None,
+                            "service_lane": canonical_result.get("service_lane"),
+                        }
+                    else:
+                        reply_text = build_slice_reply(intent_result.intent, guided_menu=False)
+                        menu_payload = None
+                        h5_masked = None
                 outcome = {
                     "msg_id": normalized.get("msg_id"),
                     "external_userid": normalized.get("external_userid"),
@@ -1185,6 +1259,7 @@ def process_kf_msg_or_event(
                     "active_case_outcome": minimal_result.get("outcome"),
                     "readiness_gate": minimal_result.get("readiness_gate"),
                     "service_lane": minimal_result.get("service_lane"),
+                    "h5_task_link_masked": h5_masked,
                 }
                 _log_slice(
                     "minimal_lane_v1",
@@ -1192,13 +1267,17 @@ def process_kf_msg_or_event(
                 )
                 _log_slice(
                     "reply_generated_v1",
-                    {"reply_text": reply_text, "guided_menu": False, "reply_format": "text"},
+                    {
+                        "reply_text": reply_text or ("<claim_h5_canonical_msgmenu>" if menu_payload else ""),
+                        "guided_menu": False,
+                        "reply_format": "msgmenu" if menu_payload else "text",
+                    },
                 )
                 _dispatch_reply(
                     cfg,
                     normalized,
                     send_enabled=send_enabled,
-                    menu_payload=None,
+                    menu_payload=menu_payload,
                     text_content=reply_text,
                     outcome=outcome,
                 )

@@ -109,20 +109,56 @@ extract_claim_accident_basics = extract_accident_basics_fields
 
 CLAIM_GUIDED_START_MARKERS: tuple[str, ...] = (
     "我要理赔",
+    "我需要理赔",
     "我现在要理赔",
     "我要进行理赔",
     "我现在要进行理赔",
     "进行理赔",
     "开始理赔",
     "我要报理赔",
+    "我要报保险",
+    "我要报案",
     "我要记录事故",
     "我要记录新事故",
     "我要开一个事故记录",
     "出事故了我要理赔",
+    "出事故了",
+    "车祸",
+    "被追尾",
+    "撞车",
     "新事故",
     "file a claim",
     "i had an accident",
+    "i need to file a claim",
     "accident claim",
+    "car accident",
+)
+
+# Canonical Claim start / H5 / status entry phrases (WeCom → H5-first workflow).
+CLAIM_CANONICAL_H5_ENTRY_MARKERS: tuple[str, ...] = (
+    *CLAIM_GUIDED_START_MARKERS,
+    "理赔",
+    "发给我 h5",
+    "给我 h5",
+    "发给我h5",
+    "给我h5",
+    "h5",
+    "给我链接",
+    "发给我链接",
+    "事故资料",
+    "理赔资料",
+    "补资料",
+    "继续填写",
+    "链接",
+    "进度",
+    "上传照片",
+    "claim",
+    "accident",
+    "send me the link",
+    "upload photo",
+    "status",
+    "progress",
+    "continue",
 )
 
 CLAIM_PASSIVE_NARRATIVE_MARKERS: tuple[str, ...] = (
@@ -258,6 +294,38 @@ def _emit_claim_routing_decision(
 
 def is_explicit_claim_restart(text: str) -> bool:
     return is_explicit_new_accident(text)
+
+
+def is_claim_h5_link_request(text: str) -> bool:
+    """Customer asks for the Claim H5 page / link (not a pure progress inquiry)."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    markers = (
+        "h5",
+        "发给我",
+        "给我链接",
+        "发给我链接",
+        "事故资料",
+        "理赔资料",
+        "继续填写",
+        "send me the link",
+    )
+    return any(m in raw or m in lowered for m in markers)
+
+
+def is_canonical_claim_h5_entry_request(text: str) -> bool:
+    """Any WeCom text that should enter the H5-first Claim workflow, not legacy chat fallback."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if is_explicit_add_car_restart(raw):
+        return False
+    lowered = raw.lower()
+    if lowered in ("理赔", "claim", "accident", "h5"):
+        return True
+    return any(m in raw or m in lowered for m in CLAIM_CANONICAL_H5_ENTRY_MARKERS)
 
 
 def is_claim_guided_start_message(text: str) -> bool:
@@ -1145,10 +1213,13 @@ def should_route_claim_status_request(
 ) -> bool:
     """Route Claim Status Card before guided basics ingestion."""
     text = str(normalized.get("text") or "").strip()
-    if not is_claim_status_request(text):
+    ext = str(normalized.get("external_userid") or "").strip()
+    if not is_claim_status_request(text) and not is_claim_h5_link_request(text):
         return False
-    if is_claim_guided_start_message(text):
+    if is_claim_guided_start_message(text) and not is_claim_h5_link_request(text):
         return False
+    if is_claim_h5_link_request(text):
+        return find_active_claim_case_for_basics(ext) is not None
     return True
 
 
@@ -1258,18 +1329,22 @@ def should_route_claim_guided_workflow(
     text = str(normalized.get("text") or "").strip()
     ext = str(normalized.get("external_userid") or "")
 
-    if is_claim_status_request(text):
+    if is_claim_status_request(text) or is_claim_h5_link_request(text):
         return False
 
     if is_explicit_add_car_restart(text):
         return False
     if intent_result.confidence == "high" and intent_result.intent == "add_car":
         return False
+    if is_explicit_new_accident(text):
+        return False
 
     active = find_active_claim_case_for_basics(ext)
     if active:
         if is_claim_supplement_text(text) or is_claim_passive_narrative(text):
             return True
+        if is_canonical_claim_h5_entry_request(text):
+            return False
         phase = derive_claim_phase(active)
         if phase in (
             CLAIM_PHASE_STARTED,
@@ -1278,6 +1353,13 @@ def should_route_claim_guided_workflow(
         ):
             return True
         return False
+
+    if is_canonical_claim_h5_entry_request(text):
+        if is_claim_question_not_guided_intake(text):
+            return False
+        if is_claim_substantive_with_questions(text):
+            return False
+        return True
 
     if intent_result.confidence != "high" or intent_result.intent != "claim_intake":
         return False
@@ -1294,6 +1376,40 @@ def should_route_claim_guided_workflow(
     return False
 
 
+def should_route_claim_h5_canonical_entry(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> bool:
+    """Catch-all for Claim H5 entry before legacy minimal-lane / slice fallback."""
+    text = str(normalized.get("text") or "").strip()
+    if is_explicit_add_car_restart(text):
+        return False
+    if intent_result.confidence == "high" and intent_result.intent == "add_car":
+        return False
+    if is_explicit_new_accident(text):
+        return False
+    if not is_canonical_claim_h5_entry_request(text):
+        return False
+    if should_route_claim_status_request(normalized, intent_result):
+        return False
+    if should_route_claim_collision_choice(normalized):
+        return False
+    return True
+
+
+def ingest_claim_h5_canonical_entry(
+    normalized: dict[str, Any],
+    intent_result: IntentResult,
+) -> dict[str, Any]:
+    """Route canonical Claim/H5 phrases to H5 Start or Status cards — never legacy fallback."""
+    text = str(normalized.get("text") or "").strip()
+    ext = str(normalized.get("external_userid") or "").strip()
+    active = find_active_claim_case_for_basics(ext)
+    if active and not is_claim_supplement_text(text):
+        return ingest_claim_status_request(normalized, intent_result)
+    return ingest_claim_basics_message(normalized, intent_result)
+
+
 def should_route_claim_holding_ack(
     normalized: dict[str, Any],
     intent_result: IntentResult,
@@ -1302,14 +1418,14 @@ def should_route_claim_holding_ack(
     text = str(normalized.get("text") or "").strip()
     ext = str(normalized.get("external_userid") or "")
 
-    if is_claim_status_request(text):
+    if is_claim_status_request(text) or is_claim_h5_link_request(text):
         return False
 
     if find_active_claim_case_for_basics(ext):
         return False
     if is_explicit_add_car_restart(text):
         return False
-    if is_claim_guided_start_message(text):
+    if is_claim_guided_start_message(text) or is_canonical_claim_h5_entry_request(text):
         return False
     if is_claim_question_not_guided_intake(text):
         return False
@@ -1847,6 +1963,15 @@ def ingest_claim_basics_message(
     ext = str(normalized.get("external_userid") or "").strip()
     injury_mentioned = message_mentions_injury(text)
 
+    active_claim = find_active_claim_case_for_basics(ext)
+    if (
+        active_claim
+        and is_canonical_claim_h5_entry_request(text)
+        and not is_claim_supplement_text(text)
+        and not is_explicit_new_accident(text)
+    ):
+        return ingest_claim_status_request(normalized, intent_result)
+
     anchor_id, collision_pending = find_claim_collision_pending_for_user(ext)
     if anchor_id and collision_pending and not should_route_claim_collision_choice(normalized):
         return _emit_collision_resolver(
@@ -2020,6 +2145,42 @@ def ingest_claim_basics_message(
             identity_kwargs=identity_kwargs,
             open_claim_count=len(open_claims),
         )
+
+    if (
+        is_canonical_claim_h5_entry_request(text)
+        and not is_claim_supplement_text(text)
+        and not injury_mentioned
+        and case_id
+    ):
+        start_h5 = _build_claim_start_h5_intake_response(case_id, external_userid=ext or None)
+        update_claim_workflow_state(
+            case_id,
+            claim_phase=CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+            guided_workflow_state=GUIDED_STATE_COLLECTING_TEXT,
+        )
+        claim_ctx = claim_context_for_case(case)
+        _emit_claim_routing_decision(
+            normalized=normalized,
+            intent_result=intent_result,
+            priority_rule=PRIORITY_CLAIM_START_NO_ACTIVE_CASE,
+            decision=DECISION_START_CLAIM_FLOW,
+            reason="canonical_claim_h5_entry",
+            response_type=RESPONSE_CLAIM_START,
+            created_case_id=case_id,
+            **identity_kwargs,
+            **claim_ctx,
+        )
+        return {
+            "outcome": "claim_start_card_sent",
+            "case_id": case_id,
+            "case_created": case_created,
+            "reply_text": start_h5["reply_text"],
+            "menu_payload": start_h5["menu_payload"],
+            "h5_task_link_masked": start_h5.get("h5_task_link_masked"),
+            "active_case_outcome": "claim_start_card_sent",
+            "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS,
+            "service_lane": SERVICE_LANE_CLAIM,
+        }
 
     if phase == CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE:
         c1 = _build_claim_c1_h5_response(
