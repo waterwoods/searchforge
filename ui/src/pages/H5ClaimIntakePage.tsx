@@ -89,6 +89,8 @@ const styles = {
     marginBottom: 16,
     fontSize: 14,
   } as const,
+  sectionTitle: { margin: '0 0 8px', fontSize: 15, fontWeight: 600 } as const,
+  hint: { fontSize: 14, color: '#666', marginTop: 8 } as const,
 };
 
 function stepFromInfo(info: H5ClaimIntakeInfo): WizardStep {
@@ -178,6 +180,22 @@ export default function H5ClaimIntakePage() {
       setSaving(false);
     }
   };
+
+  const refreshPhotoCount = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const data = await fetchH5ClaimIntake(taskToken);
+      setInfo(data);
+      hydrateFields(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'refresh_failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const photoCount = info?.photo_count ?? info?.attachment_count ?? 0;
 
   if (loading) {
     return (
@@ -382,6 +400,9 @@ export default function H5ClaimIntakePage() {
             <p>
               如有照片，请上传车损、现场、对方资料等。没有照片也可以先跳过。
             </p>
+            <p style={styles.hint}>
+              当前照片：{photoCount > 0 ? `已上传 ${photoCount} 张` : '尚未上传'}
+            </p>
             {info.upload_url ? (
               <button
                 type="button"
@@ -400,6 +421,14 @@ export default function H5ClaimIntakePage() {
               type="button"
               style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
               disabled={saving}
+              onClick={() => refreshPhotoCount()}
+            >
+              {saving ? '刷新中…' : '刷新照片数量'}
+            </button>
+            <button
+              type="button"
+              style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
+              disabled={saving}
               onClick={() => setStep('review')}
             >
               暂时跳过，继续复核
@@ -410,19 +439,31 @@ export default function H5ClaimIntakePage() {
         {step === 'review' && info && (
           <div style={styles.card}>
             <h3 style={{ marginTop: 0 }}>请确认已填写内容</h3>
-            <ul style={{ paddingLeft: 18, lineHeight: 1.7 }}>
+            <p style={styles.sectionTitle}>已填资料</p>
+            <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0 }}>
               <li>受伤：{injury === 'yes' ? '有人受伤' : injury === 'no' ? '没有受伤' : '不确定'}</li>
               <li>时间：{accidentDatetime || '—'}</li>
               <li>地点：{accidentLocation || '—'}</li>
               <li>经过：{accidentDescription || '—'}</li>
               <li>车辆：{ownVehicle || '—'}</li>
-              <li>
-                照片：
-                {(info.photo_count ?? info.attachment_count ?? 0) > 0
-                  ? `已上传 ${info.photo_count ?? info.attachment_count} 张`
-                  : '照片可通过上传入口补充'}
-              </li>
             </ul>
+            <p style={styles.sectionTitle}>照片</p>
+            <p style={{ margin: '0 0 8px', lineHeight: 1.6 }}>
+              {photoCount > 0
+                ? `已上传 ${photoCount} 张`
+                : '尚未上传 — 可通过上传入口补充'}
+            </p>
+            {info.upload_url && (
+              <button
+                type="button"
+                style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
+                disabled={saving}
+                onClick={() => refreshPhotoCount()}
+              >
+                {saving ? '刷新中…' : '刷新照片数量'}
+              </button>
+            )}
+            <p style={styles.hint}>提交前您还可以继续补充照片或修改上一步内容。</p>
             {info.missing_info.length > 0 && (
               <p style={{ color: '#c0392b', fontSize: 14 }}>
                 还缺：{info.missing_info.map((m) => m.label).join('、')}
@@ -442,9 +483,12 @@ export default function H5ClaimIntakePage() {
         {step === 'done' && (
           <div style={styles.card}>
             <h2 style={{ marginTop: 0, color: '#0d3b66' }}>已提交给陈总 ✅</h2>
-            <p>陈总会人工确认后会联系您。如有新材料可继续在微信补充。</p>
+            <p>陈总会人工确认后会联系您。</p>
             <p style={{ fontSize: 14, color: '#666' }}>
-              如后续还有照片，可以继续通过链接补充。
+              此记录用于陈总办公室整理事故信息，不代表已经向保险公司正式报案。
+            </p>
+            <p style={{ fontSize: 14, color: '#666' }}>
+              如后续还有照片，可以继续通过上传链接或微信补充。
             </p>
           </div>
         )}

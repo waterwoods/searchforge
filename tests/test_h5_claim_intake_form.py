@@ -327,3 +327,45 @@ def test_workbench_shows_h5_submit_summary_and_timeline():
     event_types = [str(e.get("event_type")) for e in timeline]
     assert "customer_submitted_intake" in event_types
     assert isinstance(brief.get("missing_info"), list)
+
+
+def test_status_card_omits_continue_link_after_h5_submit():
+    case_id = _save_claim_case("case_status_submitted")
+    bind_case_channel_identity(case_id, wecom_external_userid="wm_status_submitted")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "44444444-5555-4333-8444-555555555555"
+
+    for step, fields in [
+        ("injury", {"anyone_injured": "no"}),
+        ("time_location", {"accident_datetime": "昨天", "accident_location": "LA downtown"}),
+        ("story", {"accident_description": "对方变道刮到我左前门，双方下车交换信息。"}),
+        ("vehicle_other_party", {"own_vehicle_info": "Honda Civic"}),
+    ]:
+        assert client.patch(
+            f"/api/h5/tasks/{token}/fields",
+            json={"step": step, "fields": fields},
+        ).status_code == 200
+
+    assert client.post(
+        f"/api/h5/tasks/{token}/submit",
+        json={"submit_intent_id": intent},
+    ).status_code == 200
+
+    case = get_case_by_id(case_id) or {}
+    assert not is_h5_intake_continuable(case)
+
+    norm = normalize_text_message(
+        {
+            "msgid": "m_status_submitted",
+            "open_kfid": "wktest001",
+            "external_userid": "wm_status_submitted",
+            "origin": 3,
+            "msgtype": "text",
+            "text": {"content": "进度"},
+        }
+    )
+    result = ingest_claim_status_request(norm, classify_wecom_intent("进度"))
+    reply = result.get("reply_text") or ""
+    assert result["case_created"] is False
+    assert "继续补充资料" not in reply
