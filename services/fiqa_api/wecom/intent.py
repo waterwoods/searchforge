@@ -284,6 +284,13 @@ _CLAIM_STATUS_REQUEST_MARKERS: tuple[str, ...] = (
     "查进度",
     "现在怎么样",
     "资料齐了吗",
+    "补资料",
+    "补充资料",
+    "链接",
+    "事故资料",
+    "继续填写",
+    "继续补充",
+    "上传照片",
 )
 
 _CLAIM_STATUS_EXPLICIT_START_MARKERS: tuple[str, ...] = (

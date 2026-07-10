@@ -253,7 +253,7 @@ def test_photo_ack_short_without_full_status_card():
     ack = build_claim_wecom_media_reply(tier="A")
     assert "收到照片" in ack
     assert "【当前状态】" not in ack
-    assert "状态" in ack
+    assert "进度" in ack or "链接" in ack
 
 
 def test_random_text_does_not_create_claim():

@@ -129,6 +129,26 @@ const styles = {
   } as const,
   sectionTitle: { margin: '0 0 8px', fontSize: 15, fontWeight: 600 } as const,
   hint: { fontSize: 14, color: '#666', marginTop: 8 } as const,
+  dashboard: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: '18px 16px',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    marginBottom: 16,
+    border: '1px solid #d8e3ef',
+  } as const,
+  dashboardTitle: { margin: '0 0 6px', fontSize: 20, fontWeight: 700, color: '#0d3b66' } as const,
+  dashboardSubtitle: { margin: '0 0 14px', fontSize: 14, lineHeight: 1.55, color: '#444' } as const,
+  dashboardStatus: {
+    display: 'inline-block',
+    background: '#eef4fa',
+    color: '#0d3b66',
+    padding: '6px 10px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    marginBottom: 14,
+  } as const,
 };
 
 function stepFromInfo(info: H5ClaimIntakeInfo): WizardStep {
@@ -283,20 +303,114 @@ export default function H5ClaimIntakePage() {
   }
 
   const completion = info?.completion_summary;
+  const dashboard = info?.dashboard_summary;
   const missingLabels =
-    completion?.missing?.length
-      ? completion.missing
-      : (info?.missing_info || []).map((m) => m.label).filter(Boolean);
+    dashboard?.missing?.length
+      ? dashboard.missing
+      : completion?.missing?.length
+        ? completion.missing
+        : (info?.missing_info || []).map((m) => m.label).filter(Boolean);
+
+  const handleDashboardPrimary = () => {
+    if (!info) return;
+    if (info.submitted) {
+      if (info.upload_url) {
+        window.open(info.upload_url as string, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+    if (step === 'done') {
+      setStep('review');
+      return;
+    }
+    if (step === 'start') {
+      setStep('injury');
+      return;
+    }
+    if (step === 'evidence' && (info.photo_count ?? 0) === 0 && info.upload_url) {
+      window.open(info.upload_url as string, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (step === 'review') {
+      void handleSubmit();
+      return;
+    }
+    // stay on current wizard step
+  };
+
+  const renderDashboard = () => {
+    if (!dashboard) return null;
+    return (
+      <div style={styles.dashboard}>
+        <h2 style={styles.dashboardTitle}>{dashboard.title}</h2>
+        <p style={styles.dashboardSubtitle}>{dashboard.subtitle}</p>
+        <div style={styles.dashboardStatus}>当前状态：{dashboard.status}</div>
+
+        <p style={styles.sectionTitle}>已收到</p>
+        {dashboard.received.length > 0 ? (
+          <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0, marginBottom: 14 }}>
+            {dashboard.received.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ margin: '0 0 14px', color: '#666' }}>等待您补充资料</p>
+        )}
+
+        <p style={styles.sectionTitle}>还缺</p>
+        {dashboard.missing.length > 0 ? (
+          <ul style={{ paddingLeft: 18, lineHeight: 1.7, marginTop: 0, marginBottom: 14, color: '#c0392b' }}>
+            {dashboard.missing.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ margin: '0 0 14px', lineHeight: 1.6 }}>目前主要资料已收到</p>
+        )}
+
+        <p style={styles.sectionTitle}>下一步</p>
+        <p style={{ margin: '0 0 14px', lineHeight: 1.6 }}>{dashboard.next_action}</p>
+
+        <button
+          type="button"
+          style={{ ...styles.btn, ...(busy ? styles.btnDisabled : {}) }}
+          disabled={busy}
+          onClick={handleDashboardPrimary}
+        >
+          {dashboard.primary_cta}
+        </button>
+        <button
+          type="button"
+          style={{ ...styles.btnSecondary, ...(busy ? styles.btnDisabled : {}) }}
+          disabled={busy}
+          onClick={() => {
+            try {
+              window.close();
+            } catch {
+              // ignore
+            }
+          }}
+        >
+          {dashboard.secondary_cta}
+        </button>
+
+        <p style={{ margin: '14px 0 0', fontSize: 13, lineHeight: 1.55, color: '#666' }}>
+          {dashboard.warning}
+        </p>
+      </div>
+    );
+  };
 
   return (
     <div style={styles.page}>
       <div style={styles.header}>
         <div style={{ fontSize: 13, opacity: 0.85 }}>陈总办公室</div>
-        <h1 style={{ margin: '4px 0 0', fontSize: 18 }}>{info?.title || '事故资料收集'}</h1>
-        {info && <div style={{ fontSize: 13, marginTop: 8, opacity: 0.9 }}>{progressLabel}</div>}
+        <h1 style={{ margin: '4px 0 0', fontSize: 18 }}>{dashboard?.title || info?.title || '我的事故资料'}</h1>
+        {info && !dashboard && <div style={{ fontSize: 13, marginTop: 8, opacity: 0.9 }}>{progressLabel}</div>}
       </div>
 
       <div style={styles.body}>
+        {renderDashboard()}
         {error && error !== 'invalid_or_expired_task_link' && (
           <div style={styles.error}>{error}</div>
         )}

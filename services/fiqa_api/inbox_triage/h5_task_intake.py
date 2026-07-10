@@ -72,9 +72,18 @@ _H5_RECEIVED_STEP_LABELS: Final[tuple[tuple[str, str], ...]] = (
     ("vehicle_other_party", "车辆/对方信息"),
 )
 
-_H5_DONE_NEXT_STEP: Final[str] = "陈总会查看资料，如还需要补充，会通过微信联系你。"
+_H5_DONE_NEXT_STEP: Final[str] = (
+    "资料已提交给陈总审核。你仍然可以继续补充照片、对方保险或其他细节。"
+)
 _H5_DONE_DISCLAIMER: Final[str] = "这只是资料收集，不代表已经正式向保险公司报案。"
 _H5_DONE_MISSING_CLEAR: Final[str] = "目前主要资料已收到，陈总会进一步确认。"
+_H5_DASHBOARD_TITLE: Final[str] = "我的事故资料"
+_H5_DASHBOARD_SUBTITLE: Final[str] = (
+    "你可以随时回来补充资料。陈总会看到这里的最新记录。"
+)
+_H5_DASHBOARD_SUBMITTED_SUBTITLE: Final[str] = (
+    "资料已提交给陈总审核。你仍然可以继续补充照片、对方保险或其他细节。"
+)
 
 
 def _load_claim_case(case_id: str) -> dict[str, Any]:
@@ -244,14 +253,129 @@ def _h5_attachment_photo_count(case: dict[str, Any]) -> int:
     return count
 
 
+def _all_attachment_photo_count(case: dict[str, Any]) -> int:
+    count = 0
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        mime = str(att.get("mime_type") or "").lower()
+        msgtype = str(att.get("msgtype") or "").lower()
+        if mime.startswith("image/") or msgtype == "image" or str(att.get("type") or "").endswith("photo"):
+            count += 1
+    return count
+
+
 def is_h5_intake_continuable(case: dict[str, Any]) -> bool:
-    """True when customer can resume Claim H5 structured intake (not yet submitted)."""
+    """True when customer can resume Claim H5 wizard PATCH/submit (not yet submitted)."""
     if str(case.get("service_lane") or "").strip().lower() != "claim":
         return False
     phase = derive_claim_phase(case)
     if phase in _H5_SUBMIT_TERMINAL_PHASES:
         return False
     return not _is_submitted(case)
+
+
+def is_h5_task_dashboard_available(case: dict[str, Any]) -> bool:
+    """True when customer can open Claim H5 task dashboard (including post-submit supplement)."""
+    if str(case.get("service_lane") or "").strip().lower() != "claim":
+        return False
+    return derive_claim_phase(case) != CLAIM_PHASE_BROKER_DONE
+
+
+def _dashboard_status_label(case: dict[str, Any]) -> str:
+    phase = derive_claim_phase(case)
+    if phase == CLAIM_PHASE_BROKER_DONE:
+        return "陈总已确认"
+    if _is_submitted(case):
+        return "已提交给陈总审核"
+    if phase in (CLAIM_PHASE_BROKER_REVIEW, CLAIM_PHASE_INTAKE_READY_FOR_BROKER):
+        return "已提交给陈总审核"
+    return "资料收集中"
+
+
+def _dashboard_injury_label(case: dict[str, Any]) -> str | None:
+    value = _injury_value(case)
+    if value == "no":
+        return "没有受伤"
+    if value == "yes":
+        return "有人受伤"
+    if value == "unknown":
+        return "不确定"
+    return None
+
+
+def _dashboard_received_items(case: dict[str, Any]) -> list[str]:
+    facts = _facts(case)
+    items: list[str] = []
+    injury = _dashboard_injury_label(case)
+    if injury:
+        items.append(f"受伤情况：{injury}")
+    if str(facts.get("accident_description") or "").strip():
+        items.append("事故经过")
+    if str(facts.get("accident_datetime") or "").strip():
+        items.append(f"事故时间：{facts.get('accident_datetime')}")
+    if str(facts.get("accident_location") or "").strip():
+        items.append(f"事故地点：{facts.get('accident_location')}")
+    photo_count = _all_attachment_photo_count(case)
+    items.append(f"照片：{photo_count} 张")
+    plate = str(facts.get("other_party_plate") or "").strip()
+    if plate:
+        items.append(f"对方车牌：{plate}")
+    other = str(facts.get("other_party_info") or "").strip()
+    if other:
+        items.append(f"对方保险：{other}")
+    return items
+
+
+def _dashboard_missing_items(case: dict[str, Any]) -> list[str]:
+    missing = get_claim_missing_items(case)
+    labels = [str(m.get("label") or "").strip() for m in missing if str(m.get("label") or "").strip()]
+    if labels:
+        return labels[:5]
+    photo_count = _all_attachment_photo_count(case)
+    if photo_count == 0:
+        return ["车损或现场照片"]
+    return []
+
+
+def _dashboard_next_action(case: dict[str, Any]) -> str:
+    if _is_submitted(case):
+        return "等待陈总查看；如有新资料可继续补充"
+    current = _current_step(case)
+    if current == "review":
+        return "提交给陈总审核"
+    if current == "evidence" and _all_attachment_photo_count(case) == 0:
+        return "上传/补充照片"
+    if current in CLAIM_INTAKE_STEPS[1:-2]:
+        return "继续填写"
+    return "继续填写资料"
+
+
+def _dashboard_primary_cta(case: dict[str, Any]) -> str:
+    if _is_submitted(case):
+        return "继续补充资料"
+    current = _current_step(case)
+    if current == "review":
+        return "提交给陈总审核"
+    if current == "evidence" and _all_attachment_photo_count(case) == 0:
+        return "上传/补充照片"
+    return "继续填写资料"
+
+
+def _build_dashboard_summary(case: dict[str, Any]) -> dict[str, Any]:
+    submitted = _is_submitted(case)
+    return {
+        "title": _H5_DASHBOARD_TITLE,
+        "subtitle": _H5_DASHBOARD_SUBMITTED_SUBTITLE if submitted else _H5_DASHBOARD_SUBTITLE,
+        "status": _dashboard_status_label(case),
+        "received": _dashboard_received_items(case),
+        "missing": _dashboard_missing_items(case),
+        "next_action": _dashboard_next_action(case),
+        "primary_cta": _dashboard_primary_cta(case),
+        "secondary_cta": "返回微信",
+        "submitted_supplement_allowed": submitted,
+        "warning": _H5_DONE_DISCLAIMER,
+    }
 
 
 def _field_value_hash(step: str, facts_patch: dict[str, str]) -> str:
@@ -267,7 +391,6 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
     brief = build_claim_case_brief(case)
     current = _current_step(case)
     submitted = _is_submitted(case)
-    photo_count = _h5_attachment_photo_count(case)
     upload_url: str | None = None
     try:
         ext_uid = str(case.get("wecom_external_userid") or "").strip() or None
@@ -277,11 +400,12 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         )
     except ValueError:
         upload_url = None
+    dashboard = _build_dashboard_summary(case)
     return {
         "lane": claims.lane,
         "flow": claims.flow or FLOW_CLAIM_INTAKE_FORM,
         "case_id": claims.case_id,
-        "title": "事故资料收集",
+        "title": _H5_DASHBOARD_TITLE,
         "safety_copy": CLAIM_INTAKE_SAFETY_COPY,
         "steps": list(CLAIM_INTAKE_STEPS),
         "current_step": current,
@@ -293,9 +417,10 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "missing_info": get_claim_missing_items(case),
         "injury_alert": is_injury_yes(_injury_value(case)),
         "upload_url": upload_url,
-        "attachment_count": photo_count,
-        "photo_count": photo_count,
+        "attachment_count": _all_attachment_photo_count(case),
+        "photo_count": _all_attachment_photo_count(case),
         "completion_summary": _build_completion_summary(case),
+        "dashboard_summary": dashboard,
     }
 
 

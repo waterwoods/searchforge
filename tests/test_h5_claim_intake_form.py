@@ -329,7 +329,8 @@ def test_workbench_shows_h5_submit_summary_and_timeline():
     assert isinstance(brief.get("missing_info"), list)
 
 
-def test_status_card_omits_continue_link_after_h5_submit():
+def test_status_card_includes_continue_supplement_link_after_h5_submit(monkeypatch):
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
     case_id = _save_claim_case("case_status_submitted")
     bind_case_channel_identity(case_id, wecom_external_userid="wm_status_submitted")
     token = issue_h5_intake_form_token(case_id=case_id)
@@ -354,6 +355,9 @@ def test_status_card_omits_continue_link_after_h5_submit():
 
     case = get_case_by_id(case_id) or {}
     assert not is_h5_intake_continuable(case)
+    from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_task_dashboard_available
+
+    assert is_h5_task_dashboard_available(case)
 
     norm = normalize_text_message(
         {
@@ -368,20 +372,25 @@ def test_status_card_omits_continue_link_after_h5_submit():
     result = ingest_claim_status_request(norm, classify_wecom_intent("进度"))
     reply = result.get("reply_text") or ""
     assert result["case_created"] is False
-    assert "继续补充资料" not in reply
+    assert "继续补充事故资料" in reply
     assert "已提交给陈总审核" in reply
+    assert "/task/claim/h5t1." in reply
 
 
-def test_status_card_shows_submitted_phase_label():
+def test_status_card_shows_submitted_phase_label(monkeypatch):
+    monkeypatch.setenv("H5_TASK_FRONTEND_BASE_URL", "https://example.test")
     case_id = _save_claim_case("case_status_phase")
     token = issue_h5_intake_form_token(case_id=case_id)
     client = _app()
     intent = "99999999-aaaa-4333-8444-555555555555"
     _complete_h5_intake(client, token, intent)
     case = get_case_by_id(case_id) or {}
-    reply = build_claim_status_card_reply(case)
+    reply = build_claim_status_card_reply(
+        case,
+        h5_intake_url=mint_h5_claim_intake_form_link(case_id=case_id),
+    )
     assert "状态：已提交给陈总审核" in reply
-    assert "继续补充资料" not in reply
+    assert "继续补充事故资料" in reply
 
 
 def _complete_h5_intake(client: TestClient, token: str, intent: str) -> dict:
@@ -402,6 +411,34 @@ def _complete_h5_intake(client: TestClient, token: str, intent: str) -> dict:
     )
     assert resp.status_code == 200
     return resp.json()
+
+
+def test_h5_intake_returns_dashboard_summary():
+    case_id = _save_claim_case("case_dashboard")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    resp = client.get(f"/api/h5/tasks/{token}/intake")
+    assert resp.status_code == 200
+    body = resp.json()
+    dashboard = body.get("dashboard_summary") or {}
+    assert dashboard.get("title") == "我的事故资料"
+    assert dashboard.get("status") == "资料收集中"
+    assert "received" in dashboard
+    assert "missing" in dashboard
+    assert dashboard.get("primary_cta")
+    assert body.get("title") == "我的事故资料"
+
+
+def test_h5_dashboard_submitted_allows_supplement_state():
+    case_id = _save_claim_case("case_dashboard_submitted")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "77777777-8888-4333-8444-555555555555"
+    body = _complete_h5_intake(client, token, intent)
+    dashboard = body.get("dashboard_summary") or {}
+    assert dashboard.get("status") == "已提交给陈总审核"
+    assert dashboard.get("submitted_supplement_allowed") is True
+    assert "继续补充" in (dashboard.get("subtitle") or "")
 
 
 def test_submit_returns_completion_summary_and_done_fields():

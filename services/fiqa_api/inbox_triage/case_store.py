@@ -1456,6 +1456,38 @@ def patch_case_known_facts(case_id: str, facts_patch: dict[str, str]) -> dict[st
     return normalized_case
 
 
+def patch_known_fact_provenance(
+    case_id: str,
+    field_name: str,
+    *,
+    source: str,
+    status: str,
+) -> dict[str, Any] | None:
+    """Record provenance for a known_fact without schema migration (JSON packet field)."""
+    cid = (case_id or "").strip()
+    field = str(field_name or "").strip()
+    if not cid or not field:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+    provenance = (
+        dict(normalized_case.get("known_fact_provenance") or {})
+        if isinstance(normalized_case.get("known_fact_provenance"), dict)
+        else {}
+    )
+    provenance[field] = {
+        "source": str(source or "").strip() or "unknown",
+        "status": str(status or "").strip() or "pending_confirmation",
+    }
+    normalized_case["known_fact_provenance"] = provenance
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
+        return None
+    return normalized_case
+
+
 def append_case_collected_fields(case_id: str, field_names: list[str]) -> dict[str, Any] | None:
     """Merge field names into case collected_fields (H5 structured intake)."""
     cid = (case_id or "").strip()

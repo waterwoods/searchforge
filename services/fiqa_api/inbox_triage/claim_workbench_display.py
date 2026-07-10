@@ -770,6 +770,32 @@ def _derive_brief_confidence(
     return "low"
 
 
+def _fact_provenance(case: dict[str, Any], field: str) -> dict[str, str] | None:
+    raw = case.get("known_fact_provenance") or {}
+    if not isinstance(raw, dict):
+        return None
+    entry = raw.get(field)
+    if not isinstance(entry, dict):
+        return None
+    source = str(entry.get("source") or "").strip()
+    status = str(entry.get("status") or "").strip()
+    if not source and not status:
+        return None
+    return {"source": source, "status": status}
+
+
+def _format_fact_display(case: dict[str, Any], field: str, value: str | None) -> str | None:
+    text = _str_or_none(value)
+    if not text:
+        return None
+    prov = _fact_provenance(case, field)
+    if prov and prov.get("source") == "wecom_customer_text":
+        return f"{text}（客户文字补充）"
+    if prov and prov.get("source") == "h5_form":
+        return f"{text}（客户已确认）"
+    return text
+
+
 def _source_event_ids(case: dict[str, Any]) -> list[str]:
     relevant_types = {"customer_text", "customer_photo", "basics_complete"}
     ids: list[str] = []
@@ -800,7 +826,10 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
         "accident_description": _str_or_none(facts.get("accident_description")),
         "injury_status": injury,
         "police_involved": police,
-        "other_party_info": other_party,
+        "other_party_info": _format_fact_display(case, "other_party_info", other_party),
+        "other_party_plate": _format_fact_display(
+            case, "other_party_plate", _str_or_none(facts.get("other_party_plate"))
+        ),
         "own_vehicle_info": _str_or_none(facts.get("own_vehicle_info")),
     }
 

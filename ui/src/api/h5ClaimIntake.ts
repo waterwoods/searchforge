@@ -3,6 +3,19 @@
  */
 import { API_BASE_URL } from './config';
 
+export type H5ClaimDashboardSummary = {
+  title: string;
+  subtitle: string;
+  status: string;
+  received: string[];
+  missing: string[];
+  next_action: string;
+  primary_cta: string;
+  secondary_cta: string;
+  submitted_supplement_allowed: boolean;
+  warning: string;
+};
+
 export type H5ClaimCompletionSummary = {
   title: string;
   message: string;
@@ -34,6 +47,7 @@ export type H5ClaimIntakeInfo = {
   attachment_count?: number;
   photo_count?: number;
   completion_summary?: H5ClaimCompletionSummary;
+  dashboard_summary?: H5ClaimDashboardSummary;
   wecom_confirmation_sent?: boolean;
   wecom_confirmation_pending?: boolean;
 };

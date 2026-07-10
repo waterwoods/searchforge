@@ -1186,10 +1186,10 @@ def ingest_claim_status_request(
 
     case_id = str(active.get("case_id") or "").strip() or None
     h5_intake_url: str | None = None
-    from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_intake_continuable
+    from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_task_dashboard_available
     from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_intake_form_link
 
-    if is_h5_intake_continuable(active):
+    if is_h5_task_dashboard_available(active):
         try:
             h5_intake_url = mint_h5_claim_intake_form_link(
                 case_id=case_id or "",
@@ -1461,10 +1461,14 @@ def _ingest_claim_post_submit_supplement(
     identity_kwargs: dict[str, Any],
     open_claim_count: int,
 ) -> dict[str, Any]:
+    from services.fiqa_api.inbox_triage.case_store import patch_known_fact_provenance
+    from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_task_dashboard_available
+    from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_intake_form_link
     from services.fiqa_api.wecom.reply import build_claim_supplement_received_reply
 
     msg_id = str(normalized.get("msg_id") or "").strip()
     text = str(normalized.get("text") or "").strip()
+    ext = str(normalized.get("external_userid") or "").strip()
     supplement = extract_claim_supplement_fields(text)
     triage_stub = _build_claim_supplement_triage_stub(case, supplement, text=text)
     append_follow_up_message(case_id, text or "(no text)", triage_stub)
@@ -1474,6 +1478,23 @@ def _ingest_claim_post_submit_supplement(
     facts_patch = {k: v for k, v in supplement.items() if v}
     if facts_patch:
         patch_case_known_facts(case_id, facts_patch)
+        for field in facts_patch:
+            patch_known_fact_provenance(
+                case_id,
+                field,
+                source="wecom_customer_text",
+                status="customer_supplement",
+            )
+
+    h5_intake_url: str | None = None
+    if is_h5_task_dashboard_available(case):
+        try:
+            h5_intake_url = mint_h5_claim_intake_form_link(
+                case_id=case_id,
+                external_userid=ext or None,
+            )
+        except ValueError:
+            h5_intake_url = None
 
     if open_claim_count >= 2:
         _maybe_flag_multi_claim_context(
@@ -1500,7 +1521,7 @@ def _ingest_claim_post_submit_supplement(
         "outcome": "claim_supplement_appended",
         "case_id": case_id,
         "case_created": False,
-        "reply_text": build_claim_supplement_received_reply(),
+        "reply_text": build_claim_supplement_received_reply(h5_intake_url=h5_intake_url),
         "menu_payload": None,
         "h5_task_link_masked": None,
         "active_case_outcome": "claim_supplement_appended",

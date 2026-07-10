@@ -696,13 +696,20 @@ def build_claim_collision_continue_reply() -> str:
     )
 
 
-def build_claim_supplement_received_reply() -> str:
-    return "\n".join(
-        [
-            "好的，已记到您当前的事故记录里。",
-            "您可以继续补充照片、对方保险信息，或其他细节。",
-        ]
-    )
+def build_claim_supplement_received_reply(*, h5_intake_url: str | None = None) -> str:
+    lines = [
+        "好的，已记录到您当前的事故记录里。",
+    ]
+    url = (h5_intake_url or "").strip()
+    if url:
+        lines.extend(
+            [
+                "如果方便，也可以打开事故资料页面继续补全：",
+                url,
+            ]
+        )
+    lines.append("提醒：微信里的补充会作为客户文字补充记录，陈总会查看。")
+    return "\n".join(lines)
 
 
 def build_claim_collision_new_claim_reply() -> str:
@@ -888,6 +895,13 @@ def _claim_status_received_lines(brief: dict[str, Any]) -> list[str]:
     if photo_count > 0:
         lines.append(f"✅ 照片：{photo_count} 张")
 
+    plate = _str_or_none_local(key_facts.get("other_party_plate"))
+    if plate:
+        lines.append(f"✅ 对方车牌：{plate}")
+    other = _str_or_none_local(key_facts.get("other_party_info"))
+    if other:
+        lines.append(f"✅ 对方保险：{other}")
+
     if not lines:
         lines.append("□ 等待您补充资料")
     return lines
@@ -907,7 +921,7 @@ def _claim_status_next_step(case: dict[str, Any], brief: dict[str, Any]) -> str:
     if phase == CLAIM_PHASE_BROKER_DONE:
         return "收集阶段已结束；如有新资料可继续发给陈总。"
     if _is_h5_intake_submitted(case):
-        return "陈总会查看后联系你；如有新资料可继续发到微信。"
+        return "打开事故资料页面继续补充。"
     next_q = str(brief.get("next_best_question") or case.get("next_best_question") or "").strip()
     if next_q:
         return f"{next_q} 您也可以继续发照片或文字到这里。"
@@ -938,16 +952,28 @@ def build_claim_status_card_reply(
 
     body: list[str] = [
         f"状态：{_claim_status_phase_label(case)}",
-        "",
-        "已收到：",
-        *_claim_status_received_lines(brief),
-        "",
-        "还缺：",
-        *_claim_status_missing_lines(brief),
-        "",
-        "下一步：",
-        _claim_status_next_step(case, brief),
     ]
+    if _is_h5_intake_submitted(case):
+        body.extend(
+            [
+                "",
+                "陈总会查看后联系你。",
+                "如果还有新照片、对方保险、车牌或其他细节，可以继续补充。",
+            ]
+        )
+    body.extend(
+        [
+            "",
+            "已收到：",
+            *_claim_status_received_lines(brief),
+            "",
+            "还缺：",
+            *_claim_status_missing_lines(brief),
+            "",
+            "下一步：",
+            _claim_status_next_step(case, brief),
+        ]
+    )
     if multiple_open_claims:
         body.extend(
             [
@@ -959,7 +985,10 @@ def build_claim_status_card_reply(
     footer = list(_CLAIM_CARD_DISCLAIMER_FOOTER)
     intake_url = (h5_intake_url or "").strip()
     if intake_url:
-        footer.insert(0, f"继续补充资料：点击打开资料填写页面\n{intake_url}")
+        if _is_h5_intake_submitted(case):
+            footer.insert(0, f"继续补充事故资料：\n{intake_url}")
+        else:
+            footer.insert(0, f"继续补充资料：点击打开资料填写页面\n{intake_url}")
     return frame_wecom_card("【当前状态】", body, footer)
 
 
@@ -1124,7 +1153,7 @@ _MEDIA_ACK_CLAIM = (
 
 _MEDIA_ACK_CLAIM_GUIDED_BOUND = (
     "收到照片，已记到这份事故记录里 ✅\n"
-    "如需查看当前进度，请回复「状态」。"
+    "如需查看或继续补充，请回复「进度」或「链接」打开事故资料页面。"
 )
 
 _MEDIA_ACK_CLAIM_BROKER_CONFIRM = (
