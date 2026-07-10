@@ -135,6 +135,7 @@ from services.fiqa_api.routes.inbox_triage import router as inbox_triage_router
 from services.fiqa_api.routes.add_car import router as add_car_router
 from services.fiqa_api.routes.analytics_dashboard import router as analytics_dashboard_router
 from services.fiqa_api.routes.h5_task_upload import router as h5_task_upload_router
+from services.fiqa_api.routes.h5_task_intake import router as h5_task_intake_router
 from services.fiqa_api.routes.wecom_kf_callback import router as wecom_kf_callback_router
 from services.fiqa_api.routes.wecom_queue_admin import router as wecom_queue_admin_router
 from services.fiqa_api.routes.health_monitor import router as health_monitor_router
@@ -989,6 +990,7 @@ async def ready():
 # Unified Intake product core + founder analytics (always mounted)
 app.include_router(inbox_triage_router)  # /api/inbox/*
 app.include_router(h5_task_upload_router)  # /api/h5/tasks/*
+app.include_router(h5_task_intake_router)  # /api/h5/tasks/*/intake|fields|submit
 app.include_router(add_car_router)  # /api/intake/add-car/*
 app.include_router(analytics_dashboard_router)  # /api/analytics/dashboard
 app.include_router(wecom_kf_callback_router)  # /api/wecom/kf/callback (spike)

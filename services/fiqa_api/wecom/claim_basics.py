@@ -1525,6 +1525,46 @@ def _create_claim_case(
     return {"case_id": case_id, "case_created": True, "outcome": "created"}
 
 
+def _build_claim_start_h5_intake_response(
+    case_id: str,
+    *,
+    external_userid: str | None,
+) -> dict[str, Any]:
+    """Build Claim Start Card with H5 intake form link as primary CTA."""
+    from services.fiqa_api.inbox_triage.h5_task_link import (
+        mask_h5_task_url,
+        mint_h5_claim_intake_form_link,
+    )
+    from services.fiqa_api.wecom.reply import (
+        build_claim_start_card_reply,
+        build_claim_start_h5_intake_card_payload,
+    )
+
+    if not case_id:
+        return {
+            "reply_text": build_claim_start_card_reply(injury_mentioned=False),
+            "menu_payload": None,
+            "h5_task_link_masked": None,
+        }
+    try:
+        h5_url = mint_h5_claim_intake_form_link(
+            case_id=case_id,
+            external_userid=external_userid,
+        )
+    except ValueError:
+        return {
+            "reply_text": build_claim_start_card_reply(injury_mentioned=False),
+            "menu_payload": None,
+            "h5_task_link_masked": None,
+        }
+    menu = build_claim_start_h5_intake_card_payload(h5_url=h5_url)
+    return {
+        "reply_text": menu["head_content"],
+        "menu_payload": menu,
+        "h5_task_link_masked": mask_h5_task_url(h5_url),
+    }
+
+
 def _build_claim_c1_h5_response(
     case: dict[str, Any],
     *,
@@ -1810,6 +1850,7 @@ def ingest_claim_basics_message(
 
     if case_created and not has_extractable:
         menu_payload = None
+        h5_masked = None
         if injury_mentioned:
             reply_text = (
                 build_claim_interrupt_safety_manual_reply()
@@ -1847,9 +1888,13 @@ def ingest_claim_basics_message(
                     **claim_ctx,
                 )
         else:
-            injury_menu = build_claim_start_injury_menu_payload()
-            reply_text = injury_menu["head_content"]
-            menu_payload = injury_menu
+            start_h5 = _build_claim_start_h5_intake_response(
+                case_id or "",
+                external_userid=ext,
+            )
+            reply_text = start_h5["reply_text"]
+            menu_payload = start_h5["menu_payload"]
+            h5_masked = start_h5.get("h5_task_link_masked")
             if add_car_active and is_claim_lane_switch_confirm(text):
                 av_ctx = add_vehicle_context_for_user(ext)
                 _emit_claim_routing_decision(
@@ -1889,6 +1934,7 @@ def ingest_claim_basics_message(
             "case_created": True,
             "reply_text": reply_text,
             "menu_payload": menu_payload if not injury_mentioned else None,
+            "h5_task_link_masked": h5_masked if not injury_mentioned else None,
             "active_case_outcome": (
                 "claim_injury_manual_handle" if injury_mentioned else "claim_start_card_sent"
             ),

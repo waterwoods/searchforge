@@ -471,13 +471,31 @@ def build_claim_start_card_reply(*, injury_mentioned: bool = False) -> str:
 
 
 def build_claim_start_injury_menu_payload() -> dict[str, Any]:
-    """WeCom msgmenu: injury quick replies on Claim start (P19H-3e-1)."""
+    """WeCom msgmenu: injury quick replies on Claim start (P19H-3e-1). Legacy — new cases use H5 intake."""
     return {
         "head_content": build_claim_start_card_reply(injury_mentioned=False),
         "list": [
             {"type": "click", "click": {"id": "claim_injury_no", "content": "没有受伤"}},
             {"type": "click", "click": {"id": "claim_injury_yes", "content": "有人受伤"}},
             {"type": "click", "click": {"id": "claim_injury_unknown", "content": "不确定"}},
+        ],
+        "tail_content": _CLAIM_SAFE_DISCLAIMER,
+    }
+
+
+def build_claim_start_h5_intake_card_payload(*, h5_url: str) -> dict[str, Any]:
+    """WeCom msgmenu: Claim Start Card with H5 structured intake as primary CTA (P19H-3h)."""
+    url = (h5_url or "").strip()
+    body = [
+        "我是陈总办公室的值班助手。",
+        "请按步骤填写事故资料，陈总会人工确认。",
+        "",
+        "您也可以继续在微信发文字或照片作为补充。",
+    ]
+    return {
+        "head_content": frame_wecom_card("【事故记录已开始 ✅】", body, footer_lines=[]),
+        "list": [
+            {"type": "view", "view": {"url": url, "content": "打开资料填写页面"}},
         ],
         "tail_content": _CLAIM_SAFE_DISCLAIMER,
     }

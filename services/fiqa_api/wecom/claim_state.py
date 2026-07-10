@@ -487,6 +487,9 @@ def derive_claim_phase(case_extra: dict[str, Any]) -> str:
     if explicit == CLAIM_PHASE_MANUAL_HANDLE or bool(case_extra.get("manual_handle")):
         return CLAIM_PHASE_MANUAL_HANDLE
 
+    if explicit == CLAIM_PHASE_INTAKE_READY_FOR_BROKER:
+        return CLAIM_PHASE_INTAKE_READY_FOR_BROKER
+
     guided = str(case_extra.get("guided_workflow_state") or "").strip().lower()
     if guided == GUIDED_STATE_BROKER_NEEDS_MORE_INFO or explicit == CLAIM_PHASE_BROKER_NEEDS_MORE_INFO:
         return CLAIM_PHASE_BROKER_NEEDS_MORE_INFO

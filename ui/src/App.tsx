@@ -7,6 +7,7 @@ import UnifiedIntakePage from './pages/UnifiedIntakePage';
 import AddCarPage from './pages/AddCarPage';
 import DocumentIntakeInboxPage from './pages/DocumentIntakeInboxPage';
 import H5SingleSlotUploadPage from './pages/H5SingleSlotUploadPage';
+import H5ClaimIntakePage from './pages/H5ClaimIntakePage';
 import { OfficeReviewShell } from './components/layout/OfficeReviewShell';
 import { DemoPage } from './pages/DemoPage';
 import { ClientConfigProvider } from './context/ClientConfigContext';
@@ -103,6 +104,12 @@ function App() {
                         <Route path="/task/upload/:taskToken" element={
                             <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
                                 <H5SingleSlotUploadPage />
+                            </ConfigProvider>
+                        } />
+
+                        <Route path="/task/claim/:taskToken" element={
+                            <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                <H5ClaimIntakePage />
                             </ConfigProvider>
                         } />
 

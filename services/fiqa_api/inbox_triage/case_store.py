@@ -1456,6 +1456,55 @@ def patch_case_known_facts(case_id: str, facts_patch: dict[str, str]) -> dict[st
     return normalized_case
 
 
+def append_case_collected_fields(case_id: str, field_names: list[str]) -> dict[str, Any] | None:
+    """Merge field names into case collected_fields (H5 structured intake)."""
+    cid = (case_id or "").strip()
+    if not cid or not field_names:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+    existing = [str(x) for x in (normalized_case.get("collected_fields") or []) if str(x).strip()]
+    seen = {x.lower() for x in existing}
+    changed = False
+    for raw in field_names:
+        name = str(raw or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        existing.append(name)
+        seen.add(key)
+        changed = True
+    if not changed:
+        return normalized_case
+    normalized_case["collected_fields"] = existing
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
+        return None
+    return normalized_case
+
+
+def update_case_h5_intake_state(case_id: str, state_patch: dict[str, Any]) -> dict[str, Any] | None:
+    """Merge h5_intake_state JSON on case document (no schema migration)."""
+    cid = (case_id or "").strip()
+    if not cid or not state_patch:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+    existing = dict(normalized_case.get("h5_intake_state") or {})
+    existing.update(state_patch)
+    normalized_case["h5_intake_state"] = existing
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
+        return None
+    return normalized_case
+
+
 def add_case_risk_flag(
     case_id: str,
     flag_name: str,

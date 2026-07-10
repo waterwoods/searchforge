@@ -33,6 +33,8 @@ _CLAIM_EVIDENCE_SLOTS: Final[frozenset[str]] = frozenset(
 _SUPPORTED_LANES: Final[frozenset[str]] = frozenset({"add_car", "claim"})
 FLOW_ADD_VEHICLE_PHOTO: Final[str] = "add_vehicle_photo_flow"
 FLOW_CLAIM_EVIDENCE_PACK: Final[str] = "claim_evidence_pack"
+FLOW_CLAIM_INTAKE_FORM: Final[str] = "claim_intake_form"
+INTAKE_FORM_TTL_SECONDS: Final[int] = 72 * 3600  # 72h — multi-day accident resume
 ADD_VEHICLE_PHOTO_FLOW_SLOTS: Final[tuple[str, ...]] = (
     "vin_photo",
     "registration_photo",
@@ -188,6 +190,50 @@ def issue_h5_flow_token(
     return f"{TOKEN_PREFIX}{b64}.{sig}"
 
 
+def issue_h5_intake_form_token(
+    *,
+    case_id: str,
+    lane: str = "claim",
+    flow: str = FLOW_CLAIM_INTAKE_FORM,
+    external_userid: str | None = None,
+    ttl_seconds: int = INTAKE_FORM_TTL_SECONDS,
+    now: float | None = None,
+    nonce: str | None = None,
+) -> str:
+    """Issue signed v3 intake-form task token (structured fields, no photo slots)."""
+    cid = (case_id or "").strip()
+    if not cid:
+        raise ValueError("case_id_required")
+    lane_norm = (lane or "").strip().lower()
+    if lane_norm not in _SUPPORTED_LANES:
+        raise ValueError(f"unsupported_lane: {lane_norm}")
+    flow_norm = (flow or "").strip()
+    if lane_norm == "claim" and flow_norm != FLOW_CLAIM_INTAKE_FORM:
+        raise ValueError(f"unsupported_flow: {flow_norm}")
+
+    t = time.time() if now is None else float(now)
+    iat = int(t)
+    exp = iat + max(60, int(ttl_seconds))
+    payload: dict[str, Any] = {
+        "v": 3,
+        "model": MODEL_VERSION,
+        "case_id": cid,
+        "lane": lane_norm,
+        "flow": flow_norm,
+        "iat": iat,
+        "exp": exp,
+        "nonce": (nonce or uuid.uuid4().hex[:16]),
+    }
+    user_ref = external_userid_ref(external_userid)
+    if user_ref:
+        payload["user_ref"] = user_ref
+
+    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    b64 = base64.urlsafe_b64encode(body).decode("ascii").rstrip("=")
+    sig = hmac.new(_token_secret(), body, hashlib.sha256).hexdigest()[:32]
+    return f"{TOKEN_PREFIX}{b64}.{sig}"
+
+
 @dataclass(frozen=True)
 class VerifiedH5TaskToken:
     case_id: str
@@ -204,6 +250,10 @@ class VerifiedH5TaskToken:
     @property
     def is_flow_token(self) -> bool:
         return self.version == 2 and bool(self.flow)
+
+    @property
+    def is_intake_form_token(self) -> bool:
+        return self.version == 3 and self.flow == FLOW_CLAIM_INTAKE_FORM
 
 
 def _verify_common(payload: dict[str, Any], *, now: float | None) -> tuple[int, int, str, str, str, str | None] | None:
@@ -305,6 +355,21 @@ def verify_h5_task_token(token: str, *, now: float | None = None) -> VerifiedH5T
             iat=iat,
             exp=exp,
             version=2,
+        )
+
+    if version == 3:
+        flow = str(payload.get("flow") or "").strip()
+        if lane == "claim" and flow != FLOW_CLAIM_INTAKE_FORM:
+            return None
+        return VerifiedH5TaskToken(
+            case_id=case_id,
+            lane=lane,
+            flow=flow,
+            user_ref=user_ref,
+            nonce=nonce,
+            iat=iat,
+            exp=exp,
+            version=3,
         )
 
     return None
