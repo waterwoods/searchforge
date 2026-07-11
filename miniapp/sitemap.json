@@ -1,0 +1,9 @@
+{
+  "desc": "Prototype — no public indexing",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}

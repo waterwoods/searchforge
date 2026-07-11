@@ -1,0 +1,44 @@
+<view class="container">
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <text>加载中…</text>
+  </view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="status-pill {{submitted ? 'done' : ''}}">{{status}}</view>
+      <view class="card-title">{{title}}</view>
+      <view class="card-subtitle">{{subtitle}}</view>
+
+      <view class="progress-bar">
+        <view class="progress-fill" style="width: {{progress}}%;"></view>
+      </view>
+
+      <view class="section-label">已收到</view>
+      <view wx:if="{{received.length}}">
+        <view class="list-item" wx:for="{{received}}" wx:key="*this">{{item}}</view>
+      </view>
+      <view wx:else class="list-item">暂无</view>
+
+      <view class="section-label" style="margin-top: 24rpx;">还缺</view>
+      <view wx:if="{{missing.length}}">
+        <view class="list-item missing" wx:for="{{missing}}" wx:key="*this">{{item}}</view>
+      </view>
+      <view wx:else class="list-item">主要资料已齐全</view>
+
+      <view class="section-label" style="margin-top: 24rpx;">下一步</view>
+      <view class="list-item">{{nextAction}}</view>
+
+      <view class="meta-row">
+        <text>事故经过：{{storyDone ? '已填写' : '未填写'}}</text>
+        <text>照片：{{photoCount}}/{{photoTarget}}</text>
+      </view>
+    </view>
+
+    <view class="disclaimer">{{disclaimer}}</view>
+  </block>
+
+  <view class="footer-cta" wx:if="{{!loading}}">
+    <button class="btn-primary" bindtap="onPrimaryAction">{{primaryCta}}</button>
+    <button class="btn-secondary" bindtap="onViewAll">查看全部资料</button>
+  </view>
+</view>

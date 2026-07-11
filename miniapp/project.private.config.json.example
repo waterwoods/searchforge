@@ -1,0 +1,19 @@
+{
+  "description": "Copy to project.private.config.json for local WeChat DevTools overrides",
+  "setting": {
+    "urlCheck": false
+  },
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "name": "Dev task entry",
+          "pathName": "pages/entry/entry",
+          "query": "token=REPLACE_WITH_QA_H5T1_TOKEN",
+          "scene": null,
+          "launchMode": "default"
+        }
+      ]
+    }
+  }
+}

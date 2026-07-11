@@ -1,0 +1,30 @@
+<view class="container">
+  <view class="card">
+    <view class="card-title">补充基本资料</view>
+    <view class="card-subtitle">这些信息帮助陈总快速了解情况。</view>
+
+    <view class="section-label">是否有人受伤</view>
+    <view class="radio-row">
+      <view
+        wx:for="{{injuryOptions}}"
+        wx:key="value"
+        class="radio-chip {{anyoneInjured === item.value ? 'active' : ''}}"
+        data-value="{{item.value}}"
+        bindtap="onInjurySelect"
+      >{{item.label}}</view>
+    </view>
+
+    <view class="section-label" style="margin-top: 24rpx;">事故时间</view>
+    <input class="input-field" placeholder="例如：今天上午10点" value="{{accidentDatetime}}" bindinput="onDatetimeInput" />
+
+    <view class="section-label" style="margin-top: 24rpx;">事故地点</view>
+    <input class="input-field" placeholder="例如：Irvine Blvd 路口" value="{{accidentLocation}}" bindinput="onLocationInput" />
+
+    <view class="section-label" style="margin-top: 24rpx;">您的车辆</view>
+    <input class="input-field" placeholder="例如：2020 Toyota Camry" value="{{ownVehicleInfo}}" bindinput="onVehicleInput" />
+  </view>
+
+  <view class="footer-cta">
+    <button class="btn-primary" bindtap="onSave" loading="{{saving}}" disabled="{{saving}}">保存并继续</button>
+  </view>
+</view>

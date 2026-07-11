@@ -1,0 +1,22 @@
+{
+  "pages": [
+    "pages/entry/entry",
+    "pages/task-home/task-home",
+    "pages/story/story",
+    "pages/photos/photos",
+    "pages/basics/basics",
+    "pages/review/review",
+    "pages/receipt/receipt",
+    "pages/error/error"
+  ],
+  "window": {
+    "navigationBarTitleText": "事故资料",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f6f8",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

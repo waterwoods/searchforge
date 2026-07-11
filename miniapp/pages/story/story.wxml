@@ -1,0 +1,22 @@
+<view class="container">
+  <view class="card">
+    <view class="card-title">请简单说一下发生了什么</view>
+    <view class="card-subtitle">例如：我在等红灯时，被后车追尾。</view>
+    <textarea
+      class="textarea-field"
+      placeholder="请描述事故经过…"
+      maxlength="2000"
+      value="{{story}}"
+      bindinput="onInput"
+      auto-height
+    />
+    <view class="char-count">{{charCount}} 字</view>
+  </view>
+
+  <view class="footer-cta">
+    <button class="btn-primary" bindtap="onSave" loading="{{saving}}" disabled="{{saving}}">
+      保存并继续
+    </button>
+    <button class="btn-secondary" bindtap="onLater">稍后再填</button>
+  </view>
+</view>

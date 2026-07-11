@@ -1,0 +1,33 @@
+<view class="container">
+  <view class="card">
+    <view class="card-title">请检查事故资料</view>
+
+    <view class="section-label">事故经过</view>
+    <view class="list-item review-block">{{story || '未填写'}}</view>
+
+    <view class="section-label" style="margin-top: 24rpx;">照片</view>
+    <view class="list-item">已上传 {{photoCount}} 张</view>
+
+    <view class="section-label" style="margin-top: 24rpx;">已收到</view>
+    <view class="list-item" wx:for="{{received}}" wx:key="*this">{{item}}</view>
+
+    <view class="section-label" style="margin-top: 24rpx;">还缺</view>
+    <view wx:if="{{missing.length}}">
+      <view class="list-item missing" wx:for="{{missing}}" wx:key="*this">{{item}}</view>
+    </view>
+    <view wx:else class="list-item">无</view>
+
+    <view class="disclaimer">{{disclaimer}}</view>
+  </view>
+
+  <view class="footer-cta">
+    <button
+      class="btn-primary"
+      bindtap="onSubmit"
+      loading="{{submitting}}"
+      disabled="{{submitting || !canSubmit}}"
+    >提交给陈总审核</button>
+    <button class="btn-secondary" bindtap="onEditStory">修改事故经过</button>
+    <button class="btn-secondary" bindtap="onEditPhotos">补充照片</button>
+  </view>
+</view>

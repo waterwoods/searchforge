@@ -1,0 +1,30 @@
+<view class="container">
+  <view class="card">
+    <view class="card-title">添加事故照片</view>
+    <view class="card-subtitle">建议拍摄：事故现场、车辆受损位置。已上传 {{photoCount}}/{{photoTarget}} 张。</view>
+
+    <view class="photo-grid">
+      <view
+        wx:for="{{slots}}"
+        wx:key="key"
+        class="photo-slot {{item.localPath || item.uploaded ? '' : 'empty'}}"
+      >
+        <image wx:if="{{item.localPath}}" src="{{item.localPath}}" mode="aspectFill" />
+        <text wx:elif="{{item.uploaded}}">已上传</text>
+        <text wx:else>{{item.label}}</text>
+        <view wx:if="{{item.error}}" class="photo-error" data-index="{{index}}" bindtap="onRetrySlot">重试</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="footer-cta">
+    <button
+      wx:if="{{photoCount < photoTarget}}"
+      class="btn-primary"
+      bindtap="onAddPhoto"
+      loading="{{uploading}}"
+      disabled="{{uploading}}"
+    >添加照片</button>
+    <button wx:else class="btn-primary" bindtap="onContinue">继续</button>
+  </view>
+</view>

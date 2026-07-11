@@ -1,0 +1,20 @@
+<view class="container">
+  <view class="card">
+    <view class="status-pill done">{{status}}</view>
+    <view class="card-title">{{title}}</view>
+    <view class="card-subtitle">{{message}}</view>
+
+    <view class="section-label">下一步</view>
+    <view class="list-item">{{nextStep}}</view>
+
+    <view class="section-label" style="margin-top: 24rpx;">照片</view>
+    <view class="list-item">已上传 {{photoCount}} 张</view>
+
+    <view class="disclaimer">{{disclaimer}}</view>
+  </view>
+
+  <view class="footer-cta">
+    <button class="btn-primary" bindtap="onViewStatus">查看当前状态</button>
+    <button wx:if="{{submitted}}" class="btn-secondary" bindtap="onSupplement">继续补充资料</button>
+  </view>
+</view>
