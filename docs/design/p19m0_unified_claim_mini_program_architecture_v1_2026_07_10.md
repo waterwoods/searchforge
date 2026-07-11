@@ -9,14 +9,36 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **DRAFT FOR FOUNDER REVIEW** |
+| **Status** | **FOUNDER APPROVED FOR P19M-1 PROTOTYPE ONLY** |
 | **Owner** | P19M Architecture Freeze (Cursor agent) |
 | **Date** | 2026-07-10 |
+| **Gate 0 lock date** | 2026-07-10 (P19M-0A) |
 | **Branch** | `sprint/p16-trust-layer` |
 | **Starting commit** | `d413434` — fix: clarify H5 and WeCom channel responsibilities |
 | **Related historical docs** | `p19h3h_master_design_summary_2026_07_10.md`, `p19h3h_product_architecture_wecom_h5_workbench_2026_07_10.md`, `p19h3h_claim_h5_task_state_machine_2026_07_10.md`, `p19h3i_claim_task_dashboard_always_return_h5_2026_07_10.md`, `p19h3j_h5_wecom_channel_ux_policy_2026_07_10.md`, `p19e3_channel_strategy_wecom_h5_miniprogram_recon.md` |
-| **Not approved for implementation** | Yes — no Prototype code until Gate 0 |
-| **Approval gate** | Founder must approve this SSOT before P19M-1 Prototype |
+| **Approval gate** | Gate 0 closed — P19M-1 local prototype authorized |
+
+### Founder Gate 0 Decision
+
+- Mini Program target architecture **approved**
+- P19M-1 local / developer prototype **approved**
+- Production launch **not approved**
+- Official WeChat feasibility still **Gate 1 HOLD**
+- H5 primary-flow development **stopped**
+- H5 fallback maintenance **allowed**
+
+### Approval scope
+
+**Only** P19M-1 minimal prototype (see §Prototype Non-Negotiable Locks).
+
+### Not approved
+
+- Production deployment
+- Public release
+- Schema migration
+- Broad backend rewrite
+- Multi-tenant launch
+- Voice / video expansion
 
 ---
 
@@ -819,26 +841,173 @@ Capture (wx.chooseMedia / recorder)
 - Integration plan with existing `h5_task_intake.py` backend
 - Broker Workbench readback verification
 
-### Nice to Have
+### Nice to Have (non-blocking; do not expand scope to implement)
 
-- Voice recording + mock transcription
-- AI categorization display
-- WeCom mini program card (vs URL scheme only)
-- `GET /api/customer/tasks/current`
+- AI categorization display (read-only from existing brief)
+- `GET /api/customer/tasks/current` facade
+- Dev-only WeCom card mock (if official MP card unverified)
 
 ### Explicitly Out
 
-- Add Car lane
-- Multi-event / collision UI in MP
-- Video upload
-- Payments
-- Insurance filing
-- Full auth / account system
-- Multi-tenant admin
-- Native broker app
+See **Prototype Non-Negotiable Locks — Lock 3** for the immutable list.
+
+---
+
+## Prototype Non-Negotiable Locks
+
+These three locks are **immutable for P19M-1** without explicit Founder approval. They exist to prevent architecture drift during Prototype implementation.
+
+### Lock 1 — Do Not Re-skin the H5
+
+The mini program must **not** be implemented as a visual copy, page copy, or component-by-component translation of `H5ClaimIntakePage.tsx`.
+
+**Allowed reuse:**
+
+- Business semantics
+- State machine (`derive_claim_phase`, `get_claim_missing_items`)
+- API contracts (`intake_info_for_token`, `patch_intake_fields`, `submit_intake_form`, upload)
+- Missing Items logic
+- Review / Submit rules
+- Evidence pipeline (`ingest_h5_slot_upload`)
+- Idempotency patterns
+
+**Forbidden copy:**
+
+- H5 page layout
+- H5 stepper styling
+- H5 page information density
+- H5 URL / token as customer mental model
+- “Web form ported to mini program” mechanical implementation
+
+**Mini program must be designed for:**
+
+- Open directly into current task
+- One primary action per screen
+- One obvious next step
+- Native camera / media entry (`wx.chooseMedia`)
+- Native task continuity (not browser resume)
+- No traditional insurance portal homepage
+- No parallel chat-form workflow
+
+**Prototype review question (mandatory):**
+
+> “Does this clearly feel like a native WeChat task app — not an H5 re-skin?”
+
+If **no** → Prototype Gate **HOLD** — do not proceed to next phase.
+
+---
+
+### Lock 2 — Unverified WeChat Capabilities Must Stay Behind Adapters
+
+The following remain **unconfirmed by official testing**:
+
+| Capability | Classification |
+|------------|----------------|
+| Overseas entity registration | OFFICIAL VALIDATION REQUIRED |
+| Required service category (类目) | OFFICIAL VALIDATION REQUIRED |
+| US user access restrictions | OFFICIAL VALIDATION REQUIRED |
+| WeCom sending Mini Program Card | OFFICIAL VALIDATION REQUIRED |
+| openid / unionid / external_userid binding | OFFICIAL VALIDATION REQUIRED |
+| Mini program ↔ WeCom customer identity mapping | OFFICIAL VALIDATION REQUIRED |
+| Voice recording and transcription | OFFICIAL VALIDATION REQUIRED |
+| Mini program white-label / multi-tenant branding limits | OFFICIAL VALIDATION REQUIRED |
+
+**CONFIRMED today (code exists):**
+
+- `h5t1` HMAC token auth (`verify_h5_task_token`)
+- H5 task intake / upload / submit APIs
+- WeCom text/photo supplement ingest
+- Claim state machine and Workbench readback
+
+Prototype **must not** hard-code unverified capabilities as business dependencies.
+
+**Required adapter boundaries (interface / mock — not production implementation in P19M-1 unless trivial):**
+
+| Adapter | Role |
+|---------|------|
+| `TaskLaunchContext` | How MP receives case_id / token from dev or WeCom |
+| `MiniProgramSessionIdentity` | wx session or mock; not production identity |
+| `WeComTaskCardAdapter` | Card send vs dev launch query |
+| `CustomerTaskAuthAdapter` | Token verify vs future openid bind |
+| `MediaCaptureAdapter` | `wx.chooseMedia` → upload API |
+
+**Prototype transport (ASSUMED FOR PROTOTYPE only):**
+
+- Dev launch query (`?task_token=h5t1...`)
+- Existing `h5t1` token
+- Mock openid / session
+- Manual task token paste in devtools
+- Local WeChat developer tools
+
+These are **Prototype transport**, not a Production identity solution.
+
+**Labeling rule:** Every WeChat capability in docs, comments, and STOP reports must be marked **CONFIRMED**, **ASSUMED FOR PROTOTYPE**, or **OFFICIAL VALIDATION REQUIRED**. Never write assumptions as facts.
+
+---
+
+### Lock 3 — Prototype Scope Cannot Expand
+
+P19M-1 may **only** complete this minimal loop:
+
+```text
+WeCom / dev task invitation
+  → open Mini Program
+  → resolve one current Claim
+  → Task Home
+  → enter one accident story (text)
+  → upload two photos
+  → show received / missing
+  → Final Review
+  → Submit
+  → Broker Workbench readback
+  → Resume same task
+```
+
+**Must Have:**
+
+- Native mini program shell (WXML/WXSS/JS — no Taro/UniApp/React/Vue)
+- Single test tenant (Chen config)
+- Token-based task opening
+- Task Home
+- One text story input
+- Two photo uploads
+- Missing items display
+- Review screen
+- Submit (idempotent)
+- Receipt screen
+- Resume same task
+- Loading / error / expired states
+- Existing backend integration (H5 task APIs)
+
+**Strictly Out (immutable without Founder approval):**
+
+- Voice recording
+- Speech-to-text
+- Video
+- File upload (non-photo)
+- Add Car
+- Multi-event / collision UI
+- Full multi-tenant config
+- Tenant admin
+- Full login / account system
+- openid / unionid production binding
 - Workbench redesign
+- Broker auth rewrite
 - OCR
 - Carrier integration
+- Payment
+- Formal insurance filing
+- Production publish
+- App Store / iOS app
+- Android app
+- Full WeCom card integration if official capability not yet verified
+
+**If implementation discovers a gap in Out-of-Scope:**
+
+1. Use mock / placeholder / documented seam
+2. Do **not** implement the feature
+3. Write to STOP report
+4. Wait for Founder decision
 
 ---
 
@@ -930,6 +1099,12 @@ Capture (wx.chooseMedia / recorder)
 | D7 | Single codebase multi-tenant direction | 2026-07-10 |
 | D8 | No schema migration during architecture phase | 2026-07-10 |
 | D9 | No implementation before SSOT approval | 2026-07-10 |
+| D10 | Gate 0 closed (P19M-0A) | 2026-07-10 |
+| D11 | Prototype must be native-task-first, not H5 re-skin | 2026-07-10 |
+| D12 | Unverified WeChat capabilities isolated behind adapters | 2026-07-10 |
+| D13 | P19M-1 scope immutable without Founder approval | 2026-07-10 |
+| D14 | Gate 0 approves local prototype only, not production launch | 2026-07-10 |
+| D15 | Gate 1 official feasibility may proceed in parallel; does not block local dev prototype | 2026-07-10 |
 
 ---
 
@@ -937,8 +1112,8 @@ Capture (wx.chooseMedia / recorder)
 
 | Gate | Criterion | Status |
 |------|-----------|--------|
-| **Gate 0** | SSOT approved by Founder | **BLOCKED** |
-| Gate 1 | WeChat registration / category feasibility | Not started |
+| **Gate 0** | SSOT + prototype locks approved by Founder | **APPROVED** (P19M-0A, 2026-07-10) |
+| Gate 1 | WeChat registration / category feasibility | **HOLD** — parallel research OK |
 | Gate 2 | Mini program dev shell runs | Not started |
 | Gate 3 | Identity / task invitation works | Not started |
 | Gate 4 | Text + photo loop works | Not started |
@@ -947,7 +1122,7 @@ Capture (wx.chooseMedia / recorder)
 | Gate 7 | Pilot safety / auth | Not started |
 | Gate 8 | Human usability test | Not started |
 
-**No Gate 0 approval → no P19M-1 code.**
+**Gate 0 approved → P19M-1 local prototype may begin when P19M-1 prompt is issued.** Production deploy remains blocked until Gates 1–8.
 
 ---
 
@@ -975,4 +1150,4 @@ Capture (wx.chooseMedia / recorder)
 
 ---
 
-*P19M-0 complete — awaiting Founder SSOT approval. No implementation authorized.*
+*P19M-0 / P19M-0A complete — Gate 0 approved for P19M-1 local prototype only. Await P19M-1 prompt to begin implementation.*

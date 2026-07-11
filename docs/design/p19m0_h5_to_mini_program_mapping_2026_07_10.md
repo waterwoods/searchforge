@@ -2,7 +2,33 @@
 
 **Date:** 2026-07-10  
 **Parent SSOT:** `p19m0_unified_claim_mini_program_architecture_v1_2026_07_10.md`  
-**Status:** DRAFT — architecture freeze only
+**Status:** Gate 0 approved — P19M-1 prototype only
+
+---
+
+### Mapping Rule
+
+**This document maps business capability, not UI structure.**
+
+For every H5 feature, distinguish:
+
+- **Business semantic reuse** — same customer journey meaning
+- **API reuse** — same backend endpoint / function
+- **Validation reuse** — same field rules and idempotency
+- **UI replacement** — new native mini program screen
+
+**Do not** use “copy / port component” as a migration strategy.
+
+| H5 capability | Mini Program rule |
+|---------------|-------------------|
+| Dashboard | **Reinterpret** as native Task Home — not H5 dashboard panel layout |
+| Stepper | **Replace** with one-action guided screens — not linear web stepper |
+| Upload page | **Replace** with native camera/album flow — not `/task/upload` page shell |
+| Review page | **Rebuild** as compact task review — not H5 review card layout |
+| Done page | **Replace** with receipt/status task state — not H5 done screen copy-paste |
+| H5 token (`h5t1`) | **Prototype transport only** — ASSUMED FOR PROTOTYPE |
+| H5 URL | **Not a customer mental model** — dev/legacy transport only |
+| H5 React components | **Do not reuse** in mini program — no `H5ClaimIntakePage.tsx` translation |
 
 ---
 
@@ -17,7 +43,7 @@
 | 5 | Received / missing | `get_claim_missing_items()`, `_dashboard_received_items()` | Task Home + Missing Items screen | ✓ | ✓ layout | | | P0 |
 | 6 | Injury step | PATCH step=`injury`, fields `anyone_injured` | MP radio step | ✓ | | | | P0 |
 | 7 | Time/location | PATCH step=`time_location` | MP form step | ✓ | | | | P1 |
-| 8 | Story | PATCH step=`story`, `accident_description` | MP textarea / voice | ✓ | ✓ voice new | | | P0 |
+| 8 | Story | PATCH step=`story`, `accident_description` | MP textarea (text only in P19M-1) | ✓ | | | voice OUT | P0 |
 | 9 | Vehicle/other party | PATCH step=`vehicle_other_party` | MP form step | ✓ | | | | P1 |
 | 10 | Photo upload | `POST /api/h5/tasks/{token}/upload`, `ingest_h5_slot_upload()` | `wx.chooseMedia` → same endpoint | ✓ | ✓ client | | | P0 |
 | 11 | Photo skip | `POST .../skip`, `skip_h5_flow_slot()` | MP skip button | ✓ | | | | P2 |
