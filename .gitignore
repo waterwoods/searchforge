@@ -82,4 +82,7 @@ tmp/
 .vercel
 
 # P19M-1 mini program local config (may contain dev tokens)
-miniapp/config.ts
+miniapp/config.local.ts
+
+# P19M-1A E2E smoke artifacts (may reference case ids)
+docs/evidence/p19m1a_devtools_e2e_smoke_*.json

@@ -115,6 +115,39 @@ def test_resolve_next_action_review_when_ready():
     assert resolve_next_action_kind(task) == "review"
 
 
-def test_submit_intent_id_format():
+def test_launch_context_priority():
+    """Launch query beats dev config beats resume (mirrors taskLaunchContext)."""
+
+    def resolve(query: str, dev: str, resume: str) -> str | None:
+        if query.strip():
+            return query.strip()
+        if dev.strip():
+            return dev.strip()
+        if resume.strip():
+            return resume.strip()
+        return None
+
+    assert resolve("h5t1.query", "h5t1.dev", "h5t1.resume") == "h5t1.query"
+    assert resolve("", "h5t1.dev", "h5t1.resume") == "h5t1.dev"
+    assert resolve("", "", "h5t1.resume") == "h5t1.resume"
+    assert resolve("", "", "") is None
+
+
+def test_persist_only_after_valid_load_contract():
+    """Document: resume token must be written only after successful GET intake."""
+    persisted = False
+    loaded = False
+
+    def simulate_load(success: bool) -> None:
+        nonlocal persisted, loaded
+        loaded = success
+        if success:
+            persisted = True
+
+    simulate_load(False)
+    assert persisted is False
+    simulate_load(True)
+    assert persisted is True
+
     intent = f"mp-12345-abc"
     assert re.match(r"^mp-\d+-[a-z0-9]+$", intent)

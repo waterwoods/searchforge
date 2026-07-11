@@ -1,5 +1,6 @@
 /**
- * Copy to config.ts for local prototype runs. Do not commit real tokens.
+ * Committed prototype defaults — safe to compile in WeChat DevTools.
+ * Override locally via launch query `?token=h5t1...` (preferred) or edit this file for dev only.
  */
 export const config = {
   apiBaseUrl: "http://127.0.0.1:8001",

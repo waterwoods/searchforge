@@ -1,25 +1,21 @@
 /**
- * Prototype config loader — falls back to example values when config.ts is absent.
+ * Prototype config — uses committed defaults; optional local override via config.local.ts
  */
-let runtimeConfig: {
-  apiBaseUrl: string;
-  devTaskToken: string;
-  tenantDisplayName: string;
-  brokerDisplayName: string;
-  prototypeMode: boolean;
-};
+import { config as defaultConfig } from "../config.defaults";
+
+type AppConfig = typeof defaultConfig;
+
+let runtimeConfig: AppConfig = { ...defaultConfig };
 
 try {
+  // Optional gitignored local override (copy config.example.ts → config.local.ts)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  runtimeConfig = require("../config").config;
+  const local = require("../config.local") as { config?: Partial<AppConfig> };
+  if (local?.config) {
+    runtimeConfig = { ...defaultConfig, ...local.config };
+  }
 } catch {
-  runtimeConfig = {
-    apiBaseUrl: "https://fiqa-api-g7zatxrycq-uw.a.run.app",
-    devTaskToken: "",
-    tenantDisplayName: "陈总保险办公室",
-    brokerDisplayName: "陈总",
-    prototypeMode: true,
-  };
+  // no local override
 }
 
 export const appConfig = runtimeConfig;

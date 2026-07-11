@@ -31,11 +31,10 @@ Page({
       return;
     }
 
-    persistLaunchToken(ctx);
-
     try {
       const task = await CustomerTaskApi.getTask(ctx.token);
-      const app = getApp<{ taskToken?: string; task?: unknown }>();
+      persistLaunchToken(ctx);
+      const app = getApp<IAppOption>();
       app.taskToken = ctx.token;
       app.task = task;
 

@@ -18,6 +18,17 @@ type SlotUi = {
   error: string;
 };
 
+function slotsFromPhotoCount(count: number): SlotUi[] {
+  return SLOT_SEQUENCE.map((key, index) => ({
+    key,
+    label: SLOT_LABELS[key] || key,
+    localPath: "",
+    uploaded: count > index,
+    uploading: false,
+    error: "",
+  }));
+}
+
 Page({
   data: {
     slots: [] as SlotUi[],
@@ -25,40 +36,48 @@ Page({
     photoCount: 0,
     photoTarget: prototypePhotoTarget(),
     uploading: false,
+    loading: true,
   },
 
   onShow() {
-    this.bootstrap();
+    this.refreshFromServer();
   },
 
-  bootstrap() {
-    const app = getApp<{
-      taskToken?: string;
-      task?: { upload_url?: string | null; photo_count?: number };
-    }>();
-    const uploadUrl = String(app.task?.upload_url || "");
-    const count = photoCount(app.task as import("../../types/task").CustomerTask);
-    const slots: SlotUi[] = SLOT_SEQUENCE.map((key) => ({
-      key,
-      label: SLOT_LABELS[key] || key,
-      localPath: "",
-      uploaded: false,
-      uploading: false,
-      error: "",
-    }));
-    this.setData({ uploadUrl, photoCount: count, slots });
+  async refreshFromServer() {
+    const app = getApp<IAppOption>();
+    const token = app.taskToken;
+    if (!token) {
+      wx.redirectTo({ url: "/pages/entry/entry" });
+      return;
+    }
+
+    this.setData({ loading: true });
+    try {
+      const task = await CustomerTaskApi.getTask(token);
+      app.task = task;
+      const count = photoCount(task);
+      const uploadUrl = String(task.upload_url || "");
+      this.setData({
+        uploadUrl,
+        photoCount: count,
+        slots: slotsFromPhotoCount(count),
+        loading: false,
+      });
+    } catch {
+      this.setData({ loading: false });
+      wx.showToast({ title: "无法刷新照片状态", icon: "none" });
+    }
   },
 
   async onAddPhoto() {
-    const app = getApp<{ taskToken?: string; task?: import("../../types/task").CustomerTask }>();
+    const app = getApp<IAppOption>();
     const uploadUrl = this.data.uploadUrl || String(app.task?.upload_url || "");
     if (!uploadUrl) {
       wx.showToast({ title: "照片上传入口不可用", icon: "none" });
       return;
     }
 
-    const nextIndex = this.data.slots.findIndex((s) => !s.uploaded && !s.localPath);
-    if (nextIndex < 0 && this.data.photoCount >= this.data.photoTarget) {
+    if (this.data.photoCount >= this.data.photoTarget) {
       wx.navigateBack();
       return;
     }
@@ -82,15 +101,8 @@ Page({
       }
 
       await CustomerTaskApi.uploadPhoto(uploadUrl, picked.tempFilePath, slotKey);
-      slots[idx] = { ...slots[idx], uploaded: true, uploading: false };
-      this.setData({ slots, uploading: false });
-
-      if (app.taskToken) {
-        const task = await CustomerTaskApi.getTask(app.taskToken);
-        app.task = task;
-        this.setData({ photoCount: photoCount(task) });
-      }
       wx.showToast({ title: "上传成功", icon: "success" });
+      await this.refreshFromServer();
     } catch (err) {
       const msg =
         err instanceof Error && err.message === "cancelled"

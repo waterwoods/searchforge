@@ -27,79 +27,83 @@ TaskLaunchContext (token query / dev config / resume)
   → Broker Workbench (unchanged)
 ```
 
-### Adapter seams
-
-| Adapter | Prototype behavior |
-|---------|-------------------|
-| `taskLaunchContext` | `?token=h5t1…`, `config.devTaskToken`, resume storage |
-| `sessionIdentityAdapter` | Anonymous mock session only |
-| `mediaCaptureAdapter` | `wx.chooseMedia` photos only, max 2 demo |
-| `CustomerTaskApi` | Wraps H5 routes; pages never import H5 paths |
-
 ## Directory
 
 ```
 miniapp/
+  config.defaults.ts         ← committed compile-safe defaults
+  config.example.ts          ← copy to config.local.ts for overrides (gitignored)
   app.json / app.ts / app.wxss
-  config.example.ts          ← copy to config.ts
-  services/                  ← API + adapters
-  utils/                     ← request, storage, taskMapping
-  types/
-  pages/entry|task-home|story|photos|basics|review|receipt|error
+  services/ utils/ types/ pages/
 ```
 
-## Setup
+## Setup (WeChat DevTools)
 
-1. Copy `config.example.ts` → `config.ts` (gitignored).
-2. Mint a QA token (local API on 8001 or Cloud Run):
+1. **Start backend** (must match token secret + case store):
 
 ```bash
-PYTHONPATH=. python3 scripts/p19m1_mint_prototype_token.py --api-base http://127.0.0.1:8001
+bash scripts/run_demo_local.sh
+# or: PYTHONPATH=. uvicorn services.fiqa_api.app_main:app --host 127.0.0.1 --port 8001
 ```
 
-3. Paste `devTaskToken` into `config.ts` **or** use DevTools compile mode query `token=h5t1…`.
-4. Open `miniapp/` in **微信开发者工具** (tourist AppID OK for local compile).
-5. In DevTools: **详情 → 本地设置 → 不校验合法域名** (required for prototype API).
+2. **Mint QA token** (same shell env as API — source `.env` / `.env.cloudrun`):
 
-## Mock mode
+```bash
+set -a && . .env && . .env.cloudrun && set +a
+UNIFIED_INTAKE_CASES_PATH=data/unified_intake_cases.json \
+  PYTHONPATH=. python3 scripts/p19m1_mint_prototype_token.py --api-base http://127.0.0.1:8001
+```
 
-If API is unreachable, entry page shows retry/error — no silent bypass. Point `apiBaseUrl` at local `http://127.0.0.1:8001` with domain check disabled.
+3. **Optional local override:** copy `config.example.ts` → `config.local.ts` (gitignored); set `apiBaseUrl` and/or `devTaskToken`.
 
-## Backend endpoints reused
+4. Open **`miniapp/`** in **微信开发者工具** (`touristappid` OK).
 
-| Facade method | Backend |
-|---------------|---------|
-| `getTask()` | `GET /api/h5/tasks/{token}/intake` |
-| `saveStory()` / `saveBasics()` | `PATCH /api/h5/tasks/{token}/fields` |
-| `submitTask()` | `POST /api/h5/tasks/{token}/submit` + `X-Submit-Intent-Id` |
-| `uploadPhoto()` | `POST /api/h5/tasks/{uploadToken}/upload` (from `upload_url`) |
+5. **详情 → 本地设置 → 不校验合法域名** (required for `http://127.0.0.1:8001`).
 
-Story field: `accident_description` (step `story`). Photos use separate `claim_evidence_pack` token from `upload_url`.
+6. **Launch:** compile mode query `token=h5t1…` (preferred) or `devTaskToken` in `config.local.ts`.
 
-## Manual test loop
+## HTTP E2E verification (no DevTools)
 
-1. Launch with valid `h5t1` token → Task Home
-2. Fill story → save
-3. Fill basics (injury, time, location, vehicle)
-4. Upload 2 photos
-5. Review → Submit (once)
-6. Receipt → reload app → resume same task
-7. Verify Workbench shows submitted intake
-8. Invalid token → error + retry
+Proves the same API sequence the mini program uses:
+
+```bash
+# Requires running local API + aligned env
+set -a && . .env && . .env.cloudrun && set +a
+UNIFIED_INTAKE_CASES_PATH=data/unified_intake_cases.json \
+  PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py \
+  --base-url http://127.0.0.1:8001 --shared-local-store
+
+# In-process (no network)
+PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py --inprocess
+```
+
+## Manual DevTools loop
+
+1. Launch with valid `h5t1` token → Task Home (`我的事故资料`)
+2. Story → Basics (if needed) → 2 photos → Review → Submit once
+3. Receipt → reload app → resume same task (no new Claim)
+4. Workbench: find case by QA label `P19M1A-DEVTOOLS-E2E-*`
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `invalid_or_expired_task_link` | Token secret mismatch — mint with same `H5_TASK_TOKEN_SECRET` as API |
+| `case_not_found` on local HTTP | Use `--shared-local-store` smoke flag; align `UNIFIED_INTAKE_CASES_PATH` |
+| Upload fails | Enable 不校验合法域名; confirm GCS credentials on API |
+| Compile error missing config | Use committed `config.defaults.ts`; override via `config.local.ts` |
 
 ## Developer reset
 
-Call `clearPrototypeSession()` from `utils/storage.ts` in DevTools console to clear resume token.
-
-## STOP conditions
-
-Stop and report if: H5 UI copied mechanically, unverified WeChat API hard-depended, scope expands beyond Claim loop, backend regressions, schema migration, or production deploy attempted.
+In DevTools console: import `clearPrototypeSession` from `utils/storage` logic, or clear storage keys `mp_prototype_resume_token` / `mp_prototype_submit_intent`.
 
 ## Tests
 
 ```bash
 PYTHONPATH=. python3 -m pytest tests/test_p19m1_mini_program_logic.py -q
-PYTHONPATH=. python3 -m pytest tests/test_h5_claim_intake_form.py tests/test_p19h3i_claim_task_dashboard_always_return_h5.py tests/test_p19h3h_append_first_split_later.py -q
+PYTHONPATH=. python3 -m pytest tests/test_h5_claim_intake_form.py \
+  tests/test_p19h3i_claim_task_dashboard_always_return_h5.py \
+  tests/test_p19h3h_append_first_split_later.py -q
 ```
 
-*No production publishing instructions — Gate 0 approves local prototype only.*
+*No production publishing — Gate 0 local prototype only. P19M-1A: DevTools UI verification requires Windows/macOS.*
