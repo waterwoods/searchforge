@@ -2,21 +2,19 @@
 
 **Branch:** `sprint/p16-trust-layer`  
 **Auditor:** Cursor agent (automated + manual verification)  
-**Executive status:** **READY TO ISOLATE** (conditional on backup before delete)
+**Executive status:** **DECOMMISSION COMPLETE** (2026-07-11)
 
 ---
 
 ## 1. Executive status
-
-| Gate | Result |
 |------|--------|
 | Cloud SQL is runtime SSOT | **PASS** — production Cloud Run binds `fiqa-service-record-database-url-cloudsql-private` |
 | Neon removed from default paths | **PASS** — changes in this audit |
 | Legacy access explicit + read-only | **PASS** — `apply_legacy_neon_readonly_env()` + audit script |
 | Data completeness vs Neon | **PASS** — Cloud SQL `updated_at_max` newer; zero ID overlap = migration fork |
-| Safe to delete Neon now | **NO** — export stale fork backup first (289 historical rows) |
+| Safe to delete Neon now | **DONE** — backup verified; project deleted |
 
-**Recommendation:** **Safe to isolate; not safe to delete yet.** Revoke Neon app credentials only after verified backup.
+**Recommendation:** **Decommission complete.** GCP Cloud SQL is the sole database SSOT. Legacy Neon project deleted; restore only from `~/secure_backups/` if ever needed.
 
 ---
 
@@ -185,7 +183,7 @@ Requirements met: explicit, warned, read-only session, no seed/reset/write, not 
 
 ## 12. Final decommission completion — 2026-07-11 (post-backup)
 
-**Executive status:** **DECOMMISSION IN PROGRESS** — backup verified, credentials revoked; Neon console deletion pending manual step.
+**Executive status:** **SUPERSEDED** — see §13 Final closeout (deletion complete).
 
 ### Final Neon backup
 
@@ -250,3 +248,60 @@ Requirements met: explicit, warned, read-only session, no seed/reset/write, not 
 ### Updated recommendation
 
 **Legacy Neon credentials revoked. Safe to delete Neon project after Founder completes console step above.** Cloud SQL remains sole SSOT. Do not re-enable secret versions `fiqa-service-record-database-url` v1/v2 unless performing disaster recovery from backup.
+
+---
+
+## 13. Final closeout — 2026-07-11 (post-deletion)
+
+**Final status:** **DECOMMISSION COMPLETE**
+
+### Neon project deletion
+
+| Field | Value |
+|-------|-------|
+| Neon project name (Console) | `unified-intake-pg-mirror` |
+| Neon endpoint slug (historical) | `nameless-bird-akrtm0v2` |
+| Database (historical) | `neondb` |
+| Deletion method | **Founder Neon Console** — message: `Project unified-intake-pg-mirror was successfully deleted` |
+| Deletion timestamp | 2026-07-11 (Founder manual) |
+| Supplemental verification | Legacy secret access fails closed; `legacy_db_metadata_audit.py` cannot resolve Neon; no normal runtime path connects |
+| `neonctl` API verification | Not available (OAuth not authenticated on dev machine) |
+
+### Backup (pre-deletion, retained)
+
+| Field | Value |
+|-------|-------|
+| Path | `~/secure_backups/searchforge_legacy_neon_20260711.dump` |
+| SHA-256 (verified at closeout) | `36f4f1914fcc09200beb93f1efad9497eda94383af5cdbc333fd62fd236c3592` |
+| Record count at backup | 289 |
+
+### Credentials
+
+| Secret | State |
+|--------|-------|
+| `fiqa-service-record-database-url` (legacy Neon) | v1, v2 **disabled** |
+| `fiqa-service-record-database-url-cloudsql-private` (SSOT) | v1 **enabled** |
+
+### Post-deletion Cloud SQL validation
+
+| Check | Result |
+|-------|--------|
+| Cloud Run DB secret | `fiqa-service-record-database-url-cloudsql-private` (revision `fiqa-api-00200-jxs`) |
+| Local bootstrap | `provider=gcp-cloud-sql`, `is_neon=False` |
+| Local `/readyz` | **PASS** — HTTP 200 (single process on :8001) |
+| Chen Kui `demo_name=chen_kui_p18` rows | **PASS** — 5 rows readable from Cloud SQL |
+| `pytest tests/test_demo_db_resolve.py` | **PASS** — 7/7 |
+| `p19m1a_devtools_e2e_smoke.py --inprocess` | **PASS** |
+| Legacy Neon audit | **FAIL CLOSED** (expected) |
+| Active local Neon URL in `.env.cloudrun` | **None** (neutralized) |
+
+### Obsolete reference cleanup (this closeout)
+
+- `scripts/check_chen_kui_demo_environment.sh` — removed live Neon row probe; prints `DELETED` status
+- `scripts/demo_db_resolve.py`, `deploy_cloud_run_core.sh`, `legacy_db_metadata_audit.py` — comments marked **DELETED**
+
+### Remaining historical references (documentation only)
+
+Guardrail code paths (`legacy-neon` target blocked, Neon URL strip, deploy rejection) retained as fail-closed safety nets. Historical audit/migration docs retain Neon mentions marked decommissioned.
+
+**No further Founder action required.**

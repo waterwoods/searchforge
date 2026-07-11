@@ -192,10 +192,9 @@ def add_car_ready_ok(case: dict | None) -> bool:
     return has_date and case.get("quote_ready_status") == "quote_ready"
 
 qa_ident = resolve_db_identity("qa", for_write=False)
-legacy_ident = resolve_db_identity("legacy-neon", for_write=False)
 
 print(f"[INFO] QA DB identity (Cloud Run truth): {qa_ident.masked()}")
-print(f"[INFO] Legacy Neon (.env.cloudrun): {legacy_ident.masked()}")
+print("[INFO] Legacy Neon: DELETED (project unified-intake-pg-mirror; secret fiqa-service-record-database-url disabled)")
 print(f"[INFO] Cloud Run revision: {cloud_run_revision()}")
 print(f"[INFO] API total_count={total} page_size={len(cases)} workbench_test={workbench_test_count} client_id=chen_kui={chen_kui_count}")
 
@@ -217,27 +216,6 @@ try:
 except Exception as exc:
     qa_demo_rows = -1
     print(f"[WARN] QA Cloud SQL count unavailable: {exc}")
-
-# Neon count (informational — should NOT be QA truth)
-neon_demo_rows = -1
-try:
-  os.environ.pop("SERVICE_RECORD_DATABASE_URL", None)
-  from pathlib import Path
-  if Path(".env.cloudrun").is_file():
-      for line in Path(".env.cloudrun").read_text().splitlines():
-          s = line.strip()
-          if not s or s.startswith("#") or "=" not in s:
-              continue
-          k, _, v = s.partition("=")
-          os.environ.setdefault(k.strip(), v.strip().strip("'\""))
-      from services.fiqa_api.db.service_record_repository import service_record_connection
-      with service_record_connection() as conn:
-          with conn.cursor() as cur:
-              cur.execute("SELECT COUNT(*) FROM service_records WHERE extra->>'demo_name' = 'chen_kui_p18'")
-              neon_demo_rows = int(cur.fetchone()[0] or 0)
-      print(f"[INFO] Legacy Neon demo rows (NOT QA truth): {neon_demo_rows}")
-except Exception:
-      pass
 
 exit_code = 0
 

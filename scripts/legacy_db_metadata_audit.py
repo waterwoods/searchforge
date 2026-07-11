@@ -2,6 +2,10 @@
 """
 Read-only metadata audit: legacy Neon vs GCP Cloud SQL (caseiq SSOT).
 
+**DELETED (2026-07-11):** Neon project `unified-intake-pg-mirror` removed by Founder.
+Legacy secret `fiqa-service-record-database-url` disabled. This script now fails closed
+on Neon access — retained for historical audit replay from backup only.
+
 Prints counts, timestamps, and case-id deltas only — no customer content.
 Performs no writes. Fails closed if a source cannot be resolved safely.
 

@@ -539,8 +539,7 @@ if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
     SM_OPENAI="${CLOUD_RUN_SECRET_OPENAI:-fiqa-openai-api-key}"
     SM_QDRANT="${CLOUD_RUN_SECRET_QDRANT:-fiqa-qdrant-api-key}"
     # QA source of truth is GCP Cloud SQL (caseiq @ private VPC). Do NOT use Neon for QA/demo.
-    # Legacy Neon secret (fiqa-service-record-database-url) remains for rollback only — set
-    # CLOUD_RUN_SECRET_SERVICE_RECORD_DB explicitly if you intentionally deploy against Neon.
+    # Legacy Neon secret (fiqa-service-record-database-url) DELETED 2026-07-11 — versions disabled.
     SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url-cloudsql-private}"
     SM_H5="${CLOUD_RUN_SECRET_H5_TASK_TOKEN:-fiqa-h5-task-token-secret}"
     if [ "$SM_DB" = "fiqa-service-record-database-url" ]; then

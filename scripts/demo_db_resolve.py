@@ -25,7 +25,7 @@ _DB_URL_KEYS = frozenset({"SERVICE_RECORD_DATABASE_URL", "DATABASE_URL", "QA_SER
 
 QA_CLOUD_SQL_SECRET = "fiqa-service-record-database-url-cloudsql-private"
 QA_CLOUD_SQL_INSTANCE = "caseiq-pilot-pg"
-LEGACY_NEON_SECRET = "fiqa-service-record-database-url"
+LEGACY_NEON_SECRET = "fiqa-service-record-database-url"  # DELETED — versions disabled; Neon project removed 2026-07-11
 CLOUD_RUN_SERVICE = "fiqa-api"
 CLOUD_RUN_REGION = "us-west1"
 
