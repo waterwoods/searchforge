@@ -75,23 +75,14 @@ def _configure_target(target: Target) -> None:
         _ensure_local_json_demo_mode()
         return
     if target == "legacy-neon":
-        from pathlib import Path
-
-        path = Path(__file__).resolve().parent.parent / ".env.cloudrun"
-        if path.is_file():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                s = line.strip()
-                if not s or s.startswith("#") or "=" not in s:
-                    continue
-                k, _, v = s.partition("=")
-                os.environ.setdefault(k.strip(), v.strip().strip("'\""))
-        os.environ["UNIFIED_INTAKE_DB_PRIMARY_READS"] = "1"
-        os.environ["UNIFIED_INTAKE_DB_PRIMARY_WRITES"] = "1"
-        os.environ["UNIFIED_INTAKE_JSON_CASE_WRITES"] = "0"
-        if not os.environ.get("SERVICE_RECORD_DATABASE_URL"):
-            print("FAIL: legacy-neon requires SERVICE_RECORD_DATABASE_URL", file=sys.stderr)
-            sys.exit(2)
-        return
+        print(
+            "FAIL: --target legacy-neon writes are disabled. "
+            "Use --target qa for Cloud SQL SSOT. "
+            "For break-glass read-only audit: scripts/legacy_db_metadata_audit.py "
+            "or demo_db_resolve.apply_legacy_neon_readonly_env()",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     apply_qa_postgres_env(for_write=True)
 
 

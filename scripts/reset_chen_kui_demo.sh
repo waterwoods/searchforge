@@ -22,7 +22,10 @@ RESEED=0
 for arg in "$@"; do
   case "$arg" in
     --qa|--cloud) TARGET="qa" ;;
-    --legacy-neon) TARGET="legacy-neon" ;;
+    --legacy-neon)
+      echo "[ERROR] --legacy-neon writes disabled. Use --qa (Cloud SQL). Read-only audit: scripts/legacy_db_metadata_audit.py"
+      exit 2
+      ;;
     --dry-run) DRY_RUN=1 ;;
     --reseed) RESEED=1 ;;
   esac
@@ -37,8 +40,6 @@ if [[ "$TARGET" == "local" ]]; then
   unset UNIFIED_INTAKE_DB_PRIMARY_READS UNIFIED_INTAKE_DB_PRIMARY_WRITES
   export UNIFIED_INTAKE_JSON_CASE_WRITES=1
   echo "[INFO] Local JSON mode (dev only — not QA demo path)"
-elif [[ "$TARGET" == "legacy-neon" ]]; then
-  echo "[WARN] legacy-neon — NOT Cloud Run QA DB; prefer --qa"
 else
   echo "[INFO] QA GCP Cloud SQL (same DB as Cloud Run API) — demo-tagged rows only"
 fi
@@ -53,26 +54,17 @@ PYTHONPATH=. python3 -c "
 from scripts.seed_chen_kui_demo import remove_existing_demo_cases
 import sys
 dry = '--dry-run' in sys.argv
-if '--legacy-neon' in sys.argv:
-    target = 'legacy-neon'
-elif '--qa' in sys.argv or '--cloud' in sys.argv:
+if '--qa' in sys.argv or '--cloud' in sys.argv:
     target = 'qa'
 else:
     target = 'local'
 n = len(remove_existing_demo_cases(dry_run=dry, target=target))
 print(f'Removed demo cases: {n}')
-" "${DRY_FLAG[@]}" $([[ "$TARGET" == "qa" ]] && echo --qa) $([[ "$TARGET" == "legacy-neon" ]] && echo --legacy-neon)
+" "${DRY_FLAG[@]}" $([[ "$TARGET" == "qa" ]] && echo --qa)
 
-if [[ "$TARGET" == "qa" ]] || [[ "$TARGET" == "legacy-neon" ]]; then
+if [[ "$TARGET" == "qa" ]]; then
   echo "[2] WeCom queue — status only (no sync_cursor reset)"
-  if [[ "$TARGET" == "qa" ]]; then
-    PYTHONPATH=. python3 -c "from scripts.demo_db_resolve import apply_qa_postgres_env; apply_qa_postgres_env()" 2>/dev/null || true
-  elif [[ -f ".env.cloudrun" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env.cloudrun
-    set +a
-  fi
+  PYTHONPATH=. python3 -c "from scripts.demo_db_resolve import apply_qa_postgres_env; apply_qa_postgres_env()" 2>/dev/null || true
   if [[ -n "${SERVICE_RECORD_DATABASE_URL:-${DATABASE_URL:-}}" ]]; then
     PYTHONPATH=. python3 scripts/wecom_drain_queues.py --status 2>/dev/null | head -8 || echo "[SKIP] queue status unavailable"
   else

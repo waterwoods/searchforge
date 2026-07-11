@@ -32,6 +32,25 @@ CLOUD_RUN_REGION = "us-west1"
 Target = Literal["local", "qa", "legacy-neon"]
 
 
+def is_neon_database_url(url: str | None) -> bool:
+    """True when URL hostname is legacy Neon (not Cloud SQL SSOT)."""
+    if not url:
+        return False
+    host = (urlparse(url.strip()).hostname or "").lower()
+    return "neon" in host
+
+
+def strip_neon_database_urls_from_env() -> list[str]:
+    """Remove legacy Neon DB URLs from process env; return stripped key names."""
+    stripped: list[str] = []
+    for key in _DB_URL_KEYS:
+        raw = (os.environ.get(key) or "").strip()
+        if raw and is_neon_database_url(raw):
+            os.environ.pop(key, None)
+            stripped.append(key)
+    return stripped
+
+
 @dataclass(frozen=True)
 class DbIdentity:
     provider: str
@@ -184,10 +203,36 @@ def load_cloudrun_env_skip_db(*, override: bool = False) -> None:
 def bootstrap_prototype_cloud_sql_env() -> DbIdentity:
     """Mini-program prototype QA: Cloud SQL SSOT + Cloud Run-aligned runtime flags."""
     load_cloudrun_env_skip_db(override=True)
+    strip_neon_database_urls_from_env()
     ident = apply_qa_postgres_env(for_write=True)
     os.environ["ENV"] = "prod"
     ensure_h5_task_token_secret()
     return ident
+
+
+def apply_legacy_neon_readonly_env() -> DbIdentity:
+    """
+    Break-glass read-only access to legacy Neon — never for QA/demo/production defaults.
+
+    Requires explicit operator intent (CLI flag). Performs no writes.
+    """
+    import sys
+
+    print(
+        "[WARN] BREAK-GLASS: legacy Neon READ-ONLY — not QA/demo/production SSOT",
+        file=sys.stderr,
+    )
+    os.environ.pop("QA_SERVICE_RECORD_DATABASE_URL", None)
+    raw = os.environ.get("SERVICE_RECORD_DATABASE_URL") or _gcloud_secret(LEGACY_NEON_SECRET)
+    if not is_neon_database_url(raw):
+        raise RuntimeError("legacy-neon-readonly resolved to non-Neon host — aborting")
+    os.environ["SERVICE_RECORD_DATABASE_URL"] = raw
+    os.environ["LEGACY_NEON_READONLY"] = "1"
+    os.environ["UNIFIED_INTAKE_DB_PRIMARY_READS"] = "1"
+    os.environ.pop("UNIFIED_INTAKE_DB_PRIMARY_WRITES", None)
+    os.environ["UNIFIED_INTAKE_JSON_CASE_WRITES"] = "0"
+    os.environ.pop("UNIFIED_INTAKE_JSON_READ_FALLBACK", None)
+    return resolve_db_identity("legacy-neon", for_write=False)
 
 
 def shell_export_qa_postgres_env(*, for_write: bool = True) -> tuple[DbIdentity, list[str]]:

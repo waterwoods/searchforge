@@ -12,14 +12,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-_env = REPO / ".env.cloudrun"
-if _env.exists():
-    for line in _env.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, _, v = line.partition("=")
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+from scripts.demo_db_resolve import load_cloudrun_env_skip_db
+
+load_cloudrun_env_skip_db()
+
 
 os.environ["ENV"] = "prod"
 

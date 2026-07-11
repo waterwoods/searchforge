@@ -54,8 +54,10 @@ print('# ident=' + ident.masked())
     CLOUD_SQL_IDENT="$(printf '%s\n' "$CLOUD_SQL_EXPORTS" | grep '^# ident=' | sed 's/^# ident=//')"
     echo "[INFO] Case store: GCP Cloud SQL (QA SSOT) — ${CLOUD_SQL_IDENT:-configured}"
   else
-    echo "[WARN] Cloud SQL env unavailable (gcloud auth?). Set RUN_DEMO_LOCAL_DB=json for JSON-only dev."
-    echo "       Prototype QA requires Cloud SQL — see scripts/demo_db_resolve.py"
+    echo "[ERROR] Cloud SQL env unavailable (gcloud auth / Secret Manager?)."
+    echo "       Prototype QA requires GCP Cloud SQL — see scripts/demo_db_resolve.py"
+    echo "       For isolated JSON dev only: RUN_DEMO_LOCAL_DB=json bash scripts/run_demo_local.sh"
+    exit 1
   fi
 else
   echo "[WARN] RUN_DEMO_LOCAL_DB=json — local JSON case store (NOT Cloud Run / prototype QA parity)"

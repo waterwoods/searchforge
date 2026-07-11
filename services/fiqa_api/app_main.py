@@ -26,6 +26,7 @@ This is the main entry point. Old entry points (app.py, app_v2.py) have been mov
 from dotenv import load_dotenv
 from pathlib import Path
 import os
+from pathlib import Path
 
 # Load .env.cloudrun first, then fall back to .env
 # This MUST happen before any project imports that might import translation.py
@@ -33,6 +34,20 @@ env_cloudrun = Path(".env.cloudrun")
 if env_cloudrun.exists():
     load_dotenv(env_cloudrun, override=False)
 load_dotenv(override=False)
+
+# P19 legacy DB isolation: never allow .env.cloudrun Neon URL on normal startup paths.
+try:
+    from scripts.demo_db_resolve import strip_neon_database_urls_from_env
+
+    _stripped_db = strip_neon_database_urls_from_env()
+    if _stripped_db:
+        print(
+            "[env] stripped legacy Neon DB URL from environment (keys:",
+            ", ".join(_stripped_db),
+            ") — Cloud SQL SSOT required for Postgres",
+        )
+except Exception:
+    pass
 
 # Log environment loading for debugging
 print("[env] loaded .env.cloudrun, TRANSLATION_ENABLED=", os.getenv("TRANSLATION_ENABLED"))

@@ -7,6 +7,7 @@ Callers must ensure schema is applied (see db/schema/stage1_service_record.sql).
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import contextmanager
 from typing import Any, Generator, Iterable
 
@@ -66,12 +67,21 @@ def service_record_connection() -> Generator[Any, None, None]:
     url = service_record_database_url()
     if not url:
         raise RuntimeError("no service record database URL configured")
+    readonly = (os.getenv("LEGACY_NEON_READONLY") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     # Short timeout so a cold-starting / transiently unreachable Postgres
     # (e.g. Neon compute wake-up, or an unroutable resolved address) fails
     # fast instead of holding a customer-facing WeCom callback open for
     # 10s+ per attempt across multiple DB calls in one message's processing.
     conn = psycopg.connect(url, connect_timeout=3)
     try:
+        if readonly:
+            with conn.cursor() as cur:
+                cur.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
         yield conn
     finally:
         conn.close()

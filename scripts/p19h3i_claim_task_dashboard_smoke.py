@@ -30,15 +30,9 @@ def _evidence_path(suffix: str) -> Path:
 
 
 def _load_cloudrun_env() -> None:
-    env_file = REPO / ".env.cloudrun"
-    if not env_file.exists():
-        return
-    for line in env_file.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, _, v = line.partition("=")
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    from scripts.demo_db_resolve import load_cloudrun_env_skip_db
+
+    load_cloudrun_env_skip_db()
 
 
 def _ensure_h5_token_secret_for_deploy() -> None:

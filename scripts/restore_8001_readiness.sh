@@ -33,9 +33,20 @@ else
 fi
 echo ""
 
-# 2. Load env
+# 2. Load env (skip legacy Neon DB URL from .env.cloudrun)
 if [ -f ".env" ]; then set -a; source .env; set +a; fi
 if [ -f ".env.cloudrun" ]; then set -a; source .env.cloudrun; set +a; fi
+if CLOUD_SQL_EXPORTS="$(PYTHONPATH=. python3 -c "
+from scripts.demo_db_resolve import ensure_h5_task_token_secret, shell_export_qa_postgres_env, strip_neon_database_urls_from_env
+strip_neon_database_urls_from_env()
+ident, lines = shell_export_qa_postgres_env(for_write=True)
+print('\n'.join(lines))
+print('# ident=' + ident.masked())
+" 2>/dev/null)"; then
+  eval "$(printf '%s\n' "$CLOUD_SQL_EXPORTS" | grep -v '^# ident=')"
+else
+  echo "[WARN] Cloud SQL override unavailable — Neon stripped; Postgres may be unset"
+fi
 
 # 3. Force local Qdrant
 export USE_LOCAL_QDRANT=1

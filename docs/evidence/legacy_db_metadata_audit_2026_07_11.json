@@ -1,0 +1,222 @@
+{
+  "audited_at": "2026-07-11T21:35:00Z",
+  "neon_identity": "provider=neon-legacy host=ep-nameless-bird-akrtm0v2-pooler.c-3.us-west-2.aws.neon.tech db=neondb mode=direct",
+  "cloud_sql_identity": "provider=gcp-cloud-sql host=10.73.0.3 db=caseiq mode=private-vpc",
+  "sources": {
+    "legacy_neon": {
+      "label": "legacy_neon",
+      "service_records_count": 289,
+      "created_at_min": "2026-03-31T04:31:04+00:00",
+      "created_at_max": "2026-07-11T18:50:43+00:00",
+      "updated_at_min": "2026-03-31T04:31:04+00:00",
+      "updated_at_max": "2026-07-11T18:51:12+00:00",
+      "by_workbench_test": [
+        {
+          "key": "false",
+          "count": 166
+        },
+        {
+          "key": "(null)",
+          "count": 104
+        },
+        {
+          "key": "true",
+          "count": 19
+        }
+      ],
+      "by_demo_name": [
+        {
+          "key": "(null)",
+          "count": 279
+        },
+        {
+          "key": "p19h3e1_deploy_smoke",
+          "count": 5
+        },
+        {
+          "key": "chen_kui_p18",
+          "count": 5
+        }
+      ],
+      "by_qa_label": [
+        {
+          "key": "(null)",
+          "count": 289
+        }
+      ],
+      "by_source_channel": [
+        {
+          "key": "(null)",
+          "count": 289
+        }
+      ],
+      "by_claim_phase": [
+        {
+          "key": "(null)",
+          "count": 289
+        }
+      ],
+      "cases_with_evidence_or_attachments_extra": 0,
+      "timeline_event_count": null,
+      "tables": []
+    },
+    "cloud_sql": {
+      "label": "cloud_sql",
+      "service_records_count": 237,
+      "created_at_min": "2026-07-05T17:14:21+00:00",
+      "created_at_max": "2026-07-11T20:52:45+00:00",
+      "updated_at_min": "2026-07-05T17:14:23+00:00",
+      "updated_at_max": "2026-07-11T20:52:49+00:00",
+      "by_workbench_test": [
+        {
+          "key": "true",
+          "count": 151
+        },
+        {
+          "key": "false",
+          "count": 86
+        }
+      ],
+      "by_demo_name": [
+        {
+          "key": "(null)",
+          "count": 148
+        },
+        {
+          "key": "p19h3f4_deploy_smoke",
+          "count": 27
+        },
+        {
+          "key": "p19h3f2_lane_switch_smoke",
+          "count": 22
+        },
+        {
+          "key": "p19h3f1_deploy_smoke",
+          "count": 12
+        },
+        {
+          "key": "p19h3f1c_deploy_smoke",
+          "count": 12
+        },
+        {
+          "key": "p19h3f2_deploy_smoke",
+          "count": 8
+        },
+        {
+          "key": "chen_kui_p18",
+          "count": 5
+        },
+        {
+          "key": "p19h3c3c_deploy_smoke",
+          "count": 1
+        },
+        {
+          "key": "p19h3e1_deploy_smoke",
+          "count": 1
+        },
+        {
+          "key": "p19d1_guardrail_smoke",
+          "count": 1
+        }
+      ],
+      "by_qa_label": [
+        {
+          "key": "(null)",
+          "count": 237
+        }
+      ],
+      "by_source_channel": [
+        {
+          "key": "(null)",
+          "count": 237
+        }
+      ],
+      "by_claim_phase": [
+        {
+          "key": "(null)",
+          "count": 237
+        }
+      ],
+      "cases_with_evidence_or_attachments_extra": 0,
+      "timeline_event_count": null,
+      "tables": []
+    }
+  },
+  "comparison": {
+    "only_in_neon_count": 289,
+    "only_in_cloud_sql_count": 237,
+    "only_in_neon_sample": [
+      "case_01129c6fa65a",
+      "case_022cd8b30f60",
+      "case_02fa3ad42a08",
+      "case_0324087dad5f",
+      "case_035cbed85938",
+      "case_03934af34a28",
+      "case_05906d714202",
+      "case_05ea7789ecca",
+      "case_063c1cc464e7",
+      "case_06d63b4e0c28",
+      "case_07308575206b",
+      "case_0893bafc4c4b",
+      "case_08c17f0213cf",
+      "case_096cb6866839",
+      "case_0a2b8c4595e4",
+      "case_0a568e97f3ab",
+      "case_0b065c359213",
+      "case_0b3f44e103c7",
+      "case_0b4235245935",
+      "case_0c2cf4baaac3",
+      "case_0d6b1e338ba7",
+      "case_0d9607c446b2",
+      "case_0dc3ec4f1b84",
+      "case_0dd5d38ac2cb",
+      "case_0e05d61134d0",
+      "case_0e1e118da99e",
+      "case_0e2c796b4e0a",
+      "case_109e1fbdf0f5",
+      "case_10aa7440ad29",
+      "case_114bd4aedfbd"
+    ],
+    "only_in_cloud_sql_sample": [
+      "case_00534a84cb24",
+      "case_01dc1ba44b91",
+      "case_03a578db3272",
+      "case_079c09b5f27a",
+      "case_07b36209bdfb",
+      "case_08af1110bb5f",
+      "case_093aad6280fc",
+      "case_0a59707fd46b",
+      "case_0c6fd84197de",
+      "case_0e1ad68bba5a",
+      "case_0e5b4056be27",
+      "case_0f128d158dbd",
+      "case_10c3c65ea64e",
+      "case_116af23c3f86",
+      "case_126ef2790b3b",
+      "case_13361a26b041",
+      "case_13701e66d8f8",
+      "case_14398f1441d4",
+      "case_1557986b94bc",
+      "case_16c897a66fe1",
+      "case_17cec5266202",
+      "case_17e6ef820a41",
+      "case_1814056d94bd",
+      "case_18bf1991a6e7",
+      "case_190612991afb",
+      "case_1a1bb879f4de",
+      "case_1a815c7c263c",
+      "case_1a921f8cecc8",
+      "case_1c200f03c572",
+      "case_1c443c39ed2c"
+    ],
+    "neon_updated_at_max": "2026-07-11T18:51:12+00:00",
+    "cloud_sql_updated_at_max": "2026-07-11T20:52:49+00:00",
+    "neon_newer_than_cloud_sql": false,
+    "row_count_delta_neon_minus_cloud_sql": 52
+  },
+  "stop_gate": true,
+  "stop_gate_reasons": [
+    "Neon has 289+ case IDs absent from Cloud SQL sample"
+  ],
+  "recommendation": "BLOCKED \u2014 investigate unique/newer Neon records"
+}
