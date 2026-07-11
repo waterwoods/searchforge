@@ -100,6 +100,11 @@ page {
   text-align: center;
 }
 
+.btn-primary::after {
+  border: none;
+}
+
+.btn-primary[loading],
 .btn-primary[disabled] {
   background: #a8c4f0;
   color: #ffffff;
@@ -115,6 +120,10 @@ page {
   border: none;
   text-align: center;
   margin-top: 8rpx;
+}
+
+.btn-secondary::after {
+  border: none;
 }
 
 .disclaimer {

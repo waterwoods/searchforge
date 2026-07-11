@@ -14,31 +14,45 @@
       </view>
 
       <view class="section-label">已收到</view>
-      <view wx:if="{{received.length}}">
-        <view class="list-item" wx:for="{{received}}" wx:key="*this">{{item}}</view>
+      <view wx:if="{{received.length}}" class="received-list">
+        <view class="received-item" wx:for="{{received}}" wx:key="*this">{{item}}</view>
       </view>
-      <view wx:else class="list-item">暂无</view>
+      <view wx:else class="received-item muted">暂无</view>
 
-      <view class="section-label" style="margin-top: 24rpx;">还缺</view>
-      <view wx:if="{{missing.length}}">
-        <view class="list-item missing" wx:for="{{missing}}" wx:key="*this">{{item}}</view>
+      <view class="section-label section-gap">还需补充</view>
+      <view wx:if="{{supplementRows.length}}" class="task-row-list">
+        <view
+          wx:for="{{supplementRows}}"
+          wx:key="key"
+          class="task-row {{item.actionable ? 'actionable' : 'static'}}"
+          hover-class="{{item.actionable ? 'task-row-hover' : ''}}"
+          data-index="{{index}}"
+          bindtap="onTapSupplementRow"
+        >
+          <view class="task-row-main">
+            <text class="task-row-label">{{item.label}}</text>
+            <text class="task-row-status {{item.actionable ? 'pending' : 'muted'}}">{{item.statusText}}</text>
+          </view>
+          <text wx:if="{{item.actionable}}" class="task-row-arrow">›</text>
+          <text wx:elif="{{item.hint}}" class="task-row-hint">{{item.hint}}</text>
+        </view>
       </view>
-      <view wx:else class="list-item">主要资料已齐全</view>
+      <view wx:else class="received-item muted">主要资料已齐全</view>
 
-      <view class="section-label" style="margin-top: 24rpx;">下一步</view>
-      <view class="list-item">{{nextAction}}</view>
-
-      <view class="meta-row">
-        <text>事故经过：{{storyDone ? '已填写' : '未填写'}}</text>
-        <text>照片：{{photoCount}}/{{photoTarget}}</text>
-      </view>
+      <view class="section-label section-gap">下一步</view>
+      <view class="next-action-text">{{nextAction || '按下方按钮继续'}}</view>
     </view>
 
-    <view class="disclaimer">{{disclaimer}}</view>
+    <view class="disclaimer" bindtap="onShowDisclaimer">{{disclaimer}}</view>
   </block>
 
   <view class="footer-cta" wx:if="{{!loading}}">
-    <button class="btn-primary" bindtap="onPrimaryAction">{{primaryCta}}</button>
+    <button
+      class="btn-primary"
+      bindtap="onPrimaryAction"
+      loading="{{navigating}}"
+      disabled="{{navigating}}"
+    >{{primaryCta}}</button>
     <button class="btn-secondary" bindtap="onViewAll">查看全部资料</button>
   </view>
 </view>

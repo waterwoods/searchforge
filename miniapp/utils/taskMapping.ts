@@ -1,4 +1,4 @@
-import type { CustomerTask, NextAction, NextActionKind } from "../types/task";
+import type { CustomerTask, NextAction } from "../types/task";
 
 const FIELD_LABELS: Record<string, string> = {
   anyone_injured: "是否有人受伤",
@@ -12,6 +12,64 @@ const FIELD_LABELS: Record<string, string> = {
   customer_damage_photo: "事故照片",
   other_party_vehicle_photo: "事故照片",
   scene_photo: "事故现场照片",
+  photos: "事故照片",
+  police_involved: "是否报警",
+};
+
+export type MissingItemAction =
+  | "ACTIONABLE_NOW"
+  | "DISPLAY_ONLY_PROTOTYPE"
+  | "COMPLETED"
+  | "UNSUPPORTED";
+
+export type MissingItemNav = {
+  action: MissingItemAction;
+  route?: string;
+  statusText: string;
+  hint?: string;
+};
+
+export type SupplementTaskRow = {
+  key: string;
+  label: string;
+  statusText: string;
+  actionable: boolean;
+  route?: string;
+  hint?: string;
+};
+
+const PHOTO_KEYS = new Set([
+  "customer_damage_photo",
+  "other_party_vehicle_photo",
+  "scene_photo",
+  "photos",
+]);
+
+const BASICS_KEYS = new Set([
+  "anyone_injured",
+  "injury_status",
+  "accident_datetime",
+  "accident_location",
+  "own_vehicle_info",
+]);
+
+const UNSUPPORTED_KEYS = new Set([
+  "other_party_plate",
+  "other_party_info",
+  "police_involved",
+]);
+
+const ACTIONABLE_ROUTES: Record<string, string> = {
+  accident_description: "/pages/story/story",
+  anyone_injured: "/pages/basics/basics",
+  injury_status: "/pages/basics/basics",
+  accident_datetime: "/pages/basics/basics",
+  accident_location: "/pages/basics/basics",
+  own_vehicle_info: "/pages/basics/basics",
+  customer_damage_photo: "/pages/photos/photos",
+  other_party_vehicle_photo: "/pages/photos/photos",
+  scene_photo: "/pages/photos/photos",
+  photos: "/pages/photos/photos",
 };
 
 const INTAKE_STEPS_BEFORE_REVIEW = [
@@ -77,6 +135,236 @@ export function isBrokerDonePhase(phase: string): boolean {
   return phase === "broker_done";
 }
 
+export function isNeedsMoreInfoPhase(phase: string): boolean {
+  return phase === "broker_needs_more_info";
+}
+
+export function normalizeMissingKey(key: string): string {
+  const raw = (key || "").trim();
+  if (raw === "anyone_injured") return "injury_status";
+  if (PHOTO_KEYS.has(raw)) return "photos";
+  return raw;
+}
+
+function injuryComplete(task: CustomerTask): boolean {
+  const v = String(
+    task.key_facts?.anyone_injured || task.key_facts?.injury_status || "",
+  )
+    .trim()
+    .toLowerCase();
+  return ["yes", "no", "unknown"].includes(v);
+}
+
+function injuryStatusText(task: CustomerTask): string {
+  const v = String(
+    task.key_facts?.anyone_injured || task.key_facts?.injury_status || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (v === "yes") return "有人受伤";
+  if (v === "no") return "没有受伤";
+  if (v === "unknown") return "不确定";
+  return "未填写";
+}
+
+function photoStatusText(task: CustomerTask): string {
+  const count = photoCount(task);
+  if (count === 0) return "未添加";
+  const target = prototypePhotoTarget();
+  if (count >= target) return `${count} 张`;
+  return `${count}/${target} 张`;
+}
+
+export function resolveMissingItemNav(
+  rawKey: string,
+  task: CustomerTask,
+): MissingItemNav {
+  const key = normalizeMissingKey(rawKey);
+
+  if (key === "accident_description") {
+    if (storyComplete(task)) {
+      return { action: "COMPLETED", statusText: "已填写" };
+    }
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.accident_description,
+      statusText: "未填写",
+    };
+  }
+
+  if (key === "injury_status") {
+    if (injuryComplete(task)) {
+      return { action: "COMPLETED", statusText: injuryStatusText(task) };
+    }
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.injury_status,
+      statusText: "未填写",
+    };
+  }
+
+  if (key === "accident_datetime") {
+    const value = String(task.key_facts?.accident_datetime || "").trim();
+    if (value) return { action: "COMPLETED", statusText: value };
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.accident_datetime,
+      statusText: "未填写",
+    };
+  }
+
+  if (key === "accident_location") {
+    const value = String(task.key_facts?.accident_location || "").trim();
+    if (value) return { action: "COMPLETED", statusText: value };
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.accident_location,
+      statusText: "未填写",
+    };
+  }
+
+  if (key === "own_vehicle_info") {
+    const value = String(task.key_facts?.own_vehicle_info || "").trim();
+    if (value.length >= 2) return { action: "COMPLETED", statusText: "已填写" };
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.own_vehicle_info,
+      statusText: "未填写",
+    };
+  }
+
+  if (key === "photos" || PHOTO_KEYS.has(key)) {
+    if (photosSatisfiedForPrototype(task)) {
+      return { action: "COMPLETED", statusText: photoStatusText(task) };
+    }
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.photos,
+      statusText: photoStatusText(task),
+    };
+  }
+
+  if (UNSUPPORTED_KEYS.has(key)) {
+    return {
+      action: "DISPLAY_ONLY_PROTOTYPE",
+      statusText: "暂不支持",
+      hint: "请返回微信联系陈总补充",
+    };
+  }
+
+  const route = ACTIONABLE_ROUTES[key];
+  if (route) {
+    return { action: "ACTIONABLE_NOW", route, statusText: "待补充" };
+  }
+
+  return {
+    action: "UNSUPPORTED",
+    statusText: "待确认",
+    hint: "请返回微信联系陈总",
+  };
+}
+
+type ChecklistItem = {
+  key: string;
+  label: string;
+  isComplete: (task: CustomerTask) => boolean;
+  statusText: (task: CustomerTask) => string;
+  route: string;
+};
+
+const SUPPLEMENT_CHECKLIST: ChecklistItem[] = [
+  {
+    key: "accident_description",
+    label: "事故经过",
+    isComplete: storyComplete,
+    statusText: (task) => (storyComplete(task) ? "已填写" : "未填写"),
+    route: "/pages/story/story",
+  },
+  {
+    key: "injury_status",
+    label: "是否受伤",
+    isComplete: injuryComplete,
+    statusText: injuryStatusText,
+    route: "/pages/basics/basics",
+  },
+  {
+    key: "accident_datetime",
+    label: "事故时间",
+    isComplete: (task) => Boolean(String(task.key_facts?.accident_datetime || "").trim()),
+    statusText: (task) =>
+      String(task.key_facts?.accident_datetime || "").trim() || "未填写",
+    route: "/pages/basics/basics",
+  },
+  {
+    key: "accident_location",
+    label: "事故地点",
+    isComplete: (task) => Boolean(String(task.key_facts?.accident_location || "").trim()),
+    statusText: (task) =>
+      String(task.key_facts?.accident_location || "").trim() || "未填写",
+    route: "/pages/basics/basics",
+  },
+  {
+    key: "own_vehicle_info",
+    label: "您的车辆",
+    isComplete: (task) =>
+      String(task.key_facts?.own_vehicle_info || "").trim().length >= 2,
+    statusText: (task) =>
+      String(task.key_facts?.own_vehicle_info || "").trim().length >= 2
+        ? "已填写"
+        : "未填写",
+    route: "/pages/basics/basics",
+  },
+  {
+    key: "photos",
+    label: "事故照片",
+    isComplete: photosSatisfiedForPrototype,
+    statusText: photoStatusText,
+    route: "/pages/photos/photos",
+  },
+];
+
+export function buildSupplementRows(task: CustomerTask): SupplementTaskRow[] {
+  const rows: SupplementTaskRow[] = [];
+  const seen = new Set<string>();
+  const submitted = isSubmitted(task);
+
+  for (const item of SUPPLEMENT_CHECKLIST) {
+    if (item.isComplete(task)) continue;
+    if (submitted && item.key !== "photos") continue;
+    seen.add(item.key);
+    rows.push({
+      key: item.key,
+      label: item.label,
+      statusText: item.statusText(task),
+      actionable: true,
+      route: item.route,
+    });
+  }
+
+  for (const item of task.missing_info || []) {
+    const key = normalizeMissingKey(item.key || item.field || "");
+    if (!key || seen.has(key)) continue;
+    const nav = resolveMissingItemNav(key, task);
+    if (nav.action === "COMPLETED") continue;
+    seen.add(key);
+    rows.push({
+      key,
+      label: missingItemLabel(item),
+      statusText: nav.statusText,
+      actionable: nav.action === "ACTIONABLE_NOW",
+      route: nav.route,
+      hint: nav.hint,
+    });
+  }
+
+  return rows;
+}
+
+export function firstActionableMissingRoute(task: CustomerTask): string | undefined {
+  const row = buildSupplementRows(task).find((item) => item.actionable && item.route);
+  return row?.route;
+}
+
 export function progressPercent(task: CustomerTask): number {
   const total = Math.max(task.step_total || 1, 1);
   const done = Math.min(task.completed_count || 0, total);
@@ -132,6 +420,16 @@ export function resolveNextAction(task: CustomerTask): NextAction {
     };
   }
 
+  if (isNeedsMoreInfoPhase(task.phase)) {
+    return {
+      kind: "supplement",
+      primaryCta: "补充陈总需要的资料",
+      route:
+        firstActionableMissingRoute(task) ||
+        "/pages/photos/photos",
+    };
+  }
+
   if (!storyComplete(task)) {
     return {
       kind: "story",
@@ -164,10 +462,20 @@ export function resolveNextAction(task: CustomerTask): NextAction {
     };
   }
 
+  if (dash?.primary_cta?.includes("补充")) {
+    return {
+      kind: "supplement",
+      primaryCta: dash.primary_cta,
+      route:
+        firstActionableMissingRoute(task) ||
+        "/pages/basics/basics",
+    };
+  }
+
   return {
-    kind: dash?.primary_cta?.includes("补充") ? "supplement" : "review",
-    primaryCta: dash?.primary_cta || "继续补充资料",
-    route: "/pages/task-home/task-home",
+    kind: "review",
+    primaryCta: "检查并提交",
+    route: "/pages/review/review",
   };
 }
 
@@ -192,9 +500,15 @@ export function newSubmitIntentId(): string {
 export const taskMapping = {
   extractTokenFromUrl,
   missingItemLabel,
+  normalizeMissingKey,
+  resolveMissingItemNav,
+  buildSupplementRows,
+  firstActionableMissingRoute,
   resolveNextAction,
   storyComplete,
   basicsComplete,
   photosSatisfiedForPrototype,
+  isBrokerDonePhase,
+  isNeedsMoreInfoPhase,
   newSubmitIntentId,
 };
