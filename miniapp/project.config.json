@@ -28,7 +28,8 @@
       "outputPath": ""
     },
     "bundle": false,
-    "useIsolateContext": true
+    "useIsolateContext": true,
+    "useCompilerPlugins": ["typescript"]
   },
   "compileType": "miniprogram",
   "libVersion": "3.5.5",
