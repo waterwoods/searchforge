@@ -135,21 +135,28 @@ def _multipart_upload(base: str, token: str, slot: str, content: bytes) -> tuple
         return exc.code, parsed
 
 
-def _bootstrap_env(qa_db: bool, cases_path: Path | None) -> None:
-    os.environ.setdefault("H5_TASK_TOKEN_SECRET", "dev-prototype-secret-change-me")
+def _bootstrap_env(
+    *,
+    cloud_sql: bool,
+    cases_path: Path | None,
+    json_local: bool,
+) -> None:
     os.environ.setdefault("UNIFIED_INTAKE_PRODUCT_ONLY", "1")
     os.environ.setdefault("UNIFIED_INTAKE_INTAKE_CORE_READINESS", "1")
+    if cloud_sql:
+        from scripts.demo_db_resolve import bootstrap_prototype_cloud_sql_env
+
+        bootstrap_prototype_cloud_sql_env()
+        return
     if cases_path is not None:
         os.environ["UNIFIED_INTAKE_CASES_PATH"] = str(cases_path)
-    if qa_db:
-        from scripts.p19h3i_claim_task_dashboard_smoke import _ensure_h5_token_secret_for_deploy, _load_cloudrun_env
-
-        _load_cloudrun_env()
-        _ensure_h5_token_secret_for_deploy()
-        os.environ["ENV"] = "prod"
-        from scripts.demo_db_resolve import apply_qa_postgres_env
-
-        apply_qa_postgres_env(for_write=True)
+    if json_local:
+        os.environ.pop("SERVICE_RECORD_DATABASE_URL", None)
+        os.environ.pop("DATABASE_URL", None)
+        os.environ.pop("UNIFIED_INTAKE_DB_PRIMARY_READS", None)
+        os.environ.pop("UNIFIED_INTAKE_DB_PRIMARY_WRITES", None)
+        os.environ.setdefault("UNIFIED_INTAKE_JSON_CASE_WRITES", "1")
+        os.environ.setdefault("H5_TASK_TOKEN_SECRET", "dev-prototype-secret-change-me")
 
 
 def _seed_qa_case(tag: str) -> tuple[str, str]:
@@ -218,20 +225,30 @@ def _workbench_checks(case_id: str) -> dict[str, Any]:
     }
 
 
-def run_e2e(base_url: str, *, qa_db: bool, inprocess: bool) -> dict[str, Any]:
+def run_e2e(
+    base_url: str,
+    *,
+    cloud_sql: bool,
+    inprocess: bool,
+    json_local: bool = False,
+) -> dict[str, Any]:
     tag = _utc_tag()
     cases_path = None
-    if not qa_db and not inprocess:
+    if inprocess:
+        cases_path = Path(tempfile.mkdtemp(prefix="p19m1a_cases_")) / "cases.json"
+        cases_path.write_text("[]", encoding="utf-8")
+        json_local = True
+    elif not cloud_sql:
         existing = (os.getenv("UNIFIED_INTAKE_CASES_PATH") or "").strip()
         if existing:
             cases_path = Path(existing)
             if not cases_path.is_absolute():
                 cases_path = REPO / cases_path
-        else:
+        elif json_local:
             cases_path = Path(tempfile.mkdtemp(prefix="p19m1a_cases_")) / "cases.json"
             cases_path.write_text("[]", encoding="utf-8")
 
-    _bootstrap_env(qa_db, cases_path)
+    _bootstrap_env(cloud_sql=cloud_sql, cases_path=cases_path, json_local=json_local)
     case_id, token = _seed_qa_case(tag)
     masked = _mask_token(token)
     checks: dict[str, Any] = {
@@ -239,7 +256,11 @@ def run_e2e(base_url: str, *, qa_db: bool, inprocess: bool) -> dict[str, Any]:
         "case_id": case_id,
         "masked_token": masked,
         "base_url": base_url,
-        "mode": "inprocess" if inprocess else ("cloud_qa_db" if qa_db else "http_local"),
+        "mode": (
+            "inprocess"
+            if inprocess
+            else ("cloud_sql" if cloud_sql else "json_local")
+        ),
     }
 
     if inprocess:
@@ -404,21 +425,45 @@ def run_e2e(base_url: str, *, qa_db: bool, inprocess: bool) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="P19M-1A mini program E2E smoke")
     parser.add_argument("--base-url", default="http://127.0.0.1:8001")
-    parser.add_argument("--qa-db", action="store_true", help="Use QA Postgres (Cloud Run parity)")
+    parser.add_argument(
+        "--cloud-sql",
+        action="store_true",
+        help="Seed/read QA GCP Cloud SQL (matches run_demo_local.sh and Cloud Run)",
+    )
+    parser.add_argument(
+        "--qa-db",
+        action="store_true",
+        help="Deprecated alias for --cloud-sql",
+    )
     parser.add_argument("--inprocess", action="store_true", help="In-process TestClient (no network)")
+    parser.add_argument(
+        "--json-local",
+        action="store_true",
+        help="Isolated temp JSON store (must match API if using HTTP — prefer --cloud-sql)",
+    )
     parser.add_argument(
         "--shared-local-store",
         action="store_true",
-        help="Use repo data/unified_intake_cases.json (must match running local API)",
+        help="Deprecated: use repo data/unified_intake_cases.json (JSON dev only)",
     )
     args = parser.parse_args()
+    if args.qa_db:
+        args.cloud_sql = True
 
     if args.inprocess:
-        result = run_e2e(args.base_url, qa_db=False, inprocess=True)
+        result = run_e2e(args.base_url, cloud_sql=False, inprocess=True, json_local=True)
     else:
+        json_local = args.json_local or args.shared_local_store
         if args.shared_local_store:
             os.environ["UNIFIED_INTAKE_CASES_PATH"] = str(REPO / "data" / "unified_intake_cases.json")
-        result = run_e2e(args.base_url, qa_db=args.qa_db, inprocess=False)
+        if not args.cloud_sql and not json_local:
+            parser.error("HTTP mode requires --cloud-sql (QA SSOT) or --json-local / --shared-local-store")
+        result = run_e2e(
+            args.base_url,
+            cloud_sql=args.cloud_sql,
+            inprocess=False,
+            json_local=json_local,
+        )
 
     out_path = REPO / "docs" / "evidence" / f"p19m1a_devtools_e2e_smoke_{_utc_tag().replace('-', '_')}.json"
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

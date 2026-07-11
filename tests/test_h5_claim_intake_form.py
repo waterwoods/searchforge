@@ -41,7 +41,7 @@ def _case_storage(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "cases.json"
         path.write_text("[]", encoding="utf-8")
-        monkeypatch.setenv("UNIFIED_INTAKE_CASE_STORAGE_PATH", str(path))
+        monkeypatch.setenv("UNIFIED_INTAKE_CASES_PATH", str(path))
         yield
 
 

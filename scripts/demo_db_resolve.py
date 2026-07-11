@@ -13,11 +13,15 @@ Never log full connection strings.
 from __future__ import annotations
 
 import os
-import re
+import shlex
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_DB_URL_KEYS = frozenset({"SERVICE_RECORD_DATABASE_URL", "DATABASE_URL", "QA_SERVICE_RECORD_DATABASE_URL"})
 
 QA_CLOUD_SQL_SECRET = "fiqa-service-record-database-url-cloudsql-private"
 QA_CLOUD_SQL_INSTANCE = "caseiq-pilot-pg"
@@ -125,6 +129,79 @@ def apply_qa_postgres_env(*, for_write: bool = True) -> DbIdentity:
     os.environ["UNIFIED_INTAKE_JSON_CASE_WRITES"] = "0"
     os.environ.pop("UNIFIED_INTAKE_JSON_READ_FALLBACK", None)
     return ident
+
+
+def ensure_h5_task_token_secret() -> bool:
+    """Load H5_TASK_TOKEN_SECRET from Secret Manager when unset (matches Cloud Run)."""
+    if (os.getenv("H5_TASK_TOKEN_SECRET") or "").strip():
+        return True
+    project = (os.getenv("PROJECT_ID") or "optimal-disk-472305-e2").strip()
+    secret_name = (os.getenv("CLOUD_RUN_SECRET_H5_TASK_TOKEN") or "fiqa-h5-task-token-secret").strip()
+    try:
+        proc = subprocess.run(
+            [
+                "gcloud",
+                "secrets",
+                "versions",
+                "access",
+                "latest",
+                f"--secret={secret_name}",
+                f"--project={project}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            os.environ["H5_TASK_TOKEN_SECRET"] = proc.stdout.strip()
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def load_cloudrun_env_skip_db(*, override: bool = False) -> None:
+    """Load .env.cloudrun API/runtime keys but never legacy Neon DATABASE_URL."""
+    env_file = _REPO_ROOT / ".env.cloudrun"
+    if not env_file.is_file():
+        return
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        key, _, val = s.partition("=")
+        key = key.strip()
+        if key in _DB_URL_KEYS:
+            continue
+        val = val.strip().strip("'\"").strip()
+        if override:
+            os.environ[key] = val
+        else:
+            os.environ.setdefault(key, val)
+
+
+def bootstrap_prototype_cloud_sql_env() -> DbIdentity:
+    """Mini-program prototype QA: Cloud SQL SSOT + Cloud Run-aligned runtime flags."""
+    load_cloudrun_env_skip_db(override=True)
+    ident = apply_qa_postgres_env(for_write=True)
+    os.environ["ENV"] = "prod"
+    ensure_h5_task_token_secret()
+    return ident
+
+
+def shell_export_qa_postgres_env(*, for_write: bool = True) -> tuple[DbIdentity, list[str]]:
+    """Apply QA Postgres env; return bash export lines (values quoted, never logged)."""
+    ident = apply_qa_postgres_env(for_write=for_write)
+    keys = (
+        "SERVICE_RECORD_DATABASE_URL",
+        "UNIFIED_INTAKE_DB_PRIMARY_READS",
+        "UNIFIED_INTAKE_DB_PRIMARY_WRITES",
+        "UNIFIED_INTAKE_JSON_CASE_WRITES",
+        "UNIFIED_INTAKE_JSON_READ_FALLBACK",
+    )
+    lines = [f"export {k}={shlex.quote(os.environ[k])}" for k in keys if os.environ.get(k)]
+    return ident, lines
 
 
 def cloud_run_revision() -> str:

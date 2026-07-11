@@ -28,13 +28,18 @@ def _utc_tag() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
 
 
-def _bootstrap_case_storage() -> None:
+def _bootstrap_json_local() -> None:
     if os.getenv("UNIFIED_INTAKE_CASES_PATH"):
         return
     tmp = tempfile.mkdtemp(prefix="p19m1_mp_")
     path = Path(tmp) / "cases.json"
     path.write_text("[]", encoding="utf-8")
     os.environ["UNIFIED_INTAKE_CASES_PATH"] = str(path)
+    os.environ.pop("SERVICE_RECORD_DATABASE_URL", None)
+    os.environ.pop("DATABASE_URL", None)
+    os.environ.pop("UNIFIED_INTAKE_DB_PRIMARY_READS", None)
+    os.environ.pop("UNIFIED_INTAKE_DB_PRIMARY_WRITES", None)
+    os.environ.setdefault("UNIFIED_INTAKE_JSON_CASE_WRITES", "1")
 
 
 def _mask_token(token: str) -> str:
@@ -49,23 +54,38 @@ def main() -> int:
     parser.add_argument("--api-base", default=os.getenv("P19M1_API_BASE", "http://127.0.0.1:8001"))
     parser.add_argument("--frontend-base", default="https://example.test")
     parser.add_argument("--label", default="", help="Optional QA label suffix")
-    parser.add_argument("--qa-db", action="store_true", help="Write to QA Postgres (Cloud Run parity)")
+    parser.add_argument(
+        "--cloud-sql",
+        action="store_true",
+        help="Seed/read QA GCP Cloud SQL (same DB as Cloud Run and run_demo_local.sh)",
+    )
+    parser.add_argument(
+        "--json-local",
+        action="store_true",
+        help="Isolated temp JSON store (dev only — NOT prototype QA parity)",
+    )
+    parser.add_argument(
+        "--qa-db",
+        action="store_true",
+        help="Deprecated alias for --cloud-sql",
+    )
     args = parser.parse_args()
-
-    if not os.getenv("H5_TASK_TOKEN_SECRET"):
-        os.environ.setdefault("H5_TASK_TOKEN_SECRET", "dev-prototype-secret-change-me")
-
     if args.qa_db:
-        from scripts.p19h3i_claim_task_dashboard_smoke import _ensure_h5_token_secret_for_deploy, _load_cloudrun_env
+        args.cloud_sql = True
+    if not args.cloud_sql and not args.json_local:
+        parser.error("Specify --cloud-sql (QA SSOT) or --json-local (isolated dev only)")
+    if args.cloud_sql and args.json_local:
+        parser.error("Cannot combine --cloud-sql and --json-local")
+    use_cloud_sql = args.cloud_sql
 
-        _load_cloudrun_env()
-        _ensure_h5_token_secret_for_deploy()
-        os.environ["ENV"] = "prod"
-        from scripts.demo_db_resolve import apply_qa_postgres_env
+    if use_cloud_sql:
+        from scripts.demo_db_resolve import bootstrap_prototype_cloud_sql_env
 
-        apply_qa_postgres_env(for_write=True)
+        ident = bootstrap_prototype_cloud_sql_env()
+        storage_mode = f"cloud_sql ({ident.masked()})"
     else:
-        _bootstrap_case_storage()
+        _bootstrap_json_local()
+        storage_mode = os.getenv("UNIFIED_INTAKE_CASES_PATH", "json-local")
 
     tag = (args.label or _utc_tag()).strip()
     qa_label = f"{QA_LABEL_PREFIX}-{tag}"
@@ -106,7 +126,7 @@ def main() -> int:
         "devtools_launch_query": f"token={token}",
         "api_intake_url": f"{args.api_base.rstrip('/')}/api/h5/tasks/{token}/intake",
         "config_local_hint": f'devTaskToken: "{token}" in miniapp/config.local.ts',
-        "storage": "qa_postgres" if args.qa_db else os.getenv("UNIFIED_INTAKE_CASES_PATH", "default"),
+        "storage": storage_mode,
     }
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0

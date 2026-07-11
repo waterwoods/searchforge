@@ -36,6 +36,35 @@ if [ -f ".env.cloudrun" ]; then
   set +a
 fi
 
+# P19M-2A: QA SSOT is GCP Cloud SQL (same secret as Cloud Run), not legacy Neon in .env.cloudrun.
+# Override SERVICE_RECORD_DATABASE_URL after .env.cloudrun load. JSON dev: RUN_DEMO_LOCAL_DB=json
+if [ "${RUN_DEMO_LOCAL_DB:-cloud-sql}" != "json" ]; then
+  if CLOUD_SQL_EXPORTS="$(PYTHONPATH=. python3 -c "
+import os
+from scripts.demo_db_resolve import ensure_h5_task_token_secret, shell_export_qa_postgres_env
+ident, lines = shell_export_qa_postgres_env(for_write=True)
+ensure_h5_task_token_secret()
+if (os.getenv('H5_TASK_TOKEN_SECRET') or '').strip():
+    import shlex
+    lines.append('export H5_TASK_TOKEN_SECRET=' + shlex.quote(os.environ['H5_TASK_TOKEN_SECRET']))
+print('\n'.join(lines))
+print('# ident=' + ident.masked())
+" 2>/dev/null)"; then
+    eval "$(printf '%s\n' "$CLOUD_SQL_EXPORTS" | grep -v '^# ident=')"
+    CLOUD_SQL_IDENT="$(printf '%s\n' "$CLOUD_SQL_EXPORTS" | grep '^# ident=' | sed 's/^# ident=//')"
+    echo "[INFO] Case store: GCP Cloud SQL (QA SSOT) — ${CLOUD_SQL_IDENT:-configured}"
+  else
+    echo "[WARN] Cloud SQL env unavailable (gcloud auth?). Set RUN_DEMO_LOCAL_DB=json for JSON-only dev."
+    echo "       Prototype QA requires Cloud SQL — see scripts/demo_db_resolve.py"
+  fi
+else
+  echo "[WARN] RUN_DEMO_LOCAL_DB=json — local JSON case store (NOT Cloud Run / prototype QA parity)"
+  unset SERVICE_RECORD_DATABASE_URL DATABASE_URL QA_SERVICE_RECORD_DATABASE_URL
+  export UNIFIED_INTAKE_DB_PRIMARY_READS=0
+  export UNIFIED_INTAKE_DB_PRIMARY_WRITES=0
+  export UNIFIED_INTAKE_JSON_CASE_WRITES=1
+fi
+
 # Use local Qdrant when USE_LOCAL_QDRANT=1 (avoids Qdrant Cloud 404 when cluster paused)
 if [ "${USE_LOCAL_QDRANT:-0}" = "1" ]; then
   export USE_LOCAL_QDRANT=1
