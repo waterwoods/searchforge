@@ -180,3 +180,73 @@ Requirements met: explicit, warned, read-only session, no seed/reset/write, not 
 - Neon holds a **stale fork** (289 rows, last write before Cloud SQL current max). Export backup before credential revocation and deletion.
 
 **Next action:** Operator removes `SERVICE_RECORD_DATABASE_URL` from local `.env.cloudrun`, runs `check_chen_kui_demo_environment.sh --cloud-api`, then schedules Neon `pg_dump` backup before secret revocation.
+
+---
+
+## 12. Final decommission completion — 2026-07-11 (post-backup)
+
+**Executive status:** **DECOMMISSION IN PROGRESS** — backup verified, credentials revoked; Neon console deletion pending manual step.
+
+### Final Neon backup
+
+| Field | Value |
+|-------|-------|
+| Backup path | `~/secure_backups/searchforge_legacy_neon_20260711.dump` |
+| Metadata path | `~/secure_backups/searchforge_legacy_neon_20260711.meta.json` |
+| Dump size | 188,408 bytes |
+| SHA-256 | `36f4f1914fcc09200beb93f1efad9497eda94383af5cdbc333fd62fd236c3592` |
+| Format | PostgreSQL custom compressed (`pg_dump -Fc`) |
+| Pre-delete row count | 289 (`legacy_db_metadata_audit.py`) |
+| Verification | `pg_restore --list` OK — 11 `TABLE DATA` entries including `service_records`, `record_messages`, `state_history`, `intake_sessions`, WeCom tables |
+| Committed to Git | **NO** (stored outside repo) |
+
+### Local configuration cleanup
+
+- `.env.cloudrun` `SERVICE_RECORD_DATABASE_URL` (Neon) **neutralized** — replaced with comment `LEGACY_NEON_REMOVED 2026-07-11`
+- No active `DATABASE_URL` / `SERVICE_RECORD_DATABASE_URL` keys remain in local `.env.cloudrun`
+- `bootstrap_prototype_cloud_sql_env()` resolves **GCP Cloud SQL** (`provider=gcp-cloud-sql`, `is_neon=False`)
+
+### Legacy secret revocation
+
+| Secret | Action | Versions |
+|--------|--------|----------|
+| `fiqa-service-record-database-url` (legacy Neon) | **DISABLED** | v1, v2 |
+| `fiqa-service-record-database-url-cloudsql-private` (SSOT) | **UNCHANGED enabled** | v1 |
+
+- Production Cloud Run `fiqa-api` revision `fiqa-api-00200-jxs` binds `fiqa-service-record-database-url-cloudsql-private:latest`
+- No deploy script requires legacy Neon secret (`deploy_cloud_run_core.sh` rejects Neon secret name)
+
+### Neon database / project deletion
+
+| Item | Value |
+|------|-------|
+| Neon endpoint slug | `nameless-bird-akrtm0v2` |
+| Neon host (pooler) | `ep-nameless-bird-akrtm0v2-pooler.c-3.us-west-2.aws.neon.tech` |
+| Database name | `neondb` |
+| Verified backup exists | **YES** |
+| Credentials disabled | **YES** |
+| Automatic deletion | **NOT POSSIBLE** — no `neonctl` auth on this machine |
+
+**Manual step remaining (Founder):**
+
+1. Open [Neon Console](https://console.neon.tech)
+2. Select project containing endpoint `nameless-bird-akrtm0v2` (database `neondb`)
+3. Confirm backup checksum `36f4f191…c3592` is stored at `~/secure_backups/`
+4. **Settings → Delete project** (or delete branch/database if project has other uses)
+5. Confirm deletion — no Cloud Run or local path can reconnect (secret versions disabled)
+
+### Post-revocation verification
+
+| Check | Result |
+|-------|--------|
+| Cloud SQL bootstrap | **PASS** — `gcp-cloud-sql`, not Neon |
+| Cloud Run `/readyz` | **PASS** — HTTP 200 |
+| `legacy_db_metadata_audit.py` | **FAIL CLOSED** — cannot access disabled Neon secret ✓ |
+| `pytest tests/test_demo_db_resolve.py` | **PASS** — 7/7 |
+| `p19m1a_devtools_e2e_smoke.py --inprocess` | **PASS** |
+| Cloud SQL `chen_kui_p18` rows | **PASS** — ≥5 rows in QA DB |
+| Chen Kui API name visibility | **WARN** — API page pagination (pre-existing; not Neon-related) |
+
+### Updated recommendation
+
+**Legacy Neon credentials revoked. Safe to delete Neon project after Founder completes console step above.** Cloud SQL remains sole SSOT. Do not re-enable secret versions `fiqa-service-record-database-url` v1/v2 unless performing disaster recovery from backup.
