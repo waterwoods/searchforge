@@ -1,21 +1,28 @@
 /**
  * Prototype config — uses committed defaults; optional local override via config.local.ts
+ *
+ * WeChat DevTools must statically import config.local.ts so the TS compiler includes it.
+ * Dynamic require() is not bundled and devTaskToken silently stays empty.
  */
 import { config as defaultConfig } from "../config.defaults";
+import { config as localConfig } from "../config.local";
 
 type AppConfig = typeof defaultConfig;
 
-let runtimeConfig: AppConfig = { ...defaultConfig };
+export const appConfig: AppConfig = {
+  ...defaultConfig,
+  ...localConfig,
+};
 
-try {
-  // Optional gitignored local override (copy config.example.ts → config.local.ts)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const local = require("../config.local") as { config?: Partial<AppConfig> };
-  if (local?.config) {
-    runtimeConfig = { ...defaultConfig, ...local.config };
+/** Prototype-only diagnostics — colocated here to avoid a separate devLog module. */
+export function devLog(...args: unknown[]): void {
+  if (appConfig.prototypeMode) {
+    console.info(...args);
   }
-} catch {
-  // no local override
 }
 
-export const appConfig = runtimeConfig;
+const devTaskToken = String(appConfig.devTaskToken || "").trim();
+devLog("[prototype] appConfig loaded", {
+  apiBaseUrl: appConfig.apiBaseUrl,
+  devTaskTokenConfigured: devTaskToken.length > 0,
+});

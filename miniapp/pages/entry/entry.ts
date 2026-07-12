@@ -4,6 +4,7 @@ import {
   resolveTaskLaunchContext,
 } from "../../services/taskLaunchContext";
 import { mapErrorMessage, isSubmitted } from "../../utils/taskMapping";
+import { devLog } from "../../utils/config";
 import { ApiRequestError } from "../../utils/request";
 import { clearResumeToken } from "../../utils/storage";
 
@@ -22,6 +23,7 @@ Page({
     this.setData({ loading: true, errorMessage: "", errorCode: "" });
 
     const ctx = resolveTaskLaunchContext(options);
+    devLog("[prototype] entry bootstrap:", ctx ? `using ${ctx.source}` : "no token");
     if (!ctx) {
       this.setData({
         loading: false,
@@ -38,12 +40,19 @@ Page({
       app.taskToken = ctx.token;
       app.task = task;
 
-      if (isSubmitted(task)) {
-        wx.redirectTo({ url: "/pages/receipt/receipt" });
-        return;
-      }
-
-      wx.redirectTo({ url: "/pages/task-home/task-home" });
+      const target = isSubmitted(task)
+        ? "/pages/receipt/receipt"
+        : "/pages/task-home/task-home";
+      wx.reLaunch({
+        url: target,
+        fail: () => {
+          this.setData({
+            loading: false,
+            errorCode: "navigation_failed",
+            errorMessage: mapErrorMessage("navigation_failed"),
+          });
+        },
+      });
     } catch (err) {
       const code =
         err instanceof ApiRequestError ? err.code : "network_error";

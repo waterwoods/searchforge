@@ -1,6 +1,38 @@
-import type { TaskLaunchContext } from "../types/task";
-import { appConfig } from "../utils/config";
+import type { TaskLaunchContext, TaskLaunchSource } from "../types/task";
+import { appConfig, devLog } from "../utils/config";
 import { loadResumeToken, saveResumeToken } from "../utils/storage";
+
+export type LaunchTokenResolution = {
+  source: TaskLaunchSource | "none";
+  launchQuery: boolean;
+  devTaskToken: boolean;
+  resumeToken: boolean;
+};
+
+/** DevTools diagnostic — logs which token source wins without printing the token. */
+export function inspectLaunchTokenSources(
+  options?: WechatMiniprogram.Page.IAnyObject,
+): LaunchTokenResolution {
+  const queryToken = String(options?.token || "").trim();
+  const devToken = String(appConfig.devTaskToken || "").trim();
+  const resumeToken = loadResumeToken();
+
+  let source: TaskLaunchSource | "none" = "none";
+  if (queryToken) {
+    source = "launch_query";
+  } else if (devToken) {
+    source = "dev_config";
+  } else if (resumeToken) {
+    source = "resume_storage";
+  }
+
+  return {
+    source,
+    launchQuery: Boolean(queryToken),
+    devTaskToken: Boolean(devToken),
+    resumeToken: Boolean(resumeToken),
+  };
+}
 
 /**
  * Prototype task launch — token from query, dev config, or resume storage.
@@ -9,6 +41,9 @@ import { loadResumeToken, saveResumeToken } from "../utils/storage";
 export function resolveTaskLaunchContext(
   options?: WechatMiniprogram.Page.IAnyObject,
 ): TaskLaunchContext | null {
+  const resolution = inspectLaunchTokenSources(options);
+  devLog("[prototype] launch token source:", resolution.source);
+
   const queryToken = String(options?.token || "").trim();
   if (queryToken) {
     return { token: queryToken, source: "launch_query" };

@@ -51,6 +51,7 @@ export function requestJson<T>(
     wx.request({
       url: `${baseUrl()}${path}`,
       method,
+      timeout: 30000,
       header: {
         "Content-Type": "application/json",
         ...(extraHeaders || {}),
