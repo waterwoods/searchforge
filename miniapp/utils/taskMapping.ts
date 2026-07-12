@@ -248,7 +248,7 @@ export function resolveMissingItemNav(
     return {
       action: "DISPLAY_ONLY_PROTOTYPE",
       statusText: "暂不支持",
-      hint: "请返回微信联系陈总补充",
+      hint: "请联系陈总补充",
     };
   }
 
@@ -260,7 +260,7 @@ export function resolveMissingItemNav(
   return {
     action: "UNSUPPORTED",
     statusText: "待确认",
-    hint: "请返回微信联系陈总",
+    hint: "请联系陈总",
   };
 }
 
@@ -481,7 +481,9 @@ export function resolveNextAction(task: CustomerTask): NextAction {
 
 export function mapErrorMessage(code: string): string {
   const messages: Record<string, string> = {
-    invalid_or_expired_task_link: "链接已失效，请回微信联系陈总获取新的任务入口。",
+    invalid_or_expired_task_link: "链接已失效，请联系陈总获取新的入口。",
+    backend_unreachable:
+      "无法连接本地 API。请先运行 bash scripts/run_demo_local.sh；真机预览请把 config.local.ts 的 apiBaseUrl 改为电脑局域网 IP（不要用 127.0.0.1）。",
     network_error: "网络不可用，请检查网络后重试。",
     save_failed: "保存失败，请稍后重试。",
     submit_failed: "提交失败，请稍后重试。",

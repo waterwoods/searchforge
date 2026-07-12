@@ -1,6 +1,6 @@
 <view class="container">
   <view wx:if="{{loading}}" class="loading-wrap">
-    <text>加载中…</text>
+    <text class="loading-text">正在加载您的资料…</text>
   </view>
 
   <block wx:else>
@@ -40,7 +40,7 @@
       <view wx:else class="received-item muted">主要资料已齐全</view>
 
       <view class="section-label section-gap">下一步</view>
-      <view class="next-action-text">{{nextAction || '按下方按钮继续'}}</view>
+      <view class="next-action-text">{{nextAction || '点击下方按钮继续'}}</view>
     </view>
 
     <view class="disclaimer" bindtap="onShowDisclaimer">{{disclaimer}}</view>
@@ -49,10 +49,11 @@
   <view class="footer-cta" wx:if="{{!loading}}">
     <button
       class="btn-primary"
+      hover-class="btn-primary-hover"
       bindtap="onPrimaryAction"
       loading="{{navigating}}"
       disabled="{{navigating}}"
     >{{primaryCta}}</button>
-    <button class="btn-secondary" bindtap="onViewAll">查看全部资料</button>
+    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onViewAll">查看全部资料</button>
   </view>
 </view>

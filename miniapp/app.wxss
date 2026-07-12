@@ -6,6 +6,10 @@ page {
   box-sizing: border-box;
 }
 
+.section-gap {
+  margin-top: 28rpx;
+}
+
 .container {
   min-height: 100vh;
   padding: 32rpx 32rpx 200rpx;
@@ -104,6 +108,11 @@ page {
   border: none;
 }
 
+.btn-primary-hover {
+  background: #1648b8 !important;
+  opacity: 0.92;
+}
+
 .btn-primary[loading],
 .btn-primary[disabled] {
   background: #a8c4f0;
@@ -126,6 +135,57 @@ page {
   border: none;
 }
 
+.btn-secondary-hover {
+  opacity: 0.7;
+}
+
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.radio-chip {
+  padding: 16rpx 28rpx;
+  border-radius: 12rpx;
+  background: #f0f2f5;
+  font-size: 28rpx;
+  color: #444444;
+}
+
+.radio-chip.active {
+  background: #e8f0fe;
+  color: #1a56db;
+  font-weight: 600;
+}
+
+.radio-chip-hover {
+  background: #e4e8ee;
+}
+
+.input-field {
+  width: 100%;
+  padding: 20rpx 24rpx;
+  background: #f8f9fa;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.review-block {
+  background: #f8f9fa;
+  padding: 20rpx 24rpx;
+  border-radius: 12rpx;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 28rpx;
+  color: #333333;
+}
+
+.review-block.empty {
+  color: #888888;
+}
+
 .disclaimer {
   font-size: 22rpx;
   color: #888888;
@@ -139,6 +199,12 @@ page {
   align-items: center;
   justify-content: center;
   min-height: 60vh;
+  color: #666666;
+  gap: 24rpx;
+}
+
+.loading-text {
+  font-size: 28rpx;
   color: #666666;
 }
 

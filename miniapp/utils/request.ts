@@ -1,7 +1,9 @@
 import { appConfig } from "./config";
+import { BackendUnreachableError, ensureApiReachable } from "./apiHealth";
 
 export type RequestErrorCode =
   | "network_error"
+  | "backend_unreachable"
   | "invalid_or_expired_task_link"
   | "already_submitted"
   | "missing_required_fields"
@@ -41,65 +43,113 @@ function parseDetail(body: unknown, status: number): RequestErrorCode {
   return detail || `http_${status}`;
 }
 
+function rejectRequestError(
+  reject: (reason: ApiRequestError) => void,
+  err: unknown,
+): void {
+  if (err instanceof BackendUnreachableError) {
+    reject(new ApiRequestError("backend_unreachable"));
+    return;
+  }
+  if (err instanceof ApiRequestError) {
+    reject(err);
+    return;
+  }
+  reject(new ApiRequestError("network_error"));
+}
+
 export function requestJson<T>(
   method: "GET" | "PATCH" | "POST",
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${baseUrl()}${path}`,
-      method,
-      timeout: 30000,
-      header: {
-        "Content-Type": "application/json",
-        ...(extraHeaders || {}),
-      },
-      data: body,
-      success(res) {
-        const status = res.statusCode || 0;
-        if (status >= 200 && status < 300) {
-          resolve(res.data as T);
-          return;
-        }
-        reject(new ApiRequestError(parseDetail(res.data, status), status));
-      },
-      fail() {
-        reject(new ApiRequestError("network_error"));
-      },
+  return ensureApiReachable()
+    .then(
+      () =>
+        new Promise<T>((resolve, reject) => {
+          wx.request({
+            url: `${baseUrl()}${path}`,
+            method,
+            timeout: 30000,
+            header: {
+              "Content-Type": "application/json",
+              ...(extraHeaders || {}),
+            },
+            data: body,
+            success(res) {
+              const status = res.statusCode || 0;
+              if (status >= 200 && status < 300) {
+                resolve(res.data as T);
+                return;
+              }
+              reject(new ApiRequestError(parseDetail(res.data, status), status));
+            },
+            fail() {
+              reject(new ApiRequestError("network_error"));
+            },
+          });
+        }),
+    )
+    .catch((err) => {
+      return new Promise<T>((_, reject) => rejectRequestError(reject, err));
     });
-  });
 }
+
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 export function uploadFile(
   path: string,
   filePath: string,
   formData: Record<string, string>,
 ): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    wx.uploadFile({
-      url: `${baseUrl()}${path}`,
-      filePath,
-      name: "file",
-      formData,
-      success(res) {
-        const status = res.statusCode || 0;
-        let data: unknown = {};
-        try {
-          data = JSON.parse(res.data || "{}");
-        } catch {
-          data = {};
-        }
-        if (status >= 200 && status < 300) {
-          resolve(data);
-          return;
-        }
-        reject(new ApiRequestError(parseDetail(data, status), status));
-      },
-      fail() {
-        reject(new ApiRequestError("network_error"));
-      },
+  return ensureApiReachable()
+    .then(
+      () =>
+        new Promise<unknown>((resolve, reject) => {
+          let settled = false;
+          const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            fn();
+          };
+          const timer = setTimeout(() => {
+            finish(() => reject(new ApiRequestError("network_error")));
+          }, UPLOAD_TIMEOUT_MS);
+
+          wx.uploadFile({
+            url: `${baseUrl()}${path}`,
+            filePath,
+            name: "file",
+            formData,
+            timeout: UPLOAD_TIMEOUT_MS,
+            success(res) {
+              finish(() => {
+                const status = res.statusCode || 0;
+                let data: unknown = {};
+                try {
+                  data = JSON.parse(res.data || "{}");
+                } catch {
+                  data = {};
+                }
+                if (status >= 200 && status < 300) {
+                  resolve(data);
+                  return;
+                }
+                reject(new ApiRequestError(parseDetail(data, status), status));
+              });
+            },
+            fail() {
+              finish(() => reject(new ApiRequestError("network_error")));
+            },
+            complete() {
+              clearTimeout(timer);
+            },
+          });
+        }),
+    )
+    .catch((err) => {
+      return new Promise<unknown>((_, reject) => rejectRequestError(reject, err));
     });
-  });
 }

@@ -1,12 +1,12 @@
 <view class="container">
   <view wx:if="{{loading}}" class="loading-wrap">
-    <text>正在打开你的事故资料…</text>
+    <text class="loading-text">正在打开您的资料…</text>
   </view>
 
   <view wx:else class="card">
-    <view class="card-title">无法打开任务</view>
+    <view class="card-title">暂时无法打开</view>
     <view class="card-subtitle">{{errorMessage}}</view>
-    <button class="btn-primary" bindtap="onRetry">重试</button>
-    <button class="btn-secondary" bindtap="onContactBroker">返回微信联系陈总</button>
+    <button class="btn-primary" hover-class="btn-primary-hover" bindtap="onRetry">重试</button>
+    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onContactBroker">返回微信联系陈总</button>
   </view>
 </view>

@@ -5,6 +5,7 @@ import {
   mapErrorMessage,
   missingItemLabel,
   photoCount,
+  photosSatisfiedForPrototype,
   storyComplete,
 } from "../../utils/taskMapping";
 import { ApiRequestError } from "../../utils/request";
@@ -36,6 +37,7 @@ Page({
     const canSubmit =
       storyComplete(task) &&
       basicsComplete(task) &&
+      photosSatisfiedForPrototype(task) &&
       !task.submitted;
 
     this.setData({
@@ -44,8 +46,7 @@ Page({
       received: dash?.received || [],
       missing: (task.missing_info || []).map(missingItemLabel),
       canSubmit,
-      disclaimer:
-        `提交后，${appConfig.brokerDisplayName}会在工作台看到这些资料并进行人工查看。这不是向保险公司正式报案。`,
+      disclaimer: `提交后，${appConfig.brokerDisplayName}会查看这些资料并尽快回复您。这不是向保险公司正式报案。`,
     });
   },
 
@@ -89,6 +90,10 @@ Page({
 
   onEditStory() {
     wx.navigateTo({ url: "/pages/story/story" });
+  },
+
+  onEditBasics() {
+    wx.navigateTo({ url: "/pages/basics/basics" });
   },
 
   onEditPhotos() {

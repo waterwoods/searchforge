@@ -7,14 +7,19 @@
     <view class="section-label">下一步</view>
     <view class="list-item">{{nextStep}}</view>
 
-    <view class="section-label" style="margin-top: 24rpx;">照片</view>
+    <view class="section-label section-gap">照片</view>
     <view class="list-item">已上传 {{photoCount}} 张</view>
 
     <view class="disclaimer">{{disclaimer}}</view>
   </view>
 
   <view class="footer-cta">
-    <button class="btn-primary" bindtap="onViewStatus">查看当前状态</button>
-    <button wx:if="{{submitted}}" class="btn-secondary" bindtap="onSupplement">继续补充资料</button>
+    <button class="btn-primary" hover-class="btn-primary-hover" bindtap="onViewStatus">返回我的资料</button>
+    <button
+      wx:if="{{submitted}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onSupplement"
+    >继续补充照片</button>
   </view>
 </view>

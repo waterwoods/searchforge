@@ -40,10 +40,11 @@ Page({
   },
 
   onShow() {
+    if (this.data.uploading) return;
     this.refreshFromServer();
   },
 
-  async refreshFromServer() {
+  async refreshFromServer(options?: { pageLoading?: boolean }) {
     const app = getApp<IAppOption>();
     const token = app.taskToken;
     if (!token) {
@@ -51,7 +52,10 @@ Page({
       return;
     }
 
-    this.setData({ loading: true });
+    const pageLoading = options?.pageLoading !== false;
+    if (pageLoading) {
+      this.setData({ loading: true });
+    }
     try {
       const task = await CustomerTaskApi.getTask(token);
       app.task = task;
@@ -64,12 +68,14 @@ Page({
         loading: false,
       });
     } catch {
-      this.setData({ loading: false });
+      this.setData({ loading: false, uploading: false });
       wx.showToast({ title: "无法刷新照片状态", icon: "none" });
     }
   },
 
   async onAddPhoto() {
+    if (this.data.uploading) return;
+
     const app = getApp<IAppOption>();
     const uploadUrl = this.data.uploadUrl || String(app.task?.upload_url || "");
     if (!uploadUrl) {
@@ -82,13 +88,14 @@ Page({
       return;
     }
 
+    this.setData({ uploading: true });
     try {
       const picked = await choosePhoto();
       const slots = [...this.data.slots];
       const idx = slots.findIndex((s) => !s.uploaded);
       if (idx < 0) return;
       slots[idx] = { ...slots[idx], localPath: picked.tempFilePath, uploading: true, error: "" };
-      this.setData({ slots, uploading: true });
+      this.setData({ slots });
 
       let slotKey = slots[idx].key;
       try {
@@ -102,7 +109,7 @@ Page({
 
       await CustomerTaskApi.uploadPhoto(uploadUrl, picked.tempFilePath, slotKey);
       wx.showToast({ title: "上传成功", icon: "success" });
-      await this.refreshFromServer();
+      await this.refreshFromServer({ pageLoading: false });
     } catch (err) {
       const msg =
         err instanceof Error && err.message === "cancelled"
@@ -114,7 +121,9 @@ Page({
       if (idx >= 0) {
         slots[idx] = { ...slots[idx], uploading: false, error: msg || "上传失败" };
       }
-      this.setData({ slots, uploading: false });
+      this.setData({ slots });
+    } finally {
+      this.setData({ uploading: false });
     }
   },
 

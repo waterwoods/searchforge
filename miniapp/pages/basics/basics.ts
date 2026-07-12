@@ -93,4 +93,8 @@ Page({
       this.setData({ saving: false });
     }
   },
+
+  onLater() {
+    wx.navigateBack();
+  },
 });

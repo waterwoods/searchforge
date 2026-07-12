@@ -3,11 +3,13 @@ import { appConfig } from "../../utils/config";
 import {
   buildSupplementRows,
   isSubmitted,
+  mapErrorMessage,
   progressPercent,
   prototypePhotoTarget,
   resolveNextAction,
   type SupplementTaskRow,
 } from "../../utils/taskMapping";
+import { ApiRequestError } from "../../utils/request";
 
 type PageData = {
   loading: boolean;
@@ -63,7 +65,14 @@ Page({
       const task = await CustomerTaskApi.getTask(token);
       app.task = task;
       this.applyTask(task);
-    } catch {
+    } catch (err) {
+      const code =
+        err instanceof ApiRequestError ? err.code : "network_error";
+      if (app.task) {
+        this.applyTask(app.task);
+        wx.showToast({ title: mapErrorMessage(code), icon: "none" });
+        return;
+      }
       wx.redirectTo({ url: "/pages/entry/entry" });
     }
   },

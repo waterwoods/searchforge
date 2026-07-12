@@ -1,6 +1,7 @@
 import { CustomerTaskApi } from "../../services/taskApi";
 import { appConfig } from "../../utils/config";
-import { isSubmitted, photoCount } from "../../utils/taskMapping";
+import { isSubmitted, mapErrorMessage, photoCount } from "../../utils/taskMapping";
+import { ApiRequestError } from "../../utils/request";
 
 Page({
   data: {
@@ -39,10 +40,16 @@ Page({
         disclaimer:
           summary?.disclaimer ||
           dash?.warning ||
-          "这只是资料收集，不代表已经正式向保险公司报案。",
+          "这只是资料收集，不代表已向保险公司正式报案。",
         submitted: isSubmitted(task),
       });
-    } catch {
+    } catch (err) {
+      const code =
+        err instanceof ApiRequestError ? err.code : "network_error";
+      if (app.task) {
+        wx.showToast({ title: mapErrorMessage(code), icon: "none" });
+        return;
+      }
       wx.redirectTo({ url: "/pages/entry/entry" });
     }
   },

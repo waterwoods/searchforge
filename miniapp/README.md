@@ -43,7 +43,7 @@ miniapp/
 
 ```bash
 bash scripts/run_demo_local.sh
-# or: PYTHONPATH=. uvicorn services.fiqa_api.app_main:app --host 127.0.0.1 --port 8001
+# or: PYTHONPATH=. uvicorn services.fiqa_api.app_main:app --host 0.0.0.0 --port 8001
 ```
 
 2. **Mint QA token** (same shell env as API — source `.env` / `.env.cloudrun`):
@@ -88,6 +88,7 @@ PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py --inprocess
 
 | Issue | Fix |
 |-------|-----|
+| `ERR_CONNECTION_REFUSED` / `backend_unreachable` | Start API: `bash scripts/run_demo_local.sh`; verify `curl http://127.0.0.1:8001/healthz`. Real-device preview: set `apiBaseUrl` in `config.local.ts` to your PC **LAN IP** (not `127.0.0.1`). WSL2: use `grep nameserver /etc/resolv.conf` host IP or `hostname -I`. |
 | `invalid_or_expired_task_link` | Token secret mismatch — mint with same `H5_TASK_TOKEN_SECRET` as API |
 | `case_not_found` on local HTTP | Use `--shared-local-store` smoke flag; align `UNIFIED_INTAKE_CASES_PATH` |
 | Upload fails | Enable 不校验合法域名; confirm GCS credentials on API |

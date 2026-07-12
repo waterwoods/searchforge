@@ -1,6 +1,3 @@
-.review-block {
-  background: #f8f9fa;
-  padding: 20rpx;
-  border-radius: 12rpx;
-  white-space: pre-wrap;
+.muted-text {
+  color: #888888;
 }

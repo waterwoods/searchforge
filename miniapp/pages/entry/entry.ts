@@ -4,9 +4,13 @@ import {
   resolveTaskLaunchContext,
 } from "../../services/taskLaunchContext";
 import { mapErrorMessage, isSubmitted } from "../../utils/taskMapping";
+import { resetApiHealthCache } from "../../utils/apiHealth";
 import { devLog } from "../../utils/config";
 import { ApiRequestError } from "../../utils/request";
 import { clearResumeToken } from "../../utils/storage";
+
+const RETRY_COOLDOWN_MS = 5000;
+let lastBootstrapAt = 0;
 
 Page({
   data: {
@@ -20,6 +24,13 @@ Page({
   },
 
   async bootstrap(options: Record<string, string | undefined>) {
+    const now = Date.now();
+    if (now - lastBootstrapAt < RETRY_COOLDOWN_MS && !this.data.loading) {
+      wx.showToast({ title: "请稍候再试", icon: "none" });
+      return;
+    }
+    lastBootstrapAt = now;
+
     this.setData({ loading: true, errorMessage: "", errorCode: "" });
 
     const ctx = resolveTaskLaunchContext(options);
@@ -68,6 +79,7 @@ Page({
   },
 
   onRetry() {
+    resetApiHealthCache();
     const app = getApp<{ taskToken?: string }>();
     const token = app.taskToken || "";
     this.bootstrap(token ? { token } : {});

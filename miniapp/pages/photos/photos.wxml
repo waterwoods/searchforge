@@ -1,30 +1,42 @@
 <view class="container">
-  <view class="card">
-    <view class="card-title">添加事故照片</view>
-    <view class="card-subtitle">建议拍摄：事故现场、车辆受损位置。已上传 {{photoCount}}/{{photoTarget}} 张。</view>
-
-    <view class="photo-grid">
-      <view
-        wx:for="{{slots}}"
-        wx:key="key"
-        class="photo-slot {{item.localPath || item.uploaded ? '' : 'empty'}}"
-      >
-        <image wx:if="{{item.localPath}}" src="{{item.localPath}}" mode="aspectFill" />
-        <text wx:elif="{{item.uploaded}}">已上传</text>
-        <text wx:else>{{item.label}}</text>
-        <view wx:if="{{item.error}}" class="photo-error" data-index="{{index}}" bindtap="onRetrySlot">重试</view>
-      </view>
-    </view>
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <text class="loading-text">正在加载照片…</text>
   </view>
 
-  <view class="footer-cta">
+  <block wx:else>
+    <view class="card">
+      <view class="card-title">添加事故照片</view>
+      <view class="card-subtitle">建议拍摄事故现场和车辆受损位置。已上传 {{photoCount}}/{{photoTarget}} 张。</view>
+
+      <view class="photo-grid">
+        <view
+          wx:for="{{slots}}"
+          wx:key="key"
+          class="photo-slot {{item.localPath || item.uploaded ? '' : 'empty'}}"
+        >
+          <image wx:if="{{item.localPath}}" src="{{item.localPath}}" mode="aspectFill" />
+          <text wx:elif="{{item.uploaded}}">已上传</text>
+          <text wx:else>{{item.label}}</text>
+          <view wx:if="{{item.error}}" class="photo-error" data-index="{{index}}" bindtap="onRetrySlot">点击重试</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view class="footer-cta" wx:if="{{!loading}}">
     <button
       wx:if="{{photoCount < photoTarget}}"
       class="btn-primary"
+      hover-class="btn-primary-hover"
       bindtap="onAddPhoto"
       loading="{{uploading}}"
       disabled="{{uploading}}"
     >添加照片</button>
-    <button wx:else class="btn-primary" bindtap="onContinue">继续</button>
+    <button
+      wx:else
+      class="btn-primary"
+      hover-class="btn-primary-hover"
+      bindtap="onContinue"
+    >完成，返回</button>
   </view>
 </view>

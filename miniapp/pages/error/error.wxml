@@ -1,8 +1,8 @@
 <view class="container">
   <view class="card">
-    <view class="card-title">无法继续</view>
+    <view class="card-title">暂时无法继续</view>
     <view class="card-subtitle">{{message}}</view>
-    <button class="btn-primary" bindtap="onRetry">重试</button>
-    <button class="btn-secondary" bindtap="onContact">返回微信联系陈总</button>
+    <button class="btn-primary" hover-class="btn-primary-hover" bindtap="onRetry">重试</button>
+    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onContact">返回微信联系陈总</button>
   </view>
 </view>
