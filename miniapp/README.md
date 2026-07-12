@@ -46,12 +46,12 @@ bash scripts/run_demo_local.sh
 # or: PYTHONPATH=. uvicorn services.fiqa_api.app_main:app --host 0.0.0.0 --port 8001
 ```
 
-2. **Mint QA token** (same shell env as API — source `.env` / `.env.cloudrun`):
+2. **Mint QA token** (after `run_demo_local.sh` has bootstrapped Cloud SQL, or from the same shell):
 
 ```bash
-set -a && . .env && . .env.cloudrun && set +a
-UNIFIED_INTAKE_CASES_PATH=data/unified_intake_cases.json \
-  PYTHONPATH=. python3 scripts/p19m1_mint_prototype_token.py --api-base http://127.0.0.1:8001
+PYTHONPATH=. python3 scripts/p19m1_mint_prototype_token.py \
+  --cloud-sql \
+  --api-base http://127.0.0.1:8001
 ```
 
 3. **Optional local override:** copy `config.example.ts` → `config.local.ts` (gitignored); set `apiBaseUrl` and/or `devTaskToken`.
@@ -67,13 +67,11 @@ UNIFIED_INTAKE_CASES_PATH=data/unified_intake_cases.json \
 Proves the same API sequence the mini program uses:
 
 ```bash
-# Requires running local API + aligned env
-set -a && . .env && . .env.cloudrun && set +a
-UNIFIED_INTAKE_CASES_PATH=data/unified_intake_cases.json \
-  PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py \
-  --base-url http://127.0.0.1:8001 --shared-local-store
+# Requires running local API on 8001 (Cloud SQL SSOT)
+PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py \
+  --base-url http://127.0.0.1:8001 --cloud-sql
 
-# In-process (no network)
+# In-process (no network; isolated temp store)
 PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py --inprocess
 ```
 
@@ -90,7 +88,7 @@ PYTHONPATH=. python3 scripts/p19m1a_devtools_e2e_smoke.py --inprocess
 |-------|-----|
 | `ERR_CONNECTION_REFUSED` / `backend_unreachable` | Start API: `bash scripts/run_demo_local.sh`; verify `curl http://127.0.0.1:8001/healthz`. Real-device preview: set `apiBaseUrl` in `config.local.ts` to your PC **LAN IP** (not `127.0.0.1`). WSL2: use `grep nameserver /etc/resolv.conf` host IP or `hostname -I`. |
 | `invalid_or_expired_task_link` | Token secret mismatch — mint with same `H5_TASK_TOKEN_SECRET` as API |
-| `case_not_found` on local HTTP | Use `--shared-local-store` smoke flag; align `UNIFIED_INTAKE_CASES_PATH` |
+| `case_not_found` on local HTTP | Mint and API must both use Cloud SQL (`run_demo_local.sh` + `--cloud-sql` on mint/E2E) |
 | Upload fails | Enable 不校验合法域名; confirm GCS credentials on API |
 | Compile error missing config | Use committed `config.defaults.ts`; override via `config.local.ts` |
 

@@ -84,19 +84,23 @@ PYTHONPATH=. python3 -m pytest \
 
 ## 4. Automated E2E Support (Phase 3)
 
-**Founder GUI case (`case_a1cf5dfea5c6`) — read-only inspection (not overwritten):**
+**Founder GUI case (`case_a1cf5dfea5c6`) — read-only Cloud SQL inspection (2026-07-12, not overwritten):**
 
 | Field | Value |
 |-------|-------|
-| Phase | `accident_basics_in_progress` |
+| DB | `provider=gcp-cloud-sql` (Neon deleted) |
+| Phase | `other_party_complete` |
 | Submitted | `false` |
-| Story | Not saved |
-| Basics | Not saved |
-| Photos | 0 |
-| Current step | `injury` |
-| Upload URL | Present |
+| `broker_done` | `false` |
+| Story | **Saved** (`accident_description` present) |
+| Basics | **Partial** — datetime `7/8`, location `irvine`, injury `yes`; `vehicle_details` empty |
+| Photos | **2** (`attachment_count=2`) |
+| Current step | `review` |
+| Submit events | 0 |
+| `workbench_visible` | `false` (expected until submit) |
+| `updated_at` | `2026-07-12T06:11:15Z` |
 
-**Decision:** Did **not** auto-complete Founder GUI journey on this case — preserves manual validation path.
+**Decision:** Did **not** auto-complete submit on this case — preserves Founder GUI path for Review → Receipt → Resume → Workbench.
 
 **API contract proof (isolated in-process smoke — fresh case, does not touch Founder case):**
 
@@ -122,27 +126,23 @@ Evidence: `docs/evidence/p19m1a_devtools_e2e_smoke_20260712_0514.json`
 
 ## 5. Broker Workbench Readback (Phase 4)
 
-**Founder GUI case (current — pre-journey):**
+**Founder GUI case (`case_a1cf5dfea5c6`) — backend vs GUI verification:**
 
-| Item | Classification |
-|------|----------------|
-| QA/test label | PASS (`P19M1A-DEVTOOLS-E2E-founder-gui`) |
-| Accident story | WAITING FOR FOUNDER INPUT |
-| Accident date/time | WAITING FOR FOUNDER INPUT |
-| Location | WAITING FOR FOUNDER INPUT |
-| Injury status | WAITING FOR FOUNDER INPUT |
-| Vehicle details | WAITING FOR FOUNDER INPUT |
-| Two photos/evidence | WAITING FOR FOUNDER INPUT |
-| Timeline events | WAITING FOR FOUNDER INPUT (0 events) |
-| Missing items | PASS (backend lists 8 missing fields) |
-| Submitted / broker-review state | WAITING FOR FOUNDER INPUT |
-| AI/Case Brief summary | PASS (placeholder: "客户已发起理赔记录…") |
-| Broker next step | PASS |
-| `broker_done=false` | PASS |
-| Workbench visible flag | MANUAL GUI REQUIRED (expected after customer data + submit) |
-| Chen Kui 10-second comprehension | MANUAL GUI REQUIRED |
+| Item | BACKEND VERIFIED | FOUNDER GUI VERIFIED |
+|------|------------------|----------------------|
+| QA/test label | ✅ `P19M1A-DEVTOOLS-E2E-founder-gui` | — |
+| Launch / token resolve | ✅ | ✅ Task Home reached |
+| Accident story | ✅ saved | ✅ (DevTools save reflected in Cloud SQL) |
+| Accident date/time, location, injury | ✅ partial (vehicle empty) | ✅ partial |
+| Two photos/evidence | ✅ count **2** | ✅ (uploads in Cloud SQL) |
+| Current H5 step | ✅ `review` | ⏳ Review page not yet signed off |
+| Submitted / broker-review state | ❌ `submitted=false` | ⏳ |
+| Timeline submit event | ❌ 0 events | ⏳ |
+| `broker_done=false` | ✅ | — |
+| Workbench visible + enrichment | ❌ pre-submit | ⏳ visual check after submit |
+| Chen Kui 10-second comprehension | — | ⏳ after Workbench open |
 
-**Automated E2E case (post-submit reference):** All workbench checks PASS in smoke JSON.
+**Automated E2E case (post-submit reference):** All workbench checks PASS in smoke JSON (`p19m1a_devtools_e2e_smoke_20260712_0514.json`).
 
 ---
 
@@ -168,21 +168,25 @@ Prerequisites: API on 8001 (`bash scripts/run_demo_local.sh`), open `miniapp/` i
 
 **Verdict: CONDITIONAL GO**
 
-| GO criterion | Status |
-|--------------|--------|
-| Founder Task Home rendered | ✅ (Founder confirmed) |
-| Story saved in DevTools | ⏳ Founder GUI |
-| Basics saved in DevTools | ⏳ Founder GUI |
-| Two native photo uploads | ⏳ Founder GUI |
-| Review rendered | ⏳ Founder GUI |
-| Submit once | ⏳ Founder GUI |
-| Receipt rendered | ⏳ Founder GUI |
-| Resume same case | ⏳ Founder GUI |
-| Workbench story/basics/photos/timeline | ⏳ Founder GUI |
-| No blocking app errors | ✅ (automated); GUI TBD |
-| Focused tests pass | ✅ 181/181 |
+| Area | BACKEND VERIFIED | FOUNDER GUI VERIFIED |
+|------|------------------|----------------------|
+| Launch / Task Home | ✅ | ✅ |
+| Story | ✅ | ✅ |
+| Basics | ✅ partial (vehicle empty) | ✅ partial |
+| Photos (2) | ✅ | ✅ |
+| Review | ✅ (`current_step=review`) | ⏳ |
+| Submit once | ⏳ (not submitted) | ⏳ |
+| Receipt | ⏳ | ⏳ |
+| Resume same case | ⏳ (needs post-submit) | ⏳ |
+| Workbench readback | ⏳ (pre-submit) | ⏳ |
+| No blocking app errors | ✅ | ✅ through photos |
+| Focused tests | ✅ 181/181 | — |
 
 **Not NO-GO:** No state corruption, wrong case, or API contract failure observed.
+
+**Architecture:** No blocker. **GCP Cloud SQL is SSOT; legacy Neon deleted.**
+
+**Remaining Founder GUI path:** **Review → Submit → Receipt → Resume → Workbench visual check** (same case `case_a1cf5dfea5c6` or fresh mint).
 
 ---
 
@@ -203,7 +207,7 @@ Prerequisites: API on 8001 (`bash scripts/run_demo_local.sh`), open `miniapp/` i
 | Production readiness | 1 | Prototype scope only |
 | WeChat publication readiness | 1 | Gate 1 not started |
 
-**Largest remaining gap:** Founder manual GUI E2E in real WeChat DevTools (Story → Submit → Workbench visual confirmation).
+**Largest remaining gap:** Founder GUI sign-off on **Review → Submit → Receipt → Resume → Workbench** (backend data through photos already on Cloud SQL).
 
 ### Recommended next sequence
 
@@ -232,8 +236,7 @@ Prerequisites: API on 8001 (`bash scripts/run_demo_local.sh`), open `miniapp/` i
 
 | Blocker | Severity |
 |---------|----------|
-| Founder GUI steps 2–9 not yet executed | Medium — expected |
-| Workbench visual acceptance by Founder | Medium |
+| Founder GUI: Review → Submit → Receipt → Resume → Workbench visual | Medium — last path only |
 | WeChat real-device / publication path unverified | Low (out of Phase 1) |
 
 ---
@@ -256,4 +259,4 @@ Prerequisites: API on 8001 (`bash scripts/run_demo_local.sh`), open `miniapp/` i
 
 ---
 
-*P19M Phase 1 automated acceptance complete — awaiting Founder GUI closeout.*
+*P19M Phase 1 — no architectural blocker; Cloud SQL SSOT; Neon deleted. Awaiting Founder GUI closeout on Review → Submit → Receipt → Resume → Workbench.*
