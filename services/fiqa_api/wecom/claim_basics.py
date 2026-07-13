@@ -965,12 +965,19 @@ def ingest_claim_collision_continue(
     msg_id = str(normalized.get("msg_id") or "").strip()
 
     if trigger_text and trigger_msg_id and not find_case_by_wecom_msg_id(trigger_msg_id):
+        extracted_trigger = extract_accident_basics_fields(trigger_text)
         triage_stub = _build_claim_triage_stub(
             get_case_for_read(target_id) or {},
-            extract_accident_basics_fields(trigger_text),
+            extracted_trigger,
             injury_mentioned=message_mentions_injury(trigger_text),
         )
         append_follow_up_message(target_id, trigger_text, triage_stub)
+        patch_case_known_facts(
+            target_id,
+            {key: value for key, value in extracted_trigger.items() if value},
+            source="wecom_customer_text",
+            status="customer_supplement",
+        )
         _append_claim_text_timeline(target_id, message_id=trigger_msg_id, text=trigger_text)
         _record_wecom_evidence(target_id, trigger_msg_id)
 
@@ -1577,7 +1584,6 @@ def _ingest_claim_post_submit_supplement(
     identity_kwargs: dict[str, Any],
     open_claim_count: int,
 ) -> dict[str, Any]:
-    from services.fiqa_api.inbox_triage.case_store import patch_known_fact_provenance
     from services.fiqa_api.inbox_triage.h5_task_intake import is_h5_task_dashboard_available
     from services.fiqa_api.inbox_triage.h5_task_link import mint_h5_claim_intake_form_link
     from services.fiqa_api.wecom.reply import build_claim_supplement_received_reply
@@ -1593,14 +1599,12 @@ def _ingest_claim_post_submit_supplement(
 
     facts_patch = {k: v for k, v in supplement.items() if v}
     if facts_patch:
-        patch_case_known_facts(case_id, facts_patch)
-        for field in facts_patch:
-            patch_known_fact_provenance(
-                case_id,
-                field,
-                source="wecom_customer_text",
-                status="customer_supplement",
-            )
+        patch_case_known_facts(
+            case_id,
+            facts_patch,
+            source="wecom_customer_text",
+            status="customer_supplement",
+        )
 
     h5_intake_url: str | None = None
     if is_h5_task_dashboard_available(case):
@@ -1772,7 +1776,12 @@ def ingest_claim_injury_quick_reply(
             "needs_broker_manual_handle": False,
         }
 
-    patch_case_known_facts(case_id, {"injury_status": injury_status})
+    patch_case_known_facts(
+        case_id,
+        {"injury_status": injury_status},
+        source="wecom_customer_text",
+        status="customer_supplement",
+    )
     append_claim_timeline_event(
         case_id,
         build_claim_timeline_event(
@@ -2339,6 +2348,12 @@ def ingest_claim_basics_message(
                 "active_case_outcome": "claim_case_not_found",
                 "service_lane": None,
             }
+        patch_case_known_facts(
+            case_id,
+            {key: value for key, value in extracted.items() if value},
+            source="wecom_customer_text",
+            status="customer_supplement",
+        )
         _append_claim_text_timeline(case_id, message_id=msg_id, text=text)
         _record_wecom_evidence(case_id, msg_id)
         refreshed = get_case_for_read(case_id) or updated

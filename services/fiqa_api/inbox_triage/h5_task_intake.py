@@ -378,6 +378,125 @@ def _build_dashboard_summary(case: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _customer_task_status(case: dict[str, Any]) -> str:
+    if _is_submitted(case):
+        return "submitted"
+    if _current_step(case) == "review":
+        return "review_ready"
+    if get_claim_missing_items(case):
+        return "collecting"
+    return "collecting"
+
+
+def _customer_task_fields(case: dict[str, Any]) -> dict[str, str]:
+    """Expose only fixed Claim input keys with customer-confirmed provenance."""
+    facts = _facts(case)
+    provenance = case.get("known_fact_provenance")
+    provenance = provenance if isinstance(provenance, dict) else {}
+    allowed_keys = (
+        "anyone_injured",
+        "injury_status",
+        "accident_datetime",
+        "accident_location",
+        "accident_description",
+        "own_vehicle_info",
+        "other_party_plate",
+        "other_party_info",
+    )
+    accepted_sources = {"customer_task", "h5_form", "customer_confirmed"}
+    fields: dict[str, str] = {}
+    for key in allowed_keys:
+        meta = provenance.get(key)
+        if not isinstance(meta, dict):
+            continue
+        if str(meta.get("source") or "").strip().lower() not in accepted_sources:
+            continue
+        value = str(facts.get(key) or "").strip()
+        if value:
+            fields[key] = value
+    return fields
+
+
+def build_customer_task_contract(case: dict[str, Any], *, task_id: str) -> dict[str, Any]:
+    """Build the additive, customer-safe Claim Task Contract v0 projection."""
+    missing_items = get_claim_missing_items(case)
+    submitted = _is_submitted(case)
+    review_ready = _minimum_submit_ready(case)
+    current_step = _current_step(case)
+    total = len(CLAIM_INTAKE_STEPS[1:-2])
+    state = _h5_intake_state(case)
+    evidence_requirements = [
+        {
+            "slot": str(item.get("field") or ""),
+            "label": str(item.get("label") or ""),
+            "min": 1,
+            "received": 0 if str(item.get("field") or "") else 0,
+        }
+        for item in missing_items
+        if str(item.get("kind") or "") == "photo"
+    ]
+    sections = [
+        {
+            "key": "injury",
+            "label": "受伤情况",
+            "component_type": "choice",
+            "required": True,
+            "status": "received" if _step_complete(case, "injury") else "needed",
+        },
+        {
+            "key": "time_location",
+            "label": "事故时间和地点",
+            "component_type": "short_text",
+            "required": True,
+            "status": "received" if _step_complete(case, "time_location") else "needed",
+        },
+        {
+            "key": "story",
+            "label": "事故经过",
+            "component_type": "long_text",
+            "required": True,
+            "status": "received" if _step_complete(case, "story") else "needed",
+        },
+        {
+            "key": "vehicle_other_party",
+            "label": "车辆和对方信息",
+            "component_type": "short_text",
+            "required": True,
+            "status": "received" if _step_complete(case, "vehicle_other_party") else "needed",
+        },
+    ]
+    next_type = "submit" if review_ready and not submitted else "go_to_section"
+    next_target = "review" if review_ready else current_step
+    next_label = "提交给陈总审核" if review_ready and not submitted else _dashboard_primary_cta(case)
+    return {
+        "contract_version": "0",
+        "task_id": task_id,
+        "task_type": "claim_intake",
+        "task_status": _customer_task_status(case),
+        "title": _H5_DASHBOARD_TITLE,
+        "instruction": _dashboard_next_action(case),
+        "progress": {"completed": _completed_step_count(case), "total": total},
+        "sections": sections,
+        "fields": _customer_task_fields(case),
+        "missing_items": [
+            {"key": str(item.get("field") or ""), "label": str(item.get("label") or "")}
+            for item in missing_items
+        ],
+        "evidence_requirements": evidence_requirements,
+        "next_action": {"type": next_type, "target": next_target, "label": next_label},
+        "review_ready": review_ready,
+        "submit_ready": review_ready and not submitted,
+        "revision": int(state.get("task_revision") or 0),
+        "timestamps": {"updated_at": str(case.get("updated_at") or "")},
+        "capabilities": {"voice": False, "scan": False},
+        "branding": {
+            "office_name": "陈总办公室",
+            "safety_copy": CLAIM_INTAKE_SAFETY_COPY,
+        },
+        "error": None,
+    }
+
+
 def _field_value_hash(step: str, facts_patch: dict[str, str]) -> str:
     joined = "|".join(f"{k}={facts_patch[k]}" for k in sorted(facts_patch))
     digest = hashlib.sha256(f"{step}:{joined}".encode("utf-8")).hexdigest()[:16]
@@ -421,6 +540,7 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "photo_count": _all_attachment_photo_count(case),
         "completion_summary": _build_completion_summary(case),
         "dashboard_summary": dashboard,
+        "task_contract": build_customer_task_contract(case, task_id=claims.nonce),
     }
 
 
@@ -447,7 +567,12 @@ def patch_intake_fields(
     if dedup_key in set(state.get("field_dedup_keys") or []):
         return intake_info_for_token(claims)
 
-    patch_case_known_facts(claims.case_id, facts_patch)
+    patch_case_known_facts(
+        claims.case_id,
+        facts_patch,
+        source="customer_task",
+        status="customer_confirmed",
+    )
     append_case_collected_fields(claims.case_id, _collected_keys_for_patch(step_norm, facts_patch))
     append_claim_timeline_event(
         claims.case_id,
@@ -466,6 +591,7 @@ def patch_intake_fields(
         dedup_keys.append(dedup_key)
     new_state["field_dedup_keys"] = dedup_keys[-50:]
     new_state["last_step"] = step_norm
+    new_state["task_revision"] = int(new_state.get("task_revision") or 0) + 1
     update_case_h5_intake_state(claims.case_id, new_state)
 
     return intake_info_for_token(claims)
@@ -535,6 +661,7 @@ def submit_intake_form(
         source_channel="h5_task",
     )["created_at"]
     submit_state["submitted"] = True
+    submit_state["task_revision"] = int(submit_state.get("task_revision") or 0) + 1
     update_case_h5_intake_state(claims.case_id, submit_state)
 
     confirm_result = try_send_h5_submit_confirmation(claims.case_id)

@@ -43,6 +43,19 @@ ALLOWED_ATTACHMENT_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf
 
 logger = logging.getLogger(__name__)
 
+_FACT_SOURCE_AUTHORITY = {
+    "system_default": 0,
+    "ai_suggestion": 1,
+    "wecom_customer_message": 2,
+    "wecom_customer_text": 2,  # legacy Workbench display alias
+    "customer_task": 3,
+    "h5_form": 3,
+    "customer_confirmed": 4,
+    "broker_confirmed": 5,
+}
+_LEGACY_FACT_SOURCE = "customer_task"
+_MAX_KNOWN_FACT_CONFLICTS = 50
+
 # Stage-1 optional light identity (nullable; not auth) — LIGHT_IDENTITY_ENTRY_STUB
 _IDENTITY_BINDING_STATES = frozenset({"unbound", "prompted", "deferred", "linked"})
 _PERSON_LINK_SOURCES = frozenset({"wechat", "phone", "email"})
@@ -1428,28 +1441,121 @@ def append_claim_timeline_event(case_id: str, event: dict[str, Any]) -> dict[str
     return normalized_case
 
 
-def patch_case_known_facts(case_id: str, facts_patch: dict[str, str]) -> dict[str, Any] | None:
-    """Merge string facts into case known_facts (additive, Claim-safe)."""
+def patch_case_known_facts(
+    case_id: str,
+    facts_patch: dict[str, str],
+    *,
+    source: str = "system_default",
+    status: str | None = None,
+    explicit_broker_action: bool = False,
+) -> dict[str, Any] | None:
+    """Merge facts through the centralized provenance precedence guard.
+
+    Unknown legacy provenance is treated as ``customer_task`` so advisory or
+    message-derived updates cannot silently replace an existing customer fact.
+    A broker-confirmed replacement requires an explicit, logged broker action.
+    """
     cid = (case_id or "").strip()
     if not cid or not facts_patch:
         return None
+    source_norm = str(source or "").strip().lower()
+    if source_norm not in _FACT_SOURCE_AUTHORITY:
+        raise ValueError("unsupported_fact_source")
     _require_case_storage_path()
     normalized_case = _load_case_for_mutation(cid)
     if normalized_case is None:
         return None
     existing = dict(normalized_case.get("known_facts") or {}) if isinstance(normalized_case.get("known_facts"), dict) else {}
+    provenance = (
+        dict(normalized_case.get("known_fact_provenance") or {})
+        if isinstance(normalized_case.get("known_fact_provenance"), dict)
+        else {}
+    )
+    conflicts = [
+        item
+        for item in (normalized_case.get("known_fact_conflicts") or [])
+        if isinstance(item, dict)
+    ]
+    timeline = _claim_timeline_from_case(normalized_case) if _is_claim_service_lane(normalized_case) else []
     changed = False
+    conflict_recorded = False
     for key, value in facts_patch.items():
         k = str(key or "").strip()
         v = str(value or "").strip()
         if not k or not v:
             continue
-        if existing.get(k) != v:
+        current_value = str(existing.get(k) or "").strip()
+        current_meta = provenance.get(k) if isinstance(provenance.get(k), dict) else {}
+        current_source = str(current_meta.get("source") or _LEGACY_FACT_SOURCE).strip().lower()
+        if current_source not in _FACT_SOURCE_AUTHORITY:
+            current_source = _LEGACY_FACT_SOURCE
+        if current_value == v:
+            if k not in provenance:
+                provenance[k] = {
+                    "source": source_norm,
+                    "status": status or "confirmed",
+                }
+                changed = True
+            continue
+
+        can_replace = not current_value or (
+            _FACT_SOURCE_AUTHORITY[source_norm] >= _FACT_SOURCE_AUTHORITY[current_source]
+            and not (
+                source_norm == "broker_confirmed"
+                and current_source in {"customer_task", "h5_form", "customer_confirmed"}
+                and not explicit_broker_action
+            )
+        )
+        if can_replace:
             existing[k] = v
+            provenance[k] = {
+                "source": source_norm,
+                "status": status or ("confirmed" if source_norm == "broker_confirmed" else "pending_confirmation"),
+            }
             changed = True
+            if source_norm == "broker_confirmed" and explicit_broker_action and current_value:
+                timeline.append(
+                    build_claim_timeline_event(
+                        event_type="broker_confirmed_fact_updated",
+                        source_channel="broker",
+                        actor="broker",
+                        metadata={"field": k, "replaced_source": current_source},
+                    )
+                )
+            continue
+
+        conflict = {
+            "field": k,
+            "existing_source": current_source,
+            "incoming_source": source_norm,
+            "status": "needs_broker_review",
+            "recorded_at": _utc_now_iso(),
+        }
+        if conflict not in conflicts:
+            conflicts.append(conflict)
+            conflict_recorded = True
+        timeline.append(
+            build_claim_timeline_event(
+                event_type="fact_conflict_detected",
+                source_channel=source_norm,
+                actor="system",
+                metadata={"field": k, "existing_source": current_source, "incoming_source": source_norm},
+            )
+        )
     if not changed:
+        if conflict_recorded:
+            normalized_case["known_fact_conflicts"] = conflicts[-_MAX_KNOWN_FACT_CONFLICTS:]
+            normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
+            normalized_case["updated_at"] = _utc_now_iso()
+            if not _persist_case_after_update(cid, normalized_case):
+                return None
         return normalized_case
     normalized_case["known_facts"] = existing
+    normalized_case["known_fact_provenance"] = provenance
+    if conflict_recorded:
+        normalized_case["known_fact_conflicts"] = conflicts[-_MAX_KNOWN_FACT_CONFLICTS:]
+    if timeline:
+        normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
     normalized_case["updated_at"] = _utc_now_iso()
     if not _persist_case_after_update(cid, normalized_case):
         return None
@@ -2252,9 +2358,13 @@ def append_follow_up_message(
     else:
         normalized_case["lifecycle_status"] = triage_lc or existing_lc or "office_followup"
     if isinstance(triage_result.get("known_facts"), dict) and triage_result["known_facts"]:
-        existing_facts = dict(normalized_case.get("known_facts") or {})
-        existing_facts.update({k: str(v) for k, v in triage_result["known_facts"].items() if v})
-        normalized_case["known_facts"] = existing_facts
+        # Claim WeCom/triage extraction is advisory.  Its authoritative merge
+        # path is patch_case_known_facts(), which enforces provenance precedence.
+        # Do not bypass that guard during append-first timeline persistence.
+        if not _is_claim_service_lane(normalized_case):
+            existing_facts = dict(normalized_case.get("known_facts") or {})
+            existing_facts.update({k: str(v) for k, v in triage_result["known_facts"].items() if v})
+            normalized_case["known_facts"] = existing_facts
     # Client Identity Persistence: backfill client_id for legacy cases when provided
     if not normalized_case.get("client_id") and client_id and (cid := str(client_id or "").strip()):
         normalized_case["client_id"] = cid

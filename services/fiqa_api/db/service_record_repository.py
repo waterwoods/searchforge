@@ -209,6 +209,14 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["claim_end_card_state"] = dict(extra.get("claim_end_card_state") or {})
     if isinstance(extra.get("claim_flow_state"), dict):
         case["claim_flow_state"] = dict(extra.get("claim_flow_state") or {})
+    if isinstance(extra.get("h5_intake_state"), dict):
+        case["h5_intake_state"] = dict(extra.get("h5_intake_state") or {})
+    if isinstance(extra.get("known_fact_provenance"), dict):
+        case["known_fact_provenance"] = dict(extra.get("known_fact_provenance") or {})
+    if isinstance(extra.get("known_fact_conflicts"), list):
+        case["known_fact_conflicts"] = [
+            item for item in extra.get("known_fact_conflicts") or [] if isinstance(item, dict)
+        ]
 
 
 def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
@@ -239,6 +247,10 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "lane_switch_pending",
         "claim_end_card_state",
         "claim_flow_state",
+        # P20 Track B R2/R4: explicit bounded Claim task resume and trust fields.
+        "h5_intake_state",
+        "known_fact_provenance",
+        "known_fact_conflicts",
     )
     return {k: case[k] for k in keys if k in case}
 
