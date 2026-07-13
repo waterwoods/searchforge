@@ -342,6 +342,98 @@ def list_cases_for_office_enforcement_read(
         return slice_fb, total_fb
 
 
+def list_cases_for_client_scoped_read(
+    req_client: str,
+    *,
+    limit: int,
+    offset: int,
+    exclude_raw_inbound: bool = True,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Client-scoped slice for ``GET /api/inbox/cases`` when
+    ``UNIFIED_INTAKE_ENFORCE_CASE_CLIENT_OWNERSHIP`` is enabled.
+
+    ``req_client`` must be the server-resolved client id (never a client header).
+    """
+    from services.fiqa_api.security.case_client_access import (
+        case_visible_in_client_list,
+        client_list_strict_exclude_legacy_no_client,
+    )
+
+    safe_limit = max(1, min(int(limit or 8), 50))
+    safe_offset = max(0, min(int(offset or 0), 5000))
+    rc = (req_client or "").strip()[:128]
+    if not rc:
+        return [], 0
+
+    strict = client_list_strict_exclude_legacy_no_client()
+
+    from services.fiqa_api.inbox_triage.workbench_enrichment import filter_broker_workbench_cases
+
+    if is_production_mode() and not service_record_database_url():
+        logger.warning(
+            "JSON path should not be used in production (missing database URL) %s",
+            _OBS,
+        )
+        return [], 0
+
+    if not db_primary_reads_enabled():
+        scoped: list[dict[str, Any]] = []
+        for c in json_list_all_cases():
+            if not isinstance(c, dict):
+                continue
+            norm = _normalize_case(dict(c))
+            if case_visible_in_client_list(norm, rc):
+                scoped.append(norm)
+        if exclude_raw_inbound:
+            scoped = filter_broker_workbench_cases(scoped)
+        total = len(scoped)
+        return scoped[safe_offset : safe_offset + safe_limit], total
+
+    try:
+        from services.fiqa_api.db.service_record_repository import (
+            count_service_records_client_scoped,
+            list_record_ids_client_scoped,
+            load_workbench_queue_cases_from_postgres,
+        )
+
+        total = count_service_records_client_scoped(rc, strict)
+        ids = list_record_ids_client_scoped(rc, strict, safe_limit, safe_offset)
+        raw_rows = load_workbench_queue_cases_from_postgres(ids)
+        out: list[dict[str, Any]] = []
+        for norm in raw_rows:
+            rid = str(norm.get("case_id") or "").strip()
+            if not rid:
+                continue
+            norm = _normalize_case(dict(norm))
+            _merge_workbench_flags_from_json(rid, norm)
+            out.append(norm)
+        if exclude_raw_inbound:
+            out = filter_broker_workbench_cases(out)
+        return out, total
+    except Exception:
+        logger.exception("%s signal=PG_CLIENT_LIST_EXCEPTION path=list_cases_client", _OBS)
+        if not json_read_fallback_allowed():
+            return [], 0
+        scoped_fb: list[dict[str, Any]] = []
+        for c in json_list_all_cases():
+            if not isinstance(c, dict):
+                continue
+            norm = _normalize_case(dict(c))
+            if case_visible_in_client_list(norm, rc):
+                scoped_fb.append(norm)
+        if exclude_raw_inbound:
+            scoped_fb = filter_broker_workbench_cases(scoped_fb)
+        total_fb = len(scoped_fb)
+        slice_fb = scoped_fb[safe_offset : safe_offset + safe_limit]
+        logger.warning(
+            "%s signal=JSON_READ_FALLBACK_LIST_AFTER_PG_CLIENT_ERROR path=list_cases_client json_case_count=%s",
+            _OBS,
+            len(slice_fb),
+        )
+        return slice_fb, total_fb
+
+
 def list_all_cases_for_read() -> list[dict[str, Any]]:
     """All persisted cases (bounded), newest-first — used by service_record_read and similar."""
     if is_production_mode() and not service_record_database_url():

@@ -799,9 +799,10 @@ def save_case(
         case["office_broker_next_step"] = obs
     tm_save = str(triage_result.get("triage_mode") or "").strip().lower()
     case["triage_mode"] = tm_save if tm_save in ("greenfield", "append") else "greenfield"
-    # Client Identity Persistence: store client_id for append/reopen lifecycle
-    if client_id and (cid := str(client_id or "").strip()):
-        case["client_id"] = cid
+    # Client Identity Persistence: server-derived ownership stamp (never trust caller)
+    from services.fiqa_api.security.case_client_access import resolve_server_client_id
+
+    case["client_id"] = resolve_server_client_id()
     if asserted_org_id and (oid := str(asserted_org_id).strip()[:256]):
         case["asserted_org_id"] = oid
     # Explicit Stage-1 lane (Add-Car-first); set only when caller supplies (e.g. formal Add-Car persist path)
@@ -2365,9 +2366,11 @@ def append_follow_up_message(
             existing_facts = dict(normalized_case.get("known_facts") or {})
             existing_facts.update({k: str(v) for k, v in triage_result["known_facts"].items() if v})
             normalized_case["known_facts"] = existing_facts
-    # Client Identity Persistence: backfill client_id for legacy cases when provided
-    if not normalized_case.get("client_id") and client_id and (cid := str(client_id or "").strip()):
-        normalized_case["client_id"] = cid
+    # Client Identity Persistence: backfill legacy rows from server config only
+    if not normalized_case.get("client_id"):
+        from services.fiqa_api.security.case_client_access import resolve_server_client_id
+
+        normalized_case["client_id"] = resolve_server_client_id()
 
     normalized_case["case_activity"] = [
         _build_activity_entry("follow_up_added", f"Customer follow-up added: {_preview_text(new_msg, 64)}"),

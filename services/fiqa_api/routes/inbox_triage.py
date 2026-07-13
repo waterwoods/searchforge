@@ -57,6 +57,7 @@ from services.fiqa_api.inbox_triage.case_truth_repository import (
     get_case_triage_stub_for_read,
     list_cases_for_phone_lookup,
     list_cases_for_office_enforcement_read,
+    list_cases_for_client_scoped_read,
     list_recent_cases_for_binding,
     list_recent_cases_for_read,
     triage_stub_read_cache_scope,
@@ -143,6 +144,12 @@ from services.fiqa_api.security.case_office_access import (
     client_asserted_office_id,
     office_ownership_posture_dict,
 )
+from services.fiqa_api.security.case_client_access import (
+    assert_case_client_access_allowed,
+    case_client_enforcement_enabled,
+    client_ownership_posture_dict,
+    resolve_server_client_id,
+)
 from services.fiqa_api.security.intake_api_gate import intake_api_auth_posture_dict
 from services.fiqa_api.security.minimal_signed_broker_token import (
     minimal_broker_token_posture_dict,
@@ -182,6 +189,7 @@ def _support_replay_lineage_dict() -> dict[str, Any]:
         "triage_wire_contract_label": "triage_result_fe_grouping_v1",
         "semantics": "support_replay_handoff_metadata_v1_not_legal_hold",
         "office_ownership": office_ownership_posture_dict(),
+        "client_ownership": client_ownership_posture_dict(),
         "token_scope_registry": token_scope_registry_dict(),
         "minimal_broker_token_posture": minimal_broker_token_posture_dict(),
     }
@@ -1707,6 +1715,13 @@ async def get_recent_cases(
             offset=offset,
             exclude_raw_inbound=not include_raw_inbound,
         )
+    elif case_client_enforcement_enabled():
+        raw, total = list_cases_for_client_scoped_read(
+            resolve_server_client_id(),
+            limit=limit,
+            offset=offset,
+            exclude_raw_inbound=not include_raw_inbound,
+        )
     elif include_raw_inbound:
         total = count_cases_for_read()
         raw = list_recent_cases_for_read(limit=limit, offset=offset)
@@ -1818,6 +1833,7 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     if case is None:
         raise HTTPException(status_code=404, detail="case not found")
     assert_case_office_access_allowed(http_request, case)
+    assert_case_client_access_allowed(http_request, case)
     try:
         from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
 
@@ -2274,6 +2290,7 @@ async def support_deployment_manifest(request: Request) -> dict[str, Any]:
         "minimal_broker_token_request": minimal_broker_token_request_truth(request),
         "operator_runtime_hints": operator_runtime_hints(),
         "office_ownership": office_ownership_posture_dict(),
+        "client_ownership": client_ownership_posture_dict(),
         "token_scope_registry": token_scope_registry_dict(),
     }
 
@@ -2325,6 +2342,7 @@ async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
         "minimal_broker_token_request": minimal_broker_token_request_truth(request),
         "operator_runtime_hints": operator_runtime_hints(),
         "office_ownership": office_ownership_posture_dict(),
+        "client_ownership": client_ownership_posture_dict(),
         "case": {
             "case_id": case.get("case_id") or cid,
             "status": case.get("status"),

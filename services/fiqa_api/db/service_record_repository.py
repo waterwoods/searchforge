@@ -1204,3 +1204,97 @@ def delete_service_record(record_id: str) -> bool:
             deleted = cur.rowcount or 0
         conn.commit()
         return deleted > 0
+
+
+# Tables cleared by P20 Track C QA reset (no schema drop). service_records CASCADE
+# removes record_messages, structured_record_data, state_history, office_actions.
+_PURGE_AUX_TABLES = (
+    "wecom_message_processed",
+    "wecom_reply_outbox",
+    "wecom_inbox_events",
+    "wecom_sync_cursors",
+    "intake_sessions",
+)
+
+
+def purge_case_domain_data(*, dry_run: bool = False) -> dict[str, int]:
+    """Delete all Case-domain QA rows. Idempotent. Preserves schema and config tables."""
+
+    counts: dict[str, int] = {}
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            for table in _PURGE_AUX_TABLES:
+                if dry_run:
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    counts[table] = int(cur.fetchone()[0] or 0)
+                else:
+                    cur.execute(f"DELETE FROM {table}")
+                    counts[table] = int(cur.rowcount or 0)
+            if dry_run:
+                cur.execute("SELECT COUNT(*) FROM service_records")
+                counts["service_records"] = int(cur.fetchone()[0] or 0)
+            else:
+                cur.execute("DELETE FROM service_records")
+                counts["service_records"] = int(cur.rowcount or 0)
+        if not dry_run:
+            conn.commit()
+    return counts
+
+
+_PG_CLIENT_LIST_FILTER = """
+(
+  (
+    NULLIF(TRIM(sr.client_id), '') IS NULL
+    AND NOT %(strict)s
+  )
+  OR NULLIF(TRIM(sr.client_id), '') = %(req_client)s
+)
+"""
+
+
+def count_service_records_client_scoped(req_client: str, strict_exclude_unstamped: bool) -> int:
+    """Row count for GET /cases under client enforcement."""
+
+    cid = (req_client or "").strip()[:128]
+    if not cid:
+        return 0
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT COUNT(*) FROM service_records sr WHERE {_PG_CLIENT_LIST_FILTER}",
+                {"strict": strict_exclude_unstamped, "req_client": cid},
+            )
+            row = cur.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+def list_record_ids_client_scoped(
+    req_client: str,
+    strict_exclude_unstamped: bool,
+    limit: int,
+    offset: int,
+) -> list[str]:
+    """Indexed-path record ids for client-scoped workbench lists (newest first)."""
+
+    cid = (req_client or "").strip()[:128]
+    if not cid:
+        return []
+    safe = max(1, min(int(limit or 8), 500))
+    safe_offset = max(0, min(int(offset or 0), 10_000))
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT sr.record_id FROM service_records sr
+                WHERE {_PG_CLIENT_LIST_FILTER}
+                ORDER BY sr.updated_at DESC
+                LIMIT %(lim)s OFFSET %(off)s
+                """,
+                {
+                    "strict": strict_exclude_unstamped,
+                    "req_client": cid,
+                    "lim": safe,
+                    "off": safe_offset,
+                },
+            )
+            return [str(r[0]) for r in cur.fetchall()]
