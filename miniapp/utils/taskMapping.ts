@@ -14,6 +14,7 @@ const FIELD_LABELS: Record<string, string> = {
   scene_photo: "事故现场照片",
   photos: "事故照片",
   police_involved: "是否报警",
+  police_reported: "是否报警",
 };
 
 export type MissingItemAction =
@@ -48,6 +49,8 @@ const PHOTO_KEYS = new Set([
 const BASICS_KEYS = new Set([
   "anyone_injured",
   "injury_status",
+  "police_involved",
+  "police_reported",
   "accident_datetime",
   "accident_location",
   "own_vehicle_info",
@@ -56,13 +59,14 @@ const BASICS_KEYS = new Set([
 const UNSUPPORTED_KEYS = new Set([
   "other_party_plate",
   "other_party_info",
-  "police_involved",
 ]);
 
 const ACTIONABLE_ROUTES: Record<string, string> = {
   accident_description: "/pages/story/story",
   anyone_injured: "/pages/basics/basics",
   injury_status: "/pages/basics/basics",
+  police_involved: "/pages/basics/basics",
+  police_reported: "/pages/basics/basics",
   accident_datetime: "/pages/basics/basics",
   accident_location: "/pages/basics/basics",
   own_vehicle_info: "/pages/basics/basics",
@@ -71,6 +75,63 @@ const ACTIONABLE_ROUTES: Record<string, string> = {
   scene_photo: "/pages/photos/photos",
   photos: "/pages/photos/photos",
 };
+
+/** Known section route for a missing-item key (after alias normalize). */
+export function routeForMissingKey(rawKey: string): string | undefined {
+  const key = normalizeMissingKey(rawKey);
+  if (!key) return undefined;
+  return ACTIONABLE_ROUTES[key] || ACTIONABLE_ROUTES[rawKey];
+}
+
+/**
+ * Map a server-listed missing item to a UI row.
+ * If the contract/checklist still lists the field, keep an edit path even when
+ * local facts look complete (e.g. client treats "unknown" as filled while
+ * backend still reports the item missing). Does not change submit-ready rules.
+ */
+export function mapServerMissingItem(
+  item: { key?: string; field?: string; label?: string },
+  task: CustomerTask,
+): SupplementTaskRow | null {
+  const rawKey = String(item.key || item.field || "").trim();
+  const label = missingItemLabel(item);
+  if (!rawKey && !label) return null;
+
+  const nav = resolveMissingItemNav(rawKey, task);
+  const key = rawKey || normalizeMissingKey(rawKey) || label;
+  const route = nav.route || routeForMissingKey(rawKey);
+
+  if (nav.action === "DISPLAY_ONLY_PROTOTYPE" || nav.action === "UNSUPPORTED") {
+    return {
+      key,
+      label,
+      statusText: nav.statusText,
+      actionable: false,
+      route: undefined,
+      hint: nav.hint,
+    };
+  }
+
+  if (nav.action === "COMPLETED") {
+    if (!route) return null;
+    return {
+      key,
+      label,
+      statusText: nav.statusText || "待确认",
+      actionable: true,
+      route,
+    };
+  }
+
+  return {
+    key,
+    label,
+    statusText: nav.statusText,
+    actionable: nav.action === "ACTIONABLE_NOW" && Boolean(route),
+    route,
+    hint: nav.hint,
+  };
+}
 
 const INTAKE_STEPS_BEFORE_REVIEW = [
   "injury",
@@ -142,8 +203,61 @@ export function isNeedsMoreInfoPhase(phase: string): boolean {
 export function normalizeMissingKey(key: string): string {
   const raw = (key || "").trim();
   if (raw === "anyone_injured") return "injury_status";
+  if (raw === "police_reported") return "police_involved";
   if (PHOTO_KEYS.has(raw)) return "photos";
   return raw;
+}
+
+export type ReviewSupplementAction = {
+  route: string;
+  label: string;
+};
+
+/** Deterministic page order when multiple missing items are actionable. */
+const SUPPLEMENT_ROUTE_PRIORITY = [
+  "/pages/story/story",
+  "/pages/basics/basics",
+  "/pages/photos/photos",
+] as const;
+
+/** Customer-facing CTA copy for a known supplement route (no internal jargon). */
+export function supplementCtaLabelForRoute(route: string): string {
+  const path = String(route || "").trim();
+  if (path.includes("/pages/basics/basics")) return "去补充基本资料";
+  if (path.includes("/pages/story/story")) return "去填写事故经过";
+  if (path.includes("/pages/photos/photos")) return "去补充事故照片";
+  return "去补充资料";
+}
+
+/**
+ * Central supplement router: first actionable missing-item page.
+ * Multiple Basics-related items collapse to one Basics route.
+ * Submitted status must not block this — only formal re-submit is blocked.
+ */
+export function resolveSupplementAction(
+  missingItems: Array<{ actionable?: boolean; route?: string }>,
+): ReviewSupplementAction | null {
+  const routes = missingItems
+    .filter((item) => Boolean(item?.actionable) && Boolean(item?.route))
+    .map((item) => String(item.route).trim())
+    .filter(Boolean);
+  if (!routes.length) return null;
+
+  const uniqueRoutes = Array.from(new Set(routes));
+  const route =
+    SUPPLEMENT_ROUTE_PRIORITY.find((candidate) => uniqueRoutes.includes(candidate)) ||
+    uniqueRoutes[0];
+  return {
+    route,
+    label: supplementCtaLabelForRoute(route),
+  };
+}
+
+/** @deprecated Prefer resolveSupplementAction — kept for existing Review call sites. */
+export function resolveReviewSupplementAction(
+  missingItems: Array<{ actionable?: boolean; route?: string }>,
+): ReviewSupplementAction | null {
+  return resolveSupplementAction(missingItems);
 }
 
 function injuryComplete(task: CustomerTask): boolean {
@@ -163,6 +277,23 @@ function injuryStatusText(task: CustomerTask): string {
     .toLowerCase();
   if (v === "yes") return "有人受伤";
   if (v === "no") return "没有受伤";
+  if (v === "unknown") return "不确定";
+  return "未填写";
+}
+
+function policeComplete(task: CustomerTask): boolean {
+  const v = String(task.key_facts?.police_involved || "")
+    .trim()
+    .toLowerCase();
+  return ["yes", "no", "unknown"].includes(v);
+}
+
+function policeStatusText(task: CustomerTask): string {
+  const v = String(task.key_facts?.police_involved || "")
+    .trim()
+    .toLowerCase();
+  if (v === "yes") return "已经报警";
+  if (v === "no") return "没有报警";
   if (v === "unknown") return "不确定";
   return "未填写";
 }
@@ -199,6 +330,17 @@ export function resolveMissingItemNav(
     return {
       action: "ACTIONABLE_NOW",
       route: ACTIONABLE_ROUTES.injury_status,
+      statusText: "未填写",
+    };
+  }
+
+  if (key === "police_involved") {
+    if (policeComplete(task)) {
+      return { action: "COMPLETED", statusText: policeStatusText(task) };
+    }
+    return {
+      action: "ACTIONABLE_NOW",
+      route: ACTIONABLE_ROUTES.police_involved,
       statusText: "未填写",
     };
   }
@@ -288,6 +430,13 @@ const SUPPLEMENT_CHECKLIST: ChecklistItem[] = [
     route: "/pages/basics/basics",
   },
   {
+    key: "police_involved",
+    label: "是否报警",
+    isComplete: policeComplete,
+    statusText: policeStatusText,
+    route: "/pages/basics/basics",
+  },
+  {
     key: "accident_datetime",
     label: "事故时间",
     isComplete: (task) => Boolean(String(task.key_facts?.accident_datetime || "").trim()),
@@ -326,11 +475,10 @@ const SUPPLEMENT_CHECKLIST: ChecklistItem[] = [
 export function buildSupplementRows(task: CustomerTask): SupplementTaskRow[] {
   const rows: SupplementTaskRow[] = [];
   const seen = new Set<string>();
-  const submitted = isSubmitted(task);
 
   for (const item of SUPPLEMENT_CHECKLIST) {
     if (item.isComplete(task)) continue;
-    if (submitted && item.key !== "photos") continue;
+    // Submitted status must not block supplement editing — only formal re-submit is blocked.
     seen.add(item.key);
     rows.push({
       key: item.key,
@@ -344,17 +492,10 @@ export function buildSupplementRows(task: CustomerTask): SupplementTaskRow[] {
   for (const item of task.missing_info || []) {
     const key = normalizeMissingKey(item.key || item.field || "");
     if (!key || seen.has(key)) continue;
-    const nav = resolveMissingItemNav(key, task);
-    if (nav.action === "COMPLETED") continue;
-    seen.add(key);
-    rows.push({
-      key,
-      label: missingItemLabel(item),
-      statusText: nav.statusText,
-      actionable: nav.action === "ACTIONABLE_NOW",
-      route: nav.route,
-      hint: nav.hint,
-    });
+    const row = mapServerMissingItem(item, task);
+    if (!row) continue;
+    seen.add(row.key);
+    rows.push(row);
   }
 
   return rows;
@@ -403,8 +544,16 @@ export function firstIncompleteBasicsStep(task: CustomerTask): string | null {
 export function resolveNextAction(task: CustomerTask): NextAction {
   const dash = task.dashboard_summary;
   const submitted = isSubmitted(task);
+  const supplementRoute = firstActionableMissingRoute(task);
 
   if (submitted || task.current_step === "done") {
+    if (supplementRoute) {
+      return {
+        kind: "supplement",
+        primaryCta: "继续补充资料",
+        route: supplementRoute,
+      };
+    }
     return {
       kind: "receipt",
       primaryCta: "查看提交结果",
@@ -424,9 +573,7 @@ export function resolveNextAction(task: CustomerTask): NextAction {
     return {
       kind: "supplement",
       primaryCta: "补充陈总需要的资料",
-      route:
-        firstActionableMissingRoute(task) ||
-        "/pages/photos/photos",
+      route: supplementRoute || "/pages/photos/photos",
     };
   }
 
@@ -466,9 +613,7 @@ export function resolveNextAction(task: CustomerTask): NextAction {
     return {
       kind: "supplement",
       primaryCta: dash.primary_cta,
-      route:
-        firstActionableMissingRoute(task) ||
-        "/pages/basics/basics",
+      route: supplementRoute || "/pages/basics/basics",
     };
   }
 
@@ -482,15 +627,27 @@ export function resolveNextAction(task: CustomerTask): NextAction {
 export function mapErrorMessage(code: string): string {
   const messages: Record<string, string> = {
     invalid_or_expired_task_link: "链接已失效，请联系陈总获取新的入口。",
-    backend_unreachable:
-      "无法连接本地 API。请先运行 bash scripts/run_demo_local.sh；真机预览请把 config.local.ts 的 apiBaseUrl 改为电脑局域网 IP（不要用 127.0.0.1）。",
-    network_error: "网络不可用，请检查网络后重试。",
+    token_missing: "未找到资料入口，请从微信任务卡片重新打开。",
+    navigation_failed: "页面打开失败，请重试。",
+    backend_unreachable: "暂时无法连接，请检查网络。",
+    network_error: "网络暂时不可用，请稍后再试。",
+    timeout: "网络暂时不可用，请稍后再试。",
+    internal_error: "暂时无法完成操作，请稍后再试。",
     save_failed: "保存失败，请稍后重试。",
     submit_failed: "提交失败，请稍后重试。",
     missing_required_fields: "还有必填资料未完成，请先补充。",
     already_submitted: "资料已提交，无需重复提交。",
   };
-  return messages[code] || "出现错误，请稍后重试。";
+  return messages[code] || "暂时无法完成操作，请稍后再试。";
+}
+
+/** Shared contact broker copy for Entry / Error / TaskShell recovery. */
+export function contactBrokerModalCopy(): { title: string; content: string } {
+  return {
+    title: "联系陈总",
+    content:
+      "请返回微信，给陈总发一条消息说明您遇到的情况。陈总会协助您继续完成资料填写。",
+  };
 }
 
 export function newSubmitIntentId(): string {
@@ -504,6 +661,11 @@ export const taskMapping = {
   missingItemLabel,
   normalizeMissingKey,
   resolveMissingItemNav,
+  mapServerMissingItem,
+  routeForMissingKey,
+  resolveSupplementAction,
+  resolveReviewSupplementAction,
+  supplementCtaLabelForRoute,
   buildSupplementRows,
   firstActionableMissingRoute,
   resolveNextAction,

@@ -1,0 +1,29 @@
+.task-progress {
+  display: flex;
+  flex-direction: column;
+}
+
+.progress-text {
+  font-size: 24rpx;
+  color: #666666;
+  margin-bottom: 10rpx;
+}
+
+.progress-bar {
+  height: 8rpx;
+  background: #e8eaed;
+  border-radius: 4rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #1a56db;
+  border-radius: 4rpx;
+}
+
+.progress-a11y-text {
+  font-size: 22rpx;
+  color: #666666;
+  margin-top: 8rpx;
+}

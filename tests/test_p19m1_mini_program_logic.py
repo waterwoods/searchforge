@@ -92,6 +92,8 @@ def resolve_next_action_kind(task: dict) -> str:
     submitted = bool(task.get("submitted")) or task.get("current_step") == "done"
     phase = str(task.get("phase") or "")
     if submitted:
+        if first_actionable_missing_route(task):
+            return "supplement"
         return "receipt"
     if phase == "broker_done":
         return "done"
@@ -161,7 +163,6 @@ def resolve_missing_item_nav(key: str, task: dict) -> dict:
 def build_supplement_rows(task: dict) -> list[dict]:
     facts = task.get("key_facts") or {}
     photo_count = int(task.get("photo_count") or task.get("attachment_count") or 0)
-    submitted = bool(task.get("submitted")) or task.get("current_step") == "done"
     rows: list[dict] = []
     seen: set[str] = set()
 
@@ -189,8 +190,7 @@ def build_supplement_rows(task: dict) -> list[dict]:
     for key, incomplete, route in checklist:
         if not incomplete:
             continue
-        if submitted and key != "photos":
-            continue
+        # Submitted status must not block supplement editing.
         seen.add(key)
         rows.append({"key": key, "actionable": True, "route": route})
 
@@ -220,17 +220,38 @@ def first_actionable_missing_route(task: dict) -> str | None:
     return None
 
 
+def resolve_supplement_action(missing_items: list[dict]) -> dict | None:
+    """Mirror of miniapp resolveSupplementAction — deterministic first actionable route."""
+    priority = (
+        "/pages/story/story",
+        "/pages/basics/basics",
+        "/pages/photos/photos",
+    )
+    routes = [
+        str(item.get("route") or "").strip()
+        for item in missing_items
+        if item.get("actionable") and item.get("route")
+    ]
+    routes = [route for route in routes if route]
+    if not routes:
+        return None
+    unique = list(dict.fromkeys(routes))
+    route = next((candidate for candidate in priority if candidate in unique), unique[0])
+    return {"route": route}
+
+
 def resolve_next_action_route(task: dict) -> str:
     facts = task.get("key_facts") or {}
     submitted = bool(task.get("submitted")) or task.get("current_step") == "done"
     phase = str(task.get("phase") or "")
     dash = task.get("dashboard_summary") or {}
+    supplement_route = first_actionable_missing_route(task)
     if submitted:
-        return "/pages/receipt/receipt"
+        return supplement_route or "/pages/receipt/receipt"
     if phase == "broker_done":
         return "/pages/receipt/receipt"
     if phase == "broker_needs_more_info":
-        return first_actionable_missing_route(task) or "/pages/photos/photos"
+        return supplement_route or "/pages/photos/photos"
     if not story_complete(facts):
         return "/pages/story/story"
     if not basics_complete(facts):
@@ -241,7 +262,7 @@ def resolve_next_action_route(task: dict) -> str:
     if task.get("current_step") == "review" or "提交" in str(dash.get("primary_cta") or ""):
         return "/pages/review/review"
     if "补充" in str(dash.get("primary_cta") or ""):
-        return first_actionable_missing_route(task) or "/pages/basics/basics"
+        return supplement_route or "/pages/basics/basics"
     return "/pages/review/review"
 
 
@@ -420,9 +441,49 @@ def test_build_supplement_rows_includes_backend_unsupported_as_static():
 
 
 def test_resolve_next_action_submitted_goes_to_receipt():
-    task = {"submitted": True, "current_step": "done", "key_facts": {}, "photo_count": 2}
+    task = {
+        "submitted": True,
+        "current_step": "done",
+        "key_facts": {
+            "anyone_injured": "no",
+            "accident_datetime": "今天上午",
+            "accident_location": "Irvine",
+            "own_vehicle_info": "Toyota",
+            "accident_description": "我在等红灯时被后车追尾。",
+        },
+        "photo_count": 2,
+    }
     assert resolve_next_action_kind(task) == "receipt"
     assert resolve_next_action_route(task) == "/pages/receipt/receipt"
+
+
+def test_resolve_next_action_submitted_with_missing_goes_to_supplement():
+    task = {
+        "submitted": True,
+        "current_step": "done",
+        "key_facts": {
+            "anyone_injured": "",
+            "accident_datetime": "今天上午",
+            "accident_location": "Irvine",
+            "own_vehicle_info": "Toyota",
+            "accident_description": "我在等红灯时被后车追尾。",
+        },
+        "photo_count": 2,
+    }
+    assert resolve_next_action_kind(task) == "supplement"
+    assert resolve_next_action_route(task) == "/pages/basics/basics"
+
+
+def test_resolve_supplement_action_priority_is_deterministic():
+    action = resolve_supplement_action(
+        [
+            {"actionable": True, "route": "/pages/photos/photos"},
+            {"actionable": True, "route": "/pages/basics/basics"},
+            {"actionable": True, "route": "/pages/story/story"},
+        ]
+    )
+    assert action is not None
+    assert action["route"] == "/pages/story/story"
 
 
 def test_resolve_next_action_broker_done_goes_to_receipt():

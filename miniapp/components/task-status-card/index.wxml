@@ -1,0 +1,33 @@
+<view class="task-status-card">
+  <view class="status-pill {{statusTone === 'done' ? 'done' : ''}}">{{safeStatus}}</view>
+  <view wx:if="{{safeInstruction}}" class="card-subtitle">{{safeInstruction}}</view>
+
+  <view class="section-label">已收到</view>
+  <view wx:if="{{safeReceived.length}}" class="received-list">
+    <view class="received-item" wx:for="{{safeReceived}}" wx:key="*this">{{item}}</view>
+  </view>
+  <view wx:else class="received-item muted">暂无</view>
+
+  <view class="section-label section-gap">还需补充</view>
+  <view wx:if="{{safeMissing.length}}" class="task-row-list">
+    <view
+      wx:for="{{safeMissing}}"
+      wx:key="label"
+      class="task-row {{item.actionable ? 'actionable' : 'static'}}"
+      hover-class="{{item.actionable ? 'task-row-hover' : ''}}"
+      data-index="{{index}}"
+      bindtap="onTapMissing"
+    >
+      <view class="task-row-main">
+        <text class="task-row-label">{{item.label}}</text>
+        <text class="task-row-status {{item.actionable ? 'pending' : 'muted'}}">{{item.statusText || (item.actionable ? '待补充' : '待确认')}}</text>
+      </view>
+      <text wx:if="{{item.actionable}}" class="task-row-arrow">›</text>
+      <text wx:elif="{{item.hint}}" class="task-row-hint">{{item.hint}}</text>
+    </view>
+  </view>
+  <view wx:else class="received-item muted">主要资料已齐全</view>
+
+  <view wx:if="{{safeNextActionText}}" class="section-label section-gap">下一步</view>
+  <view wx:if="{{safeNextActionText}}" class="next-action-text">{{safeNextActionText}}</view>
+</view>

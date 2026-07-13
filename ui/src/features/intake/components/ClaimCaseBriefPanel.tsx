@@ -64,6 +64,9 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
   const highlights = (brief.highlights ?? []).slice(0, 5);
   const timelinePreview = formatClaimTimelinePreview(timeline ?? [], 3);
   const photoCount = evidence.photo_count ?? 0;
+  const ownVehicle = String(keyFacts.own_vehicle_info || '').trim() || '暂未提供';
+  const otherPartyPlate = String(keyFacts.other_party_plate || '').trim() || '暂未提供';
+  const otherPartyInfo = String(keyFacts.other_party_info || '').trim() || '暂未提供';
 
   return (
     <Card
@@ -102,6 +105,26 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
           照片
         </Text>
         <Text style={{ fontSize: 13 }}>已收 {photoCount} 张</Text>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+          车辆与对方
+        </Text>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          我方车辆
+        </Text>
+        <Text style={{ fontSize: 13 }}>{ownVehicle}</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          对方车牌
+        </Text>
+        <Text style={{ fontSize: 13 }}>{otherPartyPlate}</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          对方信息
+        </Text>
+        <Text style={{ fontSize: 13 }}>{otherPartyInfo}</Text>
+        </div>
       </div>
 
       {highlights.length > 0 ? (

@@ -110,6 +110,25 @@ test("load success keeps shell bindings as strings through loading transition", 
   CustomerTaskApi.getTask = originalGetTask;
 });
 
+test("loadTask clears cta loading after page fetch completes", async () => {
+  const module = await import("../behaviors/taskPage");
+  const behavior = module.taskPage as TaskPageBehavior;
+  const appState: Record<string, unknown> = { taskToken: "h5t1.valid" };
+  installGetApp(appState);
+
+  const task = buildTask();
+  const originalGetTask = CustomerTaskApi.getTask;
+  CustomerTaskApi.getTask = async () => task;
+
+  const ctx = createContext(behavior);
+  await behavior.methods.loadTask.call(ctx);
+
+  assert.equal((ctx.data.busy as { loading: boolean }).loading, false);
+  assert.equal((ctx.data.taskViewModel as { cta: { loading: boolean } }).cta.loading, false);
+
+  CustomerTaskApi.getTask = originalGetTask;
+});
+
 test("blocking error then retry keeps shell bindings as strings", async () => {
   const module = await import("../behaviors/taskPage");
   const behavior = module.taskPage as TaskPageBehavior;
@@ -205,7 +224,8 @@ test("bounded retry and cooldown are enforced", async () => {
   ctx.data.retryMeta.cooldownUntil = 0;
 
   await behavior.methods.retryLoadTask.call(ctx);
-  assert.equal(toasts.includes("网络暂时不可用，请稍后重试或联系陈总。"), false);
+  assert.equal(toasts.includes("网络暂时不可用，请稍后再试或联系陈总。"), false);
+  assert.match(String((ctx.data.errorState as { message: string }).message), /网络暂时不可用/);
   assert.equal((ctx.data.errorState as { blocking: boolean }).blocking, true);
 
   ctx.data.retryMeta.attempts = 0;

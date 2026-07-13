@@ -222,3 +222,24 @@ test("save path no longer uses fixed timeout navigation", async () => {
   CustomerTaskApi.getTask = originalGetTask;
   (globalThis as Record<string, unknown>).setTimeout = originalSetTimeout;
 });
+
+test("contact broker opens shared guidance modal, not postpone/back", async () => {
+  const page = await loadStoryPage();
+  const modals: Array<{ title: string; content: string }> = [];
+  const backs: number[] = [];
+  (globalThis as Record<string, any>).wx.showModal = (opts: {
+    title: string;
+    content: string;
+  }) => {
+    modals.push(opts);
+  };
+  (globalThis as Record<string, any>).wx.navigateBack = () => {
+    backs.push(1);
+  };
+
+  page.onContactBroker.call(createPageContext(page));
+  assert.equal(modals.length, 1);
+  assert.equal(modals[0].title, "联系陈总");
+  assert.match(modals[0].content, /返回微信/);
+  assert.equal(backs.length, 0);
+});

@@ -1,11 +1,6 @@
-.photo-error {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(196, 92, 38, 0.9);
-  color: #fff;
-  text-align: center;
-  font-size: 24rpx;
-  padding: 8rpx;
+.footer-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 20rpx;
 }

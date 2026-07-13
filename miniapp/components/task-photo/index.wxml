@@ -1,0 +1,58 @@
+<view class="task-photo">
+  <view wx:for="{{safeSlots}}" wx:key="key" class="slot-card">
+    <view class="slot-header">
+      <text class="slot-label">{{item.label}}</text>
+      <text wx:if="{{item.statusText}}" class="slot-status">{{item.statusText}}</text>
+    </view>
+
+    <text wx:if="{{item.requiredHint}}" class="slot-hint">{{item.requiredHint}}</text>
+
+    <view class="slot-preview {{item.localPath ? '' : 'slot-preview-empty'}}">
+      <image
+        wx:if="{{item.localPath}}"
+        src="{{item.localPath}}"
+        mode="aspectFill"
+        data-slot-key="{{item.key}}"
+        data-local-path="{{item.localPath}}"
+        bindtap="onPreviewTap"
+      />
+      <text wx:elif="{{item.uploaded}}" class="uploaded-text">已上传并确认</text>
+      <text wx:else class="placeholder-text">请上传 {{item.label}}</text>
+
+      <view wx:if="{{item.uploading}}" class="progress-mask">
+        <text>上传中 {{item.progress}}%</text>
+      </view>
+    </view>
+
+    <text wx:if="{{item.error}}" class="slot-error">{{item.error}}</text>
+
+    <view class="slot-actions">
+      <button
+        class="btn-primary btn-small"
+        data-slot-key="{{item.key}}"
+        bindtap="onAddTap"
+        disabled="{{disabled || item.uploading}}"
+      >
+        {{item.localPath ? '重新选择' : '上传照片'}}
+      </button>
+      <button
+        wx:if="{{item.canRetry}}"
+        class="btn-secondary btn-small"
+        data-slot-key="{{item.key}}"
+        bindtap="onRetryTap"
+        disabled="{{disabled || item.uploading}}"
+      >
+        重试上传
+      </button>
+      <button
+        wx:if="{{item.canRemove}}"
+        class="btn-secondary btn-small"
+        data-slot-key="{{item.key}}"
+        bindtap="onRemoveTap"
+        disabled="{{disabled || item.uploading}}"
+      >
+        移除
+      </button>
+    </view>
+  </view>
+</view>

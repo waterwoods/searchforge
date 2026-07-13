@@ -1,0 +1,100 @@
+.task-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.slot-card {
+  background: #ffffff;
+  border: 2rpx solid #e5e7eb;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.slot-label {
+  font-size: 30rpx;
+  color: #111827;
+  font-weight: 600;
+}
+
+.slot-status {
+  font-size: 24rpx;
+  color: #374151;
+}
+
+.slot-hint {
+  font-size: 24rpx;
+  color: #6b7280;
+}
+
+.slot-preview {
+  position: relative;
+  width: 100%;
+  height: 240rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-preview image {
+  width: 100%;
+  height: 100%;
+}
+
+.slot-preview-empty {
+  border: 2rpx dashed #d1d5db;
+}
+
+.placeholder-text {
+  color: #6b7280;
+  font-size: 26rpx;
+}
+
+.uploaded-text {
+  color: #065f46;
+  font-size: 26rpx;
+  font-weight: 500;
+}
+
+.progress-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+}
+
+.slot-error {
+  color: #b91c1c;
+  font-size: 24rpx;
+}
+
+.slot-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  min-height: 72rpx;
+  line-height: 72rpx;
+  font-size: 26rpx;
+  border-radius: 12rpx;
+  padding: 0 20rpx;
+}

@@ -25,6 +25,7 @@ from services.fiqa_api.inbox_triage.h5_task_token import (
     verify_h5_task_token,
 )
 from services.fiqa_api.routes.h5_task_intake import router as h5_intake_router
+from services.fiqa_api.routes.inbox_triage import router as inbox_router
 from services.fiqa_api.wecom.claim_basics import ingest_claim_status_request
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHASE_INTAKE_READY_FOR_BROKER,
@@ -48,6 +49,12 @@ def _case_storage(monkeypatch):
 def _app() -> TestClient:
     app = FastAPI()
     app.include_router(h5_intake_router)
+    return TestClient(app)
+
+
+def _workbench_app() -> TestClient:
+    app = FastAPI()
+    app.include_router(inbox_router)
     return TestClient(app)
 
 
@@ -149,7 +156,7 @@ def test_h5_intake_happy_path_and_idempotent_submit():
     assert sum(1 for e in timeline2 if e.get("event_type") == "customer_submitted_intake") == 1
 
 
-def test_patch_after_submit_rejected():
+def test_patch_after_submit_allows_customer_supplement_and_keeps_submitted():
     case_id = _save_claim_case("case_submit_guard")
     token = issue_h5_intake_form_token(case_id=case_id)
     client = _app()
@@ -171,11 +178,88 @@ def test_patch_after_submit_rejected():
         json={"submit_intent_id": intent},
     ).status_code == 200
 
-    blocked = client.patch(
+    supplemented = client.patch(
         f"/api/h5/tasks/{token}/fields",
         json={"step": "story", "fields": {"accident_description": "尝试再次修改经过描述内容。"}},
     )
-    assert blocked.status_code == 409
+    assert supplemented.status_code == 200, supplemented.text
+    body = supplemented.json()
+    assert body["submitted"] is True
+    assert body["task_contract"]["task_status"] == "submitted"
+
+    case = get_case_by_id(case_id) or {}
+    assert str((case.get("known_facts") or {}).get("accident_description") or "") == "尝试再次修改经过描述内容。"
+    provenance = (case.get("known_fact_provenance") or {}).get("accident_description") or {}
+    assert provenance.get("source") == "customer_confirmed"
+    assert provenance.get("status") == "customer_supplement"
+    timeline = case.get("claim_timeline") or []
+    supplement_events = [e for e in timeline if e.get("event_type") == "h5_post_submit_supplement"]
+    assert supplement_events
+    latest = supplement_events[-1]
+    metadata = latest.get("metadata") or {}
+    assert metadata.get("post_submit") is True
+    assert (metadata.get("changes") or {}).get("accident_description", {}).get("before")
+    assert (metadata.get("changes") or {}).get("accident_description", {}).get("after") == "尝试再次修改经过描述内容。"
+    assert derive_claim_phase(case) == CLAIM_PHASE_INTAKE_READY_FOR_BROKER
+
+
+def test_post_submit_patch_rejects_non_customer_editable_fields():
+    case_id = _save_claim_case("case_submit_guard_reject")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "bbbbbbbb-cccc-4ccc-8ddd-eeeeeeeeeeee"
+
+    _complete_h5_intake(client, token, intent)
+    blocked = client.patch(
+        f"/api/h5/tasks/{token}/fields",
+        json={
+            "step": "story",
+            "fields": {
+                "accident_description": "这是有效补充描述内容。",
+                "claim_phase": "broker_done",
+            },
+        },
+    )
+    assert blocked.status_code == 400
+    assert blocked.json().get("detail") == "post_submit_field_not_allowed"
+
+
+def test_post_submit_basics_supplement_refreshes_missing_items():
+    case_id = _save_claim_case("case_submit_police")
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    intent = "cccccccc-dddd-4ccc-8ddd-eeeeeeeeeeee"
+
+    # Keep police missing before submit to mirror real dashboard gaps.
+    for step, fields in [
+        ("injury", {"anyone_injured": "no"}),
+        ("time_location", {"accident_datetime": "昨天", "accident_location": "LA downtown"}),
+        ("story", {"accident_description": "对方变道刮到我左前门，双方下车交换信息。"}),
+        ("vehicle_other_party", {"own_vehicle_info": "Honda Civic"}),
+    ]:
+        assert client.patch(
+            f"/api/h5/tasks/{token}/fields",
+            json={"step": step, "fields": fields},
+        ).status_code == 200
+    assert client.post(
+        f"/api/h5/tasks/{token}/submit",
+        json={"submit_intent_id": intent},
+    ).status_code == 200
+
+    before = client.get(f"/api/h5/tasks/{token}/intake").json()
+    before_missing = {str(x.get("field") or "") for x in (before.get("missing_info") or []) if isinstance(x, dict)}
+    assert "police_involved" in before_missing or "police_reported" in before_missing
+
+    supplemented = client.patch(
+        f"/api/h5/tasks/{token}/fields",
+        json={"step": "vehicle_other_party", "fields": {"own_vehicle_info": "Honda Civic", "police_involved": "yes"}},
+    )
+    assert supplemented.status_code == 200, supplemented.text
+    after = supplemented.json()
+    assert after["submitted"] is True
+    after_missing = {str(x.get("field") or "") for x in (after.get("missing_info") or []) if isinstance(x, dict)}
+    assert "police_involved" not in after_missing
+    assert "police_reported" not in after_missing
 
 
 def test_get_intake_returns_upload_url_and_photo_metadata(monkeypatch):
@@ -203,7 +287,14 @@ def test_evidence_step_skippable_submit_without_evidence_patch():
         ("injury", {"anyone_injured": "no"}),
         ("time_location", {"accident_datetime": "今天上午10点", "accident_location": "Irvine Blvd"}),
         ("story", {"accident_description": "我停在红灯前，后车追尾撞上我的车。"}),
-        ("vehicle_other_party", {"own_vehicle_info": "2020 Toyota Camry"}),
+        (
+            "vehicle_other_party",
+            {
+                "own_vehicle_info": "2020 Toyota Camry",
+                "other_party_plate": "8ABC123",
+                "other_party_info": "State Farm",
+            },
+        ),
     ]:
         assert client.patch(
             f"/api/h5/tasks/{token}/fields",
@@ -301,7 +392,14 @@ def test_workbench_shows_h5_submit_summary_and_timeline():
         ("injury", {"anyone_injured": "no"}),
         ("time_location", {"accident_datetime": "今天上午10点", "accident_location": "Irvine Blvd"}),
         ("story", {"accident_description": "我停在红灯前，后车追尾撞上我的车。"}),
-        ("vehicle_other_party", {"own_vehicle_info": "2020 Toyota Camry"}),
+        (
+            "vehicle_other_party",
+            {
+                "own_vehicle_info": "2020 Toyota Camry",
+                "other_party_plate": "8ABC123",
+                "other_party_info": "State Farm",
+            },
+        ),
     ]:
         assert client.patch(
             f"/api/h5/tasks/{token}/fields",
@@ -320,8 +418,18 @@ def test_workbench_shows_h5_submit_summary_and_timeline():
     key_facts = brief.get("key_facts") or {}
     assert key_facts.get("accident_location") == "Irvine Blvd"
     assert key_facts.get("own_vehicle_info") == "2020 Toyota Camry"
+    assert key_facts.get("other_party_plate") == "8ABC123"
+    assert key_facts.get("other_party_info")
     assert row.get("workflow_phase") == CLAIM_PHASE_INTAKE_READY_FOR_BROKER
     assert row.get("workbench_visible") is True
+
+    api_row = _workbench_app().get(f"/api/inbox/cases/{case_id}").json()
+    assert api_row.get("service_lane") == "claim"
+    api_brief = api_row.get("claim_case_brief") or {}
+    api_facts = api_brief.get("key_facts") or {}
+    assert api_facts.get("own_vehicle_info") == "2020 Toyota Camry"
+    assert api_facts.get("other_party_plate") == "8ABC123"
+    assert api_facts.get("other_party_info")
 
     timeline = row.get("claim_timeline") or []
     event_types = [str(e.get("event_type")) for e in timeline]

@@ -1,39 +1,71 @@
 <view class="container">
-  <view class="card">
-    <view class="card-title">请检查事故资料</view>
-    <view class="card-subtitle">确认无误后提交给陈总审核。</view>
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{errorState}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <task-error
+      wx:if="{{errorState.message && !errorState.blocking}}"
+      message="{{errorState.message}}"
+      retryable="{{errorState.retryable}}"
+      retryDisabled="{{busy.retrying || busy.submitting}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onContactBroker"
+    />
 
-    <view class="section-label">事故经过</view>
-    <view class="review-block {{story ? '' : 'empty'}}">{{story || '未填写'}}</view>
+    <view class="card">
+      <view class="card-title">请确认资料</view>
+      <view class="card-subtitle">{{readyLabel}}</view>
 
-    <view class="section-label section-gap">照片</view>
-    <view class="list-item">已上传 {{photoCount}} 张</view>
+      <view class="review-ready {{canSubmit ? 'ok' : 'need'}}">{{readySummary}}</view>
 
-    <view class="section-label section-gap">已收到</view>
-    <view wx:if="{{received.length}}">
-      <view class="list-item" wx:for="{{received}}" wx:key="*this">{{item}}</view>
+      <view wx:if="{{missingRows.length}}" class="section-label section-gap">还需补充</view>
+      <view wx:if="{{missingRows.length}}" class="missing-list">
+        <view
+          wx:for="{{missingRows}}"
+          wx:key="key"
+          class="list-item missing {{item.actionable ? 'actionable' : ''}}"
+          hover-class="{{item.actionable ? 'missing-row-hover' : ''}}"
+          data-index="{{index}}"
+          bindtap="onTapMissingRow"
+        >
+          <text class="missing-label">{{item.label}}</text>
+          <text wx:if="{{item.actionable}}" class="missing-arrow">›</text>
+        </view>
+      </view>
+
+      <view class="section-label section-gap">资料概要</view>
+      <view class="list-item">事故经过：{{storyPreview}}</view>
+      <view class="list-item">事故照片：已上传 {{photoCount}} 张</view>
+
+      <view class="disclaimer">{{disclaimer}}</view>
     </view>
-    <view wx:else class="list-item muted-text">暂无</view>
+  </task-shell>
 
-    <view class="section-label section-gap">还需补充</view>
-    <view wx:if="{{missing.length}}">
-      <view class="list-item missing" wx:for="{{missing}}" wx:key="*this">{{item}}</view>
-    </view>
-    <view wx:else class="list-item muted-text">主要资料已齐全</view>
-
-    <view class="disclaimer">{{disclaimer}}</view>
-  </view>
-
-  <view class="footer-cta">
-    <button
-      class="btn-primary"
-      hover-class="btn-primary-hover"
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <task-cta
+      label="提交给陈总审核"
+      disabled="{{!canSubmit || busy.submitting || busy.navigating}}"
+      loading="{{busy.submitting}}"
+      disabledReason="{{submitDisabledReason}}"
       bindtap="onSubmit"
-      loading="{{submitting}}"
-      disabled="{{submitting || !canSubmit}}"
-    >提交给陈总审核</button>
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onEditStory">修改事故经过</button>
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onEditBasics">修改基本资料</button>
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onEditPhotos">补充照片</button>
+    />
+    <button
+      wx:if="{{showSupplementCta}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onSupplement"
+      disabled="{{busy.submitting || busy.navigating}}"
+    >{{supplementCtaLabel}}</button>
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onLater"
+      disabled="{{busy.submitting}}"
+    >返回我的资料</button>
   </view>
 </view>

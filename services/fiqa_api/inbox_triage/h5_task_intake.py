@@ -54,7 +54,13 @@ _STEP_FIELD_MAP: Final[dict[str, tuple[str, ...]]] = {
     "injury": ("anyone_injured", "injury_status"),
     "time_location": ("accident_datetime", "accident_location"),
     "story": ("accident_description",),
-    "vehicle_other_party": ("own_vehicle_info", "other_party_plate", "other_party_info"),
+    "vehicle_other_party": (
+        "own_vehicle_info",
+        "other_party_plate",
+        "other_party_info",
+        "police_involved",
+        "police_reported",
+    ),
 }
 
 _H5_SUBMIT_TERMINAL_PHASES: Final[frozenset[str]] = frozenset(
@@ -84,6 +90,15 @@ _H5_DASHBOARD_SUBTITLE: Final[str] = (
 _H5_DASHBOARD_SUBMITTED_SUBTITLE: Final[str] = (
     "资料已提交给陈总审核。你仍然可以继续补充照片、对方保险或其他细节。"
 )
+
+_POST_SUBMIT_ALLOWED_FIELDS_BY_STEP: Final[dict[str, frozenset[str]]] = {
+    "injury": frozenset({"anyone_injured", "injury_status"}),
+    "time_location": frozenset({"accident_datetime", "accident_location"}),
+    "story": frozenset({"accident_description"}),
+    "vehicle_other_party": frozenset(
+        {"own_vehicle_info", "other_party_plate", "other_party_info", "police_involved", "police_reported"}
+    ),
+}
 
 
 def _load_claim_case(case_id: str) -> dict[str, Any]:
@@ -190,6 +205,12 @@ def _validate_step_fields(step: str, fields: dict[str, str]) -> dict[str, str]:
             out["other_party_plate"] = plate
         if other:
             out["other_party_info"] = other
+        police = str(fields.get("police_involved") or fields.get("police_reported") or "").strip().lower()
+        if police:
+            if police not in ("yes", "no", "unknown"):
+                raise ValueError("invalid_police_value")
+            out["police_involved"] = police
+            out["police_reported"] = police
         return out
     raise ValueError("unsupported_step")
 
@@ -199,6 +220,30 @@ def _collected_keys_for_patch(step: str, facts_patch: dict[str, str]) -> list[st
     if step == "vehicle_other_party" and facts_patch.get("other_party_plate"):
         keys.append("other_party_vehicle_or_plate")
     return keys
+
+
+def _validate_post_submit_patch_fields(step: str, fields: dict[str, str]) -> None:
+    allowed = _POST_SUBMIT_ALLOWED_FIELDS_BY_STEP.get(step)
+    if not allowed:
+        raise ValueError("post_submit_step_not_allowed")
+    incoming = {str(k or "").strip() for k in fields.keys() if str(k or "").strip()}
+    if not incoming:
+        raise ValueError("post_submit_fields_required")
+    disallowed = sorted(incoming - allowed)
+    if disallowed:
+        raise ValueError("post_submit_field_not_allowed")
+
+
+def _post_submit_change_payload(case: dict[str, Any], facts_patch: dict[str, str]) -> dict[str, dict[str, str | None]]:
+    current_facts = _facts(case)
+    changed: dict[str, dict[str, str | None]] = {}
+    for key, new_value in facts_patch.items():
+        before = str(current_facts.get(key) or "").strip() or None
+        after = str(new_value or "").strip() or None
+        if before == after:
+            continue
+        changed[key] = {"before": before, "after": after}
+    return changed
 
 
 def _build_completion_summary(case: dict[str, Any]) -> dict[str, Any]:
@@ -557,30 +602,41 @@ def patch_intake_fields(
         raise ValueError("unsupported_step")
 
     case = _load_claim_case(claims.case_id)
-    if _is_submitted(case):
-        raise ValueError("already_submitted")
+    submitted = _is_submitted(case)
+    if submitted:
+        _validate_post_submit_patch_fields(step_norm, fields)
 
     facts_patch = _validate_step_fields(step_norm, fields)
+    if submitted and not facts_patch:
+        raise ValueError("post_submit_fields_required")
     value_hash = _field_value_hash(step_norm, facts_patch)
     state = _h5_intake_state(case)
     dedup_key = f"h5_field:{claims.case_id}:{step_norm}:{value_hash}"
     if dedup_key in set(state.get("field_dedup_keys") or []):
         return intake_info_for_token(claims)
 
+    supplement_changes = _post_submit_change_payload(case, facts_patch) if submitted else {}
+
     patch_case_known_facts(
         claims.case_id,
         facts_patch,
-        source="customer_task",
-        status="customer_confirmed",
+        source="customer_confirmed" if submitted else "customer_task",
+        status="customer_supplement" if submitted else "customer_confirmed",
     )
     append_case_collected_fields(claims.case_id, _collected_keys_for_patch(step_norm, facts_patch))
     append_claim_timeline_event(
         claims.case_id,
         build_claim_timeline_event(
-            event_type="h5_step_complete",
+            event_type="h5_post_submit_supplement" if submitted else "h5_step_complete",
             source_channel="h5_task",
             actor="customer",
-            metadata={"step": step_norm, "fields": list(facts_patch.keys())},
+            metadata={
+                "step": step_norm,
+                "fields": list(facts_patch.keys()),
+                "post_submit": submitted,
+                "submitted_at": str(state.get("submitted_at") or ""),
+                "changes": supplement_changes,
+            },
         ),
     )
 
@@ -591,6 +647,11 @@ def patch_intake_fields(
         dedup_keys.append(dedup_key)
     new_state["field_dedup_keys"] = dedup_keys[-50:]
     new_state["last_step"] = step_norm
+    if submitted:
+        new_state["last_post_submit_supplement_at"] = build_claim_timeline_event(
+            event_type="h5_post_submit_supplement",
+            source_channel="h5_task",
+        )["created_at"]
     new_state["task_revision"] = int(new_state.get("task_revision") or 0) + 1
     update_case_h5_intake_state(claims.case_id, new_state)
 

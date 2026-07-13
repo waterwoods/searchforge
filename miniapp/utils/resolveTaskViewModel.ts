@@ -1,9 +1,14 @@
 import {
+  basicsComplete,
   buildSupplementRows,
+  isSubmitted,
   mapErrorMessage,
+  photosSatisfiedForPrototype,
   progressPercent,
-  resolveMissingItemNav,
+  mapServerMissingItem,
   resolveNextAction,
+  resolveSupplementAction,
+  storyComplete,
 } from "./taskMapping";
 import type {
   BusyState,
@@ -113,6 +118,7 @@ const DEFAULT_BUSY_STATE: BusyState = {
 const ALLOWED_FIELD_KEYS = new Set([
   "anyone_injured",
   "injury_status",
+  "police_involved",
   "accident_datetime",
   "accident_location",
   "accident_description",
@@ -200,7 +206,7 @@ function contractCta(
     actionType: contract.next_action?.type || "go_to_section",
     target: normalizeUiString(contract.next_action?.target),
     disabled: disabledByState || disabledByError,
-    loading: busy.loading || busy.submitting || busy.saving,
+    loading: busy.submitting,
     disabledReason: disabledByError ? "请先处理当前错误" : "",
   });
 }
@@ -214,9 +220,105 @@ function legacyCta(task: CustomerTask, busy: BusyState, error: TaskErrorState | 
     actionType: "go_to_section",
     target: normalizeUiString(next.route),
     disabled: disabledByState || disabledByError,
-    loading: busy.loading || busy.submitting || busy.saving,
+    loading: busy.submitting,
     disabledReason: disabledByError ? "请先处理当前错误" : "",
   });
+}
+
+/** Customer-facing reason when submit CTA must stay disabled. */
+export function resolveSubmitDisabledReason(
+  task: CustomerTask,
+  submitReady: boolean,
+  busy?: Partial<BusyState>,
+  error?: TaskErrorState | null,
+): string {
+  const nextBusy = normalizeBusyState(busy);
+  if (error?.blocking) return "请先处理当前错误";
+  if (nextBusy.submitting) return "正在提交…";
+  if (nextBusy.loading) return "正在加载…";
+  if (isSubmitted(task)) return "资料已提交，无需重复提交。";
+  if (submitReady) return "";
+  if (!storyComplete(task)) return "请先填写事故经过";
+  if (!basicsComplete(task)) return "请先补全基本资料";
+  if (!photosSatisfiedForPrototype(task)) return "请先上传必需照片";
+  return "请先补全必填资料";
+}
+
+function applyRouteSpecificCta(
+  vm: TaskViewModel,
+  task: CustomerTask,
+  busy: BusyState,
+  error: TaskErrorState | null,
+  pageContext?: TaskPageContext,
+): TaskViewModel {
+  const route = normalizeUiString(pageContext?.route).toLowerCase();
+  if (route.includes("review")) {
+    const submitReady = Boolean(vm.submitReady) && !isSubmitted(task);
+    const disabledByState = busy.loading || busy.submitting || busy.navigating;
+    const disabledByError = Boolean(error?.blocking);
+    const disabledReason = resolveSubmitDisabledReason(task, submitReady, busy, error);
+    return {
+      ...vm,
+      cta: normalizeTaskCta({
+        label: "提交给陈总审核",
+        actionType: "submit",
+        target: "receipt",
+        disabled: !submitReady || disabledByState || disabledByError,
+        loading: busy.submitting,
+        disabledReason,
+      }),
+    };
+  }
+  if (route.includes("receipt")) {
+    return {
+      ...vm,
+      statusTone: isSubmitted(task) ? "done" : vm.statusTone,
+      statusLabel: isSubmitted(task)
+        ? normalizeUiString(vm.statusLabel, "已提交")
+        : vm.statusLabel,
+      cta: normalizeTaskCta({
+        label: "返回我的资料",
+        actionType: "view_status",
+        target: "task-home",
+        disabled: busy.loading || busy.navigating,
+        loading: false,
+        disabledReason: "",
+      }),
+    };
+  }
+
+  // Task Home (and non-Review hubs): never route post-submit「继续补充资料」to inert Review.
+  if (isSubmitted(task)) {
+    const supplement = resolveSupplementAction(vm.missingItems);
+    const disabledByState = busy.loading || busy.submitting || busy.saving || busy.navigating;
+    const disabledByError = Boolean(error?.blocking);
+    if (supplement) {
+      return {
+        ...vm,
+        cta: normalizeTaskCta({
+          label: "继续补充资料",
+          actionType: "go_to_section",
+          target: supplement.route,
+          disabled: disabledByState || disabledByError,
+          loading: busy.submitting,
+          disabledReason: disabledByError ? "请先处理当前错误" : "",
+        }),
+      };
+    }
+    return {
+      ...vm,
+      cta: normalizeTaskCta({
+        label: "查看提交结果",
+        actionType: "go_to_section",
+        target: "/pages/receipt/receipt",
+        disabled: disabledByState || disabledByError,
+        loading: false,
+        disabledReason: disabledByError ? "请先处理当前错误" : "",
+      }),
+    };
+  }
+
+  return vm;
 }
 
 function finalizeViewModel(vm: TaskViewModel): TaskViewModel {
@@ -238,6 +340,15 @@ function finalizeViewModel(vm: TaskViewModel): TaskViewModel {
   };
 }
 
+function legacySubmitReady(task: CustomerTask): boolean {
+  return (
+    !isSubmitted(task) &&
+    storyComplete(task) &&
+    basicsComplete(task) &&
+    photosSatisfiedForPrototype(task)
+  );
+}
+
 export function resolveTaskViewModel(
   task: CustomerTask,
   taskContract?: CustomerTaskSafeContract | null,
@@ -254,7 +365,7 @@ export function resolveTaskViewModel(
       safeContract.progress?.completed || 0,
       safeContract.progress?.total || 0,
     );
-    return finalizeViewModel({
+    const baseVm = finalizeViewModel({
       source: "contract",
       shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
       title: safeContract.title || normalizeUiString(task.title, "我的事故资料"),
@@ -265,17 +376,15 @@ export function resolveTaskViewModel(
       cta: contractCta(safeContract, busy, normalizedError),
       missingItems: safeContract.missing_items
         .map((item) => {
-          const nav = resolveMissingItemNav(item.key, task);
-          if (nav.action === "COMPLETED") {
-            return null;
-          }
+          const row = mapServerMissingItem(item, task);
+          if (!row) return null;
           return {
-            key: item.key,
-            label: item.label,
-            statusText: normalizeUiString(nav.statusText, "待补充"),
-            actionable: nav.action === "ACTIONABLE_NOW",
-            route: normalizeUiString(nav.route),
-            hint: normalizeUiString(nav.hint),
+            key: row.key,
+            label: row.label,
+            statusText: normalizeUiString(row.statusText, "待补充"),
+            actionable: Boolean(row.actionable),
+            route: normalizeUiString(row.route),
+            hint: normalizeUiString(row.hint),
           };
         })
         .filter(Boolean) as TaskViewModel["missingItems"],
@@ -287,13 +396,15 @@ export function resolveTaskViewModel(
         normalizeUiString(task.safety_copy, DEFAULT_SAFETY_COPY),
       error: normalizedError,
     });
+    return applyRouteSpecificCta(baseVm, task, busy, normalizedError, pageContext);
   }
 
   const progress = clampProgress(
     Math.round((progressPercent(task) * Math.max(task.step_total || 1, 1)) / 100),
     task.step_total || 1,
   );
-  return finalizeViewModel({
+  const ready = legacySubmitReady(task);
+  const baseVm = finalizeViewModel({
     source: "legacy",
     shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
     title: normalizeUiString(task.title, "我的事故资料"),
@@ -311,11 +422,12 @@ export function resolveTaskViewModel(
       hint: normalizeUiString(item.hint),
     })),
     evidenceRequirements: [],
-    reviewReady: task.current_step === "review",
-    submitReady: task.current_step === "review" && !task.submitted,
+    reviewReady: ready || task.current_step === "review",
+    submitReady: ready,
     safetyCopy: normalizeUiString(task.safety_copy, DEFAULT_SAFETY_COPY),
     error: normalizedError,
   });
+  return applyRouteSpecificCta(baseVm, task, busy, normalizedError, pageContext);
 }
 
 /**

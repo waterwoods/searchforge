@@ -1,0 +1,16 @@
+<view class="task-choice">
+  <view class="radio-row">
+    <button
+      wx:for="{{safeOptions}}"
+      wx:key="value"
+      class="radio-chip {{safeValue === item.value ? 'active' : ''}}"
+      hover-class="{{disabled ? '' : 'radio-chip-hover'}}"
+      data-value="{{item.value}}"
+      bindtap="onTapOption"
+      disabled="{{disabled}}"
+    >
+      {{item.label}}
+      <text wx:if="{{safeValue === item.value}}" class="selected-tag">（已选）</text>
+    </button>
+  </view>
+</view>

@@ -18,43 +18,20 @@
     />
 
     <view class="card">
-      <view class="status-pill {{taskViewModel.statusTone === 'done' ? 'done' : ''}}">{{taskViewModel.statusLabel}}</view>
       <view class="card-title">{{taskViewModel.title}}</view>
-      <view class="card-subtitle">{{taskViewModel.instruction}}</view>
-
-      <view class="progress-bar">
-        <view class="progress-fill" style="width: {{taskViewModel.progress.percent}}%;"></view>
-      </view>
-      <view class="progress-text">{{taskViewModel.progress.completed}} / {{taskViewModel.progress.total}}</view>
-
-      <view class="section-label">已收到</view>
-      <view wx:if="{{task && task.dashboard_summary && task.dashboard_summary.received.length}}" class="received-list">
-        <view class="received-item" wx:for="{{task.dashboard_summary.received}}" wx:key="*this">{{item}}</view>
-      </view>
-      <view wx:else class="received-item muted">暂无</view>
-
-      <view class="section-label section-gap">还需补充</view>
-      <view wx:if="{{taskViewModel.missingItems.length}}" class="task-row-list">
-        <view
-          wx:for="{{taskViewModel.missingItems}}"
-          wx:key="key"
-          class="task-row {{item.actionable ? 'actionable' : 'static'}}"
-          hover-class="{{item.actionable ? 'task-row-hover' : ''}}"
-          data-index="{{index}}"
-          bindtap="onTapSupplementRow"
-        >
-          <view class="task-row-main">
-            <text class="task-row-label">{{item.label}}</text>
-            <text class="task-row-status {{item.actionable ? 'pending' : 'muted'}}">{{item.statusText}}</text>
-          </view>
-          <text wx:if="{{item.actionable}}" class="task-row-arrow">›</text>
-          <text wx:elif="{{item.hint}}" class="task-row-hint">{{item.hint}}</text>
-        </view>
-      </view>
-      <view wx:else class="received-item muted">主要资料已齐全</view>
-
-      <view class="section-label section-gap">下一步</view>
-      <view class="next-action-text">{{taskViewModel.instruction || '点击下方按钮继续'}}</view>
+      <task-progress
+        completed="{{taskViewModel.progress.completed}}"
+        total="{{taskViewModel.progress.total}}"
+      />
+      <task-status-card
+        status="{{taskViewModel.statusLabel}}"
+        statusTone="{{taskViewModel.statusTone}}"
+        instruction="{{taskViewModel.instruction}}"
+        received="{{task && task.dashboard_summary && task.dashboard_summary.received ? task.dashboard_summary.received : []}}"
+        missing="{{taskViewModel.missingItems}}"
+        nextActionText="{{taskViewModel.instruction || '点击下方按钮继续'}}"
+        bind:tapmissing="onTapSupplementRow"
+      />
     </view>
 
     <view class="disclaimer" bindtap="onShowDisclaimer">{{taskViewModel.safetyCopy}}</view>
@@ -62,12 +39,24 @@
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
-      label="{{taskViewModel.cta.label}}"
-      disabled="{{taskViewModel.cta.disabled}}"
-      loading="{{taskViewModel.cta.loading || busy.navigating}}"
+      label="{{task && (task.submitted || task.current_step === 'done') ? '补充或修改资料' : taskViewModel.cta.label}}"
+      disabled="{{task && (task.submitted || task.current_step === 'done') ? (busy.navigating || busy.submitting) : taskViewModel.cta.disabled}}"
+      loading="{{busy.navigating || busy.submitting}}"
       disabledReason="{{ctaDisabledReason}}"
       bindtap="onPrimaryAction"
     />
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onViewAll">查看全部资料</button>
+    <button
+      wx:if="{{task && (task.submitted || task.current_step === 'done')}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onViewReceipt"
+      disabled="{{busy.navigating || busy.submitting}}"
+    >查看提交结果</button>
+    <button
+      wx:if="{{!(task && (task.submitted || task.current_step === 'done'))}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onViewAll"
+    >查看全部资料</button>
   </view>
 </view>

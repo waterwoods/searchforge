@@ -125,6 +125,7 @@ import {
     UrgencyTag,
     CaseStatusTag,
 } from '@/features/intake/components/WorkbenchSummary';
+import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { addCarNextOwnerLine } from '@/components/intake/AddCarRecordSummaryRail';
 
 const { TextArea } = Input;
@@ -1657,6 +1658,12 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     onManualPromote={
                                         currentCase.manual_followup_needed ? handleManualPromote : undefined
                                     }
+                                />
+                            ) : null}
+                            {currentCase.service_lane === 'claim' ? (
+                                <ClaimCaseBriefPanel
+                                    brief={currentCase.claim_case_brief}
+                                    timeline={currentCase.claim_timeline}
                                 />
                             ) : null}
                             <OfficeWorkbenchOneGlanceSummary

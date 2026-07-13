@@ -5,7 +5,8 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --import tsx --test tests/**/*.test.ts",
-    "test:watch": "node --import tsx --test --watch tests/**/*.test.ts"
+    "test:watch": "node --import tsx --test --watch tests/**/*.test.ts",
+    "test:component-gates": "node ../scripts/validate_miniapp_component_gates.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

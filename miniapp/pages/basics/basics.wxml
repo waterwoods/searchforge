@@ -1,38 +1,76 @@
 <view class="container">
-  <view class="card">
-    <view class="card-title">补充基本资料</view>
-    <view class="card-subtitle">这些信息帮助陈总快速了解情况。</view>
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{errorState}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <task-error
+      wx:if="{{errorState.message && !errorState.blocking}}"
+      message="{{errorState.message}}"
+      retryable="{{errorState.retryable}}"
+      retryDisabled="{{busy.retrying}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onContactBroker"
+    />
 
-    <view class="section-label">是否有人受伤</view>
-    <view class="radio-row">
-      <view
-        wx:for="{{injuryOptions}}"
-        wx:key="value"
-        class="radio-chip {{anyoneInjured === item.value ? 'active' : ''}}"
-        hover-class="radio-chip-hover"
-        data-value="{{item.value}}"
-        bindtap="onInjurySelect"
-      >{{item.label}}</view>
+    <view class="card">
+      <view class="card-title">补充基本资料</view>
+      <view class="card-subtitle">这些信息帮助陈总快速了解情况。</view>
+
+      <view class="section-label">是否有人受伤</view>
+      <task-choice
+        options="{{injuryOptions}}"
+        value="{{anyoneInjured}}"
+        disabled="{{busy.saving}}"
+        bind:select="onInjurySelect"
+      />
+
+      <view class="section-label section-gap">是否报警</view>
+      <task-choice
+        options="{{policeOptions}}"
+        value="{{policeInvolved}}"
+        disabled="{{busy.saving}}"
+        bind:select="onPoliceSelect"
+      />
+
+      <view class="section-label section-gap">事故时间</view>
+      <input
+        class="input-field"
+        placeholder="例如：今天上午 10 点"
+        value="{{accidentDatetime}}"
+        bindinput="onDatetimeInput"
+      />
+
+      <view class="section-label section-gap">事故地点</view>
+      <input
+        class="input-field"
+        placeholder="例如：Irvine Blvd 路口"
+        value="{{accidentLocation}}"
+        bindinput="onLocationInput"
+      />
+
+      <view class="section-label section-gap">您的车辆</view>
+      <input
+        class="input-field"
+        placeholder="例如：2020 Toyota Camry"
+        value="{{ownVehicleInfo}}"
+        bindinput="onVehicleInput"
+      />
     </view>
+  </task-shell>
 
-    <view class="section-label section-gap">事故时间</view>
-    <input class="input-field" placeholder="例如：今天上午 10 点" value="{{accidentDatetime}}" bindinput="onDatetimeInput" />
-
-    <view class="section-label section-gap">事故地点</view>
-    <input class="input-field" placeholder="例如：Irvine Blvd 路口" value="{{accidentLocation}}" bindinput="onLocationInput" />
-
-    <view class="section-label section-gap">您的车辆</view>
-    <input class="input-field" placeholder="例如：2020 Toyota Camry" value="{{ownVehicleInfo}}" bindinput="onVehicleInput" />
-  </view>
-
-  <view class="footer-cta">
-    <button
-      class="btn-primary"
-      hover-class="btn-primary-hover"
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <task-cta
+      label="保存并返回我的资料"
+      disabled="{{busy.saving}}"
+      loading="{{busy.saving}}"
+      disabledReason="{{ctaDisabledReason}}"
       bindtap="onSave"
-      loading="{{saving}}"
-      disabled="{{saving}}"
-    >保存并返回</button>
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater">稍后再填</button>
+    />
+    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater" disabled="{{busy.saving}}">稍后再填</button>
   </view>
 </view>

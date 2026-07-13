@@ -1,4 +1,9 @@
 {
   "navigationBarTitleText": "事故照片",
-  "usingComponents": {}
+  "usingComponents": {
+    "task-shell": "/components/task-shell/index",
+    "task-cta": "/components/task-cta/index",
+    "task-error": "/components/task-error/index",
+    "task-photo": "/components/task-photo/index"
+  }
 }

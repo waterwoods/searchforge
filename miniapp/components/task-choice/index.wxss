@@ -1,0 +1,45 @@
+.task-choice {
+  display: flex;
+  flex-direction: column;
+}
+
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.radio-chip {
+  min-height: 88rpx;
+  padding: 16rpx 28rpx;
+  border-radius: 12rpx;
+  background: #f0f2f5;
+  font-size: 28rpx;
+  color: #444444;
+  line-height: 1.4;
+  border: 2rpx solid transparent;
+}
+
+.radio-chip::after {
+  border: none;
+}
+
+.radio-chip.active {
+  background: #e8f0fe;
+  color: #1a56db;
+  border-color: #b5c9f7;
+  font-weight: 600;
+}
+
+.radio-chip[disabled] {
+  color: #9ca3af;
+}
+
+.radio-chip-hover {
+  background: #e4e8ee;
+}
+
+.selected-tag {
+  margin-left: 6rpx;
+  font-size: 24rpx;
+}

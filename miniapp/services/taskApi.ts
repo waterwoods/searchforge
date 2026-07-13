@@ -69,14 +69,20 @@ export async function uploadPhoto(
   uploadUrl: string,
   localFilePath: string,
   slot: string,
+  options?: { onProgress?: (progress: number) => void },
 ): Promise<unknown> {
   const uploadToken = extractTokenFromUrl(uploadUrl);
   if (!uploadToken) {
     throw new ApiRequestError("invalid_upload_url");
   }
-  return uploadFile(`/api/h5/tasks/${enc(uploadToken)}/upload`, localFilePath, {
-    slot,
-  });
+  return uploadFile(
+    `/api/h5/tasks/${enc(uploadToken)}/upload`,
+    localFilePath,
+    {
+      slot,
+    },
+    options,
+  );
 }
 
 export function getOrCreateSubmitIntentId(): string {

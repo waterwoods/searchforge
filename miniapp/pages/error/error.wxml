@@ -1,8 +1,39 @@
 <view class="container">
-  <view class="card">
-    <view class="card-title">暂时无法继续</view>
-    <view class="card-subtitle">{{message}}</view>
-    <button class="btn-primary" hover-class="btn-primary-hover" bindtap="onRetry">重试</button>
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onContact">返回微信联系陈总</button>
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{shellError}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <view class="card">
+      <view class="card-title">{{title}}</view>
+      <task-error
+        message="{{errorState.message}}"
+        retryable="{{errorState.retryable}}"
+        retryDisabled="{{busy.navigating}}"
+        bind:retry="onRetry"
+        bind:contactBroker="onContactBroker"
+      />
+    </view>
+  </task-shell>
+
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <task-cta
+      label="{{errorState.retryable ? '重新打开资料' : '联系陈总'}}"
+      disabled="{{busy.navigating}}"
+      loading="{{busy.navigating}}"
+      disabledReason="{{ctaDisabledReason}}"
+      bindtap="onRetry"
+    />
+    <button
+      wx:if="{{errorState.retryable}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onContactBroker"
+      disabled="{{busy.navigating}}"
+    >联系陈总</button>
   </view>
 </view>

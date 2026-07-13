@@ -6,7 +6,7 @@
     safetyCopy="{{shellSafetyCopy}}"
     showFooter="{{true}}"
     bind:retry="onRetry"
-    bind:contactBroker="onLater"
+    bind:contactBroker="onContactBroker"
   >
     <task-error
       wx:if="{{errorState.message && !errorState.blocking}}"
@@ -14,7 +14,7 @@
       retryable="{{errorState.retryable}}"
       retryDisabled="{{busy.retrying}}"
       bind:retry="onRetry"
-      bind:contactBroker="onLater"
+      bind:contactBroker="onContactBroker"
     />
 
     <view class="card">
@@ -35,7 +35,7 @@
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
-      label="保存并返回"
+      label="保存并返回我的资料"
       disabled="{{busy.saving}}"
       loading="{{busy.saving}}"
       bindtap="onSave"

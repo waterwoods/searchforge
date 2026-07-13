@@ -7,6 +7,7 @@ import {
   EMPTY_TASK_VIEW_MODEL,
   taskShellBindingsFromViewModel,
 } from "../../utils/resolveTaskViewModel";
+import { contactBrokerModalCopy } from "../../utils/taskMapping";
 
 Page({
   behaviors: [taskPage],
@@ -90,5 +91,15 @@ Page({
 
   onLater() {
     wx.navigateBack();
+  },
+
+  onContactBroker() {
+    const copy = contactBrokerModalCopy();
+    wx.showModal({
+      title: copy.title,
+      content: copy.content,
+      showCancel: false,
+      confirmText: "知道了",
+    });
   },
 });

@@ -201,6 +201,20 @@ export const taskPage = Behavior({
       } finally {
         if (requestSeq === ensureInternalState(this).latestRequestSeq && !silent) {
           this.setBusy("loading", false);
+          const task = this.data.task as CustomerTask | null;
+          if (task?.case_id) {
+            const errState = this.data.errorState as TaskErrorState;
+            const vm = resolveTaskViewModel(
+              task,
+              task.task_contract,
+              {
+                route: (this as { route?: string }).route,
+                busy: { ...this.data.busy, loading: false },
+              },
+              errState?.message ? errState : undefined,
+            );
+            this.setData(taskViewModelDataPatch(vm));
+          }
         }
       }
     },
@@ -214,7 +228,7 @@ export const taskPage = Behavior({
       }
       if (attempts >= MAX_RETRY_ATTEMPTS) {
         const exhausted = normalizeError("network_error", true);
-        exhausted.message = "网络暂时不可用，请稍后重试或联系陈总。";
+        exhausted.message = "网络暂时不可用，请稍后再试或联系陈总。";
         this.setData({ errorState: exhausted });
         return null;
       }

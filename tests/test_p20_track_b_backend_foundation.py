@@ -17,6 +17,7 @@ from services.fiqa_api.inbox_triage.case_store import (
     patch_case_known_facts,
     save_case,
 )
+from services.fiqa_api.inbox_triage.claim_workbench_display import enrich_claim_for_workbench
 from services.fiqa_api.inbox_triage.h5_task_intake import (
     build_customer_task_contract,
     intake_info_for_token,
@@ -60,7 +61,14 @@ def _complete_required_h5_fields(claims: object) -> None:
         ("injury", {"anyone_injured": "no"}),
         ("time_location", {"accident_datetime": "2026-07-12T10:00:00Z", "accident_location": "Irvine Blvd"}),
         ("story", {"accident_description": "我停在红灯前，后车追尾撞上我的车。"}),
-        ("vehicle_other_party", {"own_vehicle_info": "2020 Toyota Camry"}),
+        (
+            "vehicle_other_party",
+            {
+                "own_vehicle_info": "2020 Toyota Camry",
+                "other_party_plate": "8ABC123",
+                "other_party_info": "State Farm",
+            },
+        ),
     ):
         patch_intake_fields(claims, step=step, fields=fields)  # type: ignore[arg-type]
 
@@ -149,6 +157,22 @@ def test_pg_parity_rehydrates_submitted_claim_contract_without_json_read():
     assert contract["task_status"] == "submitted"
     assert contract["submit_ready"] is False
     assert contract["fields"]["accident_location"] == "Irvine Blvd"
+    assert contract["fields"]["own_vehicle_info"] == "2020 Toyota Camry"
+    assert contract["fields"]["other_party_plate"] == "8ABC123"
+
+
+def test_vehicle_fields_project_to_workbench_after_pg_roundtrip_shape():
+    case_id, claims = _claim_case()
+    _complete_required_h5_fields(claims)
+    submit_intake_form(claims, submit_intent_id="p20-vehicle-workbench-projection-0001")  # type: ignore[arg-type]
+    case = get_case_by_id(case_id) or {}
+    row = enrich_claim_for_workbench(case)
+    brief = row.get("claim_case_brief") or {}
+    facts = brief.get("key_facts") or {}
+
+    assert facts.get("own_vehicle_info") == "2020 Toyota Camry"
+    assert facts.get("other_party_plate") == "8ABC123"
+    assert facts.get("other_party_info")
 
 
 def test_provenance_guard_preserves_confirmed_fact_and_logs_conflict():
@@ -185,6 +209,80 @@ def test_provenance_guard_preserves_confirmed_fact_and_logs_conflict():
     broker_updated = get_case_by_id(case_id) or {}
     assert broker_updated["known_facts"]["accident_location"] == "Broker confirmed location"
     assert any(event["event_type"] == "broker_confirmed_fact_updated" for event in broker_updated["claim_timeline"])
+
+
+def test_post_submit_supplement_preserves_submitted_and_blocks_wecom_overwrite():
+    case_id, claims = _claim_case()
+    _complete_required_h5_fields(claims)
+    submit_intake_form(claims, submit_intent_id="p20-post-submit-supplement-intent-0001")  # type: ignore[arg-type]
+
+    patch_intake_fields(  # type: ignore[arg-type]
+        claims,
+        step="story",
+        fields={"accident_description": "提交后补充：我补充了更完整的事故经过说明。"},
+    )
+    after_supplement = get_case_by_id(case_id) or {}
+    assert str((after_supplement.get("known_facts") or {}).get("accident_description") or "") == (
+        "提交后补充：我补充了更完整的事故经过说明。"
+    )
+    provenance = (after_supplement.get("known_fact_provenance") or {}).get("accident_description") or {}
+    assert provenance.get("source") == "customer_confirmed"
+    assert provenance.get("status") == "customer_supplement"
+    assert (after_supplement.get("h5_intake_state") or {}).get("submitted") is True
+    assert (after_supplement.get("h5_intake_state") or {}).get("submitted_at")
+    assert any(
+        e.get("event_type") == "h5_post_submit_supplement"
+        for e in (after_supplement.get("claim_timeline") or [])
+        if isinstance(e, dict)
+    )
+
+    patch_case_known_facts(
+        case_id,
+        {"accident_description": "微信文本尝试覆盖提交后补充"},
+        source="wecom_customer_message",
+        status="customer_supplement",
+    )
+    guarded = get_case_by_id(case_id) or {}
+    assert str((guarded.get("known_facts") or {}).get("accident_description") or "") == (
+        "提交后补充：我补充了更完整的事故经过说明。"
+    )
+    assert any(
+        e.get("event_type") == "fact_conflict_detected"
+        for e in (guarded.get("claim_timeline") or [])
+        if isinstance(e, dict)
+    )
+
+
+def test_post_submit_vehicle_correction_becomes_current_and_keeps_before_after_delta():
+    case_id, claims = _claim_case()
+    _complete_required_h5_fields(claims)
+    submit_intake_form(claims, submit_intent_id="p20-post-submit-vehicle-correction-0001")  # type: ignore[arg-type]
+
+    patch_intake_fields(  # type: ignore[arg-type]
+        claims,
+        step="vehicle_other_party",
+        fields={
+            "own_vehicle_info": "2021 Tesla Model 3",
+            "other_party_plate": "9XYZ999",
+            "other_party_info": "GEICO",
+        },
+    )
+    case = get_case_by_id(case_id) or {}
+    facts = case.get("known_facts") or {}
+    assert facts.get("own_vehicle_info") == "2021 Tesla Model 3"
+    assert facts.get("other_party_plate") == "9XYZ999"
+    assert facts.get("other_party_info") == "GEICO"
+    assert (case.get("h5_intake_state") or {}).get("submitted") is True
+
+    supplements = [
+        e
+        for e in (case.get("claim_timeline") or [])
+        if isinstance(e, dict) and e.get("event_type") == "h5_post_submit_supplement"
+    ]
+    assert supplements
+    changes = supplements[-1].get("metadata", {}).get("changes", {})
+    assert changes.get("own_vehicle_info", {}).get("before") == "2020 Toyota Camry"
+    assert changes.get("own_vehicle_info", {}).get("after") == "2021 Tesla Model 3"
 
 
 def test_strict_postgres_read_does_not_consult_json_store(monkeypatch):

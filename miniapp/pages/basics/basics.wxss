@@ -1,1 +1,5 @@
 /* Page-specific styles — shared form styles live in app.wxss */
+
+.task-error {
+  margin-bottom: 20rpx;
+}

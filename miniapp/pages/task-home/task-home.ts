@@ -1,14 +1,13 @@
 import { taskPage } from "../../behaviors/taskPage";
 import { appConfig } from "../../utils/config";
-import {
-  type SupplementTaskRow,
-} from "../../utils/taskMapping";
 import type { TaskViewModel } from "../../types/task";
+import { contactBrokerModalCopy } from "../../utils/taskMapping";
 import {
   EMPTY_TASK_ERROR,
   EMPTY_TASK_VIEW_MODEL,
   taskShellBindingsFromViewModel,
 } from "../../utils/resolveTaskViewModel";
+import { consumeResumeRestoredHint } from "../../utils/resumeHint";
 
 type PageData = {
   loadingMessage: string;
@@ -36,7 +35,7 @@ type PageData = {
 Page({
   behaviors: [taskPage],
   data: {
-    loadingMessage: "正在加载当前任务和资料状态…",
+    loadingMessage: "正在加载我的资料…",
     taskViewModel: EMPTY_TASK_VIEW_MODEL,
     ...taskShellBindingsFromViewModel(EMPTY_TASK_VIEW_MODEL),
     errorState: EMPTY_TASK_ERROR,
@@ -55,6 +54,15 @@ Page({
   } as PageData,
 
   onShow() {
+    this.setBusy("navigating", false);
+    this.setBusy("uploading", false);
+    if (consumeResumeRestoredHint()) {
+      wx.showToast({
+        title: "已恢复您上次填写的内容",
+        icon: "none",
+        duration: 2500,
+      });
+    }
     void this.loadTask();
   },
 
@@ -63,6 +71,11 @@ Page({
   },
 
   onPrimaryAction() {
+    const task = this.data.task as { submitted?: boolean; current_step?: string } | undefined;
+    if (task && (task.submitted || task.current_step === "done")) {
+      this.onEditSupplementInfo();
+      return;
+    }
     const vm = this.data.taskViewModel;
     if (vm.cta.disabled) return;
     const route = this.resolveRouteFromCta(vm);
@@ -94,8 +107,9 @@ Page({
   },
 
   onTapSupplementRow(e: WechatMiniprogram.TouchEvent) {
-    const index = Number(e.currentTarget.dataset.index);
-    const row: SupplementTaskRow | undefined = this.data.taskViewModel?.missingItems[index];
+    const detail = (e as WechatMiniprogram.CustomEvent<{ index?: number }>).detail;
+    const index = Number(detail?.index ?? e.currentTarget.dataset.index);
+    const row = this.data.taskViewModel?.missingItems[index];
     if (!row?.actionable || !row.route) return;
     this.navigateOnce(row.route);
   },
@@ -129,6 +143,28 @@ Page({
     });
   },
 
+  onEditSupplementInfo() {
+    if (this.isBusy("navigating")) return;
+    wx.showActionSheet({
+      itemList: ["修改事故经过", "修改基本资料", "修改车辆及对方信息", "补充照片"],
+      success: (res) => {
+        const routes = [
+          "/pages/story/story",
+          "/pages/basics/basics",
+          "/pages/basics/basics",
+          "/pages/photos/photos",
+        ];
+        const route = routes[res.tapIndex];
+        if (route) this.navigateOnce(route);
+      },
+    });
+  },
+
+  onViewReceipt() {
+    if (this.isBusy("navigating")) return;
+    this.navigateOnce("/pages/receipt/receipt");
+  },
+
   onShowDisclaimer() {
     const vm = this.data.taskViewModel;
     wx.showModal({
@@ -139,6 +175,12 @@ Page({
   },
 
   onContactBroker() {
-    this.onShowDisclaimer();
+    const copy = contactBrokerModalCopy();
+    wx.showModal({
+      title: copy.title,
+      content: copy.content,
+      showCancel: false,
+      confirmText: "知道了",
+    });
   },
 });

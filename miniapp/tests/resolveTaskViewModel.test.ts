@@ -183,3 +183,56 @@ test("does not mutate input task and contract", () => {
   assert.equal(JSON.stringify(task), taskSnapshot);
   assert.equal(JSON.stringify(contract), contractSnapshot);
 });
+
+const idleBusy = {
+  loading: false,
+  saving: false,
+  uploading: false,
+  submitting: false,
+  navigating: false,
+  retrying: false,
+};
+
+test("page loading does not set cta loading spinner", () => {
+  const vm = resolveTaskViewModel(buildTask(), buildContract(), {
+    busy: { ...idleBusy, loading: true },
+  });
+  assert.equal(vm.cta.loading, false);
+});
+
+test("saving does not set cta loading spinner", () => {
+  const vm = resolveTaskViewModel(buildTask(), buildContract(), {
+    busy: { ...idleBusy, saving: true },
+  });
+  assert.equal(vm.cta.loading, false);
+});
+
+test("submitting sets cta loading spinner", () => {
+  const vm = resolveTaskViewModel(buildTask(), buildContract(), {
+    busy: { ...idleBusy, submitting: true },
+  });
+  assert.equal(vm.cta.loading, true);
+});
+
+test("review route CTA uses submit label and disabled reason", () => {
+  const vm = resolveTaskViewModel(
+    buildTask({ current_step: "review" }),
+    buildContract({ submit_ready: false, review_ready: false }),
+    { route: "/pages/review/review", busy: idleBusy },
+  );
+  assert.equal(vm.cta.label, "提交给陈总审核");
+  assert.equal(vm.cta.actionType, "submit");
+  assert.equal(vm.cta.disabled, true);
+  assert.ok(String(vm.cta.disabledReason).length > 0);
+});
+
+test("receipt route CTA returns to task home", () => {
+  const vm = resolveTaskViewModel(
+    buildTask({ submitted: true, current_step: "done" }),
+    buildContract({ task_status: "submitted", submit_ready: false }),
+    { route: "/pages/receipt/receipt", busy: idleBusy },
+  );
+  assert.equal(vm.cta.label, "返回我的资料");
+  assert.equal(vm.cta.actionType, "view_status");
+  assert.equal(vm.statusTone, "done");
+});

@@ -102,6 +102,7 @@ export function uploadFile(
   path: string,
   filePath: string,
   formData: Record<string, string>,
+  options?: { onProgress?: (progress: number) => void },
 ): Promise<unknown> {
   return ensureApiReachable()
     .then(
@@ -118,7 +119,7 @@ export function uploadFile(
             finish(() => reject(new ApiRequestError("network_error")));
           }, UPLOAD_TIMEOUT_MS);
 
-          wx.uploadFile({
+          const task = wx.uploadFile({
             url: `${baseUrl()}${path}`,
             filePath,
             name: "file",
@@ -147,6 +148,12 @@ export function uploadFile(
               clearTimeout(timer);
             },
           });
+          if (task && typeof task.onProgressUpdate === "function" && options?.onProgress) {
+            task.onProgressUpdate((event) => {
+              const progress = Number(event?.progress ?? 0);
+              options.onProgress?.(Number.isFinite(progress) ? progress : 0);
+            });
+          }
         }),
     )
     .catch((err) => {

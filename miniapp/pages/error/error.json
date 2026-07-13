@@ -1,4 +1,8 @@
 {
-  "navigationBarTitleText": "出错了",
-  "usingComponents": {}
+  "navigationBarTitleText": "暂时无法继续",
+  "usingComponents": {
+    "task-shell": "/components/task-shell/index",
+    "task-error": "/components/task-error/index",
+    "task-cta": "/components/task-cta/index"
+  }
 }

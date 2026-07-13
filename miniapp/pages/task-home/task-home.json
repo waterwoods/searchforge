@@ -3,6 +3,8 @@
   "usingComponents": {
     "task-shell": "/components/task-shell/index",
     "task-cta": "/components/task-cta/index",
-    "task-error": "/components/task-error/index"
+    "task-error": "/components/task-error/index",
+    "task-status-card": "/components/task-status-card/index",
+    "task-progress": "/components/task-progress/index"
   }
 }

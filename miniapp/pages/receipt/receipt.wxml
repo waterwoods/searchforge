@@ -1,25 +1,66 @@
 <view class="container">
-  <view class="card">
-    <view class="status-pill done">{{status}}</view>
-    <view class="card-title">{{title}}</view>
-    <view class="card-subtitle">{{message}}</view>
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{errorState}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <task-error
+      wx:if="{{errorState.message && !errorState.blocking}}"
+      message="{{errorState.message}}"
+      retryable="{{errorState.retryable}}"
+      retryDisabled="{{busy.retrying}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onContactBroker"
+    />
 
-    <view class="section-label">下一步</view>
-    <view class="list-item">{{nextStep}}</view>
+    <view class="card">
+      <view class="status-pill {{statusTone === 'done' ? 'done' : ''}}">{{status}}</view>
+      <view class="card-title">{{title}}</view>
+      <view class="card-subtitle">{{message}}</view>
 
-    <view class="section-label section-gap">照片</view>
-    <view class="list-item">已上传 {{photoCount}} 张</view>
+      <view wx:if="{{submittedAt}}" class="section-label section-gap">提交时间</view>
+      <view wx:if="{{submittedAt}}" class="list-item">{{submittedAt}}</view>
 
-    <view class="disclaimer">{{disclaimer}}</view>
-  </view>
+      <view class="section-label {{submittedAt ? 'section-gap' : ''}}">下一步</view>
+      <view class="list-item">{{nextStep}}</view>
 
-  <view class="footer-cta">
-    <button class="btn-primary" hover-class="btn-primary-hover" bindtap="onViewStatus">返回我的资料</button>
+      <view class="section-label section-gap">陈总会联系您</view>
+      <view class="list-item">{{brokerContactNote}}</view>
+
+      <view class="section-label section-gap">可能还需补充</view>
+      <view class="list-item {{showSupplement ? 'missing' : ''}}">{{materialsNote}}</view>
+
+      <view class="disclaimer">{{disclaimer}}</view>
+    </view>
+  </task-shell>
+
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <task-cta
+      wx:if="{{submitted}}"
+      label="补充或修改资料"
+      disabled="{{busy.navigating}}"
+      loading="{{busy.navigating}}"
+      disabledReason="{{ctaDisabledReason}}"
+      bindtap="onEditSupplementInfo"
+    />
+    <task-cta
+      wx:else
+      label="返回我的资料"
+      disabled="{{busy.navigating}}"
+      loading="{{busy.navigating}}"
+      disabledReason="{{ctaDisabledReason}}"
+      bindtap="onViewStatus"
+    />
     <button
       wx:if="{{submitted}}"
       class="btn-secondary"
       hover-class="btn-secondary-hover"
-      bindtap="onSupplement"
-    >继续补充照片</button>
+      bindtap="onViewAll"
+      disabled="{{busy.navigating}}"
+    >查看全部资料</button>
   </view>
 </view>

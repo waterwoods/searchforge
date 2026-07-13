@@ -114,6 +114,7 @@ export type ClaimCaseBrief = {
         injury_status?: 'yes' | 'no' | 'unknown' | string;
         police_involved?: 'yes' | 'no' | 'unknown' | string;
         other_party_info?: string | null;
+        other_party_plate?: string | null;
         own_vehicle_info?: string | null;
     };
     evidence_received?: {

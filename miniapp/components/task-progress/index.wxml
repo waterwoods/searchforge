@@ -1,0 +1,7 @@
+<view class="task-progress">
+  <view class="progress-text">{{safeCompleted}} / {{safeTotal}}</view>
+  <view class="progress-bar" aria-hidden="true">
+    <view class="progress-fill" style="width: {{safePercent}}%;"></view>
+  </view>
+  <view class="progress-a11y-text">当前进度 {{safeCompleted}} / {{safeTotal}}</view>
+</view>
