@@ -1,0 +1,19 @@
+.task-shell {
+  min-height: 100%;
+  padding: 24rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.task-content {
+  flex: 1;
+}
+
+.task-footer {
+  color: #6b7280;
+  font-size: 24rpx;
+  line-height: 1.5;
+  padding-top: 8rpx;
+}

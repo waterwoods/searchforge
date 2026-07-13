@@ -1,0 +1,33 @@
+.task-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  min-height: 320rpx;
+  padding: 32rpx;
+}
+
+.spinner {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  border: 4rpx solid #d9e2ec;
+  border-top-color: #2251cc;
+  animation: spin 1s linear infinite;
+}
+
+.message {
+  color: #2d3748;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

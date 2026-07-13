@@ -1,0 +1,12 @@
+<view class="task-cta">
+  <button
+    class="btn-primary"
+    disabled="{{disabled || loading}}"
+    loading="{{loading}}"
+    bindtap="onTap"
+  >
+    {{label}}
+  </button>
+
+  <text wx:if="{{disabledReason}}" class="disabled-reason">{{disabledReason}}</text>
+</view>

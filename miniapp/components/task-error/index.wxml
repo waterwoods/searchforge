@@ -1,0 +1,14 @@
+<view class="task-error" role="alert">
+  <text class="message">{{message}}</text>
+
+  <button
+    wx:if="{{retryable}}"
+    class="btn-retry"
+    disabled="{{retryDisabled}}"
+    bindtap="onRetryTap"
+  >
+    重试
+  </button>
+
+  <button class="btn-contact" bindtap="onContactBrokerTap">联系陈总</button>
+</view>

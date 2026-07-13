@@ -1,0 +1,7 @@
+{
+  "component": true,
+  "usingComponents": {
+    "task-loading": "/components/task-loading/index",
+    "task-error": "/components/task-error/index"
+  }
+}

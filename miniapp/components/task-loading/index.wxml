@@ -1,0 +1,4 @@
+<view class="task-loading" role="status" aria-live="polite">
+  <view class="spinner" />
+  <text class="message">{{message}}</text>
+</view>
