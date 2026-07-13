@@ -1,24 +1,55 @@
+import { taskPage } from "../../behaviors/taskPage";
 import { CustomerTaskApi } from "../../services/taskApi";
-import { mapErrorMessage } from "../../utils/taskMapping";
-import { ApiRequestError } from "../../utils/request";
+import type { CustomerTask } from "../../types/task";
+import {
+  resolveTaskViewModel,
+  EMPTY_TASK_ERROR,
+  EMPTY_TASK_VIEW_MODEL,
+  taskShellBindingsFromViewModel,
+} from "../../utils/resolveTaskViewModel";
 
 Page({
+  behaviors: [taskPage],
   data: {
+    loadingMessage: "正在加载事故经过…",
     story: "",
     charCount: 0,
-    saving: false,
+    localDirty: false,
     minLength: 10,
+    task: null as CustomerTask | null,
+    taskViewModel: EMPTY_TASK_VIEW_MODEL,
+    ...taskShellBindingsFromViewModel(EMPTY_TASK_VIEW_MODEL),
+    errorState: EMPTY_TASK_ERROR,
+    busy: {
+      loading: true,
+      saving: false,
+      uploading: false,
+      submitting: false,
+      navigating: false,
+      retrying: false,
+    },
+    retryMeta: {
+      attempts: 0,
+      cooldownUntil: 0,
+    },
   },
 
-  onShow() {
-    const app = getApp<{ task?: { key_facts?: Record<string, string | null> } }>();
-    const existing = String(app.task?.key_facts?.accident_description || "");
+  async onShow() {
+    const token = this.requireToken();
+    if (!token) return;
+    await this.loadTask({ silent: false });
+    if (this.data.localDirty) return;
+    const existing = String(this.data.task?.key_facts?.accident_description || "");
     this.setData({ story: existing, charCount: existing.length });
   },
 
   onInput(e: WechatMiniprogram.Input) {
     const story = e.detail.value || "";
-    this.setData({ story, charCount: story.length });
+    this.setData({ story, charCount: story.length, localDirty: true });
+  },
+
+  onRetry() {
+    void this.retryLoadTask();
   },
 
   async onSave() {
@@ -28,25 +59,33 @@ Page({
       return;
     }
 
-    const app = getApp<{ taskToken?: string; task?: unknown }>();
-    const token = app.taskToken;
-    if (!token) {
-      wx.redirectTo({ url: "/pages/entry/entry" });
-      return;
-    }
-
-    this.setData({ saving: true });
-    try {
-      const task = await CustomerTaskApi.saveStory(token, story);
-      app.task = task;
+    const token = this.requireToken();
+    if (!token) return;
+    await this.saveAndReturn(async () => {
+      await CustomerTaskApi.saveStory(token, story);
+      const readBack = await CustomerTaskApi.getTask(token);
+      const app = getApp<IAppOption>();
+      app.task = readBack;
+      this.commitTaskViewModel(
+        resolveTaskViewModel(
+          readBack,
+          readBack.task_contract,
+          {
+            route: (this as { route?: string }).route,
+            busy: { ...this.data.busy, saving: true },
+          },
+          null,
+        ),
+      );
+      this.setData({
+        task: readBack,
+        errorState: EMPTY_TASK_ERROR,
+        story,
+        charCount: story.length,
+        localDirty: false,
+      });
       wx.showToast({ title: "已保存", icon: "success" });
-      setTimeout(() => wx.navigateBack(), 400);
-    } catch (err) {
-      const code = err instanceof ApiRequestError ? err.code : "save_failed";
-      wx.showToast({ title: mapErrorMessage(code), icon: "none" });
-    } finally {
-      this.setData({ saving: false });
-    }
+    });
   },
 
   onLater() {

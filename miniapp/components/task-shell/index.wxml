@@ -1,10 +1,10 @@
 <view class="task-shell">
-  <task-loading wx:if="{{mode === 'loading'}}" message="{{loadingMessage}}" />
+  <task-loading wx:if="{{mode === 'loading'}}" message="{{safeLoadingMessage}}" />
 
   <task-error
     wx:elif="{{mode === 'blocking_error'}}"
-    message="{{error.message}}"
-    retryable="{{error.retryable}}"
+    message="{{safeError.message}}"
+    retryable="{{safeError.retryable}}"
     bind:retry="onRetry"
     bind:contactBroker="onContactBroker"
   />
@@ -13,7 +13,7 @@
     <slot />
   </view>
 
-  <view wx:if="{{showFooter && safetyCopy}}" class="task-footer">
-    <text>{{safetyCopy}}</text>
+  <view wx:if="{{showFooter && safeSafetyCopy}}" class="task-footer">
+    <text>{{safeSafetyCopy}}</text>
   </view>
 </view>

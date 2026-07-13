@@ -1,141 +1,125 @@
-import { CustomerTaskApi } from "../../services/taskApi";
+import { taskPage } from "../../behaviors/taskPage";
 import { appConfig } from "../../utils/config";
 import {
-  buildSupplementRows,
-  isSubmitted,
-  mapErrorMessage,
-  progressPercent,
-  prototypePhotoTarget,
-  resolveNextAction,
   type SupplementTaskRow,
 } from "../../utils/taskMapping";
-import { ApiRequestError } from "../../utils/request";
+import type { TaskViewModel } from "../../types/task";
+import {
+  EMPTY_TASK_ERROR,
+  EMPTY_TASK_VIEW_MODEL,
+  taskShellBindingsFromViewModel,
+} from "../../utils/resolveTaskViewModel";
 
 type PageData = {
-  loading: boolean;
-  title: string;
-  subtitle: string;
-  status: string;
-  received: string[];
-  supplementRows: SupplementTaskRow[];
-  nextAction: string;
-  primaryCta: string;
-  progress: number;
-  photoCount: number;
-  photoTarget: number;
-  submitted: boolean;
-  disclaimer: string;
-  primaryRoute: string;
-  navigating: boolean;
+  loadingMessage: string;
+  taskViewModel: TaskViewModel;
+  errorState: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    blocking: boolean;
+  };
+  busy: {
+    loading: boolean;
+    saving: boolean;
+    uploading: boolean;
+    submitting: boolean;
+    navigating: boolean;
+    retrying: boolean;
+  };
+  retryMeta: {
+    attempts: number;
+    cooldownUntil: number;
+  };
 };
 
 Page({
+  behaviors: [taskPage],
   data: {
-    loading: true,
-    title: "我的事故资料",
-    subtitle: "",
-    status: "",
-    received: [] as string[],
-    supplementRows: [] as SupplementTaskRow[],
-    nextAction: "",
-    primaryCta: "",
-    progress: 0,
-    photoCount: 0,
-    photoTarget: prototypePhotoTarget(),
-    submitted: false,
-    disclaimer: "",
-    primaryRoute: "",
-    navigating: false,
+    loadingMessage: "正在加载当前任务和资料状态…",
+    taskViewModel: EMPTY_TASK_VIEW_MODEL,
+    ...taskShellBindingsFromViewModel(EMPTY_TASK_VIEW_MODEL),
+    errorState: EMPTY_TASK_ERROR,
+    busy: {
+      loading: true,
+      saving: false,
+      uploading: false,
+      submitting: false,
+      navigating: false,
+      retrying: false,
+    },
+    retryMeta: {
+      attempts: 0,
+      cooldownUntil: 0,
+    },
   } as PageData,
 
   onShow() {
-    this.refreshTask();
+    void this.loadTask();
   },
 
-  async refreshTask() {
-    const app = getApp<{ taskToken?: string; task?: import("../../types/task").CustomerTask }>();
-    const token = app.taskToken;
-    if (!token) {
-      wx.redirectTo({ url: "/pages/entry/entry" });
-      return;
-    }
-
-    this.setData({ loading: true });
-    try {
-      const task = await CustomerTaskApi.getTask(token);
-      app.task = task;
-      this.applyTask(task);
-    } catch (err) {
-      const code =
-        err instanceof ApiRequestError ? err.code : "network_error";
-      if (app.task) {
-        this.applyTask(app.task);
-        wx.showToast({ title: mapErrorMessage(code), icon: "none" });
-        return;
-      }
-      wx.redirectTo({ url: "/pages/entry/entry" });
-    }
-  },
-
-  applyTask(task: import("../../types/task").CustomerTask) {
-    const dash = task.dashboard_summary;
-    const next = resolveNextAction(task);
-
-    this.setData({
-      loading: false,
-      title: dash?.title || task.title || "我的事故资料",
-      subtitle: dash?.subtitle || "",
-      status: dash?.status || "进行中",
-      received: dash?.received || [],
-      supplementRows: buildSupplementRows(task),
-      nextAction: dash?.next_action || "",
-      primaryCta: next.primaryCta,
-      primaryRoute: next.route || "/pages/task-home/task-home",
-      progress: progressPercent(task),
-      photoCount: Number(task.photo_count ?? task.attachment_count ?? 0),
-      submitted: isSubmitted(task),
-      disclaimer: dash?.warning || task.safety_copy || "",
-    });
+  onRetry() {
+    void this.retryLoadTask();
   },
 
   onPrimaryAction() {
-    if (this.data.navigating) return;
+    const vm = this.data.taskViewModel;
+    if (vm.cta.disabled) return;
+    const route = this.resolveRouteFromCta(vm);
+    if (!route || route === "/pages/task-home/task-home") return;
+    this.navigateOnce(route);
+  },
 
-    const route = this.data.primaryRoute;
-    if (this.data.submitted) {
-      this.navigateOnce("/pages/receipt/receipt");
-      return;
+  resolveRouteFromCta(vm: TaskViewModel): string {
+    const target = String(vm.cta.target || "").trim();
+    if (target.startsWith("/pages/")) {
+      return target;
     }
-    if (route && route !== "/pages/task-home/task-home") {
-      this.navigateOnce(route);
+    if (vm.cta.actionType === "view_status") {
+      return "/pages/receipt/receipt";
     }
+    if (vm.cta.actionType === "submit") {
+      return "/pages/review/review";
+    }
+    const sectionRouteMap: Record<string, string> = {
+      story: "/pages/story/story",
+      basics: "/pages/basics/basics",
+      injury: "/pages/basics/basics",
+      time_location: "/pages/basics/basics",
+      photos: "/pages/photos/photos",
+      review: "/pages/review/review",
+      receipt: "/pages/receipt/receipt",
+    };
+    return sectionRouteMap[target] || "";
   },
 
   onTapSupplementRow(e: WechatMiniprogram.TouchEvent) {
     const index = Number(e.currentTarget.dataset.index);
-    const row = this.data.supplementRows[index];
-    if (!row?.actionable || !row.route || this.data.navigating) return;
+    const row: SupplementTaskRow | undefined = this.data.taskViewModel?.missingItems[index];
+    if (!row?.actionable || !row.route) return;
     this.navigateOnce(row.route);
   },
 
   navigateOnce(route: string) {
-    this.setData({ navigating: true });
+    if (!route || this.isBusy("navigating")) return;
+    this.setBusy("navigating", true);
     wx.navigateTo({
       url: route,
-      complete: () => this.setData({ navigating: false }),
+      complete: () => this.setBusy("navigating", false),
     });
   },
 
   onViewAll() {
+    const vm = this.data.taskViewModel;
     const lines: string[] = [];
-    const { received, supplementRows } = this.data;
+    const received = this.data.task?.dashboard_summary?.received || [];
     if (received.length) {
       lines.push("已收到：\n" + received.join("、"));
     }
-    if (supplementRows.length) {
+    if (vm.missingItems.length) {
       lines.push(
         "还需补充：\n" +
-          supplementRows.map((row) => `${row.label}（${row.statusText}）`).join("、"),
+          vm.missingItems.map((row) => `${row.label}（${row.statusText}）`).join("、"),
       );
     }
     wx.showModal({
@@ -146,10 +130,15 @@ Page({
   },
 
   onShowDisclaimer() {
+    const vm = this.data.taskViewModel;
     wx.showModal({
       title: appConfig.tenantDisplayName,
-      content: this.data.disclaimer,
+      content: vm.safetyCopy,
       showCancel: false,
     });
+  },
+
+  onContactBroker() {
+    this.onShowDisclaimer();
   },
 });

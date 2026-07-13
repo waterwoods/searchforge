@@ -1,28 +1,42 @@
-<view class="container">
-  <view wx:if="{{loading}}" class="loading-wrap">
-    <text class="loading-text">正在加载您的资料…</text>
-  </view>
+<view class="container task-home-page">
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{errorState}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <task-error
+      wx:if="{{errorState.message && !errorState.blocking}}"
+      message="{{errorState.message}}"
+      retryable="{{errorState.retryable}}"
+      retryDisabled="{{busy.retrying}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onContactBroker"
+    />
 
-  <block wx:else>
     <view class="card">
-      <view class="status-pill {{submitted ? 'done' : ''}}">{{status}}</view>
-      <view class="card-title">{{title}}</view>
-      <view class="card-subtitle">{{subtitle}}</view>
+      <view class="status-pill {{taskViewModel.statusTone === 'done' ? 'done' : ''}}">{{taskViewModel.statusLabel}}</view>
+      <view class="card-title">{{taskViewModel.title}}</view>
+      <view class="card-subtitle">{{taskViewModel.instruction}}</view>
 
       <view class="progress-bar">
-        <view class="progress-fill" style="width: {{progress}}%;"></view>
+        <view class="progress-fill" style="width: {{taskViewModel.progress.percent}}%;"></view>
       </view>
+      <view class="progress-text">{{taskViewModel.progress.completed}} / {{taskViewModel.progress.total}}</view>
 
       <view class="section-label">已收到</view>
-      <view wx:if="{{received.length}}" class="received-list">
-        <view class="received-item" wx:for="{{received}}" wx:key="*this">{{item}}</view>
+      <view wx:if="{{task && task.dashboard_summary && task.dashboard_summary.received.length}}" class="received-list">
+        <view class="received-item" wx:for="{{task.dashboard_summary.received}}" wx:key="*this">{{item}}</view>
       </view>
       <view wx:else class="received-item muted">暂无</view>
 
       <view class="section-label section-gap">还需补充</view>
-      <view wx:if="{{supplementRows.length}}" class="task-row-list">
+      <view wx:if="{{taskViewModel.missingItems.length}}" class="task-row-list">
         <view
-          wx:for="{{supplementRows}}"
+          wx:for="{{taskViewModel.missingItems}}"
           wx:key="key"
           class="task-row {{item.actionable ? 'actionable' : 'static'}}"
           hover-class="{{item.actionable ? 'task-row-hover' : ''}}"
@@ -40,20 +54,20 @@
       <view wx:else class="received-item muted">主要资料已齐全</view>
 
       <view class="section-label section-gap">下一步</view>
-      <view class="next-action-text">{{nextAction || '点击下方按钮继续'}}</view>
+      <view class="next-action-text">{{taskViewModel.instruction || '点击下方按钮继续'}}</view>
     </view>
 
-    <view class="disclaimer" bindtap="onShowDisclaimer">{{disclaimer}}</view>
-  </block>
+    <view class="disclaimer" bindtap="onShowDisclaimer">{{taskViewModel.safetyCopy}}</view>
+  </task-shell>
 
-  <view class="footer-cta" wx:if="{{!loading}}">
-    <button
-      class="btn-primary"
-      hover-class="btn-primary-hover"
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <task-cta
+      label="{{taskViewModel.cta.label}}"
+      disabled="{{taskViewModel.cta.disabled}}"
+      loading="{{taskViewModel.cta.loading || busy.navigating}}"
+      disabledReason="{{ctaDisabledReason}}"
       bindtap="onPrimaryAction"
-      loading="{{navigating}}"
-      disabled="{{navigating}}"
-    >{{primaryCta}}</button>
+    />
     <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onViewAll">查看全部资料</button>
   </view>
 </view>

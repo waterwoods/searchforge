@@ -1,3 +1,14 @@
+.task-home-page .task-error {
+  margin-bottom: 20rpx;
+}
+
+.progress-text {
+  font-size: 24rpx;
+  color: #666666;
+  margin-top: -8rpx;
+  margin-bottom: 16rpx;
+}
+
 .received-list {
   display: flex;
   flex-direction: column;

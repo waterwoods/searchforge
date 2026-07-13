@@ -6,8 +6,13 @@ export type CapturedBehavior = {
   options: Record<string, unknown>;
 };
 
+export type CapturedPage = {
+  options: Record<string, unknown>;
+};
+
 let latestComponent: CapturedComponent | null = null;
 let latestBehavior: CapturedBehavior | null = null;
+let latestPage: CapturedPage | null = null;
 
 export function installMiniProgramGlobals(): void {
   (globalThis as Record<string, unknown>).Component = (options: Record<string, unknown>) => {
@@ -16,6 +21,10 @@ export function installMiniProgramGlobals(): void {
   };
   (globalThis as Record<string, unknown>).Behavior = (options: Record<string, unknown>) => {
     latestBehavior = { options };
+    return options;
+  };
+  (globalThis as Record<string, unknown>).Page = (options: Record<string, unknown>) => {
+    latestPage = { options };
     return options;
   };
   (globalThis as Record<string, unknown>).wx = {
@@ -47,4 +56,12 @@ export function getLatestBehavior(): CapturedBehavior {
 export function resetMiniProgramCaptures(): void {
   latestComponent = null;
   latestBehavior = null;
+  latestPage = null;
+}
+
+export function getLatestPage(): CapturedPage {
+  if (!latestPage) {
+    throw new Error("No page has been captured yet.");
+  }
+  return latestPage;
 }

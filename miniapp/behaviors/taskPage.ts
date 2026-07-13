@@ -3,7 +3,13 @@ import type { CustomerTask, TaskErrorState, TaskViewModel } from "../types/task"
 import { resetApiHealthCache } from "../utils/apiHealth";
 import { ApiRequestError } from "../utils/request";
 import { mapErrorMessage } from "../utils/taskMapping";
-import { resolveTaskViewModel } from "../utils/resolveTaskViewModel";
+import {
+  resolveTaskViewModel,
+  EMPTY_TASK_ERROR,
+  EMPTY_TASK_VIEW_MODEL,
+  taskShellBindingsFromViewModel,
+  taskViewModelDataPatch,
+} from "../utils/resolveTaskViewModel";
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 2000;
@@ -15,8 +21,10 @@ type InternalState = {
 
 type TaskBehaviorData = {
   task: CustomerTask | null;
-  taskViewModel: TaskViewModel | null;
-  errorState: TaskErrorState | null;
+  taskViewModel: TaskViewModel;
+  shellSafetyCopy: string;
+  ctaDisabledReason: string;
+  errorState: TaskErrorState;
   busy: {
     loading: boolean;
     saving: boolean;
@@ -63,8 +71,9 @@ function navigateBackAsync(): Promise<void> {
 export const taskPage = Behavior({
   data: {
     task: null,
-    taskViewModel: null,
-    errorState: null,
+    taskViewModel: EMPTY_TASK_VIEW_MODEL,
+    ...taskShellBindingsFromViewModel(EMPTY_TASK_VIEW_MODEL),
+    errorState: EMPTY_TASK_ERROR,
     busy: {
       loading: false,
       saving: false,
@@ -79,7 +88,23 @@ export const taskPage = Behavior({
     },
   } as TaskBehaviorData,
 
+  lifetimes: {
+    attached() {
+      const bindings = taskShellBindingsFromViewModel(this.data.taskViewModel);
+      if (
+        this.data.shellSafetyCopy !== bindings.shellSafetyCopy ||
+        this.data.ctaDisabledReason !== bindings.ctaDisabledReason
+      ) {
+        this.setData(bindings);
+      }
+    },
+  },
+
   methods: {
+    commitTaskViewModel(vm: TaskViewModel): void {
+      this.setData(taskViewModelDataPatch(vm));
+    },
+
     requireToken(): string | null {
       const app = getApp<IAppOption>();
       const token = String(app.taskToken || "").trim();
@@ -134,8 +159,8 @@ export const taskPage = Behavior({
         });
         this.setData({
           task,
-          taskViewModel: nextVm,
-          errorState: null,
+          errorState: EMPTY_TASK_ERROR,
+          ...taskViewModelDataPatch(nextVm),
         });
         return task;
       } catch (error) {
@@ -152,10 +177,12 @@ export const taskPage = Behavior({
           this.setData({
             task: cachedTask,
             errorState: cachedError,
-            taskViewModel: resolveTaskViewModel(cachedTask, cachedTask.task_contract, {
-              route: (this as { route?: string }).route,
-              busy: this.data.busy,
-            }, cachedError),
+            ...taskViewModelDataPatch(
+              resolveTaskViewModel(cachedTask, cachedTask.task_contract, {
+                route: (this as { route?: string }).route,
+                busy: this.data.busy,
+              }, cachedError),
+            ),
           });
           return cachedTask;
         }
@@ -163,10 +190,12 @@ export const taskPage = Behavior({
         const blockingError = { ...safeError, blocking: true };
         this.setData({
           errorState: blockingError,
-          taskViewModel: resolveTaskViewModel(app.task || ({} as CustomerTask), app.task?.task_contract, {
-            route: (this as { route?: string }).route,
-            busy: this.data.busy,
-          }, blockingError),
+          ...taskViewModelDataPatch(
+            resolveTaskViewModel(app.task || ({} as CustomerTask), app.task?.task_contract, {
+              route: (this as { route?: string }).route,
+              busy: this.data.busy,
+            }, blockingError),
+          ),
         });
         return null;
       } finally {

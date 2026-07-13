@@ -1,27 +1,45 @@
-<view class="container">
-  <view class="card">
-    <view class="card-title">请简单说一下发生了什么</view>
-    <view class="card-subtitle">例如：我在等红灯时，被后车追尾。</view>
-    <textarea
-      class="textarea-field"
-      placeholder="请描述事故经过…"
-      maxlength="2000"
-      value="{{story}}"
-      bindinput="onInput"
-      auto-height
-      show-confirm-bar="{{false}}"
+<view class="container story-page">
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{errorState}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onLater"
+  >
+    <task-error
+      wx:if="{{errorState.message && !errorState.blocking}}"
+      message="{{errorState.message}}"
+      retryable="{{errorState.retryable}}"
+      retryDisabled="{{busy.retrying}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onLater"
     />
-    <view class="char-count">{{charCount}} 字</view>
-  </view>
 
-  <view class="footer-cta">
-    <button
-      class="btn-primary"
-      hover-class="btn-primary-hover"
+    <view class="card">
+      <view class="card-title">请简单说一下发生了什么</view>
+      <view class="card-subtitle">例如：我在等红灯时，被后车追尾。</view>
+      <textarea
+        class="textarea-field"
+        placeholder="请描述事故经过…"
+        maxlength="2000"
+        value="{{story}}"
+        bindinput="onInput"
+        auto-height
+        show-confirm-bar="{{false}}"
+      />
+      <view class="char-count">{{charCount}} 字</view>
+    </view>
+  </task-shell>
+
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <task-cta
+      label="保存并返回"
+      disabled="{{busy.saving}}"
+      loading="{{busy.saving}}"
       bindtap="onSave"
-      loading="{{saving}}"
-      disabled="{{saving}}"
-    >保存并返回</button>
+    />
     <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater">稍后再填</button>
   </view>
 </view>

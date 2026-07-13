@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { installMiniProgramGlobals } from "./miniprogramMocks";
 import { CustomerTaskApi } from "../services/taskApi";
+import { ApiRequestError } from "../utils/request";
+import { EMPTY_TASK_ERROR } from "../utils/resolveTaskViewModel";
 import type { CustomerTask } from "../types/task";
 
 installMiniProgramGlobals();
@@ -80,7 +82,61 @@ test("successful load updates app task and view model", async () => {
   assert.equal(loaded?.case_id, "internal_case");
   assert.equal((appState.task as CustomerTask).case_id, "internal_case");
   assert.equal((ctx.data.taskViewModel as { source: string }).source, "legacy");
-  assert.equal(ctx.data.errorState, null);
+  assert.deepEqual(ctx.data.errorState, EMPTY_TASK_ERROR);
+  assert.equal(typeof ctx.data.shellSafetyCopy, "string");
+  assert.equal(typeof ctx.data.ctaDisabledReason, "string");
+
+  CustomerTaskApi.getTask = originalGetTask;
+});
+
+test("load success keeps shell bindings as strings through loading transition", async () => {
+  const module = await import("../behaviors/taskPage");
+  const behavior = module.taskPage as TaskPageBehavior;
+  const appState: Record<string, unknown> = { taskToken: "h5t1.valid" };
+  installGetApp(appState);
+
+  const task = buildTask({ safety_copy: "运行时安全文案" });
+  const originalGetTask = CustomerTaskApi.getTask;
+  CustomerTaskApi.getTask = async () => task;
+
+  const ctx = createContext(behavior);
+  await behavior.methods.loadTask.call(ctx);
+
+  assert.equal(typeof ctx.data.shellSafetyCopy, "string");
+  assert.equal(typeof ctx.data.ctaDisabledReason, "string");
+  assert.equal(ctx.data.shellSafetyCopy, "运行时安全文案");
+  assert.equal(ctx.data.ctaDisabledReason, "");
+
+  CustomerTaskApi.getTask = originalGetTask;
+});
+
+test("blocking error then retry keeps shell bindings as strings", async () => {
+  const module = await import("../behaviors/taskPage");
+  const behavior = module.taskPage as TaskPageBehavior;
+  const appState: Record<string, unknown> = { taskToken: "h5t1.valid" };
+  installGetApp(appState);
+
+  const task = buildTask();
+  let calls = 0;
+  const originalGetTask = CustomerTaskApi.getTask;
+  CustomerTaskApi.getTask = async () => {
+    calls += 1;
+    if (calls === 1) {
+      throw new ApiRequestError("case_not_found", "任务不存在");
+    }
+    return task;
+  };
+
+  const ctx = createContext(behavior);
+  await behavior.methods.loadTask.call(ctx);
+  assert.equal(typeof ctx.data.shellSafetyCopy, "string");
+  assert.equal(typeof ctx.data.ctaDisabledReason, "string");
+  assert.equal(ctx.data.ctaDisabledReason, "请先处理当前错误");
+
+  await behavior.methods.loadTask.call(ctx);
+  assert.equal(typeof ctx.data.shellSafetyCopy, "string");
+  assert.equal(typeof ctx.data.ctaDisabledReason, "string");
+  assert.equal(ctx.data.ctaDisabledReason, "");
 
   CustomerTaskApi.getTask = originalGetTask;
 });
@@ -226,5 +282,5 @@ test("track is no-op and never marks manual pass", async () => {
   const ctx = createContext(behavior);
   behavior.methods.track.call(ctx, "manual_item_pass", { status: "PASS" });
   assert.equal(typeof behavior.methods.track, "function");
-  assert.equal(ctx.data.errorState, null);
+  assert.deepEqual(ctx.data.errorState, EMPTY_TASK_ERROR);
 });

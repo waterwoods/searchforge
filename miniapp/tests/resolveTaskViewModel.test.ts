@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveTaskViewModel } from "../utils/resolveTaskViewModel";
+import { resolveTaskViewModel, DEFAULT_SAFETY_COPY } from "../utils/resolveTaskViewModel";
 import type { CustomerTask, TaskContractV0 } from "../types/task";
 
 function buildTask(overrides?: Partial<CustomerTask>): CustomerTask {
@@ -129,6 +129,33 @@ test("normalizes safe error with blocking mode", () => {
   });
   assert.equal(vm.shellMode, "blocking_error");
   assert.equal(vm.error?.blocking, true);
+});
+
+test("normalizes nullable cta and safety strings", () => {
+  const task = buildTask({ safety_copy: "" });
+  const contract = buildContract({
+    next_action: { type: "go_to_section", label: "", target: "" },
+    branding: { office_name: "", safety_copy: "" },
+  });
+  const vm = resolveTaskViewModel(task, contract);
+
+  assert.equal(vm.cta.label, "继续");
+  assert.equal(vm.cta.target, "");
+  assert.equal(vm.cta.disabledReason, "");
+  assert.equal(vm.safetyCopy, DEFAULT_SAFETY_COPY);
+});
+
+test("normalizes disabledReason when blocking error is present", () => {
+  const task = buildTask();
+  const vm = resolveTaskViewModel(task, buildContract(), undefined, {
+    code: "network_error",
+    message: "网络错误",
+    retryable: false,
+    blocking: true,
+  });
+
+  assert.equal(vm.cta.disabledReason, "请先处理当前错误");
+  assert.equal(typeof vm.cta.disabledReason, "string");
 });
 
 test("handles empty optional contract fields", () => {

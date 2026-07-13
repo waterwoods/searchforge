@@ -211,10 +211,10 @@ export type TaskErrorState = {
 export type TaskCtaViewModel = {
   label: string;
   actionType: TaskContractNextAction["type"];
-  target?: string;
+  target: string;
   disabled: boolean;
   loading: boolean;
-  disabledReason?: string;
+  disabledReason: string;
 };
 
 export type TaskViewModel = {
@@ -235,8 +235,8 @@ export type TaskViewModel = {
     label: string;
     statusText: string;
     actionable: boolean;
-    route?: string;
-    hint?: string;
+    route: string;
+    hint: string;
   }>;
   evidenceRequirements: TaskEvidenceRequirement[];
   reviewReady: boolean;

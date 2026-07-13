@@ -1,5 +1,5 @@
 <view class="task-error" role="alert">
-  <text class="message">{{message}}</text>
+  <text class="message">{{safeMessage}}</text>
 
   <button
     wx:if="{{retryable}}"
