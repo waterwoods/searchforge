@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -653,6 +654,7 @@ def ingest_h5_slot_upload(
     content_type: str | None,
     filename: str | None,
     upload_fn: Callable[..., dict[str, Any]] | None = None,
+    timing: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """
     Validate token context, upload one image to GCS, append attachment metadata.
@@ -673,9 +675,13 @@ def ingest_h5_slot_upload(
         if slot and slot.strip().lower() != target_slot:
             raise ValueError("slot_mismatch")
 
+    validation_started_at = perf_counter()
     ext = _validate_image_upload(content, content_type=content_type, filename=filename)
+    if timing is not None:
+        timing["validation_duration_ms"] = round((perf_counter() - validation_started_at) * 1000)
     upload_id = f"h5_{uuid4().hex[:12]}"
     received_at = datetime.now(timezone.utc)
+    gcs_started_at = perf_counter()
     storage = _upload_h5_bytes_to_gcs(
         case_id=claims.case_id,
         slot=target_slot,
@@ -685,6 +691,8 @@ def ingest_h5_slot_upload(
         ext=ext,
         upload_fn=upload_fn,
     )
+    if timing is not None:
+        timing["gcs_write_duration_ms"] = round((perf_counter() - gcs_started_at) * 1000)
 
     attachment_id = f"att_{uuid4().hex[:12]}"
     slot_meta = _slot_copy_for(claims, target_slot)
@@ -716,6 +724,7 @@ def ingest_h5_slot_upload(
     if claims.is_flow_token:
         att_meta["flow"] = claims.flow
 
+    database_started_at = perf_counter()
     updated = append_h5_gcs_attachment_metadata(claims.case_id, att_meta)
     if updated is None:
         raise ValueError("case_persist_failed")
@@ -729,12 +738,12 @@ def ingest_h5_slot_upload(
         if updated is None:
             raise ValueError("case_persist_failed")
 
+    if timing is not None:
+        timing["database_update_duration_ms"] = round((perf_counter() - database_started_at) * 1000)
     logger.info(
         "h5_task_upload_ok %s",
         {
-            "case_id": claims.case_id,
             "slot": target_slot,
-            "attachment_id": attachment_id,
             "size_bytes": len(content),
             "flow": claims.flow,
         },

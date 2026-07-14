@@ -4,3 +4,13 @@
   gap: 16rpx;
   margin-top: 20rpx;
 }
+
+.upload-stage {
+  margin: -4rpx 0 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 12rpx;
+  background: #eef4ff;
+  color: #174ea6;
+  font-size: 28rpx;
+  line-height: 1.5;
+}

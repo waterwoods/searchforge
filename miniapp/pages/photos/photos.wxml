@@ -22,6 +22,7 @@
       <view class="card-subtitle">
         先上传必需照片。上传后会自动回读服务器确认，已上传 {{photoCount}}/{{photoTarget}} 张。
       </view>
+      <view wx:if="{{uploadStage}}" class="upload-stage" aria-live="polite">{{uploadStage}}</view>
 
       <task-photo
         slots="{{slots}}"

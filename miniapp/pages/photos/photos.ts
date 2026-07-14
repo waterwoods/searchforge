@@ -1,6 +1,6 @@
 import { taskPage } from "../../behaviors/taskPage";
 import { CustomerTaskApi } from "../../services/taskApi";
-import { choosePhoto, previewImage } from "../../services/mediaCaptureAdapter";
+import { choosePhoto, preparePhotoForUpload, previewImage } from "../../services/mediaCaptureAdapter";
 import type { CustomerTask } from "../../types/task";
 import { ApiRequestError } from "../../utils/request";
 import {
@@ -14,6 +14,7 @@ import {
   photoCount,
   prototypePhotoTarget,
 } from "../../utils/taskMapping";
+import { appConfig } from "../../utils/config";
 
 const SLOT_SEQUENCE = ["customer_damage_photo", "other_party_vehicle_photo"] as const;
 const SLOT_LABELS: Record<string, string> = {
@@ -37,6 +38,7 @@ type SlotUi = {
 
 type PageData = {
   loadingMessage: string;
+  uploadStage: string;
   photoCount: number;
   photoTarget: number;
   uploadUrl: string;
@@ -56,6 +58,29 @@ type PageData = {
     cooldownUntil: number;
   };
 };
+
+const SLOW_UPLOAD_NOTICE_MS = 8_000;
+const PHOTO_MEASUREMENT_BUILD_ID = "p20-photo-measurement-v1";
+let slowUploadTimer: ReturnType<typeof setTimeout> | undefined;
+
+type UploadMeasurementResponse = {
+  upload_measurement?: {
+    request_id?: string;
+    server_duration_ms?: number;
+  };
+};
+
+function logPhotoTiming(record: Record<string, unknown>) {
+  // Never include task tokens, local file paths, image data, or storage URLs.
+  console.info("[photo_upload_timing]", record);
+}
+
+function clearSlowUploadTimer() {
+  if (slowUploadTimer) {
+    clearTimeout(slowUploadTimer);
+    slowUploadTimer = undefined;
+  }
+}
 
 function isPhotoSlot(slot: string): boolean {
   const value = String(slot || "").trim().toLowerCase();
@@ -86,6 +111,7 @@ Page({
   behaviors: [taskPage],
   data: {
     loadingMessage: "正在加载照片资料…",
+    uploadStage: "",
     slots: [] as SlotUi[],
     uploadUrl: "",
     photoCount: 0,
@@ -266,14 +292,33 @@ Page({
     }
 
     let localPath = slot.localPath;
+    let originalSize: number | null = null;
+    let uploadSize: number | null = null;
+    let compressionMs: number | null = null;
+    let compressionApplied: boolean | null = null;
+    let uploadMs: number | null = null;
+    let readBackMs: number | null = null;
+    let serverReportedMs: number | null = null;
+    let serverRequestId: string | null = null;
+    const progressMilestones = [0];
+    const totalStartedAt = Date.now();
     try {
+      // Lock before opening the native picker so a second tap cannot queue another upload.
+      this.setBusy("uploading", true);
       if (options.pickNewPhoto) {
+        this.setData({ uploadStage: "正在打开照片资料…" });
         const picked = await choosePhoto();
-        localPath = picked.tempFilePath;
+        this.setData({ uploadStage: "正在准备照片…" });
+        const prepared = await preparePhotoForUpload(picked);
+        localPath = prepared.tempFilePath;
+        originalSize = prepared.originalSize;
+        uploadSize = prepared.uploadSize;
+        compressionMs = prepared.compressionDurationMs;
+        compressionApplied = prepared.compressed;
       }
       if (!localPath) throw new Error("no_file_selected");
 
-      this.setBusy("uploading", true);
+      this.setData({ uploadStage: "正在上传… 0%" });
       this.updateSlot(slot.key, {
         localPath,
         uploading: true,
@@ -285,15 +330,34 @@ Page({
 
       const beforeCount = this.data.photoCount;
       const uploadSlot = await this.resolveUploadSlot(slot.key);
-      await CustomerTaskApi.uploadPhoto(uploadUrl, localPath, uploadSlot, {
+      const uploadStartedAt = Date.now();
+      clearSlowUploadTimer();
+      slowUploadTimer = setTimeout(() => {
+        this.setData({ uploadStage: "照片较大，仍在上传，请稍候…" });
+      }, SLOW_UPLOAD_NOTICE_MS);
+      const uploadResponse = (await CustomerTaskApi.uploadPhoto(uploadUrl, localPath, uploadSlot, {
         onProgress: (progress) => {
-          this.updateSlot(slot.key, { progress, uploading: progress < 100 });
+          const safeProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+          this.setData({ uploadStage: `正在上传… ${safeProgress}%` });
+          this.updateSlot(slot.key, { progress: safeProgress, uploading: safeProgress < 100 });
+          if (!progressMilestones.includes(safeProgress)) {
+            progressMilestones.push(safeProgress);
+          }
         },
-      });
+      })) as UploadMeasurementResponse;
+      clearSlowUploadTimer();
+      uploadMs = Date.now() - uploadStartedAt;
+      serverReportedMs = Number.isFinite(uploadResponse?.upload_measurement?.server_duration_ms)
+        ? Number(uploadResponse.upload_measurement?.server_duration_ms)
+        : null;
+      serverRequestId = String(uploadResponse?.upload_measurement?.request_id || "") || null;
+      this.setData({ uploadStage: "正在确认上传结果…" });
+      const readBackStartedAt = Date.now();
       const readBackTask = await this.loadTask({ silent: true });
       if (!readBackTask) {
         throw new ApiRequestError("network_error");
       }
+      readBackMs = Date.now() - readBackStartedAt;
       this.applyTaskToPhotoState(readBackTask);
 
       const confirmed = this.isReadBackConfirmed(beforeCount, readBackTask, slot.key);
@@ -306,11 +370,30 @@ Page({
           canRemove: true,
           localPath,
         });
+        this.setData({ uploadStage: "上传失败，请重试" });
         wx.showToast({ title: "上传未确认，请重试", icon: "none" });
         return;
       }
-      wx.showToast({ title: "上传成功", icon: "success" });
+      this.setData({ uploadStage: "上传完成" });
+      logPhotoTiming({
+        event: "upload_measurement_complete",
+        client_build_id: PHOTO_MEASUREMENT_BUILD_ID,
+        api_profile: appConfig.apiProfile,
+        api_host: appConfig.apiBaseUrl,
+        original_bytes: originalSize,
+        compressed_bytes: uploadSize,
+        compression_ms: compressionMs,
+        compression_applied: compressionApplied,
+        upload_ms: uploadMs,
+        server_reported_ms: serverReportedMs,
+        server_request_id: serverRequestId,
+        readback_ms: readBackMs,
+        total_ms: Date.now() - totalStartedAt,
+        progress_milestones: progressMilestones,
+      });
+      wx.showToast({ title: "上传完成", icon: "success" });
     } catch (err) {
+      clearSlowUploadTimer();
       const msg =
         err instanceof Error && err.message === "cancelled"
           ? ""
@@ -324,7 +407,28 @@ Page({
         canRemove: true,
         localPath,
       });
+      if (msg) this.setData({ uploadStage: "上传失败，请重试" });
+      if (msg) {
+        logPhotoTiming({
+          event: "upload_measurement_failed",
+          client_build_id: PHOTO_MEASUREMENT_BUILD_ID,
+          api_profile: appConfig.apiProfile,
+          api_host: appConfig.apiBaseUrl,
+          original_bytes: originalSize,
+          compressed_bytes: uploadSize,
+          compression_ms: compressionMs,
+          compression_applied: compressionApplied,
+          upload_ms: uploadMs,
+          server_reported_ms: serverReportedMs,
+          server_request_id: serverRequestId,
+          readback_ms: readBackMs,
+          total_ms: Date.now() - totalStartedAt,
+          progress_milestones: progressMilestones,
+          error_code: err instanceof ApiRequestError ? err.code : "network_error",
+        });
+      }
     } finally {
+      clearSlowUploadTimer();
       this.setBusy("uploading", false);
     }
   },

@@ -132,6 +132,10 @@ def test_upload_one_image_succeeds():
     assert "storage_uri" not in body
     assert "external_userid" not in body
     assert "http" not in json.dumps(body).lower()
+    assert body["upload_measurement"]["request_id"] == "unknown"
+    assert isinstance(body["upload_measurement"]["server_duration_ms"], int)
+    assert body["upload_measurement"]["server_duration_ms"] >= 0
+    assert "token" not in json.dumps(body["upload_measurement"]).lower()
 
     updated = get_case_by_id(case["case_id"])
     assert updated is not None

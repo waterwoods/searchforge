@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
 from services.fiqa_api.inbox_triage.h5_task_upload import (
@@ -42,6 +44,7 @@ async def get_h5_task(task_token: str) -> dict[str, Any]:
 @router.post("/tasks/{task_token}/upload")
 async def upload_h5_task_attachment(
     task_token: str,
+    request: Request,
     file: UploadFile = File(...),
     slot: str | None = Form(None),
 ) -> dict[str, Any]:
@@ -49,16 +52,40 @@ async def upload_h5_task_attachment(
     Upload exactly one image for the signed H5 task slot.
     Flow tokens require slot form field matching current step.
     """
+    request_received_at = datetime.now(timezone.utc).isoformat()
+    request_started_at = perf_counter()
+    request_id = str(getattr(request.state, "request_id", "unknown"))
     claims = _verify_or_403(task_token)
     content = await file.read()
+    timing: dict[str, int] = {
+        "file_read_duration_ms": round((perf_counter() - request_started_at) * 1000),
+    }
     try:
-        return ingest_h5_slot_upload(
+        response = ingest_h5_slot_upload(
             claims,
             slot=slot,
             content=content,
             content_type=file.content_type,
             filename=file.filename,
+            timing=timing,
         )
+        total_duration_ms = round((perf_counter() - request_started_at) * 1000)
+        response["upload_measurement"] = {
+            "request_id": request_id,
+            "server_duration_ms": total_duration_ms,
+        }
+        logger.info(
+            "h5_task_upload_timing %s",
+            {
+                "event": "upload_complete",
+                "request_id": request_id,
+                "request_received_at": request_received_at,
+                "received_file_bytes": len(content),
+                **timing,
+                "total_server_duration_ms": total_duration_ms,
+            },
+        )
+        return response
     except ValueError as exc:
         code = str(exc)
         if code in ("case_not_found",):

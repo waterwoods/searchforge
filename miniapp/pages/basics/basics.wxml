@@ -40,25 +40,40 @@
       <view class="section-label section-gap">事故时间</view>
       <input
         class="input-field"
-        placeholder="例如：今天上午 10 点"
+        placeholder="例如：2026 年 7 月 13 日上午 10 点"
+        placeholder-class="placeholder-muted"
         value="{{accidentDatetime}}"
         bindinput="onDatetimeInput"
+        cursor-spacing="180"
+        disabled="{{busy.saving}}"
       />
 
       <view class="section-label section-gap">事故地点</view>
-      <input
-        class="input-field"
-        placeholder="例如：Irvine Blvd 路口"
+      <textarea
+        class="textarea-field compact-textarea"
+        placeholder="例如：Irvine Blvd 与 Culver Dr 路口，靠近商场入口"
+        placeholder-class="placeholder-muted"
         value="{{accidentLocation}}"
         bindinput="onLocationInput"
+        auto-height
+        maxlength="500"
+        cursor-spacing="180"
+        adjust-position="{{true}}"
+        disabled="{{busy.saving}}"
       />
 
       <view class="section-label section-gap">您的车辆</view>
-      <input
-        class="input-field"
-        placeholder="例如：2020 Toyota Camry"
+      <textarea
+        class="textarea-field compact-textarea"
+        placeholder="例如：2020 Toyota Camry，白色；说明受损部位"
+        placeholder-class="placeholder-muted"
         value="{{ownVehicleInfo}}"
         bindinput="onVehicleInput"
+        auto-height
+        maxlength="500"
+        cursor-spacing="180"
+        adjust-position="{{true}}"
+        disabled="{{busy.saving}}"
       />
     </view>
   </task-shell>

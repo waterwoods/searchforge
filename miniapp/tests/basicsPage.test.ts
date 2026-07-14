@@ -297,6 +297,15 @@ test("Basics template does not render internal fields", async () => {
   assert.equal(wxml.includes("phase"), false);
 });
 
+test("long-form Basics fields use visible multiline inputs with clear placeholders", () => {
+  const wxml = readFileSync(join(process.cwd(), "pages/basics/basics.wxml"), "utf8");
+  assert.match(wxml, /事故地点[\s\S]*?<textarea[\s\S]*?compact-textarea/);
+  assert.match(wxml, /您的车辆[\s\S]*?<textarea[\s\S]*?compact-textarea/);
+  assert.match(wxml, /Irvine Blvd 与 Culver Dr 路口/);
+  assert.match(wxml, /2020 Toyota Camry，白色/);
+  assert.match(wxml, /adjust-position="\{\{true\}\}"/);
+});
+
 test("contact broker opens shared guidance modal, not postpone/back", async () => {
   const page = await loadBasicsPage();
   const modals: Array<{ title: string; content: string }> = [];

@@ -94,6 +94,9 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
 test("upload success confirms via read-back and clears busy uploading", async () => {
   const page = await loadPhotosPage();
   const toasts: string[] = [];
+  const timingLogs: unknown[][] = [];
+  const originalInfo = console.info;
+  console.info = (...args: unknown[]) => timingLogs.push(args);
   (globalThis as Record<string, any>).wx.showToast = ({ title }: { title: string }) => toasts.push(title);
   (globalThis as Record<string, unknown>).getApp = () => ({ taskToken: "h5t1.valid" });
   (globalThis as Record<string, any>).wx.chooseMedia = ({ success }: { success?: (res: unknown) => void }) =>
@@ -107,7 +110,12 @@ test("upload success confirms via read-back and clears busy uploading", async ()
     uploadCalls += 1;
     options?.onProgress?.(45);
     options?.onProgress?.(100);
-    return {};
+    return {
+      upload_measurement: {
+        request_id: "request-safe-id",
+        server_duration_ms: 17,
+      },
+    };
   };
 
   const initialTask = buildTask();
@@ -152,10 +160,31 @@ test("upload success confirms via read-back and clears busy uploading", async ()
   assert.equal(ctx.data.photoCount, 1);
   assert.equal(ctx.data.busy.uploading, false);
   assert.equal(ctx.data.slots[0].uploaded, true);
-  assert.ok(toasts.includes("上传成功"));
+  assert.equal(ctx.data.uploadStage, "上传完成");
+  assert.ok(toasts.includes("上传完成"));
+  assert.equal(timingLogs.length, 1);
+  assert.equal(timingLogs[0][0], "[photo_upload_timing]");
+  const record = timingLogs[0][1] as Record<string, unknown>;
+  assert.equal(record.event, "upload_measurement_complete");
+  assert.equal(record.client_build_id, "p20-photo-measurement-v1");
+  assert.equal(record.api_profile, "qa");
+  assert.equal(record.api_host, "https://fiqa-api-g7zatxrycq-uw.a.run.app");
+  assert.equal(record.original_bytes, 1234);
+  assert.equal(record.compressed_bytes, 1234);
+  assert.equal(record.compression_ms, 0);
+  assert.equal(record.compression_applied, false);
+  assert.equal(record.server_reported_ms, 17);
+  assert.equal(record.server_request_id, "request-safe-id");
+  assert.deepEqual(record.progress_milestones, [0, 45, 100]);
+  assert.equal(typeof record.upload_ms, "number");
+  assert.equal(typeof record.readback_ms, "number");
+  assert.equal(typeof record.total_ms, "number");
+  assert.equal(JSON.stringify(timingLogs).includes("upload_token"), false);
+  assert.equal(JSON.stringify(timingLogs).includes("/tmp/p1.jpg"), false);
 
   CustomerTaskApi.getUploadTaskInfo = originalGetUploadTaskInfo;
   CustomerTaskApi.uploadPhoto = originalUploadPhoto;
+  console.info = originalInfo;
 });
 
 test("upload failure shows error and enables retry", async () => {
@@ -198,6 +227,7 @@ test("upload failure shows error and enables retry", async () => {
   assert.equal(ctx.data.busy.uploading, false);
   assert.equal(ctx.data.slots[0].canRetry, true);
   assert.equal(ctx.data.slots[0].canRemove, true);
+  assert.equal(ctx.data.uploadStage, "上传失败，请重试");
   assert.ok(String(ctx.data.slots[0].error).length > 0);
 
   CustomerTaskApi.uploadPhoto = originalUploadPhoto;
