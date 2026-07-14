@@ -117,6 +117,14 @@ def sanitize_attachment_for_api(case_id: str, att: dict[str, Any]) -> dict[str, 
         "bulk_sequence": guardrail["bulk_sequence"],
         "preview_available": preview_available,
         "storage_status": "stored" if preview_available or att.get("storage_uri") else "unknown",
+        "evidence_category": att.get("evidence_category") or att.get("slot_assignment"),
+        "evidence_status": att.get("evidence_status") or "confirmed",
+        "submission_phase": att.get("submission_phase") or "pre_submit",
+        "created_by": att.get("created_by") or "customer",
+        "created_by_channel": att.get("created_by_channel") or source,
+        "replaces_attachment_id": att.get("replaces_attachment_id"),
+        "replaced_by_attachment_id": att.get("replaced_by_attachment_id"),
+        "customer_note": att.get("customer_note"),
     }
     if att.get("filename"):
         out["filename"] = att["filename"]

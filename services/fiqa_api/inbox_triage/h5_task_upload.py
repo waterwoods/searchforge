@@ -12,6 +12,9 @@ from uuid import uuid4
 from services.fiqa_api.inbox_triage.claim_evidence_slots import OTHER_PARTY_SKIP_REASONS, SCENE_SKIP_REASONS
 from services.fiqa_api.inbox_triage.case_store import (
     append_h5_gcs_attachment_metadata,
+    append_claim_timeline_event,
+    build_claim_timeline_event,
+    mutate_claim_evidence_gallery,
     record_claim_evidence_slot_received,
     record_claim_evidence_slot_skip,
     record_h5_photo_flow_skip,
@@ -36,6 +39,18 @@ from services.fiqa_api.wecom.media_storage import (
 logger = logging.getLogger(__name__)
 
 H5_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+EVIDENCE_GALLERY_MAX_ACTIVE_PHOTOS = 20
+EVIDENCE_CATEGORIES: tuple[str, ...] = (
+    "vehicle_damage",
+    "other_vehicle_scene",
+    "other_evidence",
+)
+_UPLOAD_INTENT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
+_LEGACY_SLOT_TO_CATEGORY = {
+    "customer_damage_photo": "vehicle_damage",
+    "other_party_vehicle_photo": "other_vehicle_scene",
+    "scene_photo": "other_vehicle_scene",
+}
 
 _ALLOWED_IMAGE_MIMES = frozenset(
     {
@@ -484,6 +499,12 @@ def _assert_flow_slot_allowed(
     slot: str,
 ) -> None:
     slot_norm = (slot or "").strip().lower()
+    # Claim evidence is an append-first gallery, not a three-step workflow.
+    # Keep legacy slot names accepted for old H5 callers, but persist categories.
+    if _is_claim_evidence_flow(claims):
+        if slot_norm not in {*EVIDENCE_CATEGORIES, *_LEGACY_SLOT_TO_CATEGORY}:
+            raise ValueError("slot_not_in_flow")
+        return
     allowed = _flow_slots_for_claims(claims)
     if slot_norm not in allowed:
         raise ValueError("slot_not_in_flow")
@@ -493,6 +514,69 @@ def _assert_flow_slot_allowed(
         raise ValueError("flow_already_complete")
     if slot_norm != current:
         raise ValueError("wrong_slot_order")
+
+
+def _evidence_category(slot: str) -> str:
+    normalized = (slot or "").strip().lower()
+    return _LEGACY_SLOT_TO_CATEGORY.get(normalized, normalized)
+
+
+def _active_claim_photo_count(case: dict[str, Any]) -> int:
+    return sum(
+        1
+        for att in (case.get("case_attachments") or [])
+        if isinstance(att, dict)
+        and str(att.get("source") or "").lower() == "h5_task"
+        and str(att.get("msgtype") or "").lower() == "image"
+        and str(att.get("evidence_status") or "confirmed") == "confirmed"
+    )
+
+
+def _normalize_upload_intent_id(upload_intent_id: str | None) -> str:
+    raw = (upload_intent_id or "").strip()
+    if not raw:
+        return ""
+    safe = _UPLOAD_INTENT_RE.sub("_", raw)[:80].strip("_")
+    if len(safe) < 8:
+        return ""
+    return safe if safe.startswith("h5_") else f"h5_{safe}"
+
+
+def _find_h5_upload_by_id(case: dict[str, Any], upload_id: str) -> dict[str, Any] | None:
+    uid = (upload_id or "").strip()
+    if not uid:
+        return None
+    for att in case.get("case_attachments") or []:
+        if (
+            isinstance(att, dict)
+            and str(att.get("source") or "").strip().lower() == "h5_task"
+            and str(att.get("h5_upload_id") or "").strip() == uid
+        ):
+            return att
+    return None
+
+
+def mutate_h5_claim_evidence(
+    claims: VerifiedH5TaskToken,
+    *,
+    attachment_id: str,
+    action: str,
+    note: str | None = None,
+    replacement_attachment_id: str | None = None,
+) -> dict[str, Any]:
+    """Customer-safe evidence lifecycle API; never deletes submitted GCS media."""
+    if not _is_claim_evidence_flow(claims):
+        raise ValueError("unsupported_flow")
+    updated = mutate_claim_evidence_gallery(
+        claims.case_id,
+        attachment_id=attachment_id,
+        action=action,
+        note=note,
+        replacement_attachment_id=replacement_attachment_id,
+    )
+    if updated is None:
+        raise ValueError("case_persist_failed")
+    return {"attachment_id": attachment_id, "action": action, "status": "ok"}
 
 
 def sanitize_h5_upload_response(
@@ -653,6 +737,7 @@ def ingest_h5_slot_upload(
     content: bytes,
     content_type: str | None,
     filename: str | None,
+    upload_intent_id: str | None = None,
     upload_fn: Callable[..., dict[str, Any]] | None = None,
     timing: dict[str, int] | None = None,
 ) -> dict[str, Any]:
@@ -669,17 +754,28 @@ def ingest_h5_slot_upload(
         if not slot:
             raise ValueError("slot_required")
         _assert_flow_slot_allowed(claims, case, slot)
-        target_slot = slot.strip().lower()
+        target_slot = _evidence_category(slot) if _is_claim_evidence_flow(claims) else slot.strip().lower()
     else:
         target_slot = (claims.slot or "").strip().lower()
         if slot and slot.strip().lower() != target_slot:
             raise ValueError("slot_mismatch")
 
+    upload_id = _normalize_upload_intent_id(upload_intent_id) or f"h5_{uuid4().hex[:12]}"
+    existing = _find_h5_upload_by_id(case, upload_id)
+    if existing is not None:
+        return sanitize_h5_upload_response(
+            attachment_id=str(existing.get("attachment_id") or ""),
+            slot=str(existing.get("slot_assignment") or target_slot),
+            status="uploaded",
+            flow=claims.flow,
+        )
+
     validation_started_at = perf_counter()
     ext = _validate_image_upload(content, content_type=content_type, filename=filename)
     if timing is not None:
         timing["validation_duration_ms"] = round((perf_counter() - validation_started_at) * 1000)
-    upload_id = f"h5_{uuid4().hex[:12]}"
+    if _is_claim_evidence_flow(claims) and _active_claim_photo_count(case) >= EVIDENCE_GALLERY_MAX_ACTIVE_PHOTOS:
+        raise ValueError("evidence_photo_limit_reached")
     received_at = datetime.now(timezone.utc)
     gcs_started_at = perf_counter()
     storage = _upload_h5_bytes_to_gcs(
@@ -697,13 +793,16 @@ def ingest_h5_slot_upload(
     attachment_id = f"att_{uuid4().hex[:12]}"
     slot_meta = _slot_copy_for(claims, target_slot)
     document_type = str(slot_meta.get("document_type") or target_slot)
+    submitted = bool((case.get("h5_intake_state") or {}).get("submitted_at"))
     eligible_for_ocr = not _is_claim_evidence_flow(claims)
     att_meta: dict[str, Any] = {
         "attachment_id": attachment_id,
         "source": "h5_task",
         "msgtype": "image",
         "storage_uri": storage["storage_uri"],
-        "mime_type": storage.get("mime_type"),
+        # Do not label HEIC/HEIF bytes as JPEG.  Mini Program conversion is best
+        # effort only; GCS metadata records the supplied canonical MIME.
+        "mime_type": storage.get("mime_type") or content_type,
         "size_bytes": storage.get("size_bytes"),
         "filename": filename or f"{target_slot}{ext}",
         "received_at": received_at.isoformat(),
@@ -720,6 +819,11 @@ def ingest_h5_slot_upload(
         "broker_confirmed": False,
         "task_token_nonce": claims.nonce,
         "h5_upload_id": upload_id,
+        "evidence_category": target_slot if _is_claim_evidence_flow(claims) else None,
+        "evidence_status": "confirmed",
+        "submission_phase": "post_submit" if submitted else "pre_submit",
+        "created_by": "customer",
+        "created_by_channel": "h5_task",
     }
     if claims.is_flow_token:
         att_meta["flow"] = claims.flow
@@ -737,6 +841,21 @@ def ingest_h5_slot_upload(
         )
         if updated is None:
             raise ValueError("case_persist_failed")
+        append_claim_timeline_event(
+            claims.case_id,
+            build_claim_timeline_event(
+                event_type="evidence_post_submit_added" if submitted else "evidence_uploaded",
+                source_channel="h5_task",
+                actor="customer",
+                attachment_id=attachment_id,
+                metadata={
+                    "category": target_slot,
+                    "submission_phase": "post_submit" if submitted else "pre_submit",
+                    "filename": att_meta["filename"],
+                    "size_bytes": att_meta["size_bytes"],
+                },
+            ),
+        )
 
     if timing is not None:
         timing["database_update_duration_ms"] = round((perf_counter() - database_started_at) * 1000)

@@ -90,6 +90,12 @@ _H5_DASHBOARD_SUBTITLE: Final[str] = (
 _H5_DASHBOARD_SUBMITTED_SUBTITLE: Final[str] = (
     "资料已提交给陈总审核。你仍然可以继续补充照片、对方保险或其他细节。"
 )
+EVIDENCE_GALLERY_LIMIT: Final[int] = 20
+_EVIDENCE_CATEGORY_LABELS: Final[dict[str, str]] = {
+    "vehicle_damage": "本车受损",
+    "other_vehicle_scene": "对方车辆 / 现场",
+    "other_evidence": "其他证据",
+}
 
 _POST_SUBMIT_ALLOWED_FIELDS_BY_STEP: Final[dict[str, frozenset[str]]] = {
     "injury": frozenset({"anyone_injured", "injury_status"}),
@@ -310,6 +316,53 @@ def _all_attachment_photo_count(case: dict[str, Any]) -> int:
     return count
 
 
+def _build_evidence_gallery(case: dict[str, Any]) -> dict[str, Any]:
+    """Customer-safe active gallery projection; attachment records remain canonical."""
+    items: list[dict[str, Any]] = []
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, dict) or str(att.get("source") or "").lower() != "h5_task":
+            continue
+        if str(att.get("msgtype") or "").lower() != "image":
+            continue
+        category = str(att.get("evidence_category") or att.get("slot_assignment") or "other_evidence")
+        if category == "customer_damage_photo":
+            category = "vehicle_damage"
+        elif category in ("other_party_vehicle_photo", "scene_photo"):
+            category = "other_vehicle_scene"
+        items.append(
+            {
+                "attachment_id": str(att.get("attachment_id") or ""),
+                "category": category if category in _EVIDENCE_CATEGORY_LABELS else "other_evidence",
+                "filename": str(att.get("filename") or ""),
+                "mime_type": str(att.get("mime_type") or ""),
+                "size_bytes": int(att.get("size_bytes") or 0),
+                "created_at": str(att.get("created_at") or att.get("received_at") or ""),
+                "created_by": str(att.get("created_by") or "customer"),
+                "created_by_channel": str(att.get("created_by_channel") or "h5_task"),
+                "submission_phase": str(att.get("submission_phase") or "pre_submit"),
+                "status": str(att.get("evidence_status") or "confirmed"),
+                "replaces_attachment_id": att.get("replaces_attachment_id"),
+                "replaced_by_attachment_id": att.get("replaced_by_attachment_id"),
+                # Customer tokens are credentials; attachment previews stay broker-only.
+                "preview_available": False,
+            }
+        )
+    items.sort(key=lambda item: item["created_at"])
+    active = [item for item in items if item["status"] == "confirmed"]
+    return {
+        "limit": EVIDENCE_GALLERY_LIMIT,
+        "active_count": len(active),
+        "categories": [
+            {
+                "key": key,
+                "label": label,
+                "items": [item for item in items if item["category"] == key],
+            }
+            for key, label in _EVIDENCE_CATEGORY_LABELS.items()
+        ],
+    }
+
+
 def is_h5_intake_continuable(case: dict[str, Any]) -> bool:
     """True when customer can resume Claim H5 wizard PATCH/submit (not yet submitted)."""
     if str(case.get("service_lane") or "").strip().lower() != "claim":
@@ -470,15 +523,15 @@ def build_customer_task_contract(case: dict[str, Any], *, task_id: str) -> dict[
     current_step = _current_step(case)
     total = len(CLAIM_INTAKE_STEPS[1:-2])
     state = _h5_intake_state(case)
+    gallery = _build_evidence_gallery(case)
     evidence_requirements = [
         {
-            "slot": str(item.get("field") or ""),
-            "label": str(item.get("label") or ""),
-            "min": 1,
-            "received": 0 if str(item.get("field") or "") else 0,
+            "slot": category["key"],
+            "label": category["label"],
+            "min": 0,
+            "received": sum(1 for item in category["items"] if item["status"] == "confirmed"),
         }
-        for item in missing_items
-        if str(item.get("kind") or "") == "photo"
+        for category in gallery["categories"]
     ]
     sections = [
         {
@@ -528,6 +581,7 @@ def build_customer_task_contract(case: dict[str, Any], *, task_id: str) -> dict[
             for item in missing_items
         ],
         "evidence_requirements": evidence_requirements,
+        "evidence_gallery": gallery,
         "next_action": {"type": next_type, "target": next_target, "label": next_label},
         "review_ready": review_ready,
         "submit_ready": review_ready and not submitted,
@@ -583,6 +637,7 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "upload_url": upload_url,
         "attachment_count": _all_attachment_photo_count(case),
         "photo_count": _all_attachment_photo_count(case),
+        "evidence_gallery": _build_evidence_gallery(case),
         "completion_summary": _build_completion_summary(case),
         "dashboard_summary": dashboard,
         "task_contract": build_customer_task_contract(case, task_id=claims.nonce),

@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
 from services.fiqa_api.inbox_triage.h5_task_upload import (
     ingest_h5_slot_upload,
+    mutate_h5_claim_evidence,
     skip_h5_flow_slot,
     task_info_for_token,
 )
@@ -19,6 +21,13 @@ from services.fiqa_api.inbox_triage.h5_task_upload import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/h5", tags=["h5-task-upload"])
+
+
+class EvidenceActionRequest(BaseModel):
+    attachment_id: str
+    action: str
+    note: str | None = None
+    replacement_attachment_id: str | None = None
 
 
 def _verify_or_403(task_token: str):
@@ -47,6 +56,8 @@ async def upload_h5_task_attachment(
     request: Request,
     file: UploadFile = File(...),
     slot: str | None = Form(None),
+    upload_intent_id: str | None = Form(None),
+    x_upload_intent_id: str | None = Header(None),
 ) -> dict[str, Any]:
     """
     Upload exactly one image for the signed H5 task slot.
@@ -67,6 +78,7 @@ async def upload_h5_task_attachment(
             content=content,
             content_type=file.content_type,
             filename=file.filename,
+            upload_intent_id=upload_intent_id or x_upload_intent_id,
             timing=timing,
         )
         total_duration_ms = round((perf_counter() - request_started_at) * 1000)
@@ -120,5 +132,29 @@ async def skip_h5_task_slot(
             "lane_mismatch",
             "user_ref_mismatch",
         ):
+            raise HTTPException(status_code=403, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.post("/tasks/{task_token}/evidence-actions")
+async def h5_claim_evidence_action(
+    task_token: str,
+    payload: EvidenceActionRequest,
+) -> dict[str, Any]:
+    """Apply an append-first customer evidence action without exposing GCS URLs."""
+    claims = _verify_or_403(task_token)
+    try:
+        return mutate_h5_claim_evidence(
+            claims,
+            attachment_id=payload.attachment_id,
+            action=payload.action,
+            note=payload.note,
+            replacement_attachment_id=payload.replacement_attachment_id,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "case_not_found":
+            raise HTTPException(status_code=404, detail=code) from exc
+        if code in ("case_mismatch", "lane_mismatch", "user_ref_mismatch"):
             raise HTTPException(status_code=403, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc

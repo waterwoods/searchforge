@@ -31,6 +31,7 @@ MAX_CASE_NOTES = 20
 MAX_CASE_ACTIVITY = 40
 MAX_EVIDENCE_EVENTS = 50
 MAX_CLAIM_TIMELINE_EVENTS = 50
+MAX_CLAIM_EVIDENCE_ATTACHMENTS = 50
 MAX_NEXT_CONTACT_BY_LENGTH = 80
 MAX_CUSTOMER_NAME_LENGTH = 120
 MAX_CUSTOMER_PHONE_LENGTH = 40
@@ -1307,6 +1308,11 @@ def append_h5_gcs_attachment_metadata(
 
     upload_id = str(attachment_meta.get("h5_upload_id") or "").strip()
     attachments = list(normalized_case.get("case_attachments") or [])
+    max_attachments = (
+        MAX_CLAIM_EVIDENCE_ATTACHMENTS
+        if str(attachment_meta.get("flow") or "").strip() == "claim_evidence_pack"
+        else MAX_ATTACHMENTS_PER_CASE
+    )
     if upload_id:
         for att in attachments:
             if (
@@ -1316,20 +1322,119 @@ def append_h5_gcs_attachment_metadata(
             ):
                 return normalized_case
 
-    if len(attachments) >= MAX_ATTACHMENTS_PER_CASE:
-        raise ValueError(f"Case already has maximum {MAX_ATTACHMENTS_PER_CASE} attachments")
+    if len(attachments) >= max_attachments:
+        raise ValueError(f"Case already has maximum {max_attachments} attachments")
 
     timestamp = _utc_now_iso()
     att_record = dict(attachment_meta)
     att_record.setdefault("created_at", timestamp)
     attachments.append(att_record)
-    normalized_case["case_attachments"] = attachments[:MAX_ATTACHMENTS_PER_CASE]
+    normalized_case["case_attachments"] = attachments[:max_attachments]
     slot = att_record.get("slot_assignment") or "guided_upload"
     normalized_case["updated_at"] = timestamp
     normalized_case["case_activity"] = [
         _build_activity_entry("h5_task_attached", f"H5 task upload: {slot}"),
         *normalized_case.get("case_activity", []),
     ][:MAX_CASE_ACTIVITY]
+    if not _persist_case_after_update(case_id, normalized_case):
+        return None
+    return normalized_case
+
+
+def mutate_claim_evidence_gallery(
+    case_id: str,
+    *,
+    attachment_id: str,
+    action: str,
+    note: str | None = None,
+    replacement_attachment_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Append-first evidence lifecycle mutation stored in the case JSON document.
+
+    GCS objects are intentionally never removed here.  A customer pre-submit
+    removal tombstones the attachment from the active gallery; post-submit
+    actions preserve the evidence for the broker.  Calling the same action
+    again is idempotent.
+    """
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(case_id)
+    if normalized_case is None or not _is_claim_service_lane(normalized_case):
+        return None
+    aid = (attachment_id or "").strip()
+    if not aid:
+        raise ValueError("attachment_id_required")
+    attachments = list(normalized_case.get("case_attachments") or [])
+    target = next(
+        (att for att in attachments if isinstance(att, dict) and str(att.get("attachment_id") or "") == aid),
+        None,
+    )
+    if target is None:
+        raise ValueError("attachment_not_found")
+
+    submitted = bool((normalized_case.get("h5_intake_state") or {}).get("submitted_at"))
+    now = _utc_now_iso()
+    audit_event = ""
+    changed = False
+    if action == "remove_pre_submit":
+        if submitted:
+            raise ValueError("post_submit_delete_not_allowed")
+        if target.get("evidence_status") != "removed_pre_submit":
+            target["evidence_status"] = "removed_pre_submit"
+            target["removed_at"] = now
+            changed = True
+        audit_event = "evidence_removed_pre_submit"
+    elif action == "replace":
+        replacement_id = (replacement_attachment_id or "").strip()
+        if not replacement_id:
+            raise ValueError("replacement_attachment_required")
+        replacement = next(
+            (att for att in attachments if isinstance(att, dict) and str(att.get("attachment_id") or "") == replacement_id),
+            None,
+        )
+        if replacement is None or str(replacement.get("evidence_status") or "confirmed") != "confirmed":
+            raise ValueError("replacement_not_confirmed")
+        if target.get("replaced_by_attachment_id") != replacement_id or replacement.get("replaces_attachment_id") != aid:
+            target["evidence_status"] = "replaced"
+            target["replaced_by_attachment_id"] = replacement_id
+            target["replaced_at"] = now
+            replacement["replaces_attachment_id"] = aid
+            changed = True
+        audit_event = "evidence_replaced"
+    elif action in ("mark_irrelevant", "request_removal"):
+        status = "marked_irrelevant" if action == "mark_irrelevant" else "removal_requested"
+        if target.get("evidence_status") != status:
+            target["evidence_status"] = status
+            target[f"{status}_at"] = now
+            changed = True
+        if note and target.get("customer_note") != note[:500]:
+            target["customer_note"] = note[:500]
+            changed = True
+        audit_event = "evidence_marked_irrelevant" if action == "mark_irrelevant" else "evidence_removal_requested"
+    else:
+        raise ValueError("unsupported_evidence_action")
+
+    if not changed:
+        return normalized_case
+
+    normalized_case["case_attachments"] = attachments
+    timeline = _claim_timeline_from_case(normalized_case)
+    timeline.append(
+        build_claim_timeline_event(
+            event_type=audit_event,
+            source_channel="h5_task",
+            actor="customer",
+            attachment_id=aid,
+            metadata={
+                "action": action,
+                "note": (note or "")[:500] or None,
+                "replacement_attachment_id": replacement_attachment_id,
+                "post_submit": submitted,
+            },
+            created_at=now,
+        )
+    )
+    normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
+    normalized_case["updated_at"] = now
     if not _persist_case_after_update(case_id, normalized_case):
         return None
     return normalized_case
