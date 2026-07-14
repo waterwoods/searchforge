@@ -161,6 +161,7 @@ except Exception as exc:  # pragma: no cover - optional dependency
     logger.warning("Failed to import routes.graph_run (steward graph disabled): %s", exc)
 from services.fiqa_api.health.ready import router as health_router
 from services.fiqa_api.deployment_profile import (
+    intake_core_readiness_enabled,
     intake_schema_epoch,
     is_unified_intake_product_only,
     log_deployment_profile_banner,
@@ -342,58 +343,66 @@ async def lifespan(app: FastAPI):
     except (ImportError, RuntimeError) as e:
         logger.info(f"[STARTUP] GPU worker client not available: {e}. Continuing without GPU worker.")
     
-    # Start background embedding warmup (non-blocking)
-    start_embedding_warmup()
+    vectors_optional_startup = intake_core_readiness_enabled()
+    if vectors_optional_startup:
+        logger.info(
+            "[STARTUP] Intake-core profile enabled: skipping embedding warmup/client pre-init."
+        )
+        _READINESS = True
+        _PHASE = "ready"
+    else:
+        # Start background embedding warmup (non-blocking)
+        start_embedding_warmup()
 
-    async def _init_clients():
-        # Wrap sync function in thread to avoid blocking loop
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, lambda: initialize_clients(skip_openai=(OPENAI_API_KEY is None)))
+        async def _init_clients():
+            # Wrap sync function in thread to avoid blocking loop
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, lambda: initialize_clients(skip_openai=(OPENAI_API_KEY is None)))
 
-    async def _init_bm25():
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, initialize_bm25)
+        async def _init_bm25():
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, initialize_bm25)
 
-    async def _do_startup():
-        clients_ok = await _run_with_timeout("clients", _init_clients())
-        bm25_ok = await _run_with_timeout("bm25", _init_bm25())
-        if clients_ok and bm25_ok:
-            _READINESS = True
-            _PHASE = "ready"
-        else:
-            _READINESS = False
+        async def _do_startup():
+            clients_ok = await _run_with_timeout("clients", _init_clients())
+            bm25_ok = await _run_with_timeout("bm25", _init_bm25())
+            if clients_ok and bm25_ok:
+                _READINESS = True
+                _PHASE = "ready"
+            else:
+                _READINESS = False
 
-    # Schedule startup tasks without blocking server accept loop
-    try:
-        asyncio.get_running_loop().create_task(_do_startup())
-    except RuntimeError:
-        # Fallback if no loop (should not happen under uvicorn)
-        pass
-    
-    # Periodic readiness check: promote phase to "ready" when EMBED_READY and vector client are ready
-    async def _check_readiness_periodic():
-        """Periodic check to promote phase to 'ready' when conditions are met."""
-        global _READINESS, _PHASE
-        while True:
-            await asyncio.sleep(2)  # Check every 2 seconds
-            try:
-                from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
-                
-                # Check if embedding is ready and vector client is reachable
-                if EMBED_READY:
-                    vector_ok = ensure_qdrant_connection()
-                    if vector_ok and _PHASE != "ready":
-                        _READINESS = True
-                        _PHASE = "ready"
-                        logger.info(f"[READY] Phase promoted to 'ready' (EMBED_READY=True, vector_ok=True)")
-            except Exception as e:
-                logger.debug(f"[READY] Periodic check error (non-critical): {e}")
-    
-    # Start periodic readiness check
-    try:
-        asyncio.get_running_loop().create_task(_check_readiness_periodic())
-    except RuntimeError:
-        pass
+        # Schedule startup tasks without blocking server accept loop
+        try:
+            asyncio.get_running_loop().create_task(_do_startup())
+        except RuntimeError:
+            # Fallback if no loop (should not happen under uvicorn)
+            pass
+
+        # Periodic readiness check: promote phase to "ready" when EMBED_READY and vector client are ready
+        async def _check_readiness_periodic():
+            """Periodic check to promote phase to 'ready' when conditions are met."""
+            global _READINESS, _PHASE
+            while True:
+                await asyncio.sleep(2)  # Check every 2 seconds
+                try:
+                    from services.fiqa_api.clients import EMBED_READY, ensure_qdrant_connection
+
+                    # Check if embedding is ready and vector client is reachable
+                    if EMBED_READY:
+                        vector_ok = ensure_qdrant_connection()
+                        if vector_ok and _PHASE != "ready":
+                            _READINESS = True
+                            _PHASE = "ready"
+                            logger.info(f"[READY] Phase promoted to 'ready' (EMBED_READY=True, vector_ok=True)")
+                except Exception as e:
+                    logger.debug(f"[READY] Periodic check error (non-critical): {e}")
+
+        # Start periodic readiness check
+        try:
+            asyncio.get_running_loop().create_task(_check_readiness_periodic())
+        except RuntimeError:
+            pass
     
     # Ensure runtime directories exist on first startup
     for label, path in (("runs", RUNS_PATH), ("artifacts", ARTIFACTS_PATH)):

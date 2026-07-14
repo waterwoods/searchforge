@@ -34,9 +34,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     python -c "import psycopg; print('✅ psycopg import OK (dual-write)')"
 
-# Pre-download and cache fastembed model at build time (avoids runtime HuggingFace download failures)
-# Model name must match runtime default: BAAI/bge-small-en-v1.5
-RUN python -c "from fastembed import TextEmbedding; model_name = 'BAAI/bge-small-en-v1.5'; print(f'[BUILD] Pre-downloading fastembed model: {model_name}'); emb = TextEmbedding(model_name=model_name); _ = next(iter(emb.embed(['warmup']))); print(f'✅ fastembed model cached: {model_name}')"
+# Keep image build deterministic for paid-pilot intake deploys:
+# do not pre-download embedding models in Cloud Build.
 
 # Copy the rest of the application code
 # Note: We copy from repo root to maintain module structure
