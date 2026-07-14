@@ -126,6 +126,7 @@ import {
     CaseStatusTag,
 } from '@/features/intake/components/WorkbenchSummary';
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
+import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
 import { addCarNextOwnerLine } from '@/components/intake/AddCarRecordSummaryRail';
 
 const { TextArea } = Input;
@@ -405,6 +406,20 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 setCurrentCase(savedCase);
             }
         })();
+    };
+
+    const handleRefreshWorkbench = async () => {
+        await loadRecent({ page: workbenchPageIndex });
+        if (!currentCase?.case_id) return;
+        try {
+            setCurrentCase(await getSavedCase(currentCase.case_id));
+        } catch (e: unknown) {
+            const msg =
+                (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+                ?? (e as { message?: string })?.message
+                ?? 'Could not refresh the open case.';
+            message.error(String(msg));
+        }
     };
 
     const handlePatchWorkbench = async (caseId: string, patch: { is_test?: boolean; archived?: boolean }) => {
@@ -1279,7 +1294,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     type="default"
                                     icon={<ReloadOutlined />}
                                     loading={recentLoading}
-                                    onClick={() => void loadRecent({ page: workbenchPageIndex })}
+                                    onClick={() => void handleRefreshWorkbench()}
                                 >
                                     刷新列表
                                 </Button>
@@ -1664,6 +1679,12 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 <ClaimCaseBriefPanel
                                     brief={currentCase.claim_case_brief}
                                     timeline={currentCase.claim_timeline}
+                                />
+                            ) : null}
+                            {currentCase.service_lane === 'claim' && currentCase.case_id ? (
+                                <CaseAttachmentsPanel
+                                    caseId={currentCase.case_id}
+                                    attachments={(currentCase as SavedCase).case_attachments}
                                 />
                             ) : null}
                             <OfficeWorkbenchOneGlanceSummary
