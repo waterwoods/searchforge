@@ -1,7 +1,11 @@
 {
   "description": "P19M-1 Unified Claim Mini Program Prototype (local dev only)",
   "packOptions": {
-    "ignore": ["README.md", "tests/**", "config.example.ts"]
+    "ignore": [
+      { "type": "file", "value": "README.md" },
+      { "type": "glob", "value": "tests/**" },
+      { "type": "file", "value": "config.example.ts" }
+    ]
   },
   "setting": {
     "urlCheck": false,
@@ -33,7 +37,7 @@
   },
   "compileType": "miniprogram",
   "libVersion": "3.5.5",
-  "appid": "touristappid",
+  "appid": "wxa610932351416622",
   "projectname": "unified-claim-prototype",
   "condition": {}
 }

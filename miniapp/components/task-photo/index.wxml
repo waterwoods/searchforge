@@ -16,7 +16,7 @@
         data-local-path="{{item.localPath}}"
         bindtap="onPreviewTap"
       />
-      <text wx:elif="{{item.uploaded}}" class="uploaded-text">已上传并确认</text>
+      <text wx:elif="{{item.requirementMet}}" class="uploaded-text">已上传并确认</text>
       <text wx:else class="placeholder-text">请上传 {{item.label}}</text>
 
       <view wx:if="{{item.uploading}}" class="progress-mask">
@@ -33,7 +33,7 @@
         bindtap="onAddTap"
         disabled="{{disabled || item.uploading}}"
       >
-        {{item.localPath ? '重新选择' : '上传照片'}}
+        {{item.addLabel}}
       </button>
       <button
         wx:if="{{item.canRetry}}"

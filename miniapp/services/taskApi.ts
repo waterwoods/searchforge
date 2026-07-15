@@ -69,7 +69,7 @@ export async function uploadPhoto(
   uploadUrl: string,
   localFilePath: string,
   slot: string,
-  options?: { onProgress?: (progress: number) => void },
+  options?: { onProgress?: (progress: number) => void; uploadIntentId?: string },
 ): Promise<unknown> {
   const uploadToken = extractTokenFromUrl(uploadUrl);
   if (!uploadToken) {
@@ -80,6 +80,7 @@ export async function uploadPhoto(
     localFilePath,
     {
       slot,
+      ...(options?.uploadIntentId ? { upload_intent_id: options.uploadIntentId } : {}),
     },
     options,
   );

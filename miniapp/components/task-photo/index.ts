@@ -3,6 +3,7 @@ type TaskPhotoSlotInput = {
   label?: string;
   localPath?: string;
   uploaded?: boolean;
+  requirementMet?: boolean;
   uploading?: boolean;
   progress?: number;
   error?: string;
@@ -17,6 +18,7 @@ type TaskPhotoSlotView = {
   label: string;
   localPath: string;
   uploaded: boolean;
+  requirementMet: boolean;
   uploading: boolean;
   progress: number;
   error: string;
@@ -24,6 +26,7 @@ type TaskPhotoSlotView = {
   canRemove: boolean;
   requiredHint: string;
   statusText: string;
+  addLabel: string;
 };
 
 function toSafeString(value: unknown, fallback = ""): string {
@@ -45,6 +48,7 @@ function normalizeSlots(slots: unknown): TaskPhotoSlotView[] {
       label: toSafeString(slot.label, "事故照片"),
       localPath: toSafeString(slot.localPath),
       uploaded: Boolean(slot.uploaded),
+      requirementMet: Boolean(slot.requirementMet),
       uploading: Boolean(slot.uploading),
       progress: toSafeProgress(slot.progress),
       error: toSafeString(slot.error),
@@ -52,6 +56,11 @@ function normalizeSlots(slots: unknown): TaskPhotoSlotView[] {
       canRemove: Boolean(slot.canRemove),
       requiredHint: toSafeString(slot.requiredHint),
       statusText: toSafeString(slot.statusText),
+      addLabel: toSafeString(slot.localPath)
+        ? "重新选择"
+        : slot.requirementMet
+          ? "添加更多"
+          : "上传照片",
     };
   });
 }

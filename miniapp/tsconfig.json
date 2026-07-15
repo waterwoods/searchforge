@@ -14,6 +14,19 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["./**/*.ts", "./typings.d.ts"],
-  "exclude": ["node_modules", "tests"]
+  "include": [
+    "./app.ts",
+    "./pages/**/*.ts",
+    "./components/**/*.ts",
+    "./services/**/*.ts",
+    "./utils/**/*.ts",
+    "./behaviors/**/*.ts",
+    "./types/**/*.ts",
+    "./config.defaults.ts",
+    "./config.example.ts",
+    "./config.qa.ts",
+    "./config.local.ts",
+    "./typings.d.ts"
+  ],
+  "exclude": ["node_modules", "tests", "tests/**", "**/*.test.ts"]
 }

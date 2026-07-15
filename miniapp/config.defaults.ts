@@ -8,6 +8,7 @@
  * - Real-device preview: http://<LAN-ip>:8001 — never use 127.0.0.1 on a phone
  */
 export const config = {
+  apiProfile: "local" as "local" | "qa",
   apiBaseUrl: "http://127.0.0.1:8001",
   devTaskToken: "",
   tenantDisplayName: "陈总保险办公室",

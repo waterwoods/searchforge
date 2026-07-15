@@ -27,7 +27,7 @@ export function resetApiHealthCache(): void {
 }
 
 /**
- * Probe GET /healthz once per TTL window.
+ * Probe GET /health/live once per TTL window.
  * Fails fast with BackendUnreachableError when the API is down or misconfigured.
  */
 export function ensureApiReachable(): Promise<void> {
@@ -43,7 +43,7 @@ export function ensureApiReachable(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     wx.request({
-      url: `${baseUrl()}/healthz`,
+      url: `${baseUrl()}/health/live`,
       method: "GET",
       timeout: 5000,
       success(res) {

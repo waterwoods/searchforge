@@ -1,6 +1,6 @@
 <view class="container">
   <task-shell
-    loading="{{busy.loading}}"
+    loading="{{pageState === 'initializing'}}"
     error="{{errorState}}"
     loadingMessage="{{loadingMessage}}"
     safetyCopy="{{shellSafetyCopy}}"
@@ -17,7 +17,7 @@
       bind:contactBroker="onContactBroker"
     />
 
-    <view class="card">
+    <view class="card" wx:if="{{pageState !== 'initializing'}}">
       <view class="card-title">补充事故照片</view>
       <view class="card-subtitle">
         先上传必需照片。上传后会自动回读服务器确认，已上传 {{photoCount}}/{{photoTarget}} 张。
@@ -35,16 +35,16 @@
     </view>
   </task-shell>
 
-  <view class="footer-cta" wx:if="{{!busy.loading}}">
+  <view class="footer-cta" wx:if="{{pageState !== 'initializing'}}">
     <task-cta
-      wx:if="{{photoCount < photoTarget}}"
-      label="上传下一张"
+      wx:if="{{photoCount < maxActivePhotos}}"
+      label="{{photoCount < 1 ? '上传下一张' : '添加更多照片'}}"
       disabled="{{busy.uploading}}"
       loading="{{busy.uploading}}"
       bindtap="onAddPhoto"
     />
     <task-cta
-      wx:else
+      wx:if="{{photoCount >= 1}}"
       label="完成并返回我的资料"
       disabled="{{busy.uploading}}"
       loading="{{busy.uploading}}"
