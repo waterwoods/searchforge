@@ -1768,13 +1768,14 @@ class _PostgresSlice1Store:
         from psycopg.types.json import Json
 
         cid = _str(case_id)
+        # psycopg Json() adapts as json; Cloud SQL columns are jsonb — cast for ||.
         self._cur.execute(
             """
             UPDATE service_records SET
                 lifecycle_status = COALESCE(NULLIF(%(lifecycle_status)s, ''), lifecycle_status),
                 current_next_action = COALESCE(NULLIF(%(current_next_action)s, ''), current_next_action),
                 updated_at = now(),
-                extra = extra || %(extra_patch)s
+                extra = COALESCE(extra, '{}'::jsonb) || %(extra_patch)s::jsonb
             WHERE record_id = %(case_id)s
             """,
             {
@@ -1787,7 +1788,7 @@ class _PostgresSlice1Store:
         self._cur.execute(
             """
             UPDATE structured_record_data SET
-                structured_payload = structured_payload || %(structured_patch)s,
+                structured_payload = COALESCE(structured_payload, '{}'::jsonb) || %(structured_patch)s::jsonb,
                 updated_at = now()
             WHERE record_id = %(case_id)s
             """,
