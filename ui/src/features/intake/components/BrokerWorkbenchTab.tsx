@@ -127,6 +127,7 @@ import {
 } from '@/features/intake/components/WorkbenchSummary';
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
+import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
 import { addCarNextOwnerLine } from '@/components/intake/AddCarRecordSummaryRail';
 
 const { TextArea } = Input;
@@ -1675,6 +1676,25 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     }
                                 />
                             ) : null}
+                            <StructuredRequestMorePanel
+                                key={currentCase.case_id || 'current-case'}
+                                caseRecord={currentCase}
+                                onCaseChange={(updated) => {
+                                    setCurrentCase(updated);
+                                    if (updated.case_id) {
+                                        setRecentCases((cases) =>
+                                            orderCasesForWorkbench([updated as SavedCase, ...cases.filter((item) => item.case_id !== updated.case_id)]),
+                                        );
+                                    }
+                                }}
+                                refreshCase={async () => {
+                                    if (!currentCase.case_id) return null;
+                                    const refreshed = await getSavedCase(currentCase.case_id);
+                                    setCurrentCase(refreshed);
+                                    setRecentCases((cases) => orderCasesForWorkbench([refreshed, ...cases.filter((item) => item.case_id !== refreshed.case_id)]));
+                                    return refreshed;
+                                }}
+                            />
                             {currentCase.service_lane === 'claim' ? (
                                 <ClaimCaseBriefPanel
                                     brief={currentCase.claim_case_brief}

@@ -13,10 +13,21 @@ import {
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 2000;
-const RETRYABLE_CODES = new Set(["network_error", "backend_unreachable", "save_failed", "submit_failed"]);
+const LOAD_TIMEOUT_MS = 12_000;
+const RETRYABLE_CODES = new Set([
+  "network_error",
+  "backend_unreachable",
+  "save_failed",
+  "submit_failed",
+  "timeout",
+]);
 
 type InternalState = {
   latestRequestSeq: number;
+  activeLoadPromise: Promise<CustomerTask | null> | null;
+  activeLoadSeq: number | null;
+  pageAlive: boolean;
+  firstShowConsumed: boolean;
 };
 
 type TaskBehaviorData = {
@@ -54,6 +65,10 @@ function ensureInternalState(target: WechatMiniprogram.Behavior.Instance): Inter
   if (!page.__taskPageState) {
     page.__taskPageState = {
       latestRequestSeq: 0,
+      activeLoadPromise: null,
+      activeLoadSeq: null,
+      pageAlive: true,
+      firstShowConsumed: false,
     };
   }
   return page.__taskPageState;
@@ -65,6 +80,21 @@ function navigateBackAsync(): Promise<void> {
       success: () => resolve(),
       fail: (err) => reject(err),
     });
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new ApiRequestError("timeout")), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
   });
 }
 
@@ -90,6 +120,8 @@ export const taskPage = Behavior({
 
   lifetimes: {
     attached() {
+      const state = ensureInternalState(this);
+      state.pageAlive = true;
       const bindings = taskShellBindingsFromViewModel(this.data.taskViewModel);
       if (
         this.data.shellSafetyCopy !== bindings.shellSafetyCopy ||
@@ -98,11 +130,33 @@ export const taskPage = Behavior({
         this.setData(bindings);
       }
     },
+    detached() {
+      const state = ensureInternalState(this);
+      state.pageAlive = false;
+      state.latestRequestSeq += 1;
+      state.activeLoadPromise = null;
+      state.activeLoadSeq = null;
+    },
+  },
+
+  pageLifetimes: {
+    show() {
+      ensureInternalState(this).pageAlive = true;
+    },
+    hide() {
+      // Keep pageAlive true while hidden so in-flight loads can still complete
+      // unless the page is destroyed (detached/onUnload).
+    },
   },
 
   methods: {
+    safeSetData(patch: Record<string, unknown>): void {
+      if (!ensureInternalState(this).pageAlive) return;
+      this.setData(patch);
+    },
+
     commitTaskViewModel(vm: TaskViewModel): void {
-      this.setData(taskViewModelDataPatch(vm));
+      this.safeSetData(taskViewModelDataPatch(vm));
     },
 
     requireToken(): string | null {
@@ -116,6 +170,7 @@ export const taskPage = Behavior({
     },
 
     setBusy(key: keyof TaskBehaviorData["busy"], value: boolean): void {
+      if (!ensureInternalState(this).pageAlive) return;
       const next = {
         ...this.data.busy,
         [key]: value,
@@ -132,91 +187,151 @@ export const taskPage = Behavior({
       // A1 intentionally no-ops analytics wiring.
     },
 
-    async loadTask(options?: { silent?: boolean }): Promise<CustomerTask | null> {
+    markTaskPageDestroyed(): void {
+      const state = ensureInternalState(this);
+      state.pageAlive = false;
+      state.latestRequestSeq += 1;
+      state.activeLoadPromise = null;
+      state.activeLoadSeq = null;
+    },
+
+    /**
+     * Single-flight authoritative task load.
+     * Newer calls supersede older responses via request generation.
+     * Concurrent callers join the in-flight promise when not forcing a refresh.
+     */
+    async loadTask(options?: {
+      silent?: boolean;
+      force?: boolean;
+      joinInFlight?: boolean;
+    }): Promise<CustomerTask | null> {
       const token = this.requireToken();
       if (!token) return null;
 
       const state = ensureInternalState(this);
+      const silent = Boolean(options?.silent);
+      const force = Boolean(options?.force);
+      // Default: newer load supersedes. Explicit joinInFlight is for first-show ↔ onLoad.
+      const joinInFlight = Boolean(options?.joinInFlight);
+
+      if (!force && joinInFlight && state.activeLoadPromise) {
+        return state.activeLoadPromise;
+      }
+
       state.latestRequestSeq += 1;
       const requestSeq = state.latestRequestSeq;
-      const silent = Boolean(options?.silent);
+      state.activeLoadSeq = requestSeq;
 
-      if (!silent) {
-        this.setBusy("loading", true);
-      }
-
-      try {
-        const task = await CustomerTaskApi.getTask(token);
-        if (requestSeq !== state.latestRequestSeq) {
-          return null;
+      const run = (async (): Promise<CustomerTask | null> => {
+        if (!silent) {
+          this.setBusy("loading", true);
         }
 
-        const app = getApp<IAppOption>();
-        app.task = task;
-        const nextVm = resolveTaskViewModel(task, task.task_contract, {
-          route: (this as { route?: string }).route,
-          busy: this.data.busy,
-        });
-        this.setData({
-          task,
-          errorState: EMPTY_TASK_ERROR,
-          ...taskViewModelDataPatch(nextVm),
-        });
-        return task;
-      } catch (error) {
-        if (requestSeq !== state.latestRequestSeq) {
-          return null;
-        }
-        const code = error instanceof ApiRequestError ? error.code : "network_error";
-        const app = getApp<IAppOption>();
-        const safeError = normalizeError(code);
-        const cachedTask = app.task;
+        try {
+          const task = await withTimeout(CustomerTaskApi.getTask(token), LOAD_TIMEOUT_MS);
+          if (!state.pageAlive || requestSeq !== state.latestRequestSeq) {
+            return null;
+          }
 
-        if (safeError.retryable && cachedTask) {
-          const cachedError = { ...safeError, blocking: false };
-          this.setData({
-            task: cachedTask,
-            errorState: cachedError,
+          const app = getApp<IAppOption>();
+          app.task = task;
+          const nextVm = resolveTaskViewModel(task, task.task_contract, {
+            route: (this as { route?: string }).route,
+            busy: this.data.busy,
+          });
+          this.safeSetData({
+            task,
+            errorState: EMPTY_TASK_ERROR,
+            ...taskViewModelDataPatch(nextVm),
+          });
+          return task;
+        } catch (error) {
+          if (!state.pageAlive || requestSeq !== state.latestRequestSeq) {
+            return null;
+          }
+          const code = error instanceof ApiRequestError ? error.code : "network_error";
+          const app = getApp<IAppOption>();
+          const safeError = normalizeError(code);
+          const cachedTask = app.task;
+
+          if (safeError.retryable && cachedTask) {
+            const cachedError = { ...safeError, blocking: false };
+            this.safeSetData({
+              task: cachedTask,
+              errorState: cachedError,
+              ...taskViewModelDataPatch(
+                resolveTaskViewModel(cachedTask, cachedTask.task_contract, {
+                  route: (this as { route?: string }).route,
+                  busy: this.data.busy,
+                }, cachedError),
+              ),
+            });
+            return cachedTask;
+          }
+
+          const blockingError = { ...safeError, blocking: true };
+          this.safeSetData({
+            errorState: blockingError,
             ...taskViewModelDataPatch(
-              resolveTaskViewModel(cachedTask, cachedTask.task_contract, {
+              resolveTaskViewModel(app.task || ({} as CustomerTask), app.task?.task_contract, {
                 route: (this as { route?: string }).route,
                 busy: this.data.busy,
-              }, cachedError),
+              }, blockingError),
             ),
           });
-          return cachedTask;
-        }
-
-        const blockingError = { ...safeError, blocking: true };
-        this.setData({
-          errorState: blockingError,
-          ...taskViewModelDataPatch(
-            resolveTaskViewModel(app.task || ({} as CustomerTask), app.task?.task_contract, {
-              route: (this as { route?: string }).route,
-              busy: this.data.busy,
-            }, blockingError),
-          ),
-        });
-        return null;
-      } finally {
-        if (requestSeq === ensureInternalState(this).latestRequestSeq && !silent) {
-          this.setBusy("loading", false);
-          const task = this.data.task as CustomerTask | null;
-          if (task?.case_id) {
-            const errState = this.data.errorState as TaskErrorState;
-            const vm = resolveTaskViewModel(
-              task,
-              task.task_contract,
-              {
-                route: (this as { route?: string }).route,
-                busy: { ...this.data.busy, loading: false },
-              },
-              errState?.message ? errState : undefined,
-            );
-            this.setData(taskViewModelDataPatch(vm));
+          return null;
+        } finally {
+          if (state.activeLoadSeq === requestSeq) {
+            state.activeLoadPromise = null;
+            state.activeLoadSeq = null;
+          }
+          if (state.pageAlive && requestSeq === state.latestRequestSeq && !silent) {
+            this.setBusy("loading", false);
+            const task = this.data.task as CustomerTask | null;
+            if (task?.case_id) {
+              const errState = this.data.errorState as TaskErrorState;
+              const vm = resolveTaskViewModel(
+                task,
+                task.task_contract,
+                {
+                  route: (this as { route?: string }).route,
+                  busy: { ...this.data.busy, loading: false },
+                },
+                errState?.message ? errState : undefined,
+              );
+              this.safeSetData(taskViewModelDataPatch(vm));
+            }
           }
         }
+      })();
+
+      state.activeLoadPromise = run;
+      return run;
+    },
+
+    /** Rehydrate authoritative server truth (resume / pull-to-refresh / foreground). */
+    async rehydrateAuthoritativeTask(options?: { silent?: boolean }): Promise<CustomerTask | null> {
+      return this.loadTask({ silent: Boolean(options?.silent), force: true, joinInFlight: false });
+    },
+
+    /**
+     * Unified page show initialization:
+     * - first show joins/awaits cold load owned by onLoad when present
+     * - later shows force a safe rehydrate
+     */
+    async ensureTaskInitialized(options?: { ownerLoad?: boolean }): Promise<CustomerTask | null> {
+      const state = ensureInternalState(this);
+      if (options?.ownerLoad) {
+        return this.loadTask({ force: true, joinInFlight: false });
       }
+      if (!state.firstShowConsumed) {
+        state.firstShowConsumed = true;
+        if (state.activeLoadPromise) {
+          return state.activeLoadPromise;
+        }
+        return this.loadTask({ force: false, joinInFlight: true });
+      }
+      return this.rehydrateAuthoritativeTask({ silent: false });
     },
 
     async retryLoadTask(): Promise<CustomerTask | null> {
@@ -229,12 +344,12 @@ export const taskPage = Behavior({
       if (attempts >= MAX_RETRY_ATTEMPTS) {
         const exhausted = normalizeError("network_error", true);
         exhausted.message = "网络暂时不可用，请稍后再试或联系陈总。";
-        this.setData({ errorState: exhausted });
+        this.safeSetData({ errorState: exhausted });
         return null;
       }
 
       this.setBusy("retrying", true);
-      this.setData({
+      this.safeSetData({
         retryMeta: {
           attempts: attempts + 1,
           cooldownUntil: now + RETRY_COOLDOWN_MS,
@@ -242,7 +357,7 @@ export const taskPage = Behavior({
       });
       resetApiHealthCache();
       try {
-        return await this.loadTask();
+        return await this.rehydrateAuthoritativeTask();
       } finally {
         this.setBusy("retrying", false);
       }
@@ -258,7 +373,7 @@ export const taskPage = Behavior({
       } catch (error) {
         const code = error instanceof ApiRequestError ? error.code : "save_failed";
         const safeError = normalizeError(code, false);
-        this.setData({ errorState: safeError });
+        this.safeSetData({ errorState: safeError });
         wx.showToast({ title: safeError.message, icon: "none" });
         return false;
       } finally {
@@ -267,4 +382,3 @@ export const taskPage = Behavior({
     },
   },
 });
-

@@ -1,0 +1,130 @@
+<view class="container request-item-page">
+  <task-shell
+    loading="{{loading}}"
+    error="{{pageError}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <task-error
+      wx:if="{{pageError.message && !pageError.blocking}}"
+      message="{{pageError.message}}"
+      retryable="{{pageError.retryable}}"
+      retryDisabled="{{busy.retrying || busy.submitting}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onContactBroker"
+    />
+
+    <view class="card" wx:if="{{waitingForBroker}}">
+      <view class="status-pill done">等待审核</view>
+      <view class="card-title">{{nextActionTitle || '资料已提交，等待经纪人审核'}}</view>
+      <view class="card-subtitle">{{nextActionInstructions || '陈总会查看你补充的资料。'}}</view>
+      <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
+      <view class="meta-line" wx:if="{{lastServerUpdate}}">已同步最新状态</view>
+    </view>
+
+    <block wx:elif="{{nextAction}}">
+      <view class="card">
+        <view class="status-pill">需补充</view>
+        <view class="card-title">{{nextActionTitle}}</view>
+        <view class="card-subtitle">{{nextActionInstructions}}</view>
+        <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
+        <view class="meta-line">进度 {{progress.satisfied}}/{{progress.total}}</view>
+        <view class="meta-line" wx:if="{{brokerStatusLabel}}">经纪人状态：{{brokerStatusLabel}}</view>
+        <view class="meta-line" wx:if="{{lastServerUpdate}}">已同步最新状态</view>
+      </view>
+
+      <view class="card" wx:if="{{inputMode === 'text'}}">
+        <view class="section-label">{{inputLabel}}</view>
+        <textarea
+          wx:if="{{itemType === 'free_text'}}"
+          class="textarea-field"
+          placeholder="{{inputPlaceholder}}"
+          maxlength="2000"
+          value="{{draftValue}}"
+          bindinput="onDraftInput"
+          auto-height
+          show-confirm-bar="{{false}}"
+          disabled="{{busy.submitting}}"
+        />
+        <input
+          wx:else
+          class="text-field"
+          type="text"
+          maxlength="32"
+          placeholder="{{inputPlaceholder}}"
+          value="{{draftValue}}"
+          bindinput="onDraftInput"
+          disabled="{{busy.submitting}}"
+        />
+        <view class="char-count" wx:if="{{validationMessage}}">{{validationMessage}}</view>
+      </view>
+
+      <view class="card" wx:if="{{inputMode === 'evidence'}}">
+        <view class="section-label">上传资料</view>
+        <view class="upload-stage" wx:if="{{uploadStatusText}}">{{uploadStatusText}}</view>
+        <image
+          wx:if="{{uploadItems[0].localPath}}"
+          class="preview-image"
+          mode="aspectFill"
+          src="{{uploadItems[0].localPath}}"
+          bindtap="onPreviewUpload"
+        />
+        <button
+          class="btn-secondary"
+          hover-class="btn-secondary-hover"
+          bindtap="onChoosePhoto"
+          disabled="{{busy.submitting || uploadItems[0].uploading}}"
+        >{{uploadItems[0].localPath ? '重新选择照片' : '选择照片'}}</button>
+        <view class="char-count" wx:if="{{validationMessage}}">{{validationMessage}}</view>
+      </view>
+
+      <view class="card" wx:if="{{queuedItems.length}}">
+        <view class="section-label">稍后还需补充</view>
+        <view
+          class="list-item"
+          wx:for="{{queuedItems}}"
+          wx:key="request_item_id"
+        >{{item.position}}. {{item.label}}</view>
+      </view>
+
+      <view class="card" wx:if="{{satisfiedItems.length}}">
+        <view class="section-label">已完成</view>
+        <view
+          class="list-item"
+          wx:for="{{satisfiedItems}}"
+          wx:key="request_item_id"
+        >{{item.label}} · 已提交</view>
+      </view>
+    </block>
+  </task-shell>
+
+  <view class="footer-cta" wx:if="{{!loading && !waitingForBroker && nextAction}}">
+    <task-cta
+      label="{{submitLabel}}"
+      disabled="{{submitDisabled}}"
+      loading="{{busy.submitting || uploadItems[0].uploading}}"
+      disabledReason="{{submitDisabledReason}}"
+      bindtap="onSubmit"
+    />
+    <button
+      wx:if="{{retryAvailable}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onRetrySubmit"
+      disabled="{{busy.submitting}}"
+    >重试提交</button>
+    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater">稍后再填</button>
+  </view>
+
+  <view class="footer-cta" wx:if="{{!loading && waitingForBroker}}">
+    <task-cta
+      label="返回我的资料"
+      disabled="{{busy.navigating}}"
+      loading="{{busy.navigating}}"
+      bindtap="onBackHome"
+    />
+  </view>
+</view>

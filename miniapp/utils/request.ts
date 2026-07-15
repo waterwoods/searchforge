@@ -9,16 +9,21 @@ export type RequestErrorCode =
   | "missing_required_fields"
   | "save_failed"
   | "submit_failed"
+  | "version_conflict"
+  | "request_item_not_active"
+  | "slice1_not_enabled"
   | string;
 
 export class ApiRequestError extends Error {
   code: RequestErrorCode;
   status: number;
+  detail?: unknown;
 
-  constructor(code: RequestErrorCode, status = 0) {
+  constructor(code: RequestErrorCode, status = 0, detail?: unknown) {
     super(code);
     this.code = code;
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -26,21 +31,35 @@ function baseUrl(): string {
   return (appConfig.apiBaseUrl || "").replace(/\/$/, "");
 }
 
+function extractDetail(body: unknown): unknown {
+  if (!body || typeof body !== "object" || !("detail" in body)) return undefined;
+  return (body as { detail?: unknown }).detail;
+}
+
 function parseDetail(body: unknown, status: number): RequestErrorCode {
-  const detail =
-    body && typeof body === "object" && "detail" in body
-      ? String((body as { detail?: string }).detail || "")
-      : "";
-  if (status === 403 && detail === "invalid_or_expired_task_link") {
-    return "invalid_or_expired_task_link";
+  const detail = extractDetail(body);
+  if (typeof detail === "string") {
+    if (status === 403 && detail === "invalid_or_expired_task_link") {
+      return "invalid_or_expired_task_link";
+    }
+    if (status === 409 && detail === "already_submitted") {
+      return "already_submitted";
+    }
+    if (status === 400 && detail === "missing_required_fields") {
+      return "missing_required_fields";
+    }
+    return detail || `http_${status}`;
   }
-  if (status === 409 && detail === "already_submitted") {
-    return "already_submitted";
+  if (detail && typeof detail === "object") {
+    const obj = detail as { error_code?: unknown; error?: unknown; outcome?: unknown };
+    const errorCode = String(obj.error_code || obj.error || "").trim();
+    if (errorCode) return errorCode;
+    if (status === 409 && String(obj.outcome || "") === "conflict") {
+      return "version_conflict";
+    }
+    if (status === 422) return "validation_rejected";
   }
-  if (status === 400 && detail === "missing_required_fields") {
-    return "missing_required_fields";
-  }
-  return detail || `http_${status}`;
+  return `http_${status}`;
 }
 
 function rejectRequestError(
@@ -83,7 +102,7 @@ export function requestJson<T>(
                 resolve(res.data as T);
                 return;
               }
-              reject(new ApiRequestError(parseDetail(res.data, status), status));
+              reject(new ApiRequestError(parseDetail(res.data, status), status, extractDetail(res.data)));
             },
             fail() {
               reject(new ApiRequestError("network_error"));
@@ -138,7 +157,7 @@ export function uploadFile(
                   resolve(data);
                   return;
                 }
-                reject(new ApiRequestError(parseDetail(data, status), status));
+                reject(new ApiRequestError(parseDetail(data, status), status, extractDetail(data)));
               });
             },
             fail() {

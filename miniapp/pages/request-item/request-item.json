@@ -1,0 +1,10 @@
+{
+  "navigationBarTitleText": "补充资料",
+  "usingComponents": {
+    "task-shell": "/components/task-shell/index",
+    "task-cta": "/components/task-cta/index",
+    "task-error": "/components/task-error/index",
+    "task-progress": "/components/task-progress/index"
+  },
+  "enablePullDownRefresh": true
+}

@@ -154,6 +154,9 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "demo_summary",
         "known_facts",
         "claim_phase",
+        "slice1_capability_version",
+        "p20_slice1_projection",
+        "p20_slice1_request_summary",
         "manual_handle",
         "urgent",
     )
@@ -217,6 +220,15 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["known_fact_conflicts"] = [
             item for item in extra.get("known_fact_conflicts") or [] if isinstance(item, dict)
         ]
+    if "slice1_capability_version" in extra:
+        try:
+            case["slice1_capability_version"] = int(extra.get("slice1_capability_version") or 0)
+        except (TypeError, ValueError):
+            case["slice1_capability_version"] = 0
+    if isinstance(extra.get("p20_slice1_projection"), dict):
+        case["p20_slice1_projection"] = dict(extra.get("p20_slice1_projection") or {})
+    if isinstance(extra.get("p20_slice1_request_summary"), dict):
+        case["p20_slice1_request_summary"] = dict(extra.get("p20_slice1_request_summary") or {})
 
 
 def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
@@ -251,6 +263,10 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "h5_intake_state",
         "known_fact_provenance",
         "known_fact_conflicts",
+        # P20 Slice 1 compatibility projection; canonical truth is in companion tables.
+        "slice1_capability_version",
+        "p20_slice1_projection",
+        "p20_slice1_request_summary",
     )
     return {k: case[k] for k in keys if k in case}
 
@@ -1239,6 +1255,550 @@ def purge_case_domain_data(*, dry_run: bool = False) -> dict[str, int]:
         if not dry_run:
             conn.commit()
     return counts
+
+
+# ---------------------------------------------------------------------------
+# P20 Slice 1 — narrow transactional command storage
+# ---------------------------------------------------------------------------
+
+_SLICE1_SCHEMA_READY = False
+
+
+def _ensure_slice1_schema(cur: Any) -> None:
+    """Create the Slice 1 companion schema when migrations have not been pre-applied."""
+
+    global _SLICE1_SCHEMA_READY
+    if _SLICE1_SCHEMA_READY:
+        return
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS claim_slice1_aggregates (
+            case_id TEXT PRIMARY KEY REFERENCES service_records (record_id) ON DELETE CASCADE,
+            workflow_state TEXT NOT NULL,
+            aggregate_version INTEGER NOT NULL DEFAULT 0,
+            active_request_id TEXT,
+            customer_projection JSONB NOT NULL DEFAULT '{}'::jsonb,
+            broker_projection JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS claim_request_groups (
+            request_id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL REFERENCES service_records (record_id) ON DELETE CASCADE,
+            status TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completed_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_request_groups_one_open
+        ON claim_request_groups (case_id)
+        WHERE status = 'open'
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS claim_request_items (
+            request_item_id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL REFERENCES claim_request_groups (request_id) ON DELETE CASCADE,
+            case_id TEXT NOT NULL REFERENCES service_records (record_id) ON DELETE CASCADE,
+            item_type TEXT NOT NULL,
+            label TEXT NOT NULL,
+            instructions TEXT NOT NULL DEFAULT '',
+            required BOOLEAN NOT NULL DEFAULT true,
+            position INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            satisfied_at TIMESTAMPTZ,
+            satisfied_by_event_id TEXT
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_request_items_position
+        ON claim_request_items (request_id, position)
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS claim_slice1_events (
+            event_id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL REFERENCES service_records (record_id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            command_id TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            sequence_number INTEGER NOT NULL,
+            aggregate_version INTEGER NOT NULL,
+            expected_state_version INTEGER,
+            actor TEXT NOT NULL,
+            actor_identity TEXT NOT NULL,
+            state_before TEXT NOT NULL,
+            state_after TEXT NOT NULL,
+            visibility TEXT NOT NULL,
+            evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+            idempotency_key TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_slice1_events_sequence
+        ON claim_slice1_events (case_id, sequence_number)
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_slice1_events_command_type
+        ON claim_slice1_events (case_id, command_id, event_type)
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS claim_slice1_command_outcomes (
+            outcome_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            case_id TEXT NOT NULL REFERENCES service_records (record_id) ON DELETE CASCADE,
+            actor_identity TEXT NOT NULL,
+            command_id TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            command_type TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            aggregate_version INTEGER NOT NULL,
+            event_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            response JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_slice1_command_outcome_idempotency
+        ON claim_slice1_command_outcomes (case_id, actor_identity, idempotency_key)
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_slice1_command_outcome_command
+        ON claim_slice1_command_outcomes (case_id, command_id)
+        """
+    )
+    _SLICE1_SCHEMA_READY = True
+
+
+def _slice1_iso(val: Any) -> str:
+    if val is None:
+        return ""
+    if hasattr(val, "isoformat"):
+        s = val.isoformat()
+        return s.replace("+00:00", "Z") if s.endswith("+00:00") else s
+    return str(val)
+
+
+class _PostgresSlice1Store:
+    """Postgres-backed Slice 1 store; domain decisions remain in the command service."""
+
+    def _case_from_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+        structured = row.get("structured_payload") if isinstance(row.get("structured_payload"), dict) else {}
+        case: dict[str, Any] = {}
+        case.update(structured)
+        case.update(extra)
+        case["case_id"] = str(row.get("record_id") or "")
+        if row.get("client_id"):
+            case["client_id"] = str(row.get("client_id") or "").strip()
+        case["lifecycle_status"] = _str(row.get("lifecycle_status"))
+        case["updated_at"] = _slice1_iso(row.get("updated_at"))
+        case["broker_next_step"] = _str(row.get("current_next_action")) or _str(case.get("broker_next_step"))
+        return case
+
+    def _snapshot(self, cur: Any, case_id: str, *, lock_case: bool) -> Any:
+        from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+            Slice1Aggregate,
+            Slice1Group,
+            Slice1Item,
+            Slice1Snapshot,
+        )
+
+        lock_sql = " FOR UPDATE OF sr" if lock_case else ""
+        cur.execute(
+            """
+            SELECT
+                sr.record_id,
+                sr.client_id,
+                sr.lifecycle_status,
+                sr.updated_at,
+                sr.current_next_action,
+                sr.extra,
+                srd.structured_payload
+            FROM service_records sr
+            LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+            WHERE sr.record_id = %s
+            """
+            + lock_sql,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        case = self._case_from_row(dict(row))
+
+        cur.execute(
+            """
+            SELECT case_id, workflow_state, aggregate_version, active_request_id,
+                   customer_projection, broker_projection
+            FROM claim_slice1_aggregates
+            WHERE case_id = %s
+            FOR UPDATE
+            """,
+            (case_id,),
+        )
+        agg_row = cur.fetchone()
+        aggregate = None
+        if agg_row:
+            a = dict(agg_row)
+            aggregate = Slice1Aggregate(
+                case_id=str(a["case_id"]),
+                workflow_state=str(a["workflow_state"]),
+                aggregate_version=int(a["aggregate_version"] or 0),
+                active_request_id=_str(a.get("active_request_id")) or None,
+                customer_projection=a.get("customer_projection") if isinstance(a.get("customer_projection"), dict) else {},
+                broker_projection=a.get("broker_projection") if isinstance(a.get("broker_projection"), dict) else {},
+            )
+
+        cur.execute(
+            """
+            SELECT request_id, case_id, status, reason, created_by, created_at, completed_at, updated_at
+            FROM claim_request_groups
+            WHERE case_id = %s AND status = 'open'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        )
+        group_row = cur.fetchone()
+        group = None
+        if group_row:
+            g = dict(group_row)
+            group = Slice1Group(
+                request_id=str(g["request_id"]),
+                case_id=str(g["case_id"]),
+                status=str(g["status"]),
+                reason=str(g.get("reason") or ""),
+                created_by=str(g.get("created_by") or ""),
+                created_at=_slice1_iso(g.get("created_at")),
+                updated_at=_slice1_iso(g.get("updated_at")),
+                completed_at=_slice1_iso(g.get("completed_at")) or None,
+            )
+        elif aggregate and aggregate.active_request_id:
+            cur.execute(
+                """
+                SELECT request_id, case_id, status, reason, created_by, created_at, completed_at, updated_at
+                FROM claim_request_groups
+                WHERE request_id = %s
+                """,
+                (aggregate.active_request_id,),
+            )
+            group_row = cur.fetchone()
+            if group_row:
+                g = dict(group_row)
+                group = Slice1Group(
+                    request_id=str(g["request_id"]),
+                    case_id=str(g["case_id"]),
+                    status=str(g["status"]),
+                    reason=str(g.get("reason") or ""),
+                    created_by=str(g.get("created_by") or ""),
+                    created_at=_slice1_iso(g.get("created_at")),
+                    updated_at=_slice1_iso(g.get("updated_at")),
+                    completed_at=_slice1_iso(g.get("completed_at")) or None,
+                )
+
+        items: list[Slice1Item] = []
+        if group:
+            cur.execute(
+                """
+                SELECT request_item_id, request_id, case_id, item_type, label, instructions,
+                       required, position, status, created_at, satisfied_at, satisfied_by_event_id
+                FROM claim_request_items
+                WHERE request_id = %s
+                ORDER BY position ASC
+                """,
+                (group.request_id,),
+            )
+            for raw_item in cur.fetchall():
+                i = dict(raw_item)
+                items.append(
+                    Slice1Item(
+                        request_item_id=str(i["request_item_id"]),
+                        request_id=str(i["request_id"]),
+                        case_id=str(i["case_id"]),
+                        item_type=str(i["item_type"]),
+                        label=str(i["label"]),
+                        instructions=str(i.get("instructions") or ""),
+                        required=bool(i.get("required")),
+                        position=int(i["position"]),
+                        status=str(i["status"]),
+                        created_at=_slice1_iso(i.get("created_at")),
+                        satisfied_at=_slice1_iso(i.get("satisfied_at")) or None,
+                        satisfied_by_event_id=_str(i.get("satisfied_by_event_id")) or None,
+                    )
+                )
+
+        cur.execute(
+            """
+            SELECT event_id, case_id, event_type, command_id, correlation_id, sequence_number,
+                   aggregate_version, expected_state_version, actor, actor_identity,
+                   state_before, state_after, visibility, evidence, idempotency_key, created_at
+            FROM claim_slice1_events
+            WHERE case_id = %s
+            ORDER BY sequence_number ASC
+            LIMIT 100
+            """,
+            (case_id,),
+        )
+        events = []
+        for raw_event in cur.fetchall():
+            e = dict(raw_event)
+            e["created_at"] = _slice1_iso(e.get("created_at"))
+            events.append(e)
+        return Slice1Snapshot(case=case, aggregate=aggregate, group=group, items=items, latest_events=events)
+
+    def read_snapshot(self, case_id: str) -> Any:
+        from psycopg.rows import dict_row
+
+        cid = _str(case_id)
+        if not cid:
+            return None
+        with service_record_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                _ensure_office_owner_org_schema(cur)
+                _ensure_slice1_schema(cur)
+                return self._snapshot(cur, cid, lock_case=False)
+
+    def accept(
+        self,
+        *,
+        case_id: str,
+        actor_identity: str,
+        command_id: str,
+        idempotency_key: str,
+        command_type: str,
+        handler: Any,
+    ) -> dict[str, Any]:
+        from psycopg.rows import dict_row
+        from psycopg.types.json import Json
+
+        cid = _str(case_id)
+        if not cid:
+            raise ValueError("case_id_required")
+        with service_record_connection() as conn:
+            with conn.transaction():
+                with conn.cursor(row_factory=dict_row) as cur:
+                    _ensure_office_owner_org_schema(cur)
+                    _ensure_slice1_schema(cur)
+                    snapshot = self._snapshot(cur, cid, lock_case=True)
+                    if snapshot is None:
+                        raise ValueError("case_not_found")
+                    cur.execute(
+                        """
+                        SELECT response
+                        FROM claim_slice1_command_outcomes
+                        WHERE case_id = %s
+                          AND (
+                            (actor_identity = %s AND idempotency_key = %s)
+                            OR command_id = %s
+                          )
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                        """,
+                        (cid, actor_identity, idempotency_key, command_id),
+                    )
+                    prior = cur.fetchone()
+                    if prior and isinstance(prior.get("response"), dict):
+                        setattr(snapshot, "stored_outcome", prior["response"])
+                        return handler(self, snapshot)
+
+                    self._cur = cur
+                    response = handler(self, snapshot)
+                    event_ids = [str(x) for x in (response.get("event_ids") or []) if str(x)]
+                    cur.execute(
+                        """
+                        INSERT INTO claim_slice1_command_outcomes (
+                            case_id, actor_identity, command_id, correlation_id, idempotency_key,
+                            command_type, outcome, aggregate_version, event_ids, response
+                        ) VALUES (
+                            %(case_id)s, %(actor_identity)s, %(command_id)s, %(correlation_id)s,
+                            %(idempotency_key)s, %(command_type)s, %(outcome)s,
+                            %(aggregate_version)s, %(event_ids)s, %(response)s
+                        )
+                        """,
+                        {
+                            "case_id": cid,
+                            "actor_identity": actor_identity,
+                            "command_id": command_id,
+                            "correlation_id": str(response.get("correlation_id") or command_id),
+                            "idempotency_key": idempotency_key,
+                            "command_type": command_type,
+                            "outcome": str(response.get("outcome") or ""),
+                            "aggregate_version": int(response.get("aggregate_version") or 0),
+                            "event_ids": event_ids,
+                            "response": Json(response),
+                        },
+                    )
+                    return response
+
+    def insert_group(self, group: Any) -> None:
+        self._cur.execute(
+            """
+            INSERT INTO claim_request_groups (
+                request_id, case_id, status, reason, created_by, created_at, completed_at, updated_at
+            ) VALUES (
+                %(request_id)s, %(case_id)s, %(status)s, %(reason)s, %(created_by)s,
+                %(created_at)s, %(completed_at)s, %(updated_at)s
+            )
+            """,
+            group.__dict__,
+        )
+
+    def insert_items(self, items: list[Any]) -> None:
+        for item in items:
+            self._cur.execute(
+                """
+                INSERT INTO claim_request_items (
+                    request_item_id, request_id, case_id, item_type, label, instructions,
+                    required, position, status, created_at, satisfied_at, satisfied_by_event_id
+                ) VALUES (
+                    %(request_item_id)s, %(request_id)s, %(case_id)s, %(item_type)s, %(label)s,
+                    %(instructions)s, %(required)s, %(position)s, %(status)s, %(created_at)s,
+                    %(satisfied_at)s, %(satisfied_by_event_id)s
+                )
+                """,
+                item.__dict__,
+            )
+
+    def update_items(self, items: list[Any]) -> None:
+        for item in items:
+            self._cur.execute(
+                """
+                UPDATE claim_request_items SET
+                    status = %(status)s,
+                    satisfied_at = %(satisfied_at)s,
+                    satisfied_by_event_id = %(satisfied_by_event_id)s
+                WHERE request_item_id = %(request_item_id)s
+                """,
+                item.__dict__,
+            )
+
+    def update_group(self, group: Any) -> None:
+        self._cur.execute(
+            """
+            UPDATE claim_request_groups SET
+                status = %(status)s,
+                reason = %(reason)s,
+                completed_at = %(completed_at)s,
+                updated_at = %(updated_at)s
+            WHERE request_id = %(request_id)s
+            """,
+            group.__dict__,
+        )
+
+    def insert_events(self, events: list[dict[str, Any]]) -> None:
+        from psycopg.types.json import Json
+
+        for event in events:
+            payload = dict(event)
+            payload["evidence"] = Json(payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {})
+            self._cur.execute(
+                """
+                INSERT INTO claim_slice1_events (
+                    event_id, case_id, event_type, command_id, correlation_id, sequence_number,
+                    aggregate_version, expected_state_version, actor, actor_identity,
+                    state_before, state_after, visibility, evidence, idempotency_key, created_at
+                ) VALUES (
+                    %(event_id)s, %(case_id)s, %(event_type)s, %(command_id)s, %(correlation_id)s,
+                    %(sequence_number)s, %(aggregate_version)s, %(expected_state_version)s,
+                    %(actor)s, %(actor_identity)s, %(state_before)s, %(state_after)s,
+                    %(visibility)s, %(evidence)s, %(idempotency_key)s, %(created_at)s
+                )
+                """,
+                payload,
+            )
+
+    def upsert_aggregate(self, aggregate: Any) -> None:
+        from psycopg.types.json import Json
+
+        self._cur.execute(
+            """
+            INSERT INTO claim_slice1_aggregates (
+                case_id, workflow_state, aggregate_version, active_request_id,
+                customer_projection, broker_projection, updated_at
+            ) VALUES (
+                %(case_id)s, %(workflow_state)s, %(aggregate_version)s, %(active_request_id)s,
+                %(customer_projection)s, %(broker_projection)s, now()
+            )
+            ON CONFLICT (case_id) DO UPDATE SET
+                workflow_state = EXCLUDED.workflow_state,
+                aggregate_version = EXCLUDED.aggregate_version,
+                active_request_id = EXCLUDED.active_request_id,
+                customer_projection = EXCLUDED.customer_projection,
+                broker_projection = EXCLUDED.broker_projection,
+                updated_at = now()
+            """,
+            {
+                "case_id": aggregate.case_id,
+                "workflow_state": aggregate.workflow_state,
+                "aggregate_version": aggregate.aggregate_version,
+                "active_request_id": aggregate.active_request_id,
+                "customer_projection": Json(aggregate.customer_projection),
+                "broker_projection": Json(aggregate.broker_projection),
+            },
+        )
+
+    def update_legacy_projection(self, case_id: str, patch: dict[str, Any]) -> None:
+        from psycopg.types.json import Json
+
+        cid = _str(case_id)
+        self._cur.execute(
+            """
+            UPDATE service_records SET
+                lifecycle_status = COALESCE(NULLIF(%(lifecycle_status)s, ''), lifecycle_status),
+                current_next_action = COALESCE(NULLIF(%(current_next_action)s, ''), current_next_action),
+                updated_at = now(),
+                extra = extra || %(extra_patch)s
+            WHERE record_id = %(case_id)s
+            """,
+            {
+                "case_id": cid,
+                "lifecycle_status": _str(patch.get("claim_phase")),
+                "current_next_action": _str(patch.get("broker_next_step")),
+                "extra_patch": Json(patch),
+            },
+        )
+        self._cur.execute(
+            """
+            UPDATE structured_record_data SET
+                structured_payload = structured_payload || %(structured_patch)s,
+                updated_at = now()
+            WHERE record_id = %(case_id)s
+            """,
+            {"case_id": cid, "structured_patch": Json(patch)},
+        )
+
+
+def make_slice1_postgres_store() -> _PostgresSlice1Store:
+    if not service_record_database_url():
+        raise RuntimeError("p20_slice1_requires_service_record_database_url")
+    return _PostgresSlice1Store()
 
 
 _PG_CLIENT_LIST_FILTER = """

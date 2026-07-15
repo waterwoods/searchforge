@@ -1,20 +1,21 @@
 /**
  * CustomerTaskApi — channel-neutral facade over existing H5 task backend routes.
  *
- * Backend contracts (P19M-1 spike):
- * - GET  /api/h5/tasks/{token}/intake     → intake_info_for_token()
- * - PATCH /api/h5/tasks/{token}/fields    → patch_intake_fields(step, fields)
- * - POST /api/h5/tasks/{token}/submit     → submit_intake_form + X-Submit-Intent-Id
- * - GET  /api/h5/tasks/{uploadToken}      → claim evidence pack slot metadata
- * - POST /api/h5/tasks/{uploadToken}/upload → ingest_h5_slot_upload(file, slot)
- *
- * Story field key: accident_description (step=story)
- * Photo uploads use separate claim_evidence_pack token from task.upload_url
- * Submit requires injury, time_location, story, vehicle_other_party complete
- * Evidence step is optional for submit
+ * Backend contracts (P19M-1 spike + P20 Slice 1):
+ * - GET  /api/h5/tasks/{token}/intake
+ * - PATCH /api/h5/tasks/{token}/fields
+ * - POST /api/h5/tasks/{token}/submit
+ * - POST /api/h5/tasks/{token}/request-items/{item_id}/submit
+ * - GET  /api/h5/tasks/{uploadToken}
+ * - POST /api/h5/tasks/{uploadToken}/upload
  */
 
-import type { CustomerTask, UploadSlotInfo } from "../types/task";
+import type {
+  CustomerTask,
+  Slice1CommandResult,
+  Slice1SubmissionCommand,
+  UploadSlotInfo,
+} from "../types/task";
 import { ApiRequestError, requestJson, uploadFile } from "../utils/request";
 import { extractTokenFromUrl, newSubmitIntentId } from "../utils/taskMapping";
 import { saveSubmitIntentId, loadSubmitIntentId } from "../utils/storage";
@@ -86,6 +87,11 @@ export async function uploadPhoto(
   );
 }
 
+export function extractAttachmentId(uploadResponse: unknown): string {
+  if (!uploadResponse || typeof uploadResponse !== "object") return "";
+  return String((uploadResponse as { attachment_id?: unknown }).attachment_id || "").trim();
+}
+
 export function getOrCreateSubmitIntentId(): string {
   const existing = loadSubmitIntentId();
   if (existing) return existing;
@@ -112,13 +118,42 @@ export async function submitTask(token: string, submitIntentId?: string): Promis
   }
 }
 
+export async function submitRequestItem(
+  token: string,
+  itemId: string,
+  command: Slice1SubmissionCommand,
+): Promise<Slice1CommandResult> {
+  const path = `/api/h5/tasks/${enc(token)}/request-items/${enc(itemId)}/submit`;
+  try {
+    return await requestJson<Slice1CommandResult>("POST", path, {
+      command_id: command.command_id,
+      idempotency_key: command.idempotency_key,
+      expected_case_version: command.expected_case_version,
+      client_draft_id: command.client_draft_id || null,
+      fact: command.fact || null,
+      evidence: command.evidence || null,
+    });
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      const detail = err.detail;
+      if (detail && typeof detail === "object" && "outcome" in (detail as object)) {
+        return detail as Slice1CommandResult;
+      }
+      throw err;
+    }
+    throw new ApiRequestError("submit_failed");
+  }
+}
+
 export const CustomerTaskApi = {
   getTask,
   saveStory,
   saveBasics,
   getUploadTaskInfo,
   uploadPhoto,
+  extractAttachmentId,
   submitTask,
+  submitRequestItem,
   getOrCreateSubmitIntentId,
   extractUploadToken: extractTokenFromUrl,
 };

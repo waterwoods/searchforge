@@ -2,6 +2,7 @@
   "pages": [
     "pages/entry/entry",
     "pages/task-home/task-home",
+    "pages/request-item/request-item",
     "pages/story/story",
     "pages/photos/photos",
     "pages/basics/basics",

@@ -637,6 +637,15 @@ export function mapErrorMessage(code: string): string {
     submit_failed: "提交失败，请稍后重试。",
     missing_required_fields: "还有必填资料未完成，请先补充。",
     already_submitted: "资料已提交，无需重复提交。",
+    version_conflict: "资料状态已更新，请查看最新要求后再提交。",
+    request_item_not_active: "当前补充项已变更，请按最新要求继续。",
+    slice1_not_enabled: "当前任务仍使用原流程，请返回我的资料继续。",
+    fact_payload_invalid: "填写内容无效，请修改后重试。",
+    evidence_payload_invalid: "请先上传有效照片后再提交。",
+    evidence_required: "请先选择需要上传的照片。",
+    invalid_upload_url: "暂时无法上传，请稍后重试或联系陈总。",
+    upload_missing_attachment_id: "上传未完成确认，请重试。",
+    validation_rejected: "提交未通过校验，请修改后重试。",
   };
   return messages[code] || "暂时无法完成操作，请稍后再试。";
 }

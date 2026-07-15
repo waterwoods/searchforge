@@ -10,6 +10,7 @@ import {
   resolveSupplementAction,
   storyComplete,
 } from "./taskMapping";
+import { isSlice1CustomerFlow, mapSlice1CustomerView, REQUEST_ITEM_ROUTE } from "./slice1Customer";
 import type {
   BusyState,
   CustomerTask,
@@ -357,6 +358,53 @@ export function resolveTaskViewModel(
 ): TaskViewModel {
   const busy = normalizeBusyState(pageContext?.busy);
   const normalizedError = normalizeError(safeErrorState || taskContract?.error);
+
+  // Slice 1 server Next Action wins when projection is present.
+  if (isSlice1CustomerFlow(task)) {
+    const slice1 = mapSlice1CustomerView(task);
+    const progress = clampProgress(slice1.progress.satisfied, Math.max(slice1.progress.total, 1));
+    const disabledByState = busy.loading || busy.submitting || busy.saving || busy.navigating;
+    const disabledByError = Boolean(normalizedError?.blocking);
+    const baseVm = finalizeViewModel({
+      source: "contract",
+      shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
+      title: normalizeUiString(task.title, "我的事故资料"),
+      instruction: normalizeUiString(
+        slice1.nextAction?.instructions || slice1.nextAction?.title || task.dashboard_summary?.next_action,
+      ),
+      statusLabel: slice1.waitingForBroker ? "等待审核" : "需补充",
+      statusTone: slice1.waitingForBroker ? "done" : "active",
+      progress,
+      cta: normalizeTaskCta({
+        label: slice1.waitingForBroker
+          ? "资料已提交，等待经纪人审核"
+          : normalizeUiString(slice1.primaryCtaLabel, "补充陈总需要的资料"),
+        actionType: slice1.waitingForBroker ? "view_status" : "go_to_section",
+        target: slice1.waitingForBroker ? "/pages/receipt/receipt" : REQUEST_ITEM_ROUTE,
+        disabled: slice1.waitingForBroker || disabledByState || disabledByError || !slice1.primaryActionable,
+        loading: busy.submitting,
+        disabledReason: slice1.waitingForBroker
+          ? "资料已提交，等待经纪人审核"
+          : disabledByError
+            ? "请先处理当前错误"
+            : "",
+      }),
+      missingItems: slice1.queuedItems.map((item) => ({
+        key: item.request_item_id,
+        label: item.label,
+        statusText: "稍后",
+        actionable: false,
+        route: "",
+        hint: "按顺序补充，当前只需完成上方一项",
+      })),
+      evidenceRequirements: [],
+      reviewReady: false,
+      submitReady: false,
+      safetyCopy: normalizeUiString(task.safety_copy, DEFAULT_SAFETY_COPY),
+      error: normalizedError,
+    });
+    return baseVm;
+  }
 
   if (taskContract) {
     const safeContract = normalizeContract(taskContract);

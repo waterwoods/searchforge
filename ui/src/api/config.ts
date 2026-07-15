@@ -11,10 +11,11 @@
  * - Set VITE_API_BASE_URL to your backend URL (e.g. Cloud Run)
  */
 
-const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
-const rawBasePath = import.meta.env.VITE_API_BASE;
+const viteEnv = import.meta.env ?? {};
+const rawBaseUrl = viteEnv.VITE_API_BASE_URL;
+const rawBasePath = viteEnv.VITE_API_BASE;
 
-const preferredBase = import.meta.env.DEV
+const preferredBase = viteEnv.DEV
     ? ""
     : rawBaseUrl && rawBaseUrl.trim().length > 0
         ? rawBaseUrl.trim()

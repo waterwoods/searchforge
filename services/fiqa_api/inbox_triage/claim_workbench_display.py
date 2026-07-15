@@ -897,5 +897,9 @@ def enrich_claim_for_workbench(case: dict[str, Any]) -> dict[str, Any]:
     row["claim_evidence_summary"] = build_claim_evidence_summary(case)
     row["claim_timeline"] = _claim_timeline_events(case)
     row["claim_case_brief"] = build_claim_case_brief(case)
+    slice1_projection = case.get("p20_slice1_projection")
+    if isinstance(slice1_projection, dict):
+        row["slice1_projection"] = dict(slice1_projection)
+        row["slice1_request_summary"] = dict(case.get("p20_slice1_request_summary") or {})
     row["workbench_visible"] = is_claim_workbench_visible(case)
     return row

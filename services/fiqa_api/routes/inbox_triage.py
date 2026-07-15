@@ -114,6 +114,7 @@ from services.fiqa_api.inbox_triage.entity_repository import (
     get_active_vehicle,
 )
 from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
+from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
 from services.fiqa_api.analytics.minimal_events import track_event
 from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
 from services.fiqa_api.analytics.triage_funnel import (
@@ -748,6 +749,25 @@ class CaseWorkbenchRequest(BaseModel):
 
     is_test: bool | None = Field(default=None, description="Mark case as test data for filtering")
     archived: bool | None = Field(default=None, description="Soft-hide / archive for cleanup views")
+
+
+class RequestMoreItemBody(BaseModel):
+    item_type: str = Field(..., min_length=1)
+    label: str = Field(..., min_length=1, max_length=160)
+    instructions: str = Field(default="", max_length=1000)
+    required: bool = Field(default=True)
+    position: int | None = Field(default=None, ge=1)
+    request_item_id: str | None = Field(default=None, max_length=128)
+
+
+class RequestMoreCreateBody(BaseModel):
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    expected_case_version: int = Field(..., ge=0)
+    requested_items: list[RequestMoreItemBody] = Field(..., min_length=1)
+    reason: str = Field(default="", max_length=1000)
+    request_id: str | None = Field(default=None, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
 
 
 class CaseCustomerRequest(BaseModel):
@@ -1842,6 +1862,58 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Workbench enrich failed for case %s, returning raw case: %s", cid, exc)
     return sanitize_case_for_workbench_api(case)
+
+
+def _broker_actor_identity(http_request: Request) -> str:
+    office_id = client_asserted_office_id(http_request)
+    if office_id:
+        return f"office:{office_id}"
+    client_id = resolve_server_client_id()
+    if client_id:
+        return f"client:{client_id}"
+    raise HTTPException(status_code=403, detail="broker_actor_identity_required")
+
+
+@router.post("/cases/{case_id}/request-more")
+async def post_case_request_more(
+    case_id: str,
+    body: RequestMoreCreateBody,
+    http_request: Request,
+    http_response: Response,
+) -> dict[str, Any]:
+    """Slice 1 broker command: create one structured ordered Request More group."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    broker_identity = _broker_actor_identity(http_request)
+    try:
+        result = default_slice1_service().accept_request_more(
+            case_id=case_id,
+            broker_id=broker_identity,
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            expected_case_version=body.expected_case_version,
+            requested_items=[item.dict() for item in body.requested_items],
+            reason=body.reason,
+            request_id=body.request_id,
+            correlation_id=body.correlation_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "accepted":
+        http_response.status_code = 201
+        return result
+    if outcome == "replayed":
+        http_response.status_code = 200
+        return result
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail=result)
+    raise HTTPException(status_code=422, detail=result)
 
 
 @router.delete("/cases/{case_id}")

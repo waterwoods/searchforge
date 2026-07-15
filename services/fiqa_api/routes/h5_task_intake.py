@@ -14,6 +14,7 @@ from services.fiqa_api.inbox_triage.h5_task_intake import (
     submit_intake_form,
 )
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
+from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,15 @@ class H5IntakeFieldsBody(BaseModel):
 
 class H5IntakeSubmitBody(BaseModel):
     submit_intent_id: str = Field(..., min_length=8)
+
+
+class H5RequestItemSubmitBody(BaseModel):
+    command_id: str = Field(..., min_length=8)
+    idempotency_key: str = Field(..., min_length=8)
+    expected_case_version: int = Field(..., ge=0)
+    client_draft_id: str | None = Field(default=None)
+    fact: dict[str, Any] | None = Field(default=None)
+    evidence: dict[str, Any] | None = Field(default=None)
 
 
 @router.get("/tasks/{task_token}/intake")
@@ -91,3 +101,40 @@ async def submit_h5_intake(
         if code in ("already_submitted",):
             raise HTTPException(status_code=409, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.post("/tasks/{task_token}/request-items/{item_id}/submit")
+async def submit_h5_request_item(
+    task_token: str,
+    item_id: str,
+    body: H5RequestItemSubmitBody,
+) -> dict[str, Any]:
+    """Slice 1 customer command: satisfy the active broker-requested item."""
+    claims = _verify_or_403(task_token)
+    customer_identity = f"h5:{claims.user_ref or claims.nonce}"
+    try:
+        result = default_slice1_service().submit_request_item(
+            case_id=claims.case_id,
+            customer_id=customer_identity,
+            active_request_item_id=item_id,
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            expected_case_version=body.expected_case_version,
+            client_draft_id=body.client_draft_id,
+            fact=body.fact,
+            evidence=body.evidence,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "case_not_found":
+            raise HTTPException(status_code=404, detail=code) from exc
+        raise HTTPException(status_code=422, detail={"error": code}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail=result)
+    if outcome == "rejected":
+        raise HTTPException(status_code=422, detail=result)
+    return result

@@ -21,6 +21,11 @@ from services.fiqa_api.inbox_triage.h5_task_token import (
     FLOW_CLAIM_INTAKE_FORM,
     VerifiedH5TaskToken,
 )
+from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+    case_supports_slice1,
+    default_slice1_service,
+    slice1_feature_flag_enabled,
+)
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_MAX_DESCRIPTION_LENGTH,
     CLAIM_PHASE_BROKER_DONE,
@@ -596,6 +601,22 @@ def build_customer_task_contract(case: dict[str, Any], *, task_id: str) -> dict[
     }
 
 
+def _slice1_projection_for_case(case: dict[str, Any]) -> dict[str, Any] | None:
+    """Return authoritative Slice 1 projection when enabled, else None."""
+    if not (case_supports_slice1(case) or slice1_feature_flag_enabled()):
+        return None
+    cid = str(case.get("case_id") or "").strip()
+    if not cid:
+        return None
+    try:
+        projection = default_slice1_service().fetch_projection(cid)
+    except Exception:
+        logger.warning("p20_slice1_projection_fetch_failed case_id=%s", cid)
+        raw = case.get("p20_slice1_projection")
+        return dict(raw) if isinstance(raw, dict) else None
+    return projection if isinstance(projection, dict) else None
+
+
 def _field_value_hash(step: str, facts_patch: dict[str, str]) -> str:
     joined = "|".join(f"{k}={facts_patch[k]}" for k in sorted(facts_patch))
     digest = hashlib.sha256(f"{step}:{joined}".encode("utf-8")).hexdigest()[:16]
@@ -619,7 +640,7 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
     except ValueError:
         upload_url = None
     dashboard = _build_dashboard_summary(case)
-    return {
+    result = {
         "lane": claims.lane,
         "flow": claims.flow or FLOW_CLAIM_INTAKE_FORM,
         "case_id": claims.case_id,
@@ -642,6 +663,21 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "dashboard_summary": dashboard,
         "task_contract": build_customer_task_contract(case, task_id=claims.nonce),
     }
+    slice1_projection = _slice1_projection_for_case(case)
+    if slice1_projection:
+        result["slice1_projection"] = slice1_projection
+        result["task_contract_v1"] = {
+            "contract_version": "1",
+            "task_id": claims.nonce,
+            "task_type": "claim_request_more",
+            "workflow_state": slice1_projection.get("workflow_state"),
+            "aggregate_version": slice1_projection.get("aggregate_version"),
+            "next_action": slice1_projection.get("customer_next_action"),
+            "queued_request_items": slice1_projection.get("queued_request_items") or [],
+            "request_progress": slice1_projection.get("request_progress") or {},
+            "server_timestamp": slice1_projection.get("server_timestamp"),
+        }
+    return result
 
 
 def patch_intake_fields(

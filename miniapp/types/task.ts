@@ -36,6 +36,136 @@ export type MissingInfoItem = {
   label: string;
 };
 
+export type Slice1RequestItemType =
+  | "vin"
+  | "policy_or_insurance_card"
+  | "photo_evidence"
+  | "free_text"
+  | string;
+
+export type Slice1ItemStatus =
+  | "queued"
+  | "active"
+  | "in_progress"
+  | "satisfied"
+  | "withdrawn"
+  | "superseded"
+  | string;
+
+export type Slice1CustomerActionType =
+  | "provide_fact"
+  | "provide_evidence"
+  | "wait_for_broker_review"
+  | "contact_broker"
+  | string;
+
+export type Slice1RequestItem = {
+  request_item_id: string;
+  request_id: string;
+  item_type: Slice1RequestItemType;
+  label: string;
+  instructions: string;
+  required: boolean;
+  position: number;
+  status: Slice1ItemStatus;
+  actionable: boolean;
+  created_at?: string;
+  satisfied_at?: string | null;
+  satisfied_by_event_id?: string | null;
+};
+
+export type Slice1CustomerNextAction = {
+  action_type: Slice1CustomerActionType;
+  request_id?: string | null;
+  request_item_id?: string | null;
+  title: string;
+  instructions: string;
+  required_input?: Slice1RequestItemType | null;
+  status?: string;
+  ordering?: { position?: number | null; total?: number | null };
+  allowed_actions?: string[];
+  version?: number;
+  last_updated_at?: string;
+};
+
+export type Slice1BrokerNextAction = {
+  action_type: string;
+  status?: string;
+  request_id?: string | null;
+  version?: number;
+  last_updated_at?: string;
+};
+
+export type Slice1RequestProgress = {
+  satisfied: number;
+  total: number;
+  remaining: number;
+};
+
+export type Slice1RequestSummary = {
+  request_id: string;
+  status: string;
+  reason?: string;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string | null;
+  active_item?: Slice1RequestItem | null;
+  queued_items?: Slice1RequestItem[];
+  items?: Slice1RequestItem[];
+  progress?: Slice1RequestProgress;
+};
+
+export type Slice1Projection = {
+  case_id: string;
+  workflow_state: string;
+  aggregate_version: number;
+  customer_next_action?: Slice1CustomerNextAction | null;
+  broker_next_action?: Slice1BrokerNextAction | null;
+  open_request?: Slice1RequestSummary | null;
+  queued_request_items?: Slice1RequestItem[];
+  request_progress?: Slice1RequestProgress;
+  latest_events?: unknown[];
+  server_timestamp?: string;
+};
+
+export type TaskContractV1 = {
+  contract_version: "1";
+  task_id: string;
+  task_type: "claim_request_more" | string;
+  workflow_state?: string;
+  aggregate_version?: number;
+  next_action?: Slice1CustomerNextAction | null;
+  queued_request_items?: Slice1RequestItem[];
+  request_progress?: Slice1RequestProgress;
+  server_timestamp?: string;
+};
+
+export type Slice1CommandOutcome = "accepted" | "replayed" | "conflict" | "rejected" | string;
+
+export type Slice1CommandResult = {
+  outcome: Slice1CommandOutcome;
+  command_id: string;
+  correlation_id?: string;
+  idempotency_key: string;
+  event_ids?: string[];
+  aggregate_version?: number;
+  customer_projection?: Slice1Projection;
+  broker_projection?: Slice1Projection;
+  request_summary?: Slice1RequestSummary | null;
+  server_timestamp?: string;
+  error_code?: string;
+  original_outcome?: string;
+};
+
+export type Slice1SubmissionCommand = {
+  command_id: string;
+  idempotency_key: string;
+  expected_case_version: number;
+  client_draft_id?: string;
+  fact?: { field: string; value: string };
+  evidence?: { attachment_id: string };
+};
+
 export type CustomerTask = {
   lane: string;
   flow: string;
@@ -59,6 +189,9 @@ export type CustomerTask = {
   completion_summary?: CompletionSummary;
   dashboard_summary?: DashboardSummary;
   task_contract?: TaskContractV0;
+  /** Additive Slice 1 projection — server authoritative when present. */
+  slice1_projection?: Slice1Projection;
+  task_contract_v1?: TaskContractV1;
 };
 
 export type UploadSlotInfo = {

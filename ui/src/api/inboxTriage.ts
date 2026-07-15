@@ -135,6 +135,181 @@ export type ClaimCaseBrief = {
     brief_version?: number;
 };
 
+export type Slice1RequestItemType = 'vin' | 'policy_or_insurance_card' | 'free_text' | 'photo_evidence';
+
+export type Slice1RequestItemStatus =
+    | 'queued'
+    | 'active'
+    | 'in_progress'
+    | 'satisfied'
+    | 'withdrawn'
+    | 'superseded'
+    | string;
+
+export type Slice1RequestItem = {
+    request_item_id: string;
+    request_id?: string;
+    item_type: Slice1RequestItemType | string;
+    label: string;
+    instructions: string;
+    required: boolean;
+    position: number;
+    status: Slice1RequestItemStatus;
+    actionable?: boolean;
+    created_at?: string;
+    satisfied_at?: string | null;
+    satisfied_by_event_id?: string | null;
+};
+
+export type Slice1NextAction = {
+    action_type: string;
+    request_id?: string | null;
+    request_item_id?: string | null;
+    title?: string;
+    instructions?: string;
+    required_input?: string | null;
+    status?: string;
+    ordering?: { position?: number | null; total?: number | null };
+    allowed_actions?: string[];
+    version?: number;
+    last_updated_at?: string;
+};
+
+export type Slice1RequestProgress = {
+    satisfied: number;
+    total: number;
+    remaining: number;
+};
+
+export type Slice1RequestSummary = {
+    request_id: string;
+    status: 'open' | 'completed' | 'withdrawn' | 'superseded' | string;
+    reason?: string;
+    created_at?: string;
+    updated_at?: string;
+    completed_at?: string | null;
+    active_item?: Slice1RequestItem | null;
+    queued_items?: Slice1RequestItem[];
+    items?: Slice1RequestItem[];
+    progress?: Slice1RequestProgress;
+};
+
+export type Slice1Projection = {
+    case_id: string;
+    workflow_state: string;
+    aggregate_version: number;
+    customer_next_action?: Slice1NextAction;
+    broker_next_action?: Slice1NextAction;
+    open_request?: Slice1RequestSummary | null;
+    queued_request_items?: Slice1RequestItem[];
+    request_progress?: Slice1RequestProgress;
+    latest_events?: Array<Record<string, unknown>>;
+    server_timestamp?: string;
+};
+
+export type Slice1CommandOutcome = 'accepted' | 'replayed' | 'conflict' | 'rejected' | string;
+
+export type Slice1CommandResult = {
+    outcome: Slice1CommandOutcome;
+    command_id: string;
+    correlation_id?: string;
+    idempotency_key: string;
+    event_ids: string[];
+    aggregate_version?: number;
+    customer_projection?: Slice1Projection;
+    broker_projection?: Slice1Projection;
+    request_summary?: Slice1RequestSummary | null;
+    server_timestamp?: string;
+    error_code?: string;
+    original_outcome?: string;
+};
+
+export type RequestMoreDraftItem = {
+    item_type: Slice1RequestItemType;
+    label: string;
+    instructions: string;
+    required: boolean;
+    position: number;
+    request_item_id?: string;
+};
+
+export type CreateRequestMoreCommand = {
+    command_id: string;
+    idempotency_key: string;
+    expected_case_version: number;
+    requested_items: RequestMoreDraftItem[];
+    reason?: string;
+    request_id?: string;
+    correlation_id?: string;
+};
+
+export type Slice1RequestMoreErrorKind =
+    | 'validation'
+    | 'version_conflict'
+    | 'feature_disabled'
+    | 'authorization'
+    | 'timeout'
+    | 'server'
+    | 'not_found'
+    | 'unknown';
+
+export class Slice1RequestMoreError extends Error {
+    kind: Slice1RequestMoreErrorKind;
+    status?: number;
+    detail?: unknown;
+    result?: Slice1CommandResult;
+
+    constructor(message: string, kind: Slice1RequestMoreErrorKind, options: { status?: number; detail?: unknown; result?: Slice1CommandResult } = {}) {
+        super(message);
+        this.name = 'Slice1RequestMoreError';
+        this.kind = kind;
+        this.status = options.status;
+        this.detail = options.detail;
+        this.result = options.result;
+    }
+}
+
+function isCommandResult(value: unknown): value is Slice1CommandResult {
+    return Boolean(value && typeof value === 'object' && 'outcome' in value);
+}
+
+function normalizeSlice1RequestMoreError(error: unknown): Slice1RequestMoreError {
+    const e = error as {
+        code?: string;
+        message?: string;
+        response?: { status?: number; data?: { detail?: unknown } };
+        request?: unknown;
+    };
+    const status = e.response?.status;
+    const detail = e.response?.data?.detail;
+    const result = isCommandResult(detail) ? detail : undefined;
+    const errorCode = String(result?.error_code || (typeof detail === 'object' && detail ? (detail as { error?: unknown }).error : '') || '');
+
+    if (status === 409 && result?.error_code === 'version_conflict') {
+        return new Slice1RequestMoreError('The case changed while you were editing.', 'version_conflict', { status, detail, result });
+    }
+    if (status === 403) {
+        return new Slice1RequestMoreError('You are not authorized to request more on this case.', 'authorization', { status, detail, result });
+    }
+    if (status === 404) {
+        return new Slice1RequestMoreError('Case not found.', 'not_found', { status, detail, result });
+    }
+    if (status === 422) {
+        const kind: Slice1RequestMoreErrorKind =
+            result?.error_code === 'slice1_not_enabled' || errorCode === 'slice1_not_enabled'
+                ? 'feature_disabled'
+                : 'validation';
+        return new Slice1RequestMoreError('Request More was rejected by validation.', kind, { status, detail, result });
+    }
+    if (status && status >= 500) {
+        return new Slice1RequestMoreError('Request More failed on the server.', 'server', { status, detail, result });
+    }
+    if (e.code === 'ECONNABORTED' || (!e.response && e.request)) {
+        return new Slice1RequestMoreError('Network outcome is uncertain.', 'timeout', { detail });
+    }
+    return new Slice1RequestMoreError(e.message || 'Request More failed.', 'unknown', { status, detail, result });
+}
+
 export interface TriageResult {
     issue_category: string;
     urgency: 'low' | 'medium' | 'high' | 'critical';
@@ -306,6 +481,12 @@ export interface TriageResult {
     /** P19H-3e-1 — Claim story timeline + case brief */
     claim_timeline?: ClaimTimelineEvent[];
     claim_case_brief?: ClaimCaseBrief;
+    slice1_capability_version?: number;
+    p20_slice1_capability_version?: number;
+    slice1_projection?: Slice1Projection;
+    p20_slice1_projection?: Slice1Projection;
+    slice1_request_summary?: Slice1RequestSummary;
+    p20_slice1_request_summary?: Slice1RequestSummary;
     workbench_visible?: boolean;
     /** P18 Loop 1 — demo seed metadata (extra JSONB) */
     demo_name?: string;
@@ -577,6 +758,36 @@ export interface ListRecentCasesResponse {
 export async function getSavedCase(caseId: string): Promise<SavedCase> {
     const response = await request.get<SavedCase>(`/api/inbox/cases/${encodeURIComponent(caseId)}`);
     return response.data;
+}
+
+export async function createCaseRequestMore(
+    caseId: string,
+    command: CreateRequestMoreCommand,
+): Promise<Slice1CommandResult> {
+    try {
+        const response = await request.post<Slice1CommandResult>(
+            `/api/inbox/cases/${encodeURIComponent(caseId)}/request-more`,
+            {
+                command_id: command.command_id,
+                idempotency_key: command.idempotency_key,
+                expected_case_version: command.expected_case_version,
+                requested_items: command.requested_items.map((item, index) => ({
+                    item_type: item.item_type,
+                    label: item.label.trim(),
+                    instructions: item.instructions.trim(),
+                    required: item.required,
+                    position: item.position || index + 1,
+                    request_item_id: item.request_item_id,
+                })),
+                reason: (command.reason ?? '').trim(),
+                request_id: command.request_id,
+                correlation_id: command.correlation_id,
+            },
+        );
+        return response.data;
+    } catch (error) {
+        throw normalizeSlice1RequestMoreError(error);
+    }
 }
 
 export async function listRecentCasesPage(params: {

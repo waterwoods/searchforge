@@ -1991,6 +1991,30 @@ def update_claim_workflow_state(
     return normalized_case
 
 
+def apply_p20_slice1_compat_projection(
+    case_id: str,
+    projection_patch: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    Merge the Slice 1 compatibility projection onto the legacy case document.
+
+    Canonical Slice 1 truth is stored in companion tables; this helper only keeps
+    old workbench/H5 readers from losing status while the feature is gated.
+    """
+    cid = (case_id or "").strip()
+    if not cid or not projection_patch:
+        return None
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+    normalized_case.update(dict(projection_patch))
+    normalized_case["updated_at"] = _utc_now_iso()
+    if not _persist_case_after_update(cid, normalized_case):
+        return None
+    return normalized_case
+
+
 def update_lane_switch_pending(
     case_id: str,
     pending: dict[str, Any] | None,

@@ -39,6 +39,7 @@ import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplay
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEvidenceChecklist';
+import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import {
   CLAIM_INTAKE_SAFETY_NOTE,
@@ -440,6 +441,10 @@ function BrokerCaseDetail({
   onDelete,
   onConfirm,
   onClaimBrokerDone,
+  onCaseChange,
+  onRefreshCase,
+  projectionLoading,
+  projectionLoadError,
   confirmSaving,
   claimBrokerDoneSaving,
   perfSession,
@@ -451,6 +456,10 @@ function BrokerCaseDetail({
   onDelete: () => void;
   onConfirm?: () => void;
   onClaimBrokerDone?: () => void;
+  onCaseChange?: (updated: SavedCase) => void;
+  onRefreshCase?: () => Promise<SavedCase | null>;
+  projectionLoading?: boolean;
+  projectionLoadError?: string | null;
   confirmSaving?: boolean;
   claimBrokerDoneSaving?: boolean;
   perfSession?: WorkbenchPerfSession | null;
@@ -473,6 +482,14 @@ function BrokerCaseDetail({
           <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
         </Space>
         <TopActionBanner caseItem={caseItem} blob={blob} />
+        <StructuredRequestMorePanel
+          key={caseItem.case_id}
+          caseRecord={caseItem}
+          projectionLoading={projectionLoading}
+          projectionLoadError={projectionLoadError}
+          onCaseChange={(updated) => onCaseChange?.(updated)}
+          refreshCase={onRefreshCase}
+        />
         {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
@@ -576,6 +593,14 @@ function BrokerCaseDetail({
       </Space>
 
       <TopActionBanner caseItem={caseItem} blob={blob} />
+      <StructuredRequestMorePanel
+        key={caseItem.case_id}
+        caseRecord={caseItem}
+        projectionLoading={projectionLoading}
+        projectionLoadError={projectionLoadError}
+        onCaseChange={(updated) => onCaseChange?.(updated)}
+        refreshCase={onRefreshCase}
+      />
       {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
         <MissingItemsCard fields={missingFields} />
       ) : null}
@@ -715,6 +740,7 @@ export default function DocumentIntakeInboxPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SavedCase | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
   const [drawerPerfSession, setDrawerPerfSession] = useState<WorkbenchPerfSession | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
@@ -761,6 +787,7 @@ export default function DocumentIntakeInboxPage() {
     const session = createWorkbenchPerfSession(caseId, imageCount);
     setDrawerPerfSession(session);
     setOpenId(caseId);
+    setDetailLoadError(null);
     if (stub) setDetail(stub);
 
     if (!shouldFetchFormalCaseDetail(stub)) {
@@ -783,8 +810,10 @@ export default function DocumentIntakeInboxPage() {
       logCaseDetailLoaded(session, Math.round(performance.now() - fetchStart));
     } catch {
       detailFetchFailed = true;
+      const msg = resolveCaseOpenErrorMessage(stub);
+      setDetailLoadError(msg);
       if (shouldShowCaseOpenFailureToast(stub, detailFetchFailed)) {
-        messageApi.error(resolveCaseOpenErrorMessage(stub));
+        messageApi.error(msg);
       }
       if (!stub) setDetail(null);
     } finally {
@@ -859,6 +888,43 @@ export default function DocumentIntakeInboxPage() {
       setClaimBrokerDoneSaving(false);
     }
   };
+
+  const syncDrawerCase = useCallback((updated: SavedCase) => {
+    setDetail(updated);
+    setRows((prev) =>
+      prev.map((row) =>
+        row.case_id === updated.case_id
+          ? {
+              ...row,
+              status: readinessFromCase(updated),
+              summary: buildSummary(updated),
+              opportunity_badges: buildOpportunityBadges(updated),
+              updated_at: updated.updated_at || updated.created_at || row.updated_at,
+              attachment_count: countCaseAttachments(updated.case_attachments),
+              raw: updated,
+            }
+          : row,
+      ),
+    );
+  }, []);
+
+  const refreshDrawerCase = useCallback(async () => {
+    if (!detail?.case_id) return null;
+    setDetailLoading(true);
+    setDetailLoadError(null);
+    try {
+      const refreshed = await getSavedCase(detail.case_id);
+      syncDrawerCase(refreshed);
+      return refreshed;
+    } catch {
+      const msg = resolveCaseOpenErrorMessage(detail);
+      setDetailLoadError(msg);
+      messageApi.error(msg);
+      return null;
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [detail, messageApi, syncDrawerCase]);
 
   const detailBlob = useMemo((): P16BrokerPacket | null => {
     if (!detail) return null;
@@ -996,7 +1062,7 @@ export default function DocumentIntakeInboxPage() {
         }
         width={520}
         open={Boolean(openId)}
-        onClose={() => { setOpenId(null); setDetail(null); setDrawerPerfSession(null); }}
+        onClose={() => { setOpenId(null); setDetail(null); setDetailLoadError(null); setDrawerPerfSession(null); }}
         styles={{ body: { paddingTop: 12 } }}
         destroyOnClose
       >
@@ -1026,6 +1092,10 @@ export default function DocumentIntakeInboxPage() {
             onDelete={() => confirmDeleteCase(detail.case_id)}
             onConfirm={() => void handleConfirmCase()}
             onClaimBrokerDone={() => void handleClaimBrokerDone()}
+              onCaseChange={syncDrawerCase}
+              onRefreshCase={refreshDrawerCase}
+              projectionLoading={detailLoading}
+              projectionLoadError={detailLoadError}
             confirmSaving={confirmSaving}
             claimBrokerDoneSaving={claimBrokerDoneSaving}
           />
