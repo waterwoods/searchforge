@@ -6,6 +6,7 @@
  */
 import type { Slice1NextAction, Slice1Projection, Slice1RequestProgress } from '@/api/inboxTriage';
 import type { H5ClaimIntakeInfo } from '@/api/h5ClaimIntake';
+import { isCustomerSubmittableItemType } from '@/features/claim-h5/mvpCustomerSubmit';
 
 export type H5ClaimLandingKind =
   | 'loading'
@@ -13,6 +14,7 @@ export type H5ClaimLandingKind =
   | 'load_error'
   | 'projection_error'
   | 'request_item'
+  | 'unsupported_request_item'
   | 'submitted_waiting'
   | 'overview';
 
@@ -203,6 +205,20 @@ export function resolveH5ClaimLanding(args: {
   const progress = extractRequestProgress(info, nextAction);
 
   if (isActiveRequestItemAction(nextAction)) {
+    const itemType = String(nextAction.required_input || '').trim().toLowerCase();
+    if (!isCustomerSubmittableItemType(itemType)) {
+      return {
+        kind: 'unsupported_request_item',
+        nextAction,
+        progress,
+        qaMarker,
+        title: requestItemTitle(nextAction),
+        instructions: requestItemInstructions(nextAction),
+        itemType,
+        retryable: false,
+        errorMessage: 'customer_submit_not_supported',
+      };
+    }
     return {
       kind: 'request_item',
       nextAction,
@@ -210,7 +226,7 @@ export function resolveH5ClaimLanding(args: {
       qaMarker,
       title: requestItemTitle(nextAction),
       instructions: requestItemInstructions(nextAction),
-      itemType: String(nextAction.required_input || '').trim().toLowerCase(),
+      itemType,
       retryable: false,
       errorMessage: '',
     };

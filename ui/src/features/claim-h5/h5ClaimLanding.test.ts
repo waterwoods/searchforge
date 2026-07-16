@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import type { H5ClaimIntakeInfo } from '@/api/h5ClaimIntake';
+import { mapH5ClaimError } from '@/api/h5ClaimIntake';
 import type { Slice1NextAction, Slice1Projection } from '@/api/inboxTriage';
 import {
   customerUiLeaksCaseId,
@@ -99,6 +100,35 @@ function withVinProjection(info?: Partial<H5ClaimIntakeInfo>): H5ClaimIntakeInfo
     ...info,
   });
 }
+
+test('free_text active item → unsupported_request_item landing', () => {
+  const action: Slice1NextAction = {
+    ...vinAction(),
+    title: 'Vehicle year / make / model',
+    required_input: 'free_text',
+  };
+  const decision = resolveH5ClaimLanding({
+    loading: false,
+    loadError: null,
+    info: baseInfo({
+      slice1_projection: {
+        case_id: 'case_d3187eb826f4',
+        workflow_state: 'broker_more_requested',
+        aggregate_version: 2,
+        customer_next_action: action,
+        request_progress: { satisfied: 0, total: 2, remaining: 2 },
+      },
+      task_contract_v1: { next_action: action },
+    }),
+  });
+  assert.equal(decision.kind, 'unsupported_request_item');
+  assert.equal(decision.errorMessage, 'customer_submit_not_supported');
+  assert.equal(decision.progress.total, 2);
+});
+
+test('mapH5ClaimError surfaces customer_submit_not_supported', () => {
+  assert.match(mapH5ClaimError('customer_submit_not_supported'), /微信/);
+});
 
 test('active VIN task → direct request-item landing', () => {
   const decision = resolveH5ClaimLanding({

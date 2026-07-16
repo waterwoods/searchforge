@@ -67,6 +67,26 @@ CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
 
 _FIELD_KEYS = frozenset(item["field_key"] for item in CHECKLIST_FIELDS)
 
+# Cap 3B MVP: only VIN has complete customer submission support.
+MVP_SENDABLE_ITEM_TYPES = frozenset({"vin"})
+
+
+def is_mvp_sendable_item_type(item_type: str) -> bool:
+    return str(item_type or "").strip().lower() in MVP_SENDABLE_ITEM_TYPES
+
+
+def list_unsupported_send_item_labels(items: list[dict[str, Any]]) -> list[str]:
+    """Human labels for draft items that cannot be sent in the current MVP."""
+    unsupported: list[str] = []
+    for raw in items or []:
+        item = raw if isinstance(raw, dict) else {}
+        item_type = str(item.get("item_type") or "").strip().lower()
+        if is_mvp_sendable_item_type(item_type):
+            continue
+        label = str(item.get("label") or item.get("customer_label") or item_type).strip()
+        unsupported.append(label or item_type)
+    return unsupported
+
 _VIN_FACT_KEYS = ("vin", "vehicle_vin", "own_vehicle_vin")
 _VEHICLE_FACT_KEYS = (
     "vehicle_year",
@@ -240,6 +260,7 @@ def derive_missing_information_checklist(
         else:
             suggested = False
             request_mode = "none"
+        mvp_sendable = is_mvp_sendable_item_type(meta["item_type"])
         items.append(
             {
                 "field_key": key,
@@ -251,8 +272,9 @@ def derive_missing_information_checklist(
                 "value": record.get("value"),
                 "previous_value": record.get("previous_value"),
                 "reason": _str(record.get("reason")),
-                "suggested_for_request": suggested,
+                "suggested_for_request": suggested and mvp_sendable,
                 "request_mode": request_mode,
+                "mvp_sendable": mvp_sendable,
                 "is_authoritative_fact": status
                 in {
                     FACT_STATUS_CONFIRMED,

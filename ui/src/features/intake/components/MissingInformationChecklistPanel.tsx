@@ -23,6 +23,14 @@ import type {
   Slice1Projection,
 } from '@/api/inboxTriage';
 import { saveCaseRequestDraft, sendCaseRequest, updateCaseFactStatus } from '@/api/inboxTriage';
+import {
+  brokerSendBlockedMessage,
+  formatUnsupportedSendItems,
+  isMvpSendableChecklistRow,
+  isMvpSendableItemType,
+} from '@/features/intake/mvpRequestTypes';
+
+const AUTOSAVE_DEBOUNCE_MS = 600;
 
 const { Text, Paragraph, Title } = Typography;
 const { TextArea } = Input;
@@ -88,6 +96,30 @@ type DraftEditRow = {
   is_authoritative_fact?: boolean;
 };
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
+
+function buildDraftItemsFromRows(rows: DraftEditRow[]): CaseIntakeRequestDraftItem[] {
+  return rows
+    .filter((r) => r.selected && isMvpSendableItemType(r.item_type))
+    .map((r, index) => ({
+      field_key: r.field_key,
+      item_type: r.item_type,
+      label: r.label.trim() || r.field_key,
+      instructions: r.instructions.trim(),
+      required: true,
+      position: index + 1,
+      request_mode: r.request_mode,
+      selected: true,
+    }));
+}
+
+function unsupportedDraftItemLabels(items: CaseIntakeRequestDraftItem[] | undefined): string[] {
+  return (items || [])
+    .filter((item) => !isMvpSendableItemType(item.item_type))
+    .map((item) => String(item.label || item.field_key || item.item_type || '').trim())
+    .filter(Boolean);
+}
+
 function rowsFromProjection(projection: CaseIntakeProjection): DraftEditRow[] {
   const checklist = projection.missing_information_checklist || [];
   const draftItems = projection.request_draft?.items || [];
@@ -102,8 +134,9 @@ function rowsFromProjection(projection: CaseIntakeProjection): DraftEditRow[] {
   );
   return checklist.map((item) => {
     const key = item.field_key;
+    const sendable = isMvpSendableChecklistRow(item);
     const defaultSelected =
-      selectedKeys.size > 0 ? selectedKeys.has(key) : Boolean(item.suggested_for_request);
+      sendable && (selectedKeys.size > 0 ? selectedKeys.has(key) : Boolean(item.suggested_for_request));
     return {
       field_key: key,
       item_type: item.item_type,
@@ -256,12 +289,14 @@ export function MissingInformationChecklistPanel({
   const projection = resolveCaseIntakeProjection(caseRecord);
   const accessCard = resolveCustomerAccessCard(caseRecord);
   const [rows, setRows] = useState<DraftEditRow[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [sending, setSending] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [naReason, setNaReason] = useState<Record<string, string>>({});
   const inFlight = useRef(false);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowsHydratedRef = useRef(false);
   const sendCommandRef = useRef<{ command_id: string; idempotency_key: string } | null>(null);
   const expectedVersion = projection?.aggregate_version ?? 0;
   const requestSent =
@@ -270,10 +305,34 @@ export function MissingInformationChecklistPanel({
     || Boolean(projection?.open_request_more);
 
   useEffect(() => {
+    rowsHydratedRef.current = false;
     if (projection) setRows(rowsFromProjection(projection));
   }, [caseRecord.case_id, projection?.aggregate_version, projection?.request_draft?.draft_version]);
 
-  const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
+  useEffect(() => {
+    if (!projection || requestSent) return;
+    if (!rowsHydratedRef.current) {
+      rowsHydratedRef.current = true;
+      return;
+    }
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void performAutosave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [rows, projection?.aggregate_version, requestSent]);
+
+  const selectedSendableCount = useMemo(
+    () => rows.filter((r) => r.selected && isMvpSendableItemType(r.item_type)).length,
+    [rows],
+  );
+
+  const unsupportedInSavedDraft = useMemo(
+    () => unsupportedDraftItemLabels(projection?.request_draft?.items),
+    [projection?.request_draft?.draft_version, projection?.request_draft?.items],
+  );
 
   if (!projection) return null;
 
@@ -310,24 +369,17 @@ export function MissingInformationChecklistPanel({
     onCaseChange?.(updated);
   };
 
-  const handleSaveDraft = async () => {
-    if (inFlight.current || saving || requestSent) return;
+  const performAutosave = async (): Promise<{ ok: boolean; draftId?: string }> => {
+    if (inFlight.current || requestSent) return { ok: false };
+    const items = buildDraftItemsFromRows(rows);
+    if (!items.length) {
+      setSaveStatus('idle');
+      return { ok: false };
+    }
     inFlight.current = true;
-    setSaving(true);
+    setSaveStatus('saving');
     setError(null);
     const ids = newIds('save_draft');
-    const items: CaseIntakeRequestDraftItem[] = rows
-      .filter((r) => r.selected)
-      .map((r, index) => ({
-        field_key: r.field_key,
-        item_type: r.item_type,
-        label: r.label.trim() || r.field_key,
-        instructions: r.instructions.trim(),
-        required: true,
-        position: index + 1,
-        request_mode: r.request_mode,
-        selected: true,
-      }));
     try {
       const result = await saveCaseRequestDraft(caseRecord.case_id, {
         ...ids,
@@ -336,40 +388,79 @@ export function MissingInformationChecklistPanel({
         draft_id: projection.request_draft?.draft_id,
       });
       if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
+        setSaveStatus('failed');
         setError('Case was updated elsewhere. Refreshing…');
         await refreshCase?.();
-        message.warning('Version conflict — case refreshed. Review and save again.');
-        return;
+        message.warning('Version conflict — case refreshed.');
+        return { ok: false };
       }
       if (result.outcome === 'rejected') {
+        setSaveStatus('failed');
         setError(result.error_code || 'Draft save rejected');
-        return;
+        return { ok: false };
       }
       mergeProjection(result);
-      setEditing(false);
-      message.success(
-        result.outcome === 'replayed'
-          ? 'Request draft already saved; refreshed.'
-          : 'Request draft saved.',
-      );
+      setSaveStatus('saved');
+      return {
+        ok: true,
+        draftId: result.broker_projection?.request_draft?.draft_id || projection.request_draft?.draft_id,
+      };
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         setError('Version conflict. Refreshing case…');
         await refreshCase?.();
-        message.warning('Stale version — refreshed. Save again if needed.');
+        message.warning('Stale version — refreshed.');
       } else {
         setError('Could not save request draft. Retry after refresh.');
-        message.error('Request draft save failed');
       }
+      setSaveStatus('failed');
+      return { ok: false };
     } finally {
-      setSaving(false);
       inFlight.current = false;
     }
   };
 
+  const flushAutosave = async (): Promise<{ ok: boolean; draftId?: string }> => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    return performAutosave();
+  };
+
   const handleSendRequest = async () => {
-    if (inFlight.current || sending || !projection.request_draft?.draft_id) return;
+    if (inFlight.current || sending || requestSent) return;
+    if (unsupportedInSavedDraft.length > 0) {
+      setError(formatUnsupportedSendItems(unsupportedInSavedDraft));
+      return;
+    }
+    if (selectedSendableCount < 1) {
+      setError('Select VIN before sending to the customer.');
+      return;
+    }
+    if (saveStatus === 'failed') {
+      setError('Save failed — retry save before sending.');
+      return;
+    }
+    if (saveStatus === 'saving' || autosaveTimerRef.current) {
+      const saved = await flushAutosave();
+      if (!saved.ok) return;
+    }
+    let latestDraftId = projection.request_draft?.draft_id || caseRecord.request_draft?.draft_id;
+    if (!latestDraftId || saveStatus !== 'saved') {
+      const saved = await flushAutosave();
+      if (!saved.ok) {
+        setError('Waiting for draft save. Select VIN and try again.');
+        return;
+      }
+      latestDraftId = saved.draftId;
+    }
+    if (!latestDraftId) {
+      setError('Draft not ready yet. Wait for Saved status.');
+      return;
+    }
+
     inFlight.current = true;
     setSending(true);
     setError(null);
@@ -381,7 +472,7 @@ export function MissingInformationChecklistPanel({
       const result = await sendCaseRequest(caseRecord.case_id, {
         ...ids,
         expected_case_version: expectedVersion,
-        request_draft_id: projection.request_draft.draft_id,
+        request_draft_id: latestDraftId,
       });
       if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
         setError('Case was updated elsewhere. Refreshing…');
@@ -391,7 +482,10 @@ export function MissingInformationChecklistPanel({
         return;
       }
       if (result.outcome === 'rejected') {
-        setError(result.error_code || 'Send Request rejected');
+        const unsupported = (result as { unsupported_items?: string[] }).unsupported_items;
+        setError(
+          brokerSendBlockedMessage(String(result.error_code || 'Send Request rejected'), unsupported),
+        );
         sendCommandRef.current = null;
         return;
       }
@@ -410,7 +504,6 @@ export function MissingInformationChecklistPanel({
         await refreshCase?.();
         message.warning('Stale version — refreshed.');
       } else {
-        // Keep same command identity for retry after transport loss.
         setError('Could not send request. Retry uses the same command.');
         message.error('Send Request failed — tap again to retry safely');
       }
@@ -428,7 +521,7 @@ export function MissingInformationChecklistPanel({
       return;
     }
     inFlight.current = true;
-    setSaving(true);
+    setSaveStatus('saving');
     setError(null);
     try {
       const ids = newIds('fact_na');
@@ -450,7 +543,7 @@ export function MissingInformationChecklistPanel({
       setError('Could not update fact status.');
       message.error('Fact status update failed');
     } finally {
-      setSaving(false);
+      setSaveStatus('idle');
       inFlight.current = false;
     }
   };
@@ -458,7 +551,7 @@ export function MissingInformationChecklistPanel({
   const handleNeedsCorrection = async (fieldKey: string) => {
     if (inFlight.current || requestSent) return;
     inFlight.current = true;
-    setSaving(true);
+    setSaveStatus('saving');
     setError(null);
     try {
       const ids = newIds('fact_corr');
@@ -479,13 +572,29 @@ export function MissingInformationChecklistPanel({
     } catch {
       setError('Could not mark needs correction.');
     } finally {
-      setSaving(false);
+      setSaveStatus('idle');
       inFlight.current = false;
     }
   };
 
   const showAccessCard = requestSent && accessCard && !editing;
   const showDraftEditor = !showAccessCard;
+  const saveStatusLabel =
+    saveStatus === 'saving'
+      ? 'Saving…'
+      : saveStatus === 'saved'
+        ? 'Saved'
+        : saveStatus === 'failed'
+          ? 'Save failed — Retry'
+          : selectedSendableCount > 0
+            ? 'Unsaved changes'
+            : '';
+  const canSend =
+    selectedSendableCount > 0
+    && unsupportedInSavedDraft.length === 0
+    && saveStatus !== 'saving'
+    && saveStatus !== 'failed'
+    && Boolean(projection.request_draft?.draft_id || saveStatus === 'saved');
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -508,32 +617,54 @@ export function MissingInformationChecklistPanel({
       {showDraftEditor ? (
         <>
           <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
-            Select what the customer should provide. Save the draft, then send the request.
+            Select VIN to request from the customer. Other fields are shown for context — customer
+            submit support is coming later.
           </Paragraph>
+          {unsupportedInSavedDraft.length > 0 ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={formatUnsupportedSendItems(unsupportedInSavedDraft)}
+              description="Update your selection to VIN only, wait for Saved, then send again."
+            />
+          ) : null}
           <Space direction="vertical" style={{ width: '100%' }} size={10}>
-            {rows.map((row) => (
+            {rows.map((row) => {
+              const sendable = isMvpSendableItemType(row.item_type);
+              return (
               <div
                 key={row.field_key}
                 style={{
                   border: '1px solid #f0f0f0',
                   padding: 10,
                   background: row.selected ? '#fafafa' : '#fff',
+                  opacity: sendable ? 1 : 0.85,
                 }}
               >
                 <Space wrap style={{ marginBottom: 6 }}>
-                  <Checkbox
-                    checked={row.selected}
-                    disabled={row.status === 'confirmed' && row.request_mode === 'none'}
-                    onChange={(e) =>
-                      setRows((prev) =>
-                        prev.map((r) =>
-                          r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
-                        ),
-                      )
-                    }
-                  >
-                    {row.label}
-                  </Checkbox>
+                  {sendable ? (
+                    <Checkbox
+                      checked={row.selected}
+                      disabled={row.status === 'confirmed' && row.request_mode === 'none'}
+                      onChange={(e) =>
+                        setRows((prev) =>
+                          prev.map((r) =>
+                            r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
+                          ),
+                        )
+                      }
+                    >
+                      {row.label}
+                    </Checkbox>
+                  ) : (
+                    <Text>
+                      {row.label}{' '}
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        (Coming later)
+                      </Text>
+                    </Text>
+                  )}
                   <Tag color={statusColorFixed(row.status)}>{row.status}</Tag>
                 </Space>
                 {row.value ? (
@@ -541,29 +672,37 @@ export function MissingInformationChecklistPanel({
                     Current value: {String(row.value)}
                   </Text>
                 ) : null}
-                <Input
-                  size="small"
-                  placeholder="Customer-facing label"
-                  value={row.label}
-                  onChange={(e) =>
-                    setRows((prev) =>
-                      prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
-                    )
-                  }
-                  style={{ marginBottom: 6 }}
-                />
-                <TextArea
-                  rows={2}
-                  placeholder="Customer instruction (optional)"
-                  value={row.instructions}
-                  onChange={(e) =>
-                    setRows((prev) =>
-                      prev.map((r) =>
-                        r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
-                      ),
-                    )
-                  }
-                />
+                {sendable ? (
+                  <>
+                    <Input
+                      size="small"
+                      placeholder="Customer-facing label"
+                      value={row.label}
+                      onChange={(e) =>
+                        setRows((prev) =>
+                          prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
+                        )
+                      }
+                      style={{ marginBottom: 6 }}
+                    />
+                    <TextArea
+                      rows={2}
+                      placeholder="Customer instruction (optional)"
+                      value={row.instructions}
+                      onChange={(e) =>
+                        setRows((prev) =>
+                          prev.map((r) =>
+                            r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
+                          ),
+                        )
+                      }
+                    />
+                  </>
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Not sendable in the current MVP — VIN only.
+                  </Text>
+                )}
                 <Space wrap style={{ marginTop: 8 }}>
                   {row.status !== 'not_applicable' && row.status !== 'confirmed' ? (
                     <>
@@ -576,40 +715,58 @@ export function MissingInformationChecklistPanel({
                         }
                         style={{ width: 180 }}
                       />
-                      <Button size="small" onClick={() => void handleMarkNotApplicable(row.field_key)} disabled={saving}>
+                      <Button
+                        size="small"
+                        onClick={() => void handleMarkNotApplicable(row.field_key)}
+                        disabled={saveStatus === 'saving'}
+                      >
                         Mark N/A
                       </Button>
                     </>
                   ) : null}
                   {row.value && row.status !== 'needs_correction' ? (
-                    <Button size="small" onClick={() => void handleNeedsCorrection(row.field_key)} disabled={saving}>
+                    <Button
+                      size="small"
+                      onClick={() => void handleNeedsCorrection(row.field_key)}
+                      disabled={saveStatus === 'saving'}
+                    >
                       Needs correction
                     </Button>
                   ) : null}
                 </Space>
               </div>
-            ))}
+            );
+            })}
           </Space>
-          <Space style={{ marginTop: 12 }} wrap>
-            {projection.request_draft && !editing ? (
-              <>
-                <Button
-                  type="primary"
-                  onClick={() => void handleSendRequest()}
-                  loading={sending}
-                  disabled={sending || !projection.request_draft.items?.length}
-                >
-                  Send Request
-                </Button>
-                <Button onClick={() => setEditing(true)} disabled={sending}>
-                  Edit
-                </Button>
-              </>
-            ) : (
-              <Button type="primary" onClick={() => void handleSaveDraft()} loading={saving} disabled={saving}>
-                Save request draft ({selectedCount})
+          <Space style={{ marginTop: 12 }} direction="vertical" size={8}>
+            {saveStatusLabel ? (
+              <Text type={saveStatus === 'failed' ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+                {saveStatusLabel}
+                {saveStatus === 'failed' ? (
+                  <>
+                    {' '}
+                    <Button type="link" size="small" onClick={() => void flushAutosave()} style={{ padding: 0 }}>
+                      Retry
+                    </Button>
+                  </>
+                ) : null}
+              </Text>
+            ) : null}
+            <Space wrap>
+              <Button
+                type="primary"
+                onClick={() => void handleSendRequest()}
+                loading={sending}
+                disabled={sending || !canSend}
+              >
+                Send Request
               </Button>
-            )}
+              {saveStatus === 'failed' ? (
+                <Button onClick={() => void flushAutosave()} disabled={saveStatus === 'saving'}>
+                  Save draft now
+                </Button>
+              ) : null}
+            </Space>
           </Space>
         </>
       ) : null}

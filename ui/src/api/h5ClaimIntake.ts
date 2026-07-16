@@ -101,6 +101,8 @@ const H5_ERROR_MESSAGES: Record<string, string> = {
   version_conflict: '资料已更新，请刷新后重试。',
   request_item_not_active: '当前补充任务已变化，请刷新后查看。',
   illegal_state: '当前状态无法提交，请刷新后查看。',
+  customer_submit_not_supported: '该项资料暂时无法在此填写，请回微信联系陈总办公室。',
+  unsupported_draft_item_type_for_send: '请求中包含暂不支持客户填写的项目，请联系陈总办公室。',
 };
 
 export function mapH5ClaimError(code: string, fallback?: string): string {

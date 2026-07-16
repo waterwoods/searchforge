@@ -85,6 +85,7 @@ test('mapH5ClaimError surfaces Cap 3B validation and conflict codes', () => {
   assert.match(mapH5ClaimError('vin_invalid'), /VIN/);
   assert.match(mapH5ClaimError('version_conflict'), /刷新/);
   assert.match(mapH5ClaimError('network_error'), /网络/);
+  assert.match(mapH5ClaimError('customer_submit_not_supported'), /微信/);
 });
 
 console.log('h5ClaimIntake.cap3b.test: PASS');

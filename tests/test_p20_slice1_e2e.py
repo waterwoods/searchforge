@@ -10,6 +10,7 @@ import pytest
 
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
     GROUP_STATUS_COMPLETED,
+    GROUP_STATUS_OPEN,
     ITEM_STATUS_ACTIVE,
     ITEM_STATUS_QUEUED,
     ITEM_STATUS_SATISFIED,
@@ -171,7 +172,7 @@ def test_scenario1_single_fact_request_returns_to_broker_review():
     assert store.events["case_e2e"][-1]["state_after"] == "broker_review_ready"
 
 
-def test_scenario2_ordered_multi_item_activation_sequence():
+def test_scenario2_mvp_rejects_customer_submit_after_vin_for_queued_items():
     svc, store = _svc()
     items = [
         _item("VIN", 1, "vin"),
@@ -182,19 +183,14 @@ def test_scenario2_ordered_multi_item_activation_sequence():
     cust = created["customer_projection"]
     assert cust["customer_next_action"]["request_item_id"] == "item_1"
     assert cust["customer_next_action"]["action_type"] == "provide_fact"
-    assert [row["request_item_id"] for row in cust["queued_request_items"]] == ["item_2", "item_3"]
-    assert all(row["actionable"] is False for row in cust["queued_request_items"])
-    assert store.items["item_1"].status == ITEM_STATUS_ACTIVE
-    assert store.items["item_2"].status == ITEM_STATUS_QUEUED
-    assert store.items["item_3"].status == ITEM_STATUS_QUEUED
 
     step1 = _submit_fact(svc, item_id="item_1", expected=created["aggregate_version"])
+    assert step1["outcome"] == "accepted"
     assert step1["customer_projection"]["customer_next_action"]["request_item_id"] == "item_2"
-    assert step1["customer_projection"]["customer_next_action"]["action_type"] == "provide_evidence"
     assert step1["customer_projection"]["customer_next_action"]["required_input"] == "policy_or_insurance_card"
     assert store.items["item_2"].status == ITEM_STATUS_ACTIVE
 
-    step2 = _submit_evidence(
+    blocked = _submit_evidence(
         svc,
         item_id="item_2",
         expected=step1["aggregate_version"],
@@ -202,23 +198,10 @@ def test_scenario2_ordered_multi_item_activation_sequence():
         command_id="cmd-customer-submit-2",
         idempotency_key="idem-customer-submit-2",
     )
-    assert step2["customer_projection"]["customer_next_action"]["request_item_id"] == "item_3"
-    assert step2["customer_projection"]["customer_next_action"]["required_input"] == "photo_evidence"
-    assert store.items["item_3"].status == ITEM_STATUS_ACTIVE
-
-    step3 = _submit_evidence(
-        svc,
-        item_id="item_3",
-        expected=step2["aggregate_version"],
-        attachment_id="att_damage_1",
-        command_id="cmd-customer-submit-3",
-        idempotency_key="idem-customer-submit-3",
-    )
-    _assert_projection_parity(step3)
-    assert step3["customer_projection"]["workflow_state"] == "broker_review_ready"
-    assert step3["broker_projection"]["broker_next_action"]["action_type"] == "review_customer_response"
-    assert step3["customer_projection"]["request_progress"]["remaining"] == 0
-    assert store.groups["req_e2e"].status == GROUP_STATUS_COMPLETED
+    assert blocked["outcome"] == "rejected"
+    assert blocked["error_code"] == "customer_submit_not_supported"
+    assert store.items["item_2"].status == ITEM_STATUS_ACTIVE
+    assert store.groups["req_e2e"].status == GROUP_STATUS_OPEN
 
 
 def test_scenario3_duplicate_broker_submit_replays_without_duplicate_effects():

@@ -155,7 +155,7 @@ def test_send_request_success_creates_group_access_and_projections():
     assert "token_hash" not in (result.get("customer_access") or {})
 
 
-def test_ordered_item_mapping_from_multi_item_draft():
+def test_ordered_item_mapping_from_multi_item_draft_rejects_unsupported():
     svc, store = _svc(
         items=[
             {
@@ -170,7 +170,7 @@ def test_ordered_item_mapping_from_multi_item_draft():
             },
             {
                 "draft_item_id": "di_2",
-                "field_key": "policy_number",
+                "field_key": "policy_or_insurance_card",
                 "item_type": "policy_or_insurance_card",
                 "label": "Insurance card",
                 "instructions": "card please",
@@ -181,11 +181,51 @@ def test_ordered_item_mapping_from_multi_item_draft():
         ]
     )
     result = _send(svc)
+    assert result["outcome"] == "rejected"
+    assert result["error_code"] == "unsupported_draft_item_type_for_send"
+    assert "Insurance card" in (result.get("unsupported_items") or [])
+    assert store.groups == {}
+    assert store.access_by_case == {}
+
+
+def test_send_request_rejects_vehicle_information_only_draft():
+    svc, store = _svc(
+        items=[
+            {
+                "draft_item_id": "di_1",
+                "field_key": "vehicle_information",
+                "item_type": "free_text",
+                "label": "Vehicle year / make / model",
+                "instructions": "year make model",
+                "required": True,
+                "position": 1,
+                "selected": True,
+            }
+        ]
+    )
+    result = _send(svc)
+    assert result["outcome"] == "rejected"
+    assert result["error_code"] == "unsupported_draft_item_type_for_send"
+    assert store.groups == {}
+
+
+def test_send_request_accepts_vin_only_draft():
+    svc, _store = _svc(
+        items=[
+            {
+                "draft_item_id": "di_1",
+                "field_key": "vin",
+                "item_type": "vin",
+                "label": "VIN",
+                "instructions": "vin please",
+                "required": True,
+                "position": 1,
+                "selected": True,
+            }
+        ]
+    )
+    result = _send(svc)
     assert result["outcome"] == "accepted"
-    items = result["slice1_projection"]["open_request"]["items"]
-    assert [i["item_type"] for i in items] == ["vin", "policy_or_insurance_card"]
-    assert items[0]["status"] == ITEM_STATUS_ACTIVE
-    assert store.access_by_case["case_send_3a"].request_group_id
 
 
 def test_duplicate_command_replay_same_access():

@@ -22,6 +22,7 @@ from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
     build_broker_projection,
     case_intake_feature_enabled,
 )
+from services.fiqa_api.inbox_triage.p20_missing_information import list_unsupported_send_item_labels
 from services.fiqa_api.inbox_triage.p20_customer_launch import (
     DEFAULT_ACCESS_TTL_SECONDS,
     CustomerLaunchTarget,
@@ -476,6 +477,20 @@ class P20SendRequestCommandService:
                     intake_projection=current_intake,
                     error_code="illegal_state",
                 )
+
+            unsupported_labels = list_unsupported_send_item_labels(list(draft.items))
+            if unsupported_labels:
+                rejected = _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    intake_projection=current_intake,
+                    error_code="unsupported_draft_item_type_for_send",
+                )
+                rejected["unsupported_items"] = unsupported_labels
+                return rejected
 
             normalized_items = draft_items_to_slice1_items(list(draft.items))
             now = _utc_now_iso()

@@ -21,6 +21,7 @@ import {
   resolveH5ClaimLanding,
   type H5ClaimLandingDecision,
 } from '@/features/claim-h5/h5ClaimLanding';
+import { isCustomerSubmittableItemType } from '@/features/claim-h5/mvpCustomerSubmit';
 
 type WizardStep = 'start' | 'injury' | 'time_location' | 'story' | 'vehicle_other_party' | 'evidence' | 'review' | 'done';
 
@@ -448,13 +449,56 @@ export default function H5ClaimIntakePage() {
       return;
     }
 
+    if (!isCustomerSubmittableItemType(landing.itemType)) {
+      setError(mapH5ClaimError('customer_submit_not_supported'));
+      return;
+    }
+
     const text = String(vinDraft || '').trim();
     setVinValidation(text ? '' : '请按陈总要求填写');
+    if (text) {
+      setError(mapH5ClaimError('customer_submit_not_supported'));
+    }
   };
 
   const renderQaMarker = (marker: string | null) => {
     if (!marker) return null;
     return <div style={styles.qaMarker}>{marker}</div>;
+  };
+
+  const renderUnsupportedRequestItemScreen = () => {
+    const progress = landing.progress;
+    const progressText =
+      progress.total > 0 ? `进度 ${progress.satisfied}/${progress.total}` : null;
+    return (
+      <>
+        <div style={styles.card}>
+          <div style={{ ...styles.statusPill, background: '#fff3cd', color: '#5c4a00' }}>
+            暂不支持在线填写
+          </div>
+          <h2 style={{ ...styles.dashboardTitle, marginBottom: 8 }}>{landing.title}</h2>
+          <p style={{ margin: '0 0 8px', fontSize: 15, lineHeight: 1.55, color: '#444' }}>
+            {landing.instructions}
+          </p>
+          {progressText ? <p style={styles.progressLine}>{progressText}</p> : null}
+        </div>
+        <div style={styles.card}>
+          <p style={{ margin: '0 0 12px', lineHeight: 1.6, color: '#444' }}>
+            {mapH5ClaimError('customer_submit_not_supported')}
+          </p>
+          <button
+            type="button"
+            style={{ ...styles.btnSecondary, marginTop: 0 }}
+            onClick={() => {
+              void refreshStatus();
+            }}
+            disabled={refreshing}
+          >
+            {refreshing ? '刷新中…' : '刷新状态'}
+          </button>
+        </div>
+      </>
+    );
   };
 
   const renderRequestItemScreen = () => {
@@ -609,6 +653,20 @@ export default function H5ClaimIntakePage() {
             </button>
           </div>
         </div>
+        <div style={styles.footer}>此记录用于陈总办公室整理事故信息，不代表已向保险公司正式报案。</div>
+      </div>
+    );
+  }
+
+  if (landing.kind === 'unsupported_request_item') {
+    return (
+      <div style={styles.page}>
+        <div style={styles.header}>
+          <div style={{ fontSize: 13, opacity: 0.85 }}>陈总办公室</div>
+          <h1 style={{ margin: '4px 0 0', fontSize: 18 }}>{landing.title}</h1>
+          {renderQaMarker(landing.qaMarker)}
+        </div>
+        <div style={styles.body}>{renderUnsupportedRequestItemScreen()}</div>
         <div style={styles.footer}>此记录用于陈总办公室整理事故信息，不代表已向保险公司正式报案。</div>
       </div>
     );

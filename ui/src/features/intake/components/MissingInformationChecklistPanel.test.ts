@@ -7,6 +7,7 @@ import {
   resolveCaseIntakeProjection,
   resolveCustomerAccessCard,
 } from './MissingInformationChecklistPanel';
+import { isMvpSendableItemType } from '@/features/intake/mvpRequestTypes';
 import type { CustomerAccessCard, SavedCase } from '@/api/inboxTriage';
 
 function baseCase(overrides: Partial<SavedCase> = {}): SavedCase {
@@ -154,6 +155,12 @@ const accessCard: CustomerAccessCard = {
   assert.ok(!keys.includes('request_group_id'));
   assert.ok(!keys.includes('token'));
   assert.ok(!keys.includes('aggregate_version'));
+}
+
+{
+  assert.equal(isMvpSendableItemType('vin'), true);
+  assert.equal(isMvpSendableItemType('free_text'), false);
+  assert.equal(isMvpSendableItemType('policy_or_insurance_card'), false);
 }
 
 console.log('MissingInformationChecklistPanel.test: PASS');

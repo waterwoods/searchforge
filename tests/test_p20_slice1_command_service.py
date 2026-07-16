@@ -253,7 +253,27 @@ def test_list_redaction_omits_submitted_vin_value():
     assert field_saved["evidence"]["value_redacted"] is True
 
 
-def test_photo_evidence_response_exposes_safe_metadata_not_raw_bytes():
+def test_customer_submit_rejects_non_vin_item_types():
+    svc, _store = _svc()
+    created = _create(
+        svc,
+        items=[_item("Vehicle year / make / model", 1, "free_text")],
+    )
+    result = svc.submit_request_item(
+        case_id="case_slice1",
+        customer_id="h5:demo",
+        active_request_item_id="item_1",
+        command_id="cmd-submit-free-text",
+        idempotency_key="idem-submit-free-text",
+        expected_case_version=created["aggregate_version"],
+        client_draft_id="draft_free_text",
+        fact={"field": "vehicle_information", "value": "2021 Tesla Model Y"},
+    )
+    assert result["outcome"] == "rejected"
+    assert result["error_code"] == "customer_submit_not_supported"
+
+
+def test_photo_evidence_submit_rejected_in_mvp():
     svc, _store = _svc()
     created = _create(
         svc,
@@ -269,11 +289,8 @@ def test_photo_evidence_response_exposes_safe_metadata_not_raw_bytes():
         client_draft_id="draft_photo",
         evidence={"attachment_id": "att_damage_1"},
     )
-    response = result["broker_projection"]["open_request"]["items"][0]["customer_response"]
-    assert response["kind"] == "evidence"
-    assert response["evidence_ref"] == "att_damage_1"
-    assert "bytes" not in response
-    assert "storage_uri" not in response
+    assert result["outcome"] == "rejected"
+    assert result["error_code"] == "customer_submit_not_supported"
 
 
 def test_duplicate_submission_creates_no_duplicate_event_or_task():

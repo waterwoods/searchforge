@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 from uuid import uuid4
 
+from services.fiqa_api.inbox_triage.p20_missing_information import MVP_SENDABLE_ITEM_TYPES
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHASE_BROKER_DONE,
     CLAIM_PHASE_BROKER_NEEDS_MORE_INFO,
@@ -1033,6 +1034,17 @@ class P20Slice1CommandService:
                     event_ids=[],
                     projection=current_projection,
                     error_code="request_item_not_active",
+                )
+            active_type = str(active.item_type or "").strip().lower()
+            if active_type not in MVP_SENDABLE_ITEM_TYPES:
+                return _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    projection=current_projection,
+                    error_code="customer_submit_not_supported",
                 )
             receipt_payload: dict[str, Any]
             receipt_type = "field_saved"
