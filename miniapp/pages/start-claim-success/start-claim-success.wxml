@@ -1,0 +1,18 @@
+<view class="container start-claim-success-page">
+  <view class="card success-card">
+    <view class="success-check">✓</view>
+    <view class="card-title">{{title}}</view>
+    <view class="success-body">
+      <view wx:for="{{bodyLines}}" wx:key="*this" class="success-line">{{item}}</view>
+    </view>
+  </view>
+
+  <view class="safety-footer">{{shellSafetyCopy}}</view>
+
+  <view class="footer-cta">
+    <task-cta
+      label="联系{{brokerName}}"
+      bindtap="onContactBroker"
+    />
+  </view>
+</view>

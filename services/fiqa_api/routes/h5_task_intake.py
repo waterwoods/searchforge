@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from services.fiqa_api.inbox_triage.h5_task_intake import (
@@ -14,6 +14,10 @@ from services.fiqa_api.inbox_triage.h5_task_intake import (
     submit_intake_form,
 )
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
+from services.fiqa_api.inbox_triage.p20_customer_start_claim import (
+    customer_start_claim_response,
+    start_customer_claim,
+)
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
 
 logger = logging.getLogger(__name__)
@@ -44,6 +48,47 @@ class H5RequestItemSubmitBody(BaseModel):
     client_draft_id: str | None = Field(default=None)
     fact: dict[str, Any] | None = Field(default=None)
     evidence: dict[str, Any] | None = Field(default=None)
+
+
+class CustomerStartClaimBody(BaseModel):
+    """Mini Program cold-start Claim — thin facade over Cap2 CreateClaim."""
+
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    session_id: str | None = Field(default=None, max_length=128)
+    accident_description: str | None = Field(default=None, max_length=2000)
+    is_test: bool = Field(default=False)
+
+
+@router.post("/customer/start-claim")
+async def post_customer_start_claim(
+    body: CustomerStartClaimBody,
+    http_response: Response,
+) -> dict[str, Any]:
+    """Customer Start Claim → existing Cap2 CreateClaim (no second command)."""
+    try:
+        result = start_customer_claim(
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            correlation_id=body.correlation_id,
+            session_id=body.session_id,
+            accident_description=body.accident_description,
+            is_test=body.is_test,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "accepted":
+        http_response.status_code = 201
+        return customer_start_claim_response(result)
+    if outcome == "replayed":
+        http_response.status_code = 200
+        return customer_start_claim_response(result)
+    raise HTTPException(status_code=422, detail=customer_start_claim_response(result))
 
 
 @router.get("/tasks/{task_token}/intake")

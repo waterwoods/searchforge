@@ -81,8 +81,44 @@ test("Entry page uses shared taskPage behavior", async () => {
   assert.equal(page.behaviors?.length, 1);
 });
 
-test("missing token shows non-retryable recovery error", async () => {
+test("missing token redirects to start-claim", async () => {
   const page = await loadEntryPage();
+  const redirects: string[] = [];
+  (globalThis as Record<string, any>).wx.redirectTo = ({
+    url,
+    fail,
+  }: {
+    url: string;
+    fail?: () => void;
+  }) => {
+    redirects.push(url);
+  };
+  const ctx = createPageContext(page, {
+    data: {
+      ...page.data,
+      busy: idleBusy(),
+      launchSource: "",
+      errorState: { code: "", message: "", retryable: false, blocking: false },
+      retryMeta: { attempts: 0, cooldownUntil: 0 },
+    },
+    resolveLaunchContext: () => null,
+  });
+
+  await page.bootstrap.call(ctx, {});
+  assert.deepEqual(redirects, ["/pages/start-claim/start-claim"]);
+  assert.equal(ctx.data.busy.navigating, true);
+});
+
+test("missing token falls back to recovery error if redirect fails", async () => {
+  const page = await loadEntryPage();
+  (globalThis as Record<string, any>).wx.redirectTo = ({
+    fail,
+  }: {
+    url: string;
+    fail?: () => void;
+  }) => {
+    fail?.();
+  };
   const ctx = createPageContext(page, {
     data: {
       ...page.data,
@@ -98,6 +134,7 @@ test("missing token shows non-retryable recovery error", async () => {
   assert.equal(ctx.data.errorState.code, "token_missing");
   assert.equal(ctx.data.errorState.retryable, false);
   assert.equal(ctx.data.busy.loading, false);
+  assert.equal(ctx.data.busy.navigating, false);
 });
 
 test("resume source uses restore loading copy then relaunches task home", async () => {

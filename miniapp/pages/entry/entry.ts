@@ -115,12 +115,19 @@ Page({
 
     const ctx = this.resolveLaunchContext(options);
     if (!ctx) {
-      this.setData({
-        launchSource: "",
-        loadingMessage: "正在打开您的资料…",
-        errorState: entryErrorState("token_missing"),
+      this.setBusy("navigating", true);
+      wx.redirectTo({
+        url: "/pages/start-claim/start-claim",
+        fail: () => {
+          this.setData({
+            launchSource: "",
+            loadingMessage: "正在打开您的资料…",
+            errorState: entryErrorState("token_missing"),
+          });
+          this.setBusy("navigating", false);
+          this.setBusy("loading", false);
+        },
       });
-      this.setBusy("loading", false);
       return;
     }
 

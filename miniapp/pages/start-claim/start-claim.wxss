@@ -1,0 +1,35 @@
+.start-claim-page .photo-placeholder {
+  margin-top: 8rpx;
+  padding: 28rpx;
+  border-radius: 16rpx;
+  background: #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.start-claim-page .photo-placeholder-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.start-claim-page .photo-placeholder-body {
+  font-size: 24rpx;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.start-claim-page .error-text {
+  font-size: 28rpx;
+  color: #b42318;
+  margin-bottom: 16rpx;
+}
+
+.start-claim-page .safety-footer {
+  margin-top: 8rpx;
+  margin-bottom: 24rpx;
+  font-size: 22rpx;
+  color: #9ca3af;
+  line-height: 1.5;
+}

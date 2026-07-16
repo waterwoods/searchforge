@@ -1,0 +1,31 @@
+.start-claim-success-page .success-card {
+  text-align: center;
+  padding-top: 48rpx;
+  padding-bottom: 48rpx;
+}
+
+.start-claim-success-page .success-check {
+  font-size: 64rpx;
+  color: #137333;
+  margin-bottom: 16rpx;
+  line-height: 1;
+}
+
+.start-claim-success-page .success-body {
+  margin-top: 12rpx;
+}
+
+.start-claim-success-page .success-line {
+  font-size: 30rpx;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.start-claim-success-page .safety-footer {
+  margin-top: 8rpx;
+  margin-bottom: 24rpx;
+  font-size: 22rpx;
+  color: #9ca3af;
+  line-height: 1.5;
+  text-align: center;
+}

@@ -42,6 +42,8 @@ try {
   };
   const pages = appJson.pages || [];
   for (const required of [
+    "pages/start-claim/start-claim",
+    "pages/start-claim-success/start-claim-success",
     "pages/task-home/task-home",
     "pages/request-item/request-item",
     "pages/entry/entry",
@@ -55,6 +57,7 @@ try {
 }
 
 const requiredRouteHints = [
+  "/api/h5/customer/start-claim",
   "/api/h5/tasks/{token}/intake",
   "/api/h5/tasks/{token}/request-items/{item_id}/submit",
   "/api/h5/tasks/{uploadToken}/upload",

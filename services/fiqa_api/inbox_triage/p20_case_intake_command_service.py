@@ -362,6 +362,16 @@ def _minimum_create_inputs(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_ALLOWED_CREATE_ACTORS = frozenset({"broker", "customer"})
+
+
+def _normalize_create_actor(actor: str | None) -> str:
+    value = str(actor or "broker").strip().lower() or "broker"
+    if value not in _ALLOWED_CREATE_ACTORS:
+        raise ValueError("create_actor_invalid")
+    return value
+
+
 def _build_new_case_record(
     *,
     case_id: str,
@@ -370,6 +380,7 @@ def _build_new_case_record(
     tenant_id: str | None,
     inputs: dict[str, Any],
     timestamp: str,
+    actor: str = "broker",
 ) -> dict[str, Any]:
     is_test = bool(inputs.get("is_test"))
     title = inputs.get("title") or ("QA Claim intake" if is_test else "Claim intake")
@@ -380,13 +391,19 @@ def _build_new_case_record(
     tags = ["Claim"]
     if is_test:
         tags = ["TEST", "QA", "Claim"]
+    if actor == "customer":
+        source_text = f"[Customer] Mini Program Start Claim by {broker_id}"
+        activity_message = "Customer started Claim case (Capability 2)."
+    else:
+        source_text = f"[Broker] New Claim created by {broker_id}"
+        activity_message = "Broker created Claim case (Capability 2)."
     return {
         "case_id": case_id,
         "case_status": "new",
         "created_at": timestamp,
         "updated_at": timestamp,
         "formal_submitted_at": "",
-        "source_text": f"[Broker] New Claim created by {broker_id}",
+        "source_text": source_text,
         "case_messages": [],
         "waiting_on": "none",
         "next_contact_by": "",
@@ -400,7 +417,7 @@ def _build_new_case_record(
             {
                 "activity_id": f"act_{uuid4().hex[:10]}",
                 "activity_type": "case_created",
-                "message": "Broker created Claim case (Capability 2).",
+                "message": activity_message,
                 "created_at": timestamp,
             }
         ],
@@ -430,6 +447,7 @@ def _build_new_case_record(
         "asserted_org_id": office_id or "",
         "client_id": tenant_id or "",
         "created_by_broker": broker_id,
+        "created_by_actor": actor,
         "exclude_from_production_metrics": is_test,
     }
 
@@ -460,12 +478,14 @@ class P20CaseIntakeCommandService:
         idempotency_key: str,
         correlation_id: str | None = None,
         inputs: dict[str, Any] | None = None,
+        actor: str = "broker",
     ) -> dict[str, Any]:
         if not case_intake_feature_enabled():
             raise RuntimeError("p20_case_intake_disabled")
         command_id = _normalize_command_id(command_id, "command_id")
         idempotency_key = _normalize_command_id(idempotency_key, "idempotency_key")
         broker_id = _normalize_command_id(broker_id, "broker_id")
+        create_actor = _normalize_create_actor(actor)
         corr = (correlation_id or command_id).strip()[:128] or command_id
         normalized = _minimum_create_inputs(inputs or {})
         office = (office_id or "").strip()[:256] or None
@@ -498,6 +518,7 @@ class P20CaseIntakeCommandService:
                 tenant_id=tenant,
                 inputs=normalized,
                 timestamp=timestamp,
+                actor=create_actor,
             )
             fact_records = seed_fact_records_from_case(case)
             aggregate = IntakeAggregate(
@@ -527,7 +548,7 @@ class P20CaseIntakeCommandService:
                 "sequence_number": 1,
                 "aggregate_version": 1,
                 "expected_state_version": 0,
-                "actor": "broker",
+                "actor": create_actor,
                 "actor_identity": broker_id,
                 "state_before": "",
                 "state_after": ADMIN_LIFECYCLE_DRAFT,
@@ -537,6 +558,7 @@ class P20CaseIntakeCommandService:
                     "office_id": office,
                     "tenant_id": tenant,
                     "seed_fields": sorted(list((normalized.get("known_facts") or {}).keys())),
+                    "channel": "mini_program" if create_actor == "customer" else "workbench",
                 },
                 "idempotency_key": idempotency_key,
                 "created_at": timestamp,

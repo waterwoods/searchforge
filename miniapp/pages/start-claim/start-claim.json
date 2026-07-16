@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "开始报案",
+  "usingComponents": {
+    "task-cta": "/components/task-cta/index"
+  }
+}

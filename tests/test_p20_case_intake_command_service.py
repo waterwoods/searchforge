@@ -43,12 +43,16 @@ def test_create_incomplete_claim_and_missing_vin():
     assert case_id in store.cases
     assert store.cases[case_id]["workbench_test"] is True
     assert store.cases[case_id]["exclude_from_production_metrics"] is True
+    assert store.cases[case_id]["created_by_actor"] == "broker"
     checklist = result["broker_projection"]["missing_information_checklist"]
     vin = next(i for i in checklist if i["field_key"] == "vin")
     assert vin["status"] == FACT_STATUS_MISSING
     assert result["customer_projection"]["customer_next_action"] is None
     assert store.open_requests.get(case_id) is None
     assert any(e["event_type"] == EVENT_CASE_CREATED for e in store.events[case_id])
+    created = next(e for e in store.events[case_id] if e["event_type"] == EVENT_CASE_CREATED)
+    assert created["actor"] == "broker"
+    assert created["evidence"]["channel"] == "workbench"
 
 
 def test_duplicate_create_command_replays_same_outcome():

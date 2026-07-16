@@ -1,0 +1,57 @@
+<view class="container start-claim-page">
+  <view class="card">
+    <view class="card-title">开始报案</view>
+    <view class="card-subtitle">
+      把事故情况告诉{{brokerName}}。不必一次填全，稍后如需补充会通知您。
+    </view>
+
+    <view class="section-label">一句话描述（可选）</view>
+    <textarea
+      class="textarea-field"
+      placeholder="例如：等红灯时被后车追尾。"
+      maxlength="2000"
+      value="{{description}}"
+      bindinput="onDescriptionInput"
+      auto-height
+      show-confirm-bar="{{false}}"
+      disabled="{{busy.submitting}}"
+    />
+    <view class="char-count">{{charCount}} 字</view>
+  </view>
+
+  <view class="card">
+    <view class="section-label">事故照片（可选）</view>
+    <view class="photo-placeholder">
+      <text class="photo-placeholder-title">Coming soon</text>
+      <text class="photo-placeholder-body">照片上传即将开放，本次可先提交文字描述。</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{errorMessage}}">
+    <view class="error-text">{{errorMessage}}</view>
+    <button
+      wx:if="{{errorRetryable}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onRetry"
+      disabled="{{busy.submitting}}"
+    >重试提交</button>
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onContactBroker"
+      disabled="{{busy.submitting}}"
+    >联系{{brokerName}}</button>
+  </view>
+
+  <view class="safety-footer">{{shellSafetyCopy}}</view>
+
+  <view class="footer-cta">
+    <task-cta
+      label="提交"
+      disabled="{{busy.submitting}}"
+      loading="{{busy.submitting}}"
+      bindtap="onSubmit"
+    />
+  </view>
+</view>

@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "报案已收到",
+  "usingComponents": {
+    "task-cta": "/components/task-cta/index"
+  }
+}
