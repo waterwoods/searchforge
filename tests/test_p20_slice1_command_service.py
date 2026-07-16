@@ -214,6 +214,21 @@ def test_broker_projection_distinguishes_canonical_vin_when_present():
     assert response["applied_to_canonical_facts"] is False
 
 
+def test_fetch_projection_keeps_completed_request_response_visible():
+    svc, _store = _svc()
+    created = _create(svc)
+    submitted = _submit(svc, item_id="item_1", expected=created["aggregate_version"])
+    assert submitted["broker_projection"]["workflow_state"] == "broker_review_ready"
+
+    projection = svc.fetch_projection("case_slice1")
+    assert projection is not None
+    assert projection["workflow_state"] == "broker_review_ready"
+    assert projection["open_request"]["status"] == GROUP_STATUS_COMPLETED
+    response = projection["open_request"]["items"][0]["customer_response"]
+    assert response["submitted_value"] == "1HGCM82633A004352"
+    assert response["applied_to_canonical_facts"] is False
+
+
 def test_list_redaction_omits_submitted_vin_value():
     from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
         redact_case_slice1_responses_for_list,

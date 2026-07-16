@@ -1214,7 +1214,22 @@ class InMemorySlice1Store:
                 (g for g in self.groups.values() if g.case_id == case_id and g.status == GROUP_STATUS_OPEN),
                 None,
             )
-        items = [item for item in self.items.values() if item.case_id == case_id]
+        if group is None:
+            candidates = [g for g in self.groups.values() if g.case_id == case_id]
+            if candidates:
+                group = sorted(
+                    candidates,
+                    key=lambda g: (g.updated_at or "", g.created_at or "", g.request_id),
+                    reverse=True,
+                )[0]
+        if group is not None:
+            items = [
+                item
+                for item in self.items.values()
+                if item.case_id == case_id and item.request_id == group.request_id
+            ]
+        else:
+            items = [item for item in self.items.values() if item.case_id == case_id]
         return Slice1Snapshot(
             case=dict(case),
             aggregate=aggregate,

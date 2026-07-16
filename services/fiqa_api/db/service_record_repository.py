@@ -1522,6 +1522,32 @@ class _PostgresSlice1Store:
                     updated_at=_slice1_iso(g.get("updated_at")),
                     completed_at=_slice1_iso(g.get("completed_at")) or None,
                 )
+        if group is None:
+            # Broker review-ready still needs the completed request group so
+            # satisfied item responses remain visible in the projection.
+            cur.execute(
+                """
+                SELECT request_id, case_id, status, reason, created_by, created_at, completed_at, updated_at
+                FROM claim_request_groups
+                WHERE case_id = %s
+                ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC
+                LIMIT 1
+                """,
+                (case_id,),
+            )
+            group_row = cur.fetchone()
+            if group_row:
+                g = dict(group_row)
+                group = Slice1Group(
+                    request_id=str(g["request_id"]),
+                    case_id=str(g["case_id"]),
+                    status=str(g["status"]),
+                    reason=str(g.get("reason") or ""),
+                    created_by=str(g.get("created_by") or ""),
+                    created_at=_slice1_iso(g.get("created_at")),
+                    updated_at=_slice1_iso(g.get("updated_at")),
+                    completed_at=_slice1_iso(g.get("completed_at")) or None,
+                )
 
         items: list[Slice1Item] = []
         if group:
