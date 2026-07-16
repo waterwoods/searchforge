@@ -601,20 +601,55 @@ def build_customer_task_contract(case: dict[str, Any], *, task_id: str) -> dict[
     }
 
 
-def _slice1_projection_for_case(case: dict[str, Any]) -> dict[str, Any] | None:
-    """Return authoritative Slice 1 projection when enabled, else None."""
-    if not (case_supports_slice1(case) or slice1_feature_flag_enabled()):
+def _case_is_test(case: dict[str, Any]) -> bool:
+    if bool(case.get("workbench_test")):
+        return True
+    intake = case.get("p20_case_intake_projection")
+    if isinstance(intake, dict) and bool(intake.get("is_test")):
+        return True
+    return False
+
+
+def _customer_qa_marker(
+    case: dict[str, Any],
+    *,
+    next_action: dict[str, Any] | None,
+) -> str | None:
+    """Human-readable QA marker for test claims only — never includes case IDs."""
+    if not _case_is_test(case):
         return None
+    required = str((next_action or {}).get("required_input") or "").strip().lower()
+    if required == "vin":
+        return "TEST · Cap3A VIN QA"
+    title = str(case.get("title") or case.get("display_title") or "").upper()
+    if "CAP3A" in title or "CAP 3A" in title:
+        return "TEST · Cap3A VIN QA"
+    return "QA Test Claim"
+
+
+def _slice1_projection_for_case(
+    case: dict[str, Any],
+) -> tuple[dict[str, Any] | None, bool]:
+    """Return (projection, load_failed).
+
+    load_failed is True only when Slice 1 is expected and live fetch failed
+    with no usable cached projection — callers must not silent-fallback to overview.
+    """
+    if not (case_supports_slice1(case) or slice1_feature_flag_enabled()):
+        return None, False
     cid = str(case.get("case_id") or "").strip()
     if not cid:
-        return None
+        return None, False
     try:
         projection = default_slice1_service().fetch_projection(cid)
     except Exception:
         logger.warning("p20_slice1_projection_fetch_failed case_id=%s", cid)
         raw = case.get("p20_slice1_projection")
-        return dict(raw) if isinstance(raw, dict) else None
-    return projection if isinstance(projection, dict) else None
+        if isinstance(raw, dict):
+            # Stale cached projection is still authoritative enough to land correctly.
+            return dict(raw), False
+        return None, True
+    return (projection if isinstance(projection, dict) else None), False
 
 
 def _field_value_hash(step: str, facts_patch: dict[str, str]) -> str:
@@ -640,7 +675,8 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
     except ValueError:
         upload_url = None
     dashboard = _build_dashboard_summary(case)
-    result = {
+    is_test = _case_is_test(case)
+    result: dict[str, Any] = {
         "lane": claims.lane,
         "flow": claims.flow or FLOW_CLAIM_INTAKE_FORM,
         "case_id": claims.case_id,
@@ -662,21 +698,33 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "completion_summary": _build_completion_summary(case),
         "dashboard_summary": dashboard,
         "task_contract": build_customer_task_contract(case, task_id=claims.nonce),
+        "is_test": is_test,
+        "slice1_projection_error": False,
+        "customer_qa_marker": None,
     }
-    slice1_projection = _slice1_projection_for_case(case)
+    slice1_projection, slice1_load_failed = _slice1_projection_for_case(case)
+    if slice1_load_failed:
+        result["slice1_projection_error"] = True
+        result["customer_qa_marker"] = _customer_qa_marker(case, next_action=None)
+        return result
     if slice1_projection:
         result["slice1_projection"] = slice1_projection
+        next_action = slice1_projection.get("customer_next_action")
+        next_action = next_action if isinstance(next_action, dict) else None
+        result["customer_qa_marker"] = _customer_qa_marker(case, next_action=next_action)
         result["task_contract_v1"] = {
             "contract_version": "1",
             "task_id": claims.nonce,
             "task_type": "claim_request_more",
             "workflow_state": slice1_projection.get("workflow_state"),
             "aggregate_version": slice1_projection.get("aggregate_version"),
-            "next_action": slice1_projection.get("customer_next_action"),
+            "next_action": next_action,
             "queued_request_items": slice1_projection.get("queued_request_items") or [],
             "request_progress": slice1_projection.get("request_progress") or {},
             "server_timestamp": slice1_projection.get("server_timestamp"),
         }
+    else:
+        result["customer_qa_marker"] = _customer_qa_marker(case, next_action=None)
     return result
 
 

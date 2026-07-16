@@ -2,6 +2,7 @@
  * P19H-3h-1A — H5 Claim structured intake API client.
  */
 import { API_BASE_URL } from './config';
+import type { Slice1NextAction, Slice1Projection, Slice1RequestProgress } from './inboxTriage';
 
 export type H5ClaimDashboardSummary = {
   title: string;
@@ -24,6 +25,18 @@ export type H5ClaimCompletionSummary = {
   missing_clear_message?: string | null;
   next_step: string;
   disclaimer: string;
+};
+
+export type H5ClaimTaskContractV1 = {
+  contract_version?: string;
+  task_id?: string;
+  task_type?: string;
+  workflow_state?: string;
+  aggregate_version?: number;
+  next_action?: Slice1NextAction | null;
+  queued_request_items?: unknown[];
+  request_progress?: Slice1RequestProgress;
+  server_timestamp?: string;
 };
 
 export type H5ClaimIntakeInfo = {
@@ -50,13 +63,24 @@ export type H5ClaimIntakeInfo = {
   dashboard_summary?: H5ClaimDashboardSummary;
   wecom_confirmation_sent?: boolean;
   wecom_confirmation_pending?: boolean;
+  /** Authoritative Slice 1 projection when enabled */
+  slice1_projection?: Slice1Projection | null;
+  task_contract_v1?: H5ClaimTaskContractV1 | null;
+  /** True when Slice 1 was expected but live projection could not be loaded */
+  slice1_projection_error?: boolean;
+  /** QA/test claim only — never set for production customers */
+  is_test?: boolean;
+  /** Human-readable QA marker (no case IDs / PII) */
+  customer_qa_marker?: string | null;
 };
 
 const H5_ERROR_MESSAGES: Record<string, string> = {
   invalid_or_expired_task_link: '链接已失效，请回微信发送「进度」获取新的填写链接。',
   save_failed: '保存失败，请检查网络后重试。',
   submit_failed: '提交失败，请重试。如果仍失败，可以继续在微信里联系陈总。',
-  network_error: '保存失败，请检查网络后重试。',
+  network_error: '网络异常，请检查后重试。',
+  projection_load_failed: '补充任务暂时无法加载，请重试。',
+  load_failed: '暂时无法打开，请重试。',
 };
 
 export function mapH5ClaimError(code: string, fallback?: string): string {

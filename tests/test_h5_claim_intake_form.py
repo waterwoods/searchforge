@@ -652,3 +652,91 @@ def test_submit_without_wecom_identity_still_succeeds():
     case = get_case_by_id(case_id) or {}
     state = case.get("h5_intake_state") or {}
     assert not state.get("h5_submit_confirmation_sent_at")
+
+
+def test_h5_intake_cap3a_landing_fields_for_test_claim_with_vin_action(monkeypatch):
+    """Capability 3A: intake exposes Slice1 next action + QA marker for test claims."""
+    from services.fiqa_api.inbox_triage import h5_task_intake as intake_mod
+
+    case_id = _save_claim_case("case_cap3a_vin_landing")
+    projection = {
+        "case_id": case_id,
+        "workflow_state": "broker_more_requested",
+        "aggregate_version": 2,
+        "customer_next_action": {
+            "action_type": "provide_fact",
+            "request_id": "req_1",
+            "request_item_id": "item_vin_1",
+            "title": "补充车辆 VIN",
+            "instructions": "陈总需要这项资料继续处理",
+            "required_input": "vin",
+            "status": "active",
+            "ordering": {"position": 1, "total": 1},
+        },
+        "request_progress": {"satisfied": 0, "total": 1, "remaining": 1},
+        "queued_request_items": [],
+        "open_request": {"request_id": "req_1", "status": "open"},
+        "server_timestamp": "2026-07-15T00:00:00Z",
+    }
+
+    monkeypatch.setattr(
+        intake_mod,
+        "_slice1_projection_for_case",
+        lambda _case: (projection, False),
+    )
+    monkeypatch.setattr(intake_mod, "_case_is_test", lambda _case: True)
+
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    resp = client.get(f"/api/h5/tasks/{token}/intake")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("slice1_projection_error") is False
+    assert body.get("is_test") is True
+    assert body.get("customer_qa_marker") == "TEST · Cap3A VIN QA"
+    next_action = (body.get("slice1_projection") or {}).get("customer_next_action") or {}
+    assert next_action.get("required_input") == "vin"
+    assert next_action.get("request_item_id") == "item_vin_1"
+    # Customer-facing marker must not embed raw case id
+    assert case_id not in str(body.get("customer_qa_marker") or "")
+    assert case_id not in str(next_action.get("title") or "")
+    assert case_id not in str(next_action.get("instructions") or "")
+
+
+def test_h5_intake_cap3a_projection_error_does_not_silent_fallback(monkeypatch):
+    from services.fiqa_api.inbox_triage import h5_task_intake as intake_mod
+
+    case_id = _save_claim_case("case_cap3a_proj_err")
+    monkeypatch.setattr(
+        intake_mod,
+        "_slice1_projection_for_case",
+        lambda _case: (None, True),
+    )
+    monkeypatch.setattr(intake_mod, "_case_is_test", lambda _case: True)
+
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    resp = client.get(f"/api/h5/tasks/{token}/intake")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("slice1_projection_error") is True
+    assert body.get("slice1_projection") in (None, {})
+
+
+def test_h5_intake_production_claim_has_no_qa_marker(monkeypatch):
+    from services.fiqa_api.inbox_triage import h5_task_intake as intake_mod
+
+    case_id = _save_claim_case("case_cap3a_prod")
+    monkeypatch.setattr(intake_mod, "_case_is_test", lambda _case: False)
+    monkeypatch.setattr(
+        intake_mod,
+        "_slice1_projection_for_case",
+        lambda _case: (None, False),
+    )
+    token = issue_h5_intake_form_token(case_id=case_id)
+    client = _app()
+    resp = client.get(f"/api/h5/tasks/{token}/intake")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("is_test") is False
+    assert body.get("customer_qa_marker") in (None, "")
