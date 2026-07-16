@@ -178,6 +178,89 @@ def test_completing_all_items_returns_case_to_broker_review():
     assert store.groups["req_demo"].status == GROUP_STATUS_COMPLETED
 
 
+def test_broker_projection_includes_exact_submitted_vin_response():
+    svc, _store = _svc()
+    created = _create(svc)
+    result = _submit(svc, item_id="item_1", expected=created["aggregate_version"])
+
+    items = result["broker_projection"]["open_request"]["items"]
+    assert len(items) == 1
+    response = items[0]["customer_response"]
+    assert response["kind"] == "fact"
+    assert response["submitted_value"] == "1HGCM82633A004352"
+    assert response["submitted_by_actor"] == "customer"
+    assert response["submitted_by"] == "h5:demo"
+    assert response["submitted_at"]
+    assert response["review_status"] == "satisfied"
+    assert response["applied_to_canonical_facts"] is False
+    assert response.get("canonical_value") in (None, "")
+
+
+def test_broker_projection_distinguishes_canonical_vin_when_present():
+    store = InMemorySlice1Store(
+        {
+            "case_slice1": {
+                **_case(),
+                "known_facts": {"vin": "CANONICALVIN00001"},
+            }
+        }
+    )
+    svc = P20Slice1CommandService(store)
+    created = _create(svc)
+    result = _submit(svc, item_id="item_1", expected=created["aggregate_version"])
+    response = result["broker_projection"]["open_request"]["items"][0]["customer_response"]
+    assert response["submitted_value"] == "1HGCM82633A004352"
+    assert response["canonical_value"] == "CANONICALVIN00001"
+    assert response["applied_to_canonical_facts"] is False
+
+
+def test_list_redaction_omits_submitted_vin_value():
+    from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+        redact_case_slice1_responses_for_list,
+    )
+
+    svc, _store = _svc()
+    created = _create(svc)
+    result = _submit(svc, item_id="item_1", expected=created["aggregate_version"])
+    case = {
+        "case_id": "case_slice1",
+        "slice1_projection": result["broker_projection"],
+        "p20_slice1_projection": result["broker_projection"],
+        "slice1_request_summary": result["broker_projection"]["open_request"],
+    }
+    redacted = redact_case_slice1_responses_for_list(case)
+    item = redacted["slice1_projection"]["open_request"]["items"][0]
+    assert item["customer_response"]["submitted_value"] is None
+    assert item["customer_response"]["value_redacted"] is True
+    events = redacted["slice1_projection"]["latest_events"]
+    field_saved = next(e for e in events if e.get("event_type") == "field_saved")
+    assert field_saved["evidence"]["value"] is None
+    assert field_saved["evidence"]["value_redacted"] is True
+
+
+def test_photo_evidence_response_exposes_safe_metadata_not_raw_bytes():
+    svc, _store = _svc()
+    created = _create(
+        svc,
+        items=[_item("Damage photos", 1, "photo_evidence")],
+    )
+    result = svc.submit_request_item(
+        case_id="case_slice1",
+        customer_id="h5:demo",
+        active_request_item_id="item_1",
+        command_id="cmd-submit-photo",
+        idempotency_key="idem-submit-photo",
+        expected_case_version=created["aggregate_version"],
+        client_draft_id="draft_photo",
+        evidence={"attachment_id": "att_damage_1"},
+    )
+    response = result["broker_projection"]["open_request"]["items"][0]["customer_response"]
+    assert response["kind"] == "evidence"
+    assert response["evidence_ref"] == "att_damage_1"
+    assert "bytes" not in response
+    assert "storage_uri" not in response
+
+
 def test_duplicate_submission_creates_no_duplicate_event_or_task():
     svc, store = _svc()
     created = _create(svc)

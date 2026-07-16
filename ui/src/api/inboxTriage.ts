@@ -146,6 +146,23 @@ export type Slice1RequestItemStatus =
     | 'superseded'
     | string;
 
+export type Slice1CustomerResponse = {
+    kind: 'fact' | 'evidence' | 'missing' | string;
+    field_id?: string | null;
+    submitted_value?: string | null;
+    canonical_value?: string | null;
+    attachment_id?: string | null;
+    evidence_ref?: string | null;
+    submitted_at?: string | null;
+    submitted_by_actor?: string | null;
+    submitted_by?: string | null;
+    receipt_event_id?: string | null;
+    review_status?: string | null;
+    applied_to_canonical_facts?: boolean;
+    message?: string;
+    value_redacted?: boolean;
+};
+
 export type Slice1RequestItem = {
     request_item_id: string;
     request_id?: string;
@@ -159,6 +176,7 @@ export type Slice1RequestItem = {
     created_at?: string;
     satisfied_at?: string | null;
     satisfied_by_event_id?: string | null;
+    customer_response?: Slice1CustomerResponse | null;
 };
 
 export type Slice1NextAction = {

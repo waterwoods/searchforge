@@ -5,6 +5,7 @@ import {
     Slice1RequestMoreError,
     type RequestMoreDraftItem,
     type Slice1CommandResult,
+    type Slice1CustomerResponse,
     type Slice1Projection,
     type Slice1RequestItem,
     type Slice1RequestItemType,
@@ -80,6 +81,7 @@ export type StructuredRequestMoreCaseRecord = Partial<TriageResult> & {
     broker_confirmed_done_at?: string | null;
     end_card_sent_at?: string | null;
     end_card_sent?: boolean;
+    known_facts?: Record<string, unknown>;
 };
 
 type StructuredRequestMorePanelProps<TCase extends StructuredRequestMoreCaseRecord> = {
@@ -172,6 +174,117 @@ export function orderedSlice1Items(summary: Slice1RequestSummary | null): Slice1
     return [...(summary?.items ?? [])].sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
 }
 
+function canonicalVinFromKnownFacts(knownFacts: Record<string, unknown> | undefined): string | null {
+    if (!knownFacts || typeof knownFacts !== 'object') return null;
+    for (const key of ['vin', 'vehicle_vin', 'own_vehicle_vin']) {
+        const value = String(knownFacts[key] ?? '').trim();
+        if (value) return value;
+    }
+    return null;
+}
+
+/**
+ * Resolve the broker-visible customer response for one request item.
+ * Prefers authoritative item.customer_response; falls back to latest_events.
+ */
+export function resolveSlice1CustomerResponse(
+    item: Slice1RequestItem,
+    projection: Slice1Projection | null,
+    knownFacts?: Record<string, unknown>,
+): Slice1CustomerResponse | null {
+    const embedded = item.customer_response;
+    if (embedded && typeof embedded === 'object') {
+        if (
+            embedded.kind === 'fact'
+            && item.item_type === 'vin'
+            && !embedded.canonical_value
+        ) {
+            const canonical = canonicalVinFromKnownFacts(knownFacts);
+            if (canonical) {
+                return { ...embedded, canonical_value: canonical, applied_to_canonical_facts: false };
+            }
+        }
+        return embedded;
+    }
+
+    const itemId = String(item.request_item_id || '').trim();
+    if (!itemId) return null;
+    const events = projection?.latest_events ?? [];
+    let receipt: Record<string, unknown> | null = null;
+    for (const event of events) {
+        if (!event || typeof event !== 'object') continue;
+        const evidence = (event.evidence && typeof event.evidence === 'object')
+            ? (event.evidence as Record<string, unknown>)
+            : {};
+        if (String(evidence.request_item_id || '') !== itemId) continue;
+        const eventType = String(event.event_type || '');
+        if (eventType === 'field_saved' || eventType === 'evidence_received') {
+            receipt = event as Record<string, unknown>;
+        }
+    }
+
+    if (!receipt) {
+        if (String(item.status || '') === 'satisfied') {
+            return {
+                kind: 'missing',
+                review_status: 'satisfied_missing_response',
+                submitted_at: item.satisfied_at ?? null,
+                applied_to_canonical_facts: false,
+                message: 'Item is marked satisfied, but the submitted response value is missing from the event log.',
+            };
+        }
+        return null;
+    }
+
+    const evidence = (receipt.evidence && typeof receipt.evidence === 'object')
+        ? (receipt.evidence as Record<string, unknown>)
+        : {};
+    const submittedAt = String(receipt.created_at || item.satisfied_at || '') || null;
+    const actor = String(receipt.actor || '') || null;
+    const actorIdentity = String(receipt.actor_identity || '') || null;
+    const receiptEventId = String(receipt.event_id || '') || null;
+    const reviewStatus = String(item.status || '') === 'satisfied' ? 'satisfied' : String(item.status || '');
+    const eventType = String(receipt.event_type || '');
+
+    if (eventType === 'field_saved') {
+        const submittedValue = evidence.value == null ? '' : String(evidence.value);
+        const canonical = item.item_type === 'vin' ? canonicalVinFromKnownFacts(knownFacts) : null;
+        return {
+            kind: 'fact',
+            field_id: String(evidence.field_id || '') || null,
+            submitted_value: submittedValue,
+            canonical_value: canonical,
+            submitted_at: submittedAt,
+            submitted_by_actor: actor,
+            submitted_by: actorIdentity,
+            receipt_event_id: receiptEventId,
+            review_status: reviewStatus,
+            applied_to_canonical_facts: false,
+        };
+    }
+
+    const attachmentId = String(evidence.attachment_id || '').trim();
+    return {
+        kind: 'evidence',
+        attachment_id: attachmentId || null,
+        evidence_ref: attachmentId || null,
+        submitted_at: submittedAt,
+        submitted_by_actor: actor,
+        submitted_by: actorIdentity,
+        receipt_event_id: receiptEventId,
+        review_status: reviewStatus,
+        applied_to_canonical_facts: false,
+    };
+}
+
+export function formatSlice1ResponseSource(response: Slice1CustomerResponse | null): string {
+    if (!response) return '—';
+    const actor = String(response.submitted_by_actor || '').trim();
+    const identity = String(response.submitted_by || '').trim();
+    if (actor && identity) return `${actor} · ${identity}`;
+    return identity || actor || '—';
+}
+
 export function mergeSlice1ProjectionIntoCaseRecord<TCase extends StructuredRequestMoreCaseRecord>(
     caseRecord: TCase,
     result: Pick<Slice1CommandResult, 'broker_projection' | 'request_summary' | 'server_timestamp'>,
@@ -256,6 +369,19 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
     const customerAction = projection?.customer_next_action;
     const canCreate = !projectionLoading && !projectionLoadError && slice1CanCreateRequest(caseRecord);
     const reviewReady = projection?.workflow_state === 'broker_review_ready' || brokerAction?.action_type === 'review_customer_response';
+    const satisfiedMissingResponse = satisfiedItems.some((item) => {
+        const response = resolveSlice1CustomerResponse(
+            item,
+            projection,
+            caseRecord.known_facts as Record<string, unknown> | undefined,
+        );
+        if (!response || response.kind === 'missing') return true;
+        if (response.kind === 'fact') return !String(response.submitted_value ?? '').length;
+        if (response.kind === 'evidence') {
+            return !String(response.evidence_ref || response.attachment_id || '').length;
+        }
+        return false;
+    });
 
     const validateRequestMoreDraft = (): string | null => {
         if (!requestMoreItems.length) return 'Add at least one requested item.';
@@ -440,10 +566,25 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                   : status === 'satisfied'
                     ? 'green'
                     : 'orange';
+        const response = resolveSlice1CustomerResponse(
+            item,
+            projection,
+            caseRecord.known_facts as Record<string, unknown> | undefined,
+        );
+        const showResponseBlock = status === 'satisfied' || Boolean(response);
+        const submittedAt = response?.submitted_at || item.satisfied_at || null;
+        const missingResponse = status === 'satisfied' && (
+            !response
+            || response.kind === 'missing'
+            || (response.kind === 'fact' && !String(response.submitted_value ?? '').length)
+            || (response.kind === 'evidence' && !String(response.evidence_ref || response.attachment_id || '').length)
+        );
+
         return (
             <div key={item.request_item_id || `${item.position}-${item.label}`} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
                 <Space wrap size={[6, 4]}>
                     <Tag color={color}>#{item.position} {status || 'pending'}</Tag>
+                    <Tag>{item.item_type || 'item'}</Tag>
                     <Text strong style={{ fontSize: 13 }}>{item.label}</Text>
                     {item.required ? <Tag color="red">required</Tag> : <Tag>optional</Tag>}
                 </Space>
@@ -452,7 +593,59 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         {item.instructions}
                     </Text>
                 ) : null}
-                {item.satisfied_at ? (
+                {showResponseBlock ? (
+                    <div style={{ marginTop: 8, padding: 8, background: '#fafafa', borderRadius: 6 }}>
+                        {missingResponse ? (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                message="Submitted value missing"
+                                description={response?.message || 'Refresh the case. Do not treat this item as review-ready until the submitted value is visible.'}
+                                style={{ marginBottom: 6 }}
+                            />
+                        ) : null}
+                        {response?.kind === 'fact' && !missingResponse ? (
+                            <>
+                                <Text style={{ display: 'block', fontSize: 13 }}>
+                                    Submitted value:{' '}
+                                    <Text code copyable={{ text: String(response.submitted_value ?? '') }}>
+                                        {String(response.submitted_value ?? '')}
+                                    </Text>
+                                </Text>
+                                {response.canonical_value ? (
+                                    <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+                                        Canonical claim VIN: <Text code>{String(response.canonical_value)}</Text>
+                                        {String(response.canonical_value) !== String(response.submitted_value ?? '')
+                                            ? ' (differs from submitted)'
+                                            : null}
+                                    </Text>
+                                ) : null}
+                            </>
+                        ) : null}
+                        {response?.kind === 'evidence' && !missingResponse ? (
+                            <Text style={{ display: 'block', fontSize: 13 }}>
+                                Evidence reference:{' '}
+                                <Text code>{String(response.evidence_ref || response.attachment_id || 'attached')}</Text>
+                                {caseRecord.case_id && (response.attachment_id || response.evidence_ref) ? (
+                                    <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
+                                        Open from Case Attachments / authorized preview — raw storage IDs are not shown as the primary review surface.
+                                    </Text>
+                                ) : null}
+                            </Text>
+                        ) : null}
+                        <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 4 }}>
+                            Submitted {submittedAt ? (formatPortalLocalDateTime(submittedAt) ?? submittedAt) : '—'}
+                            {' · '}
+                            Source {formatSlice1ResponseSource(response)}
+                        </Text>
+                        <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>
+                            Review status: {response?.review_status || status || '—'}
+                            {' · '}
+                            Applied to canonical claim facts:{' '}
+                            {response?.applied_to_canonical_facts ? 'Yes' : 'No'}
+                        </Text>
+                    </div>
+                ) : item.satisfied_at ? (
                     <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
                         Satisfied {formatPortalLocalDateTime(item.satisfied_at) ?? item.satisfied_at}
                     </Text>
@@ -541,12 +734,28 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         Customer next action: {customerAction?.title || customerAction?.action_type || '—'}
                     </Text>
                     <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                        Broker next action: {brokerAction?.action_type === 'review_customer_response' ? 'Review customer response' : brokerAction?.action_type || (canCreate ? 'Create request' : '—')}
+                        Broker next action:{' '}
+                        {brokerAction?.action_type === 'review_customer_response'
+                            ? 'Inspect submitted responses above'
+                            : brokerAction?.action_type || (canCreate ? 'Create request' : '—')}
                     </Text>
-                    {reviewReady ? (
-                        <Button size="small" type="primary" style={{ marginTop: 8 }}>
-                            Review customer response
-                        </Button>
+                    {reviewReady && satisfiedMissingResponse ? (
+                        <Alert
+                            type="error"
+                            showIcon
+                            style={{ marginTop: 8 }}
+                            message="Review blocked: submitted value not visible"
+                            description="Progress shows complete, but at least one satisfied item is missing its submitted response. Refresh the case before continuing."
+                        />
+                    ) : null}
+                    {reviewReady && !satisfiedMissingResponse ? (
+                        <Alert
+                            type="info"
+                            showIcon
+                            style={{ marginTop: 8 }}
+                            message="Customer responses are ready for inspection"
+                            description="Slice 1 completes the request when the customer finishes all items. There is no separate accept-into-facts action in this slice — inspect the submitted values above before continuing office work."
+                        />
                     ) : null}
                     <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 6 }}>
                         Last server update: {projection?.server_timestamp ? (formatPortalLocalDateTime(projection.server_timestamp) ?? projection.server_timestamp) : '—'}

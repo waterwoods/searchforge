@@ -4,11 +4,13 @@
  */
 import assert from 'node:assert/strict';
 import {
+  formatSlice1ResponseSource,
   getStructuredRequestMoreVisibility,
   mergeSlice1ProjectionIntoCaseRecord,
   normalizeSlice1Projection,
   normalizeSlice1RequestSummary,
   orderedSlice1Items,
+  resolveSlice1CustomerResponse,
   slice1CanCreateRequest,
   slice1EnabledForWorkbenchCase,
   type StructuredRequestMoreCaseRecord,
@@ -64,6 +66,44 @@ const openRequestProjection = {
       },
     ],
   },
+};
+
+const satisfiedVinProjection = {
+  case_id: 'case_slice1_claim',
+  workflow_state: 'broker_review_ready',
+  aggregate_version: 6,
+  broker_next_action: { action_type: 'review_customer_response' },
+  customer_next_action: { action_type: 'wait_for_broker_review' },
+  open_request: {
+    request_id: 'req_1',
+    status: 'completed',
+    reason: 'Need VIN',
+    progress: { satisfied: 1, total: 1, remaining: 0 },
+    active_item: null,
+    items: [
+      {
+        request_item_id: 'item_1',
+        item_type: 'vin',
+        label: 'VIN',
+        instructions: 'Please confirm VIN.',
+        required: true,
+        position: 1,
+        status: 'satisfied',
+        satisfied_at: '2026-07-15T12:00:00Z',
+        customer_response: {
+          kind: 'fact',
+          field_id: 'vin',
+          submitted_value: '1NXBR32E58Z946068',
+          submitted_at: '2026-07-15T12:00:00Z',
+          submitted_by_actor: 'customer',
+          submitted_by: 'h5:qa',
+          review_status: 'satisfied',
+          applied_to_canonical_facts: false,
+        },
+      },
+    ],
+  },
+  latest_events: [],
 };
 
 function main() {
@@ -124,6 +164,75 @@ function main() {
   };
   assert.deepEqual(withAttachments.case_attachments, [{ attachment_id: 'att_1', filename: 'damage.jpg' }]);
   assert.deepEqual(orderedSlice1Items(openRequestProjection.open_request).map((item) => item.request_item_id), ['item_1', 'item_2']);
+
+  // 11. Satisfied VIN response resolves exact submitted value + source/timestamp.
+  const vinItem = satisfiedVinProjection.open_request.items[0];
+  const vinResponse = resolveSlice1CustomerResponse(vinItem, satisfiedVinProjection);
+  assert.equal(vinResponse?.submitted_value, '1NXBR32E58Z946068');
+  assert.equal(formatSlice1ResponseSource(vinResponse), 'customer · h5:qa');
+  assert.equal(vinResponse?.submitted_at, '2026-07-15T12:00:00Z');
+  assert.equal(vinResponse?.applied_to_canonical_facts, false);
+
+  // 12. Missing response produces explicit recoverable state (not a silent false review).
+  const missingItem = {
+    ...vinItem,
+    customer_response: undefined,
+  };
+  const missing = resolveSlice1CustomerResponse(missingItem, {
+    ...satisfiedVinProjection,
+    latest_events: [],
+  });
+  assert.equal(missing?.kind, 'missing');
+  assert.equal(missing?.review_status, 'satisfied_missing_response');
+
+  // 13. Event fallback preserves exact VIN when item projection lacks customer_response.
+  const fromEvents = resolveSlice1CustomerResponse(missingItem, {
+    ...satisfiedVinProjection,
+    latest_events: [
+      {
+        event_type: 'field_saved',
+        actor: 'customer',
+        actor_identity: 'h5:qa',
+        created_at: '2026-07-15T12:00:00Z',
+        evidence: {
+          request_item_id: 'item_1',
+          field_id: 'vin',
+          value: '1NXBR32E58Z946068',
+        },
+      },
+    ],
+  });
+  assert.equal(fromEvents?.submitted_value, '1NXBR32E58Z946068');
+
+  // 14. Photo/evidence items expose safe metadata refs, not raw storage payloads.
+  const photoItem = {
+    request_item_id: 'item_photo',
+    item_type: 'photo_evidence',
+    label: 'Damage photos',
+    instructions: 'Upload photos',
+    required: true,
+    position: 1,
+    status: 'satisfied',
+    customer_response: {
+      kind: 'evidence',
+      evidence_ref: 'att_1',
+      attachment_id: 'att_1',
+      review_status: 'satisfied',
+      applied_to_canonical_facts: false,
+    },
+  };
+  const photoResponse = resolveSlice1CustomerResponse(photoItem, null);
+  assert.equal(photoResponse?.kind, 'evidence');
+  assert.equal(photoResponse?.evidence_ref, 'att_1');
+  assert.equal('storage_uri' in (photoResponse || {}), false);
+
+  // 15. Shared panel helpers are used by BrokerCaseDetail + BrokerWorkbenchTab (no duplicate resolver).
+  assert.equal(typeof resolveSlice1CustomerResponse, 'function');
+  assert.equal(typeof formatSlice1ResponseSource, 'function');
+
+  // 16. Legacy non-Slice-1 claims remain unchanged by Slice 1 visibility helpers.
+  assert.equal(slice1EnabledForWorkbenchCase(legacyClaim), false);
+  assert.equal(getStructuredRequestMoreVisibility(legacyClaim).enabled, false);
 }
 
 main();

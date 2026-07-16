@@ -134,6 +134,212 @@ class Slice1Item:
         }
 
 
+def _canonical_fact_value(
+    known_facts: dict[str, Any] | None,
+    *,
+    item_type: str,
+    field_id: str,
+) -> str | None:
+    facts = known_facts if isinstance(known_facts, dict) else {}
+    candidates: list[str] = []
+    field = str(field_id or "").strip()
+    if field:
+        candidates.append(field)
+    if str(item_type or "").strip().lower() == "vin":
+        candidates.extend(["vin", "vehicle_vin", "own_vehicle_vin"])
+    seen: set[str] = set()
+    for key in candidates:
+        if key in seen:
+            continue
+        seen.add(key)
+        value = str(facts.get(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _customer_response_for_item(
+    item: Slice1Item,
+    latest_events: list[dict[str, Any]] | None,
+    known_facts: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Broker-facing submitted response for one request item (from receipt events)."""
+    item_id = item.request_item_id
+    receipt: dict[str, Any] | None = None
+    for event in latest_events or []:
+        if not isinstance(event, dict):
+            continue
+        evidence = event.get("evidence") if isinstance(event.get("evidence"), dict) else {}
+        if str(evidence.get("request_item_id") or "") != item_id:
+            continue
+        event_type = str(event.get("event_type") or "")
+        if event_type in {"field_saved", "evidence_received"}:
+            receipt = event
+    if receipt is None:
+        if item.status == ITEM_STATUS_SATISFIED:
+            return {
+                "kind": "missing",
+                "review_status": "satisfied_missing_response",
+                "submitted_at": item.satisfied_at,
+                "submitted_by_actor": None,
+                "submitted_by": None,
+                "receipt_event_id": item.satisfied_by_event_id,
+                "applied_to_canonical_facts": False,
+                "message": "Item is marked satisfied, but the submitted response value is missing from the event log.",
+            }
+        return None
+
+    evidence = receipt.get("evidence") if isinstance(receipt.get("evidence"), dict) else {}
+    submitted_at = str(receipt.get("created_at") or item.satisfied_at or "")
+    actor = str(receipt.get("actor") or "") or None
+    actor_identity = str(receipt.get("actor_identity") or "") or None
+    receipt_event_id = str(receipt.get("event_id") or "") or None
+    review_status = "satisfied" if item.status == ITEM_STATUS_SATISFIED else str(item.status)
+    event_type = str(receipt.get("event_type") or "")
+
+    if event_type == "field_saved":
+        field_id = str(evidence.get("field_id") or "")
+        # Preserve exact stored characters from the receipt event (no extra normalization).
+        submitted_value = evidence.get("value")
+        submitted_value_str = "" if submitted_value is None else str(submitted_value)
+        canonical_value = _canonical_fact_value(
+            known_facts,
+            item_type=item.item_type,
+            field_id=field_id,
+        )
+        return {
+            "kind": "fact",
+            "field_id": field_id or None,
+            "submitted_value": submitted_value_str,
+            "canonical_value": canonical_value,
+            "submitted_at": submitted_at or None,
+            "submitted_by_actor": actor,
+            "submitted_by": actor_identity,
+            "receipt_event_id": receipt_event_id,
+            "review_status": review_status,
+            # Slice 1 submit marks the item satisfied; it does not write known_facts.
+            "applied_to_canonical_facts": False,
+        }
+
+    attachment_id = str(evidence.get("attachment_id") or "").strip()
+    return {
+        "kind": "evidence",
+        "attachment_id": attachment_id or None,
+        "evidence_ref": attachment_id or None,
+        "submitted_at": submitted_at or None,
+        "submitted_by_actor": actor,
+        "submitted_by": actor_identity,
+        "receipt_event_id": receipt_event_id,
+        "review_status": review_status,
+        "applied_to_canonical_facts": False,
+    }
+
+
+def _item_projection(
+    item: Slice1Item,
+    latest_events: list[dict[str, Any]] | None = None,
+    known_facts: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    row = item.as_projection()
+    response = _customer_response_for_item(item, latest_events, known_facts)
+    if response is not None:
+        row["customer_response"] = response
+    return row
+
+
+def redact_slice1_projection_for_list(projection: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Strip submitted response values from list-lane projection copies."""
+    if not isinstance(projection, dict):
+        return projection
+
+    def _redact_item(item: Any) -> Any:
+        if not isinstance(item, dict):
+            return item
+        out = dict(item)
+        response = out.get("customer_response")
+        if isinstance(response, dict):
+            redacted = dict(response)
+            if "submitted_value" in redacted:
+                redacted["submitted_value"] = None
+                redacted["value_redacted"] = True
+            out["customer_response"] = redacted
+        return out
+
+    out = dict(projection)
+    open_request = out.get("open_request")
+    if isinstance(open_request, dict):
+        request_out = dict(open_request)
+        if "active_item" in request_out:
+            request_out["active_item"] = _redact_item(request_out.get("active_item"))
+        for key in ("queued_items", "items"):
+            raw = request_out.get(key)
+            if isinstance(raw, list):
+                request_out[key] = [_redact_item(item) for item in raw]
+        out["open_request"] = request_out
+    queued = out.get("queued_request_items")
+    if isinstance(queued, list):
+        out["queued_request_items"] = [_redact_item(item) for item in queued]
+    events = out.get("latest_events")
+    if isinstance(events, list):
+        redacted_events: list[Any] = []
+        for event in events:
+            if not isinstance(event, dict):
+                redacted_events.append(event)
+                continue
+            event_out = dict(event)
+            evidence = event_out.get("evidence")
+            if isinstance(evidence, dict) and "value" in evidence:
+                evidence_out = dict(evidence)
+                evidence_out["value"] = None
+                evidence_out["value_redacted"] = True
+                event_out["evidence"] = evidence_out
+            redacted_events.append(event_out)
+        out["latest_events"] = redacted_events
+    return out
+
+
+def redact_case_slice1_responses_for_list(case: dict[str, Any]) -> dict[str, Any]:
+    """List-lane helper: keep status/progress, omit submitted response values."""
+    row = dict(case)
+    for key in ("slice1_projection", "p20_slice1_projection"):
+        if isinstance(row.get(key), dict):
+            row[key] = redact_slice1_projection_for_list(row.get(key))  # type: ignore[arg-type]
+    for key in ("slice1_request_summary", "p20_slice1_request_summary"):
+        summary = row.get(key)
+        if not isinstance(summary, dict):
+            continue
+        summary_out = dict(summary)
+        if "active_item" in summary_out and isinstance(summary_out.get("active_item"), dict):
+            item = dict(summary_out["active_item"])
+            response = item.get("customer_response")
+            if isinstance(response, dict) and "submitted_value" in response:
+                response = dict(response)
+                response["submitted_value"] = None
+                response["value_redacted"] = True
+                item["customer_response"] = response
+            summary_out["active_item"] = item
+        for list_key in ("queued_items", "items"):
+            raw = summary_out.get(list_key)
+            if not isinstance(raw, list):
+                continue
+            next_items: list[Any] = []
+            for entry in raw:
+                if not isinstance(entry, dict):
+                    next_items.append(entry)
+                    continue
+                item = dict(entry)
+                response = item.get("customer_response")
+                if isinstance(response, dict) and "submitted_value" in response:
+                    response = dict(response)
+                    response["submitted_value"] = None
+                    response["value_redacted"] = True
+                    item["customer_response"] = response
+                next_items.append(item)
+            summary_out[list_key] = next_items
+        row[key] = summary_out
+    return row
+
+
 @dataclass
 class Slice1Group:
     request_id: str
@@ -198,6 +404,7 @@ def _projection(
     items: list[Slice1Item],
     latest_events: list[dict[str, Any]] | None = None,
     timestamp: str | None = None,
+    known_facts: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = timestamp or _utc_now_iso()
     ordered = sorted(items, key=lambda item: item.position)
@@ -205,11 +412,15 @@ def _projection(
     queued = [item for item in ordered if item.status == ITEM_STATUS_QUEUED]
     satisfied = [item for item in ordered if item.status == ITEM_STATUS_SATISFIED]
     total = len(ordered)
+    events = list(latest_events or [])
     progress = {
         "satisfied": len(satisfied),
         "total": total,
         "remaining": len([item for item in ordered if item.status in {ITEM_STATUS_ACTIVE, ITEM_STATUS_QUEUED}]),
     }
+
+    def _proj(item: Slice1Item) -> dict[str, Any]:
+        return _item_projection(item, events, known_facts)
     if active:
         evidence_types = {"photo_evidence", "policy_or_insurance_card"}
         customer_action = {
@@ -281,9 +492,9 @@ def _projection(
             "created_at": group.created_at,
             "updated_at": group.updated_at,
             "completed_at": group.completed_at,
-            "active_item": active.as_projection() if active else None,
-            "queued_items": [item.as_projection() for item in queued],
-            "items": [item.as_projection() for item in ordered],
+            "active_item": _proj(active) if active else None,
+            "queued_items": [_proj(item) for item in queued],
+            "items": [_proj(item) for item in ordered],
             "progress": progress,
         }
     return {
@@ -293,11 +504,18 @@ def _projection(
         "customer_next_action": customer_action,
         "broker_next_action": broker_action,
         "open_request": request_summary,
-        "queued_request_items": [item.as_projection() for item in queued],
+        "queued_request_items": [_proj(item) for item in queued],
         "request_progress": progress,
-        "latest_events": list(latest_events or [])[-20:],
+        "latest_events": events[-20:],
         "server_timestamp": now,
     }
+
+
+def _case_known_facts(case: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(case, dict):
+        return None
+    facts = case.get("known_facts")
+    return facts if isinstance(facts, dict) else None
 
 
 def _legacy_projection_patch(projection: dict[str, Any]) -> dict[str, Any]:
@@ -492,6 +710,7 @@ class P20Slice1CommandService:
                 items=[],
                 latest_events=[],
                 timestamp=str(snapshot.case.get("updated_at") or "") or None,
+                known_facts=_case_known_facts(snapshot.case),
             )
             return projection
         return _projection(
@@ -501,6 +720,7 @@ class P20Slice1CommandService:
             group=snapshot.group,
             items=snapshot.items,
             latest_events=snapshot.latest_events,
+            known_facts=_case_known_facts(snapshot.case),
         )
 
     def accept_request_more(
@@ -538,6 +758,7 @@ class P20Slice1CommandService:
                 group=snapshot.group,
                 items=snapshot.items,
                 latest_events=snapshot.latest_events,
+                known_facts=_case_known_facts(case),
             )
             if str(case.get("service_lane") or "").strip().lower() != SERVICE_LANE_CLAIM:
                 return _response(
@@ -655,6 +876,7 @@ class P20Slice1CommandService:
                 items=items,
                 latest_events=[event],
                 timestamp=now,
+                known_facts=_case_known_facts(case),
             )
             aggregate_out = Slice1Aggregate(
                 case_id=case_id,
@@ -728,6 +950,7 @@ class P20Slice1CommandService:
                 group=snapshot.group,
                 items=snapshot.items,
                 latest_events=snapshot.latest_events,
+                known_facts=_case_known_facts(snapshot.case),
             )
             if expected != current_version:
                 return _response(
@@ -930,6 +1153,7 @@ class P20Slice1CommandService:
                 items=items,
                 latest_events=[*snapshot.latest_events, *events],
                 timestamp=now,
+                known_facts=_case_known_facts(snapshot.case),
             )
             aggregate_out = Slice1Aggregate(
                 case_id=case_id,

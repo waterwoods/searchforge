@@ -1754,7 +1754,14 @@ async def get_recent_cases(
     except Exception as exc:
         logger.warning("Workbench enrich failed, returning raw cases: %s", exc)
         enriched = raw
-    safe_cases = [sanitize_case_for_workbench_api(c) for c in enriched]
+    from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+        redact_case_slice1_responses_for_list,
+    )
+
+    safe_cases = [
+        redact_case_slice1_responses_for_list(sanitize_case_for_workbench_api(c))
+        for c in enriched
+    ]
     return {
         "cases": safe_cases,
         "total_count": total,
@@ -1861,6 +1868,19 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
         case = enriched[0] if enriched else case
     except Exception as exc:
         logger.warning("Workbench enrich failed for case %s, returning raw case: %s", cid, exc)
+    # Rebuild Slice 1 broker projection from companion/event SSOT so satisfied
+    # item responses (e.g. submitted VIN) are visible on case detail.
+    try:
+        live_projection = default_slice1_service().fetch_projection(cid)
+        if isinstance(live_projection, dict):
+            case["p20_slice1_projection"] = live_projection
+            case["slice1_projection"] = live_projection
+            open_request = live_projection.get("open_request")
+            if isinstance(open_request, dict):
+                case["p20_slice1_request_summary"] = open_request
+                case["slice1_request_summary"] = open_request
+    except Exception as exc:
+        logger.warning("Slice 1 projection refresh failed for case %s: %s", cid, exc)
     return sanitize_case_for_workbench_api(case)
 
 

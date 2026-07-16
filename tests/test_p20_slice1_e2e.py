@@ -152,6 +152,9 @@ def test_scenario1_single_fact_request_returns_to_broker_review():
     assert submitted["customer_projection"]["workflow_state"] == "broker_review_ready"
     assert submitted["customer_projection"]["customer_next_action"]["action_type"] == "wait_for_broker_review"
     assert submitted["broker_projection"]["broker_next_action"]["action_type"] == "review_customer_response"
+    vin_response = submitted["broker_projection"]["open_request"]["items"][0]["customer_response"]
+    assert vin_response["submitted_value"] == "1HGCM82633A004352"
+    assert vin_response["applied_to_canonical_facts"] is False
     assert store.groups["req_e2e"].status == GROUP_STATUS_COMPLETED
     assert store.items["item_1"].status == ITEM_STATUS_SATISFIED
 
