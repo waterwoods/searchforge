@@ -1,7 +1,8 @@
 /**
- * P20 Capability 3A — H5 QR landing decision (server projection SSOT).
- * Pure helpers: active Request More item → request-item screen; else overview;
- * projection load failure → retry (never silent overview fallback).
+ * P20 Capability 3A/3B — H5 QR landing decision (server projection SSOT).
+ * Cap 3A: active Request More item → request-item screen.
+ * Cap 3B: after VIN submit → submitted_waiting (broker reviewing).
+ * Projection load failure → retry (never silent overview fallback).
  */
 import type { Slice1NextAction, Slice1Projection, Slice1RequestProgress } from '@/api/inboxTriage';
 import type { H5ClaimIntakeInfo } from '@/api/h5ClaimIntake';
@@ -12,6 +13,7 @@ export type H5ClaimLandingKind =
   | 'load_error'
   | 'projection_error'
   | 'request_item'
+  | 'submitted_waiting'
   | 'overview';
 
 export type H5ClaimLandingDecision = {
@@ -30,6 +32,12 @@ const EMPTY_PROGRESS: Slice1RequestProgress = { satisfied: 0, total: 0, remainin
 
 const ACTIONABLE_TYPES = new Set(['provide_fact', 'provide_evidence']);
 
+/** Cap 3B customer success copy — received + reviewing; no approval promise. */
+export const CAP3B_RECEIVED_TITLE = '资料已收到';
+export const CAP3B_REVIEWING_INSTRUCTIONS = '陈总正在审核中。';
+export const CAP3B_NO_APPROVAL_DISCLAIMER =
+  '不代表已通过审核，也不代表已向保险公司正式报案。';
+
 export function isActiveRequestItemAction(
   action: Slice1NextAction | null | undefined,
 ): action is Slice1NextAction {
@@ -37,6 +45,13 @@ export function isActiveRequestItemAction(
   const type = String(action.action_type || '').trim();
   if (!ACTIONABLE_TYPES.has(type)) return false;
   return Boolean(String(action.request_item_id || '').trim());
+}
+
+export function isWaitingForBrokerReviewAction(
+  action: Slice1NextAction | null | undefined,
+): boolean {
+  if (!action || typeof action !== 'object') return false;
+  return String(action.action_type || '').trim() === 'wait_for_broker_review';
 }
 
 export function extractAuthoritativeNextAction(
@@ -101,12 +116,15 @@ export function resolveCustomerQaMarker(
   const explicit = String(info.customer_qa_marker || '').trim();
   if (explicit) return explicit;
   if (!info.is_test) return null;
-  const required = String(
-    (nextAction || extractAuthoritativeNextAction(info))?.required_input || '',
-  )
+  const action = nextAction || extractAuthoritativeNextAction(info);
+  const required = String(action?.required_input || '')
     .trim()
     .toLowerCase();
   if (required === 'vin') return 'TEST · Cap3A VIN QA';
+  if (isWaitingForBrokerReviewAction(action)) return 'TEST · Cap3B Review QA';
+  if (info.slice1_projection?.workflow_state === 'broker_review_ready') {
+    return 'TEST · Cap3B Review QA';
+  }
   return 'QA Test Claim';
 }
 
@@ -193,6 +211,26 @@ export function resolveH5ClaimLanding(args: {
       title: requestItemTitle(nextAction),
       instructions: requestItemInstructions(nextAction),
       itemType: String(nextAction.required_input || '').trim().toLowerCase(),
+      retryable: false,
+      errorMessage: '',
+    };
+  }
+
+  // Cap 3B: after successful VIN submit (or resume), show receipt — not overview.
+  const workflowState = String(info?.slice1_projection?.workflow_state || '').trim();
+  if (isWaitingForBrokerReviewAction(nextAction) || workflowState === 'broker_review_ready') {
+    const title =
+      String(nextAction?.title || '').trim() || CAP3B_RECEIVED_TITLE;
+    const instructions =
+      String(nextAction?.instructions || '').trim() || CAP3B_REVIEWING_INSTRUCTIONS;
+    return {
+      kind: 'submitted_waiting',
+      nextAction,
+      progress,
+      qaMarker,
+      title,
+      instructions,
+      itemType: '',
       retryable: false,
       errorMessage: '',
     };

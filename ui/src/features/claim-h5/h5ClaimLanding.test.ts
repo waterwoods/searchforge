@@ -1,5 +1,5 @@
 /**
- * P20 Capability 3A — H5 QR landing decision tests.
+ * P20 Capability 3A/3B — H5 QR landing decision tests.
  * Run: npx tsx --tsconfig ui/tsconfig.json ui/src/features/claim-h5/h5ClaimLanding.test.ts
  */
 import assert from 'node:assert/strict';
@@ -115,26 +115,31 @@ test('active VIN task → direct request-item landing', () => {
   assert.equal(decision.qaMarker, 'TEST · Cap3A VIN QA');
 });
 
-test('no active task → generic overview', () => {
+test('no active task after Cap 3B submit → submitted_waiting (not overview)', () => {
   const decision = resolveH5ClaimLanding({
     loading: false,
     loadError: null,
     info: baseInfo({
+      is_test: true,
       slice1_projection: {
         case_id: 'case_d3187eb826f4',
         workflow_state: 'broker_review_ready',
         aggregate_version: 3,
         customer_next_action: {
           action_type: 'wait_for_broker_review',
-          title: '资料已提交给陈总审核',
+          title: '资料已收到',
+          instructions: '陈总正在审核中。',
           request_item_id: null,
         },
         request_progress: { satisfied: 1, total: 1, remaining: 0 },
       },
     }),
   });
-  assert.equal(decision.kind, 'overview');
-  assert.equal(decision.title, '我的事故资料');
+  assert.equal(decision.kind, 'submitted_waiting');
+  assert.equal(decision.title, '资料已收到');
+  assert.equal(decision.instructions, '陈总正在审核中。');
+  assert.equal(decision.qaMarker, 'TEST · Cap3B Review QA');
+  assert.notEqual(decision.kind, 'overview');
 });
 
 test('projection error → retry UI (never silent overview)', () => {

@@ -32,6 +32,11 @@ assert.doesNotMatch(src, /case_d3187eb826f4/, 'QA case id must not be hardcoded 
 assert.match(landing, /request_item/, 'landing helper must support request-item mode');
 assert.match(landing, /projection_error/, 'landing helper must support projection error');
 assert.match(landing, /provide_fact/, 'landing helper must key off actionable next action');
-assert.match(landing, /TEST · Cap3A VIN QA/, 'QA marker copy required');
+assert.match(src, /submitH5RequestItem/, 'Cap 3B must call Slice 1 request-item submit');
+assert.match(src, /submitted_waiting|资料已收到/, 'Cap 3B success / waiting screen required');
+assert.match(src, /提交中，请稍等/, 'duplicate-tap submitting guard required');
+assert.match(landing, /submitted_waiting/, 'landing helper must support Cap 3B waiting mode');
+assert.match(landing, /wait_for_broker_review/, 'landing helper must key off wait_for_broker_review');
+assert.match(landing, /TEST · Cap3B Review QA/, 'Cap 3B QA marker copy required');
 
 console.log('h5ClaimIntakeLanding.static.test: PASS');

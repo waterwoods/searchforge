@@ -750,11 +750,11 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                     ) : null}
                     {reviewReady && !satisfiedMissingResponse ? (
                         <Alert
-                            type="info"
+                            type="success"
                             showIcon
                             style={{ marginTop: 8 }}
-                            message="Customer responses are ready for inspection"
-                            description="Slice 1 completes the request when the customer finishes all items. There is no separate accept-into-facts action in this slice — inspect the submitted values above before continuing office work."
+                            message="Ready for review"
+                            description="Submitted customer responses are visible above. Cap 3B is read-only — no confirm, reject, correction, or apply-to-canonical-facts actions in this slice."
                         />
                     ) : null}
                     <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 6 }}>

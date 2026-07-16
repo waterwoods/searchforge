@@ -1,18 +1,23 @@
 /**
- * P19H-3h-1A / P20 Cap 3A — Claim H5 intake + QR landing.
- * Active Slice 1 next action → request-item screen first (not generic overview).
+ * P19H-3h-1A / P20 Cap 3A+3B — Claim H5 intake + QR landing + VIN submit.
+ * Cap 3A: active Slice 1 next action → request-item screen first.
+ * Cap 3B: VIN submit → server receipt → submitted_waiting (broker review).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  applySlice1ProjectionToIntake,
   fetchH5ClaimIntake,
   mapH5ClaimError,
+  newCommandId,
   newSubmitIntentId,
   patchH5ClaimFields,
   submitH5ClaimIntake,
+  submitH5RequestItem,
   type H5ClaimIntakeInfo,
 } from '@/api/h5ClaimIntake';
 import {
+  CAP3B_NO_APPROVAL_DISCLAIMER,
   resolveH5ClaimLanding,
   type H5ClaimLandingDecision,
 } from '@/features/claim-h5/h5ClaimLanding';
@@ -212,6 +217,10 @@ export default function H5ClaimIntakePage() {
   const [vinDraft, setVinDraft] = useState('');
   const [vinValidation, setVinValidation] = useState('');
   const submitIntentRef = useRef<string>(newSubmitIntentId());
+  /** Cap 3B: stable command identity for duplicate-tap / network retry. */
+  const requestItemCommandRef = useRef<{ command_id: string; idempotency_key: string } | null>(
+    null,
+  );
   const landingRoutedRef = useRef(false);
 
   const [injury, setInjury] = useState('');
@@ -361,12 +370,84 @@ export default function H5ClaimIntakePage() {
 
   const photoCount = info?.photo_count ?? info?.attachment_count ?? 0;
 
-  const handleVinPrimary = () => {
-    // Cap 3A: land + explain + primary action affordance. Cap 3B owns server submit.
+  const ensureRequestItemCommandIdentity = () => {
+    if (!requestItemCommandRef.current) {
+      requestItemCommandRef.current = {
+        command_id: newCommandId('cmd-vin'),
+        idempotency_key: newCommandId('idem-vin'),
+      };
+    }
+    return requestItemCommandRef.current;
+  };
+
+  const handleVinPrimary = async () => {
+    if (submitting || refreshing) return;
+    setError(null);
+
     if (landing.itemType === 'vin') {
-      setVinValidation(validateVinInput(vinDraft));
+      const validation = validateVinInput(vinDraft);
+      setVinValidation(validation);
+      if (validation) return;
+
+      const itemId = String(landing.nextAction?.request_item_id || '').trim();
+      const expectedVersion = Number(
+        info?.slice1_projection?.aggregate_version ??
+          landing.nextAction?.version ??
+          info?.task_contract_v1?.aggregate_version ??
+          0,
+      );
+      if (!itemId || !info) {
+        setError(mapH5ClaimError('submit_failed'));
+        return;
+      }
+
+      const identity = ensureRequestItemCommandIdentity();
+      const normalizedVin = normalizeVinInput(vinDraft);
+      setSubmitting(true);
+      try {
+        const result = await submitH5RequestItem(taskToken, itemId, {
+          command_id: identity.command_id,
+          idempotency_key: identity.idempotency_key,
+          expected_case_version: expectedVersion,
+          client_draft_id: identity.command_id,
+          fact: { field: 'vin', value: normalizedVin },
+        });
+        const outcome = String(result.outcome || '');
+        if (outcome !== 'accepted' && outcome !== 'replayed') {
+          setError(mapH5ClaimError(String(result.error_code || 'submit_failed')));
+          return;
+        }
+        // Server receipt required — only advance on accepted/replayed projection.
+        const projection = result.customer_projection || result.broker_projection;
+        setInfo(applySlice1ProjectionToIntake(info, projection));
+        requestItemCommandRef.current = null;
+        setShowOverview(false);
+        setVinValidation('');
+      } catch (e) {
+        const code = e instanceof Error ? e.message : 'submit_failed';
+        // Keep command identity only for transport retries. Validation/conflict need a fresh intent.
+        if (code !== 'network_error' && code !== 'submit_failed') {
+          requestItemCommandRef.current = null;
+        }
+        if (code === 'version_conflict' || code === 'request_item_not_active' || code === 'illegal_state') {
+          try {
+            const refreshed = await fetchH5ClaimIntake(taskToken);
+            setInfo(refreshed);
+            landingRoutedRef.current = false;
+          } catch {
+            // keep submit error
+          }
+        }
+        setError(mapH5ClaimError(code, '提交失败，请重试。如果仍失败，可以继续在微信里联系陈总。'));
+        if (code === 'vin_invalid') {
+          setVinValidation(mapH5ClaimError('vin_invalid'));
+        }
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
+
     const text = String(vinDraft || '').trim();
     setVinValidation(text ? '' : '请按陈总要求填写');
   };
@@ -423,15 +504,61 @@ export default function H5ClaimIntakePage() {
             />
           )}
           {vinValidation ? <p style={styles.error}>{vinValidation}</p> : null}
-          <button type="button" style={styles.btn} onClick={handleVinPrimary}>
-            提交给陈总
+          {error && error !== 'invalid_or_expired_task_link' ? (
+            <p style={styles.error}>{error}</p>
+          ) : null}
+          <button
+            type="button"
+            style={{ ...styles.btn, ...(submitting ? styles.btnDisabled : {}) }}
+            disabled={submitting}
+            onClick={() => {
+              void handleVinPrimary();
+            }}
+          >
+            {submitting ? '提交中，请稍等…' : '提交给陈总'}
           </button>
           <button
             type="button"
-            style={styles.btnSecondary}
+            style={{ ...styles.btnSecondary, ...(submitting ? styles.btnDisabled : {}) }}
+            disabled={submitting}
             onClick={() => setShowOverview(true)}
           >
             查看全部资料
+          </button>
+        </div>
+      </>
+    );
+  };
+
+  const renderSubmittedWaitingScreen = () => {
+    const progress = landing.progress;
+    const progressText =
+      progress.total > 0 ? `进度 ${progress.satisfied}/${progress.total}` : null;
+    return (
+      <>
+        <div style={styles.card}>
+          <div style={{ ...styles.statusPill, background: '#e8f5e9', color: '#1b5e20' }}>
+            已提交
+          </div>
+          <h2 style={{ ...styles.dashboardTitle, marginBottom: 8 }}>{landing.title}</h2>
+          <p style={{ margin: '0 0 8px', fontSize: 16, lineHeight: 1.55, color: '#222' }}>
+            {landing.instructions}
+          </p>
+          <p style={{ margin: '0 0 8px', fontSize: 14, lineHeight: 1.55, color: '#666' }}>
+            {CAP3B_NO_APPROVAL_DISCLAIMER}
+          </p>
+          {progressText ? <p style={styles.progressLine}>{progressText}</p> : null}
+        </div>
+        <div style={styles.card}>
+          <button
+            type="button"
+            style={{ ...styles.btnSecondary, marginTop: 0 }}
+            onClick={() => {
+              void refreshStatus();
+            }}
+            disabled={refreshing}
+          >
+            {refreshing ? '刷新中…' : '刷新状态'}
           </button>
         </div>
       </>
@@ -482,6 +609,20 @@ export default function H5ClaimIntakePage() {
             </button>
           </div>
         </div>
+        <div style={styles.footer}>此记录用于陈总办公室整理事故信息，不代表已向保险公司正式报案。</div>
+      </div>
+    );
+  }
+
+  if (landing.kind === 'submitted_waiting') {
+    return (
+      <div style={styles.page}>
+        <div style={styles.header}>
+          <div style={{ fontSize: 13, opacity: 0.85 }}>陈总办公室</div>
+          <h1 style={{ margin: '4px 0 0', fontSize: 18 }}>{landing.title}</h1>
+          {renderQaMarker(landing.qaMarker)}
+        </div>
+        <div style={styles.body}>{renderSubmittedWaitingScreen()}</div>
         <div style={styles.footer}>此记录用于陈总办公室整理事故信息，不代表已向保险公司正式报案。</div>
       </div>
     );

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -38,6 +39,22 @@ ITEM_STATUS_WITHDRAWN = "withdrawn"
 
 GROUP_STATUS_OPEN = "open"
 GROUP_STATUS_COMPLETED = "completed"
+
+# VIN: 17 chars, excludes I/O/Q (ISO 3779 charset used across intake).
+_VIN_VALUE_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
+
+
+def normalize_vin_value(raw: str | None) -> str:
+    """Strip separators and uppercase; does not invent missing characters."""
+    return re.sub(r"[^A-Za-z0-9]", "", str(raw or "").strip()).upper()
+
+
+def validate_vin_value(raw: str | None) -> str | None:
+    """Return normalized VIN when valid; otherwise None."""
+    normalized = normalize_vin_value(raw)
+    if not _VIN_VALUE_RE.fullmatch(normalized):
+        return None
+    return normalized
 
 ALLOWED_ITEM_TYPES = frozenset(
     {
@@ -463,8 +480,9 @@ def _projection(
             "action_type": "wait_for_broker_review",
             "request_id": group.request_id if group else None,
             "request_item_id": None,
-            "title": "资料已提交给陈总审核",
-            "instructions": "陈总会查看你补充的资料。",
+            # Cap 3B success copy: received + reviewing; no approval promise.
+            "title": "资料已收到",
+            "instructions": "陈总正在审核中。",
             "required_input": None,
             "status": "waiting",
             "ordering": {"position": None, "total": total},
@@ -1031,6 +1049,19 @@ class P20Slice1CommandService:
                         projection=current_projection,
                         error_code="fact_payload_invalid",
                     )
+                if str(active.item_type or "").strip().lower() == "vin":
+                    validated_vin = validate_vin_value(value)
+                    if not validated_vin:
+                        return _response(
+                            outcome="rejected",
+                            command_id=command_id,
+                            correlation_id=corr,
+                            idempotency_key=idempotency_key,
+                            event_ids=[],
+                            projection=current_projection,
+                            error_code="vin_invalid",
+                        )
+                    value = validated_vin
                 receipt_payload = {
                     "request_id": active.request_id,
                     "request_item_id": active.request_item_id,

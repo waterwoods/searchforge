@@ -2,7 +2,12 @@
  * P19H-3h-1A — H5 Claim structured intake API client.
  */
 import { API_BASE_URL } from './config';
-import type { Slice1NextAction, Slice1Projection, Slice1RequestProgress } from './inboxTriage';
+import type {
+  Slice1CommandResult,
+  Slice1NextAction,
+  Slice1Projection,
+  Slice1RequestProgress,
+} from './inboxTriage';
 
 export type H5ClaimDashboardSummary = {
   title: string;
@@ -74,6 +79,17 @@ export type H5ClaimIntakeInfo = {
   customer_qa_marker?: string | null;
 };
 
+export type H5RequestItemSubmitPayload = {
+  command_id: string;
+  idempotency_key: string;
+  expected_case_version: number;
+  client_draft_id?: string | null;
+  fact?: { field: string; value: string } | null;
+  evidence?: { attachment_id: string } | null;
+};
+
+export type H5RequestItemSubmitResult = Slice1CommandResult;
+
 const H5_ERROR_MESSAGES: Record<string, string> = {
   invalid_or_expired_task_link: '链接已失效，请回微信发送「进度」获取新的填写链接。',
   save_failed: '保存失败，请检查网络后重试。',
@@ -81,6 +97,10 @@ const H5_ERROR_MESSAGES: Record<string, string> = {
   network_error: '网络异常，请检查后重试。',
   projection_load_failed: '补充任务暂时无法加载，请重试。',
   load_failed: '暂时无法打开，请重试。',
+  vin_invalid: 'VIN 格式不正确，请输入 17 位（不含 I/O/Q）。',
+  version_conflict: '资料已更新，请刷新后重试。',
+  request_item_not_active: '当前补充任务已变化，请刷新后查看。',
+  illegal_state: '当前状态无法提交，请刷新后查看。',
 };
 
 export function mapH5ClaimError(code: string, fallback?: string): string {
@@ -89,11 +109,16 @@ export function mapH5ClaimError(code: string, fallback?: string): string {
 
 async function parseH5Error(res: Response): Promise<string> {
   const body = await res.json().catch(() => ({}));
-  const detail = (body as { detail?: string }).detail || `http_${res.status}`;
+  const detail = (body as { detail?: unknown }).detail;
   if (res.status === 403 && detail === 'invalid_or_expired_task_link') {
     return 'invalid_or_expired_task_link';
   }
-  return detail;
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    const errorCode = String((detail as { error_code?: string }).error_code || '').trim();
+    if (errorCode) return errorCode;
+  }
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  return `http_${res.status}`;
 }
 
 export async function fetchH5ClaimIntake(taskToken: string): Promise<H5ClaimIntakeInfo> {
@@ -156,9 +181,65 @@ export async function submitH5ClaimIntake(
   return res.json() as Promise<H5ClaimIntakeInfo>;
 }
 
+/** Cap 3B: satisfy the active Slice 1 request item (e.g. VIN). */
+export async function submitH5RequestItem(
+  taskToken: string,
+  itemId: string,
+  payload: H5RequestItemSubmitPayload,
+): Promise<H5RequestItemSubmitResult> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_BASE_URL}/api/h5/tasks/${encodeURIComponent(taskToken)}/request-items/${encodeURIComponent(itemId)}/submit`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    );
+  } catch {
+    throw new Error('network_error');
+  }
+  if (!res.ok) {
+    throw new Error(await parseH5Error(res));
+  }
+  return res.json() as Promise<H5RequestItemSubmitResult>;
+}
+
+/** Merge Slice 1 command projection into local H5 intake info (Cap 3B receipt). */
+export function applySlice1ProjectionToIntake(
+  info: H5ClaimIntakeInfo,
+  projection: Slice1Projection | null | undefined,
+): H5ClaimIntakeInfo {
+  if (!projection || typeof projection !== 'object') return info;
+  const nextAction = projection.customer_next_action ?? null;
+  const priorContract = info.task_contract_v1 || {};
+  return {
+    ...info,
+    slice1_projection: projection,
+    slice1_projection_error: false,
+    task_contract_v1: {
+      ...priorContract,
+      workflow_state: projection.workflow_state,
+      aggregate_version: projection.aggregate_version,
+      next_action: nextAction,
+      queued_request_items: projection.queued_request_items || [],
+      request_progress: projection.request_progress,
+      server_timestamp: projection.server_timestamp,
+    },
+  };
+}
+
 export function newSubmitIntentId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
   return `submit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function newCommandId(prefix = 'cmd'): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
