@@ -45,14 +45,24 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
   data.busy = { submitting: false };
   const ctx: Record<string, any> = {
     ...page,
-    ...overrides,
     route: "/pages/start-claim/start-claim",
     data,
     _submitState: null,
+    _form: {
+      description: "",
+      accidentDatetime: "",
+      accidentLocation: "",
+      injuryStatus: "",
+    },
     setData(patch: Record<string, unknown>) {
       Object.assign(this.data, patch);
     },
+    ...overrides,
   };
+  // Keep data/form overrides coherent when tests pass nested data.
+  if (overrides && overrides.data && typeof overrides.data === "object") {
+    ctx.data = { ...data, ...(overrides.data as Record<string, unknown>) };
+  }
   return ctx;
 }
 
@@ -109,6 +119,12 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
   assert.equal(ctx.data.canSubmit, true);
   assert.equal(ctx.data.injuryStatus, "no");
   assert.equal(ctx.data.missingHint, "");
+  assert.equal(ctx.data.errorMessage, "");
+  // Visible bound values == canonical `_form`.
+  assert.equal(ctx.data.description, ctx._form.description);
+  assert.equal(ctx.data.accidentDatetime, ctx._form.accidentDatetime);
+  assert.equal(ctx.data.accidentLocation, ctx._form.accidentLocation);
+  assert.equal(ctx.data.injuryStatus, ctx._form.injuryStatus);
 
   await page.onSubmit.call(ctx);
   assert.equal(calls.length, 1);
@@ -116,6 +132,149 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
   assert.equal(calls[0]?.accident_datetime, "Today 9 am");
   assert.equal(calls[0]?.accident_location, "路口");
   assert.equal(calls[0]?.injury_status, "no");
+  assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
+});
+
+test("founder live values complete → no missing hint + CTA enabled", async () => {
+  const page = await loadStartClaimPage();
+  const ctx = createPageContext(page);
+  page.onLoad.call(ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
+  assert.equal(ctx.data.canSubmit, true);
+  assert.equal(ctx.data.missingHint, "");
+  assert.equal(ctx.data.errorMessage, "");
+});
+
+test("injury selection preserves description/time/location", async () => {
+  const page = await loadStartClaimPage();
+  const ctx = createPageContext(page);
+  page.onLoad.call(ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
+  // Simulate stale this.data (setData race) while canonical `_form` is correct.
+  ctx.data.description = "";
+  ctx.data.accidentDatetime = "";
+  ctx.data.accidentLocation = "";
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
+  assert.equal(ctx._form.description, "等红灯时被后装");
+  assert.equal(ctx._form.accidentDatetime, "今天上午 9 点");
+  assert.equal(ctx._form.accidentLocation, "家门口");
+  assert.equal(ctx.data.description, "等红灯时被后装");
+  assert.equal(ctx.data.canSubmit, true);
+  assert.equal(ctx.data.errorMessage, "");
+  assert.equal(ctx.data.missingHint, "");
+});
+
+test("stale missing banner clears when form becomes complete", async () => {
+  const page = await loadStartClaimPage();
+  const ctx = createPageContext(page);
+  page.onLoad.call(ctx);
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
+  // Force the historical sticky banner shape from showErrors-on-injury.
+  ctx.data.errorMessage = "请先填写：事故经过、事故时间、事故地点";
+  ctx.data.errorRetryable = false;
+  page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
+  assert.equal(ctx.data.canSubmit, true);
+  assert.equal(ctx.data.missingHint, "");
+  assert.equal(ctx.data.errorMessage, "");
+});
+
+test("submit uses latest typed value from blur flush before API", async () => {
+  const page = await loadStartClaimPage();
+  const calls: Array<Record<string, unknown>> = [];
+  const redirects: string[] = [];
+  (globalThis as Record<string, any>).wx.redirectTo = ({ url }: { url: string }) => {
+    redirects.push(url);
+  };
+  const ctx = createPageContext(page, {
+    callStartClaim(command: Record<string, unknown>) {
+      calls.push(command);
+      return Promise.resolve({ ok: true, outcome: "accepted" });
+    },
+  });
+  page.onLoad.call(ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "旧描述" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
+  // Latest value arrives on blur immediately before submit (device timing).
+  page.onDescriptionBlur.call(ctx, { detail: { value: "等红灯时被后装" } });
+  await page.onSubmit.call(ctx);
+  assert.equal(calls[0]?.accident_description, "等红灯时被后装");
+  assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
+});
+
+test("local invalid submit does not call API", async () => {
+  const page = await loadStartClaimPage();
+  let called = 0;
+  const ctx = createPageContext(page, {
+    callStartClaim() {
+      called += 1;
+      return Promise.resolve({ ok: true, outcome: "accepted" });
+    },
+  });
+  page.onLoad.call(ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
+  await page.onSubmit.call(ctx);
+  assert.equal(called, 0);
+  assert.match(String(ctx.data.errorMessage || ctx.data.missingHint || ""), /事故时间|事故地点|是否受伤/);
+});
+
+test("transport failure maps distinctly and preserves form", async () => {
+  const page = await loadStartClaimPage();
+  const ctx = createPageContext(page, {
+    callStartClaim() {
+      throw new ApiRequestError("domain_not_allowed", 0, {
+        errMsg: "request:fail url not in domain list",
+      });
+    },
+  });
+  page.onLoad.call(ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
+  await page.onSubmit.call(ctx);
+  assert.match(String(ctx.data.errorMessage), /域名未授权|报案服务/);
+  assert.equal(String(ctx.data.errorMessage).includes("网络不稳定"), false);
+  assert.equal(ctx.data.description, "等红灯时被后装");
+  assert.equal(ctx.data.canSubmit, true);
+});
+
+test("accepted-but-replayed retry reuses identity and shows receipt", async () => {
+  const page = await loadStartClaimPage();
+  const calls: Array<Record<string, unknown>> = [];
+  const redirects: string[] = [];
+  (globalThis as Record<string, any>).wx.redirectTo = ({ url }: { url: string }) => {
+    redirects.push(url);
+  };
+  const ctx = createPageContext(page, {
+    callStartClaim(command: Record<string, unknown>) {
+      calls.push(command);
+      if (calls.length === 1) {
+        throw new ApiRequestError("timeout");
+      }
+      return Promise.resolve({ ok: true, outcome: "replayed" });
+    },
+  });
+  page.onLoad.call(ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
+  await page.onSubmit.call(ctx);
+  assert.equal(ctx.data.errorRetryable, true);
+  assert.match(String(ctx.data.errorMessage), /超时|重试/);
+  const firstId = String(calls[0]?.command_id || "");
+  await page.onRetry.call(ctx);
+  assert.equal(calls[1]?.command_id, firstId);
+  assert.equal(calls[1]?.idempotency_key, calls[0]?.idempotency_key);
   assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
 });
 

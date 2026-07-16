@@ -37,7 +37,10 @@ Before every P20 implementation, release, or capability review:
   (North Star §I): visible value equals canonical state, all required fields
   enable the CTA, optional/Request More/future fields never block, no hidden
   validation rule without Business Contract justification and a visible reason,
-  and a real user can complete it without Cursor guidance.
+  and a real user can complete it without Cursor guidance. Also enforce the
+  **Founder State-to-Payload Gate** inside §I: CTA/missing-hint/submit share one
+  validator, sibling fields cannot be wiped, and transport/server errors are
+  distinguished (never a single opaque “网络不稳定” for every failure).
 - Enforce the **Founder Entry and Navigation Gate** (North Star §J): Home from
   success/result reaches a usable entry, restored sessions cannot strand users
   on stale results, page shell renders before network, and a blank screen is

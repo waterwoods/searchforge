@@ -1,9 +1,13 @@
 import { appConfig } from "./config";
 import { BackendUnreachableError, ensureApiReachable } from "./apiHealth";
+import { ClassifiedTransportError, classifyWxRequestFail } from "./requestErrors";
 
 export type RequestErrorCode =
   | "network_error"
   | "backend_unreachable"
+  | "domain_not_allowed"
+  | "tls_error"
+  | "timeout"
   | "invalid_or_expired_task_link"
   | "already_submitted"
   | "missing_required_fields"
@@ -66,6 +70,15 @@ function rejectRequestError(
   reject: (reason: ApiRequestError) => void,
   err: unknown,
 ): void {
+  if (err instanceof ClassifiedTransportError) {
+    reject(
+      new ApiRequestError(err.code, 0, {
+        errMsg: err.errMsg,
+        errno: err.errno,
+      }),
+    );
+    return;
+  }
   if (err instanceof BackendUnreachableError) {
     reject(new ApiRequestError("backend_unreachable"));
     return;
@@ -104,8 +117,14 @@ export function requestJson<T>(
               }
               reject(new ApiRequestError(parseDetail(res.data, status), status, extractDetail(res.data)));
             },
-            fail() {
-              reject(new ApiRequestError("network_error"));
+            fail(err) {
+              const classified = classifyWxRequestFail(err);
+              reject(
+                new ApiRequestError(classified.code, 0, {
+                  errMsg: classified.errMsg,
+                  errno: classified.errno,
+                }),
+              );
             },
           });
         }),

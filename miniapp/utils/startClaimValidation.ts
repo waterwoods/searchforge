@@ -13,6 +13,46 @@ export type StartClaimFormInput = {
   reachabilityKnown?: boolean;
 };
 
+/** Canonical mutable form model — must stay equal to visible bound values. */
+export type StartClaimCanonicalForm = {
+  description: string;
+  accidentDatetime: string;
+  accidentLocation: string;
+  injuryStatus: string;
+};
+
+export function createEmptyCanonicalForm(): StartClaimCanonicalForm {
+  return {
+    description: "",
+    accidentDatetime: "",
+    accidentLocation: "",
+    injuryStatus: "",
+  };
+}
+
+/**
+ * Merge a field patch into canonical form without dropping siblings.
+ * Used so injury selection / setData races cannot wipe description/time/location.
+ */
+export function mergeCanonicalForm(
+  current: StartClaimCanonicalForm,
+  patch: Partial<StartClaimCanonicalForm>,
+): StartClaimCanonicalForm {
+  return {
+    description: patch.description !== undefined ? String(patch.description) : current.description,
+    accidentDatetime:
+      patch.accidentDatetime !== undefined
+        ? String(patch.accidentDatetime)
+        : current.accidentDatetime,
+    accidentLocation:
+      patch.accidentLocation !== undefined
+        ? String(patch.accidentLocation)
+        : current.accidentLocation,
+    injuryStatus:
+      patch.injuryStatus !== undefined ? String(patch.injuryStatus) : current.injuryStatus,
+  };
+}
+
 export type StartClaimFieldKey =
   | "description"
   | "accidentDatetime"

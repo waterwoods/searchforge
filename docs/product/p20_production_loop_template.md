@@ -91,6 +91,19 @@ If a customer/broker form changed, confirm before Release:
 - [ ] DevTools full-compile + physical-device smoke done
 - [ ] A real user can complete it without Cursor guidance
 
+### Founder State-to-Payload Gate quick check (governing SSOT: North Star §I)
+
+- [ ] Visible field value equals canonical state
+- [ ] Canonical state equals normalized payload
+- [ ] CTA, missing hint, and final submit share one validator
+- [ ] Submit after typing uses latest input
+- [ ] Draft restoration populates canonical state
+- [ ] One field update cannot erase siblings
+- [ ] Physical-device input events covered
+- [ ] Errors distinguish validation / transport / server
+- [ ] Accepted-but-response-lost recovers without duplicate
+- [ ] Real-device submit verified downstream
+
 ### Founder Entry and Navigation Gate quick check (governing SSOT: North Star §J)
 
 - [ ] Every primary navigation destination renders non-blank content

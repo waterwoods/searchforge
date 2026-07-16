@@ -1,4 +1,5 @@
 import { appConfig } from "./config";
+import { ClassifiedTransportError, classifyWxRequestFail } from "./requestErrors";
 
 type HealthCache = {
   ok: boolean;
@@ -56,8 +57,17 @@ export function ensureApiReachable(): Promise<void> {
         cache = { ok: false, checkedAt: Date.now() };
         reject(new BackendUnreachableError());
       },
-      fail() {
+      fail(err) {
         cache = { ok: false, checkedAt: Date.now() };
+        const classified = classifyWxRequestFail(err);
+        if (
+          classified.code === "domain_not_allowed"
+          || classified.code === "tls_error"
+          || classified.code === "timeout"
+        ) {
+          reject(new ClassifiedTransportError(classified.code, classified.errMsg, classified.errno));
+          return;
+        }
         reject(new BackendUnreachableError());
       },
     });

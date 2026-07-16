@@ -1,6 +1,8 @@
-import { appConfig } from "../../utils/config";
+import { appConfig, QA_API_BASE_URL } from "../../utils/config";
 import { startClaim } from "../../services/startClaimApi";
 import { ApiRequestError } from "../../utils/request";
+import { resetApiHealthCache } from "../../utils/apiHealth";
+import { buildRequestDiagnostic } from "../../utils/requestErrors";
 import {
   beginStartClaimSubmit,
   createStartClaimSubmitState,
@@ -10,9 +12,12 @@ import {
 import type { StartClaimSubmitState } from "../../utils/startClaimLifecycle";
 import {
   buildStartClaimPayload,
+  createEmptyCanonicalForm,
+  mergeCanonicalForm,
   validateStartClaimForm,
 } from "../../utils/startClaimValidation";
 import type {
+  StartClaimCanonicalForm,
   StartClaimFieldErrors,
   StartClaimFieldKey,
 } from "../../utils/startClaimValidation";
@@ -45,15 +50,12 @@ type PageData = {
   };
 };
 
-type FormPatch = Partial<{
-  description: string;
-  accidentDatetime: string;
-  accidentLocation: string;
-  injuryStatus: string;
-}>;
+type FormPatch = Partial<StartClaimCanonicalForm>;
 
 Page({
   _submitState: null as StartClaimSubmitState | null,
+  /** Synchronous canonical model — source of truth for CTA / hint / submit. */
+  _form: createEmptyCanonicalForm() as StartClaimCanonicalForm,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
@@ -66,13 +68,21 @@ Page({
 
   onLoad() {
     try {
-      // Prior submitted resume must not block a fresh Start Claim after Home.
       resetStartClaimDraftState();
       this._submitState = createStartClaimSubmitState();
+      this._form = createEmptyCanonicalForm();
+      const validated = validateStartClaimForm({
+        ...this._form,
+        reachabilityKnown: true,
+      });
       this.setData({
         ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+        canSubmit: validated.canSubmit,
+        missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
         pageReady: true,
         initErrorMessage: "",
+        errorMessage: "",
+        errorRetryable: false,
       });
     } catch {
       this.setData({
@@ -83,7 +93,6 @@ Page({
   },
 
   onShow() {
-    // Home / reLaunch / resume must always show a usable form shell immediately.
     if (!this.data.pageReady) {
       this.setData({ pageReady: true });
     }
@@ -96,17 +105,29 @@ Page({
         });
       }
     }
+    if (!this._form) {
+      this._form = createEmptyCanonicalForm();
+    }
   },
 
   onResetAndRetry() {
     try {
       resetStartClaimDraftState();
       this._submitState = createStartClaimSubmitState();
+      this._form = createEmptyCanonicalForm();
+      const validated = validateStartClaimForm({
+        ...this._form,
+        reachabilityKnown: true,
+      });
       this.setData({
         ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+        canSubmit: validated.canSubmit,
+        missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
         busy: { submitting: false },
         initErrorMessage: "",
         pageReady: true,
+        errorMessage: "",
+        errorRetryable: false,
       });
     } catch {
       this.setData({
@@ -116,43 +137,49 @@ Page({
     }
   },
 
-  /** Merge patch into Page.data before computing validity (avoids setData race). */
+  /**
+   * One canonical merge + one validator for CTA, missing hint, and submit.
+   * Reads/writes `_form` synchronously so setData races cannot wipe siblings.
+   */
   _applyFormPatch(patch: FormPatch, options?: { showErrors?: boolean }) {
     const showErrors = Boolean(options && options.showErrors);
-    const next = {
-      description: patch.description !== undefined ? patch.description : this.data.description,
-      accidentDatetime:
-        patch.accidentDatetime !== undefined ? patch.accidentDatetime : this.data.accidentDatetime,
-      accidentLocation:
-        patch.accidentLocation !== undefined ? patch.accidentLocation : this.data.accidentLocation,
-      injuryStatus: patch.injuryStatus !== undefined ? patch.injuryStatus : this.data.injuryStatus,
-      // Mini Program cold-start has WeChat session reachability — contact not required.
+    this._form = mergeCanonicalForm(this._form || createEmptyCanonicalForm(), patch);
+    const validated = validateStartClaimForm({
+      ...this._form,
       reachabilityKnown: true,
-    };
-    const validated = validateStartClaimForm(next);
+    });
     const dataPatch: Record<string, unknown> = {
-      ...patch,
+      description: this._form.description,
+      accidentDatetime: this._form.accidentDatetime,
+      accidentLocation: this._form.accidentLocation,
+      injuryStatus: this._form.injuryStatus,
+      charCount: this._form.description.length,
       canSubmit: validated.canSubmit,
       missingHint: validated.missingHint,
     };
     if (showErrors) {
       dataPatch.fieldErrors = validated.errors;
-      dataPatch.errorMessage = validated.ok ? "" : validated.missingHint;
+      // Validation messages use missingHint / fieldErrors — never sticky errorMessage.
+      dataPatch.errorMessage = "";
+      dataPatch.errorRetryable = false;
     } else if (validated.canSubmit) {
       dataPatch.fieldErrors = {};
       dataPatch.missingHint = "";
+      dataPatch.errorMessage = "";
+      dataPatch.errorRetryable = false;
     } else {
-      // Keep button disabled explainable without shouting on every keystroke.
       dataPatch.fieldErrors = this.data.fieldErrors || {};
+      // Clear stale submit/validation banners once the user edits again.
+      if (this.data.errorMessage && !this.data.errorRetryable) {
+        dataPatch.errorMessage = "";
+      }
     }
     this.setData(dataPatch);
     return validated;
   },
 
   onDescriptionInput(e: WechatMiniprogram.Input) {
-    const description = e.detail.value || "";
-    this._applyFormPatch({ description });
-    this.setData({ charCount: description.length });
+    this._applyFormPatch({ description: e.detail.value || "" });
   },
 
   onDatetimeInput(e: WechatMiniprogram.Input) {
@@ -163,9 +190,26 @@ Page({
     this._applyFormPatch({ accidentLocation: e.detail.value || "" });
   },
 
+  onDescriptionBlur(e: WechatMiniprogram.Input) {
+    this._applyFormPatch({ description: (e.detail && e.detail.value) || this._form.description });
+  },
+
+  onDatetimeBlur(e: WechatMiniprogram.Input) {
+    this._applyFormPatch({
+      accidentDatetime: (e.detail && e.detail.value) || this._form.accidentDatetime,
+    });
+  },
+
+  onLocationBlur(e: WechatMiniprogram.Input) {
+    this._applyFormPatch({
+      accidentLocation: (e.detail && e.detail.value) || this._form.accidentLocation,
+    });
+  },
+
   onInjurySelect(e: WechatMiniprogram.TouchEvent) {
     const injuryStatus = String(e.currentTarget.dataset.value || "");
-    this._applyFormPatch({ injuryStatus }, { showErrors: Boolean(injuryStatus) });
+    // Injury must not shout sibling missing fields into sticky errorMessage.
+    this._applyFormPatch({ injuryStatus });
   },
 
   onContactBroker() {
@@ -178,8 +222,13 @@ Page({
   },
 
   async onSubmit() {
+    // Final flush from canonical `_form` (already updated by input/blur).
     const validated = this._applyFormPatch({}, { showErrors: true });
     if (!validated.ok) {
+      this.setData({
+        errorMessage: validated.missingHint,
+        errorRetryable: false,
+      });
       this._focusFirstInvalid(validated.firstInvalid);
       return;
     }
@@ -188,7 +237,6 @@ Page({
 
   _focusFirstInvalid(field: StartClaimFieldKey | null) {
     if (!field) return;
-    // Mini Program Input focus is best-effort; toast reinforces the visible field error.
     const messages: Record<StartClaimFieldKey, string> = {
       description: "请填写事故经过",
       accidentDatetime: "请填写事故时间",
@@ -201,19 +249,21 @@ Page({
 
   async onRetry() {
     if (!this.data.errorRetryable || this.data.busy.submitting) return;
+    resetApiHealthCache();
     await this.submitStartClaim({ reuseIdentity: true });
   },
 
   async submitStartClaim(options: { reuseIdentity: boolean }) {
     const payload = buildStartClaimPayload({
-      description: this.data.description,
-      accidentDatetime: this.data.accidentDatetime,
-      accidentLocation: this.data.accidentLocation,
-      injuryStatus: this.data.injuryStatus,
+      ...this._form,
       reachabilityKnown: true,
     });
     if (!payload) {
-      this._applyFormPatch({}, { showErrors: true });
+      const validated = this._applyFormPatch({}, { showErrors: true });
+      this.setData({
+        errorMessage: validated.missingHint,
+        errorRetryable: false,
+      });
       return;
     }
 
@@ -235,6 +285,7 @@ Page({
       initErrorMessage: "",
     });
 
+    const startedAt = Date.now();
     try {
       const result = await this.callStartClaim({
         command_id: gate.command_id,
@@ -250,6 +301,12 @@ Page({
           errorMessage: mapped.message,
           errorRetryable: mapped.retryable,
           busy: { submitting: false },
+          // Keep completed form values — timeout/transport must not erase input.
+          description: this._form.description,
+          accidentDatetime: this._form.accidentDatetime,
+          accidentLocation: this._form.accidentLocation,
+          injuryStatus: this._form.injuryStatus,
+          canSubmit: true,
         });
         endStartClaimSubmit(this._submitState, false);
         return;
@@ -259,18 +316,49 @@ Page({
       wx.redirectTo({
         url: START_CLAIM_SUCCESS_ROUTE,
         fail: () => {
+          this.setData({
+            errorMessage: "已提交成功，但结果页打开失败。请返回后查看，或联系陈总确认。",
+            errorRetryable: false,
+          });
           wx.showToast({ title: "已提交", icon: "success" });
         },
       });
     } catch (err) {
       const code = err instanceof ApiRequestError ? err.code : "network_error";
+      const detail =
+        err instanceof ApiRequestError && err.detail && typeof err.detail === "object"
+          ? (err.detail as { errMsg?: string; errno?: string })
+          : {};
       const mapped = mapStartClaimError(code);
+      if (appConfig.prototypeMode) {
+        const diag = buildRequestDiagnostic({
+          method: "POST",
+          path: "/api/h5/customer/start-claim",
+          apiHost: String(appConfig.apiBaseUrl || QA_API_BASE_URL),
+          startedAt,
+          endedAt: Date.now(),
+          httpStatus: err instanceof ApiRequestError ? err.status : 0,
+          errorCode: code,
+          errMsg: detail.errMsg || "",
+          errno: detail.errno || "",
+          commandId: gate.command_id,
+          idempotencyKey: gate.idempotency_key,
+        });
+        console.info("[start-claim] submit diagnostic", diag);
+      }
       this.setData({
         errorMessage: mapped.message,
         errorRetryable: mapped.retryable,
         busy: { submitting: false },
+        description: this._form.description,
+        accidentDatetime: this._form.accidentDatetime,
+        accidentLocation: this._form.accidentLocation,
+        injuryStatus: this._form.injuryStatus,
+        charCount: this._form.description.length,
+        canSubmit: true,
+        missingHint: "",
       });
-      // Keep command identity for uncertain/network retry.
+      // Keep command identity for uncertain/network retry (idempotent replay).
       endStartClaimSubmit(this._submitState, false);
     }
   },

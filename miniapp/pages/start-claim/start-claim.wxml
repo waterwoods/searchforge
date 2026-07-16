@@ -27,6 +27,7 @@
       maxlength="2000"
       value="{{description}}"
       bindinput="onDescriptionInput"
+      bindblur="onDescriptionBlur"
       auto-height
       show-confirm-bar="{{false}}"
       disabled="{{busy.submitting}}"
@@ -40,6 +41,7 @@
       placeholder="例如：今天上午 9 点 或 Today 9 am"
       value="{{accidentDatetime}}"
       bindinput="onDatetimeInput"
+      bindblur="onDatetimeBlur"
       disabled="{{busy.submitting}}"
     />
     <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
@@ -50,6 +52,7 @@
       placeholder="城市 / 路口 / 停车场"
       value="{{accidentLocation}}"
       bindinput="onLocationInput"
+      bindblur="onLocationBlur"
       disabled="{{busy.submitting}}"
     />
     <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>

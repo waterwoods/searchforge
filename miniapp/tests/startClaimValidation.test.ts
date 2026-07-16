@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   START_CLAIM_NON_BLOCKING_FIELDS,
   buildStartClaimPayload,
+  createEmptyCanonicalForm,
+  mergeCanonicalForm,
   normalizeAccidentDatetime,
   normalizeInjuryStatus,
   validateStartClaimForm,
@@ -145,4 +147,45 @@ test("incomplete form returns null payload", () => {
     }),
     null,
   );
+});
+
+test("mergeCanonicalForm preserves siblings when injury updates", () => {
+  const current = {
+    description: "等红灯时被后装",
+    accidentDatetime: "今天上午 9 点",
+    accidentLocation: "家门口",
+    injuryStatus: "",
+  };
+  const next = mergeCanonicalForm(current, { injuryStatus: "yes" });
+  assert.deepEqual(next, {
+    description: "等红灯时被后装",
+    accidentDatetime: "今天上午 9 点",
+    accidentLocation: "家门口",
+    injuryStatus: "yes",
+  });
+  const validated = validateStartClaimForm({ ...next, reachabilityKnown: true });
+  assert.equal(validated.ok, true);
+  assert.equal(validated.missingHint, "");
+  const payload = buildStartClaimPayload({ ...next, reachabilityKnown: true });
+  assert.equal(payload?.accident_description, "等红灯时被后装");
+  assert.equal(payload?.injury_status, "yes");
+});
+
+test("restored draft-shaped canonical form validates and builds payload", () => {
+  const form = createEmptyCanonicalForm();
+  const restored = mergeCanonicalForm(form, {
+    description: "等红灯时被后装",
+    accidentDatetime: "今天上午 9 点",
+    accidentLocation: "家门口",
+    injuryStatus: "yes",
+  });
+  const validated = validateStartClaimForm({ ...restored, reachabilityKnown: true });
+  assert.equal(validated.canSubmit, true);
+  assert.equal(validated.missingHint, "");
+  assert.deepEqual(buildStartClaimPayload({ ...restored, reachabilityKnown: true }), {
+    accident_description: "等红灯时被后装",
+    accident_datetime: "今天上午 9 点",
+    accident_location: "家门口",
+    injury_status: "yes",
+  });
 });

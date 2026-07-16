@@ -36,27 +36,78 @@ export function endStartClaimSubmit(state: StartClaimSubmitState, clearIdentity 
 export function mapStartClaimError(code: string): {
   message: string;
   retryable: boolean;
+  kind:
+    | "transport"
+    | "config"
+    | "timeout"
+    | "server_validation"
+    | "server_error"
+    | "unknown";
 } {
   const normalized = String(code || "").trim();
-  if (normalized === "backend_unreachable" || normalized === "network_error") {
+  if (normalized === "domain_not_allowed") {
     return {
-      message: "网络不稳定，请稍后重试。您的提交不会重复创建。",
+      kind: "config",
+      message:
+        "当前预览环境无法连接报案服务（域名未授权）。请联系陈总办公室配置后再试。",
+      retryable: false,
+    };
+  }
+  if (normalized === "tls_error") {
+    return {
+      kind: "config",
+      message: "安全连接失败，请稍后重试。如仍失败，请联系陈总办公室。",
+      retryable: true,
+    };
+  }
+  if (normalized === "timeout") {
+    return {
+      kind: "timeout",
+      message: "提交超时，请重试。如已提交成功，不会重复创建。",
+      retryable: true,
+    };
+  }
+  if (normalized === "backend_unreachable") {
+    return {
+      kind: "transport",
+      message: "暂时无法连接报案服务，请稍后重试。",
+      retryable: true,
+    };
+  }
+  if (normalized === "network_error") {
+    return {
+      kind: "transport",
+      message: "网络请求失败，请检查网络后重试。",
       retryable: true,
     };
   }
   if (normalized === "p20_case_intake_disabled") {
     return {
+      kind: "server_validation",
       message: "报案功能暂时不可用，请稍后再试或联系陈总。",
+      retryable: true,
+    };
+  }
+  if (
+    normalized === "validation_rejected"
+    || normalized === "missing_required_fields"
+    || normalized.startsWith("http_4")
+  ) {
+    return {
+      kind: "server_validation",
+      message: "提交内容未通过校验，请检查后重试。如仍失败，请联系陈总办公室。",
       retryable: true,
     };
   }
   if (normalized.startsWith("http_5") || normalized === "create_claim_failed") {
     return {
-      message: "提交失败，请重试。如仍失败，请联系陈总办公室。",
+      kind: "server_error",
+      message: "服务暂时繁忙，请重试。如仍失败，请联系陈总办公室。",
       retryable: true,
     };
   }
   return {
+    kind: "unknown",
     message: "提交失败，请重试。如仍失败，请联系陈总办公室。",
     retryable: true,
   };

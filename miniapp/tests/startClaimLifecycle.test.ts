@@ -40,10 +40,12 @@ test("successful submit clears identity for a fresh next claim", () => {
   assert.notEqual(next.command_id, first.command_id);
 });
 
-test("network errors are retryable with stable copy", () => {
+test("network errors are retryable with transport-specific copy", () => {
   const mapped = mapStartClaimError("network_error");
   assert.equal(mapped.retryable, true);
-  assert.match(mapped.message, /重试/);
+  assert.equal(mapped.kind, "transport");
+  assert.match(mapped.message, /重试|网络/);
+  assert.equal(mapped.message.includes("网络不稳定"), false);
 });
 
 test("success copy hides internals", () => {

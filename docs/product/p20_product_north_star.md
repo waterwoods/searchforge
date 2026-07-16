@@ -188,6 +188,36 @@ artificial minimum-length gates (description ≥ 10, location ≥ 3) rejected va
 Business Contract Must Have values such as `被车后装` and `路口`, with no visible
 explanation. This gate exists to make that class of failure a permanent blocker.
 
+#### Founder State-to-Payload Gate (within §I)
+
+**Same SSOT section — do not duplicate a conflicting copy elsewhere.**
+
+Every customer/broker form must also pass:
+
+1. **Visible = canonical.** Visible field value equals canonical form state.
+2. **Canonical = payload.** Canonical state equals the normalized submit payload.
+3. **One validator.** CTA enablement, missing-field hint, and final submit share
+   one validator over the same current values.
+4. **Latest input on submit.** Submit immediately after typing uses the latest
+   input (flush/blur/canonical merge — not a stale `this.data` snapshot).
+5. **Draft → canonical.** Draft restoration populates canonical state, not
+   display-only fields.
+6. **Sibling preservation.** One field update cannot erase sibling fields.
+7. **Device input events.** Physical-device input/composition/blur paths are
+   covered by tests or Founder smoke.
+8. **Typed failures.** Error messages distinguish local validation, transport,
+   domain/TLS/config, timeout, server validation, and server internal errors.
+9. **Accepted-but-lost recovery.** Accepted-but-response-lost recovers via
+   idempotent retry / receipt without creating a duplicate command outcome.
+10. **Downstream verify.** Every real-device submission is verified on the
+    authoritative downstream surface.
+
+Regression origin: Start Claim showed populated fields and an enabled CTA while
+a stale missing-field banner still listed 事故经过/时间/地点, then submit failed
+with a generic “网络不稳定” mapping that hid transport/config detail. This
+sub-gate makes visible↔canonical↔payload drift and opaque network errors
+permanent blockers.
+
 ### J. Founder Entry and Navigation Gate
 
 **SSOT for this gate. All checklists and rules reference this section; do not
