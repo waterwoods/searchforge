@@ -1,14 +1,15 @@
 /**
- * P20 Capability 2 — Missing Information Checklist + Request Draft panel.
- * Broker selects/edits items and saves an explicit request draft command.
- * Does not send Request More or create customer tasks.
+ * P20 Capability 2+3A — Missing Information Checklist + Request Draft + Send Request.
+ * Broker selects/edits items, saves draft, then Send Request creates Slice 1 access + QR/link.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
   Checkbox,
+  Collapse,
   Input,
+  QRCode,
   Space,
   Tag,
   Typography,
@@ -17,11 +18,13 @@ import {
 import type {
   CaseIntakeProjection,
   CaseIntakeRequestDraftItem,
+  CustomerAccessCard,
   SavedCase,
+  Slice1Projection,
 } from '@/api/inboxTriage';
-import { saveCaseRequestDraft, updateCaseFactStatus } from '@/api/inboxTriage';
+import { saveCaseRequestDraft, sendCaseRequest, updateCaseFactStatus } from '@/api/inboxTriage';
 
-const { Text, Paragraph } = Typography;
+const { Text, Paragraph, Title } = Typography;
 const { TextArea } = Input;
 
 function newIds(prefix: string): { command_id: string; idempotency_key: string } {
@@ -56,9 +59,19 @@ export function resolveCaseIntakeProjection(caseRecord: SavedCase | null): CaseI
       admin_lifecycle: caseRecord.admin_lifecycle,
       missing_information_checklist: caseRecord.missing_information_checklist,
       request_draft: caseRecord.request_draft || null,
+      customer_access: caseRecord.customer_access || null,
       customer_next_action: null,
     };
   }
+  return null;
+}
+
+export function resolveCustomerAccessCard(caseRecord: SavedCase | null): CustomerAccessCard | null {
+  if (!caseRecord) return null;
+  const fromCase = caseRecord.customer_access;
+  if (fromCase && typeof fromCase === 'object') return fromCase;
+  const fromProj = resolveCaseIntakeProjection(caseRecord)?.customer_access;
+  if (fromProj && typeof fromProj === 'object') return fromProj;
   return null;
 }
 
@@ -106,6 +119,131 @@ function rowsFromProjection(projection: CaseIntakeProjection): DraftEditRow[] {
   });
 }
 
+function CustomerAccessReadyCard({
+  access,
+  draftItems,
+  slice1Projection,
+  onEdit,
+  showEdit,
+}: {
+  access: CustomerAccessCard;
+  draftItems: CaseIntakeRequestDraftItem[];
+  slice1Projection?: Slice1Projection | null;
+  onEdit?: () => void;
+  showEdit?: boolean;
+}) {
+  const link = access.copy_link || access.launch_url || '';
+  const qrValue = access.qr_payload || link;
+  const openRequest = slice1Projection?.open_request;
+  const total =
+    access.progress?.total_count
+    ?? openRequest?.progress?.total
+    ?? draftItems.length
+    ?? 0;
+  const satisfied =
+    access.progress?.satisfied_count
+    ?? openRequest?.progress?.satisfied
+    ?? 0;
+  const itemSummary =
+    (openRequest?.items || draftItems || []).map((item) => String(item.label || item.item_type || '')).filter(Boolean);
+
+  return (
+    <div
+      style={{
+        border: '1px solid #d9d9d9',
+        padding: 16,
+        background: '#fafafa',
+        marginBottom: 12,
+      }}
+    >
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Title level={5} style={{ margin: 0 }}>
+          Sent to customer
+        </Title>
+        <Tag color="processing">{access.simple_status || 'Waiting for customer'}</Tag>
+        <Text type="secondary">
+          Progress: {satisfied} / {total}
+        </Text>
+        {itemSummary.length > 0 ? (
+          <div>
+            <Text strong style={{ display: 'block', marginBottom: 4 }}>
+              Requested
+            </Text>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {itemSummary.map((label) => (
+                <li key={label}>
+                  <Text>{label}</Text>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <Paragraph style={{ marginBottom: 0 }}>
+          {access.instruction_zh || '让客户用微信扫码并补充资料。'}
+        </Paragraph>
+        {qrValue ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+            <QRCode value={qrValue} size={168} />
+          </div>
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            message={access.message || 'Request sent. Code is still preparing.'}
+          />
+        )}
+        <Space wrap>
+          {link ? (
+            <Button
+              type="primary"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link);
+                  message.success('Link copied');
+                } catch {
+                  message.error('Could not copy link');
+                }
+              }}
+            >
+              Copy Link
+            </Button>
+          ) : (
+            <Button disabled>Copy Link</Button>
+          )}
+          {showEdit && onEdit ? (
+            <Button onClick={onEdit}>Edit</Button>
+          ) : null}
+        </Space>
+        <Collapse
+          ghost
+          size="small"
+          items={[
+            {
+              key: 'advanced',
+              label: 'Advanced / Developer',
+              children: (
+                <Space direction="vertical" size={4}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Channel: {access.channel || 'https_deep_link'}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Expires: {access.expires_at || '—'}
+                  </Text>
+                  {access.production_qr_blocker ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Production QR note: {access.production_qr_blocker}
+                    </Text>
+                  ) : null}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Space>
+    </div>
+  );
+}
+
 export function MissingInformationChecklistPanel({
   caseRecord,
   onCaseChange,
@@ -116,12 +254,20 @@ export function MissingInformationChecklistPanel({
   refreshCase?: () => Promise<SavedCase | null>;
 }) {
   const projection = resolveCaseIntakeProjection(caseRecord);
+  const accessCard = resolveCustomerAccessCard(caseRecord);
   const [rows, setRows] = useState<DraftEditRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [naReason, setNaReason] = useState<Record<string, string>>({});
   const inFlight = useRef(false);
+  const sendCommandRef = useRef<{ command_id: string; idempotency_key: string } | null>(null);
   const expectedVersion = projection?.aggregate_version ?? 0;
+  const requestSent =
+    Boolean(accessCard?.access_ready || accessCard?.request_sent)
+    || projection?.request_draft?.status === 'sent'
+    || Boolean(projection?.open_request_more);
 
   useEffect(() => {
     if (projection) setRows(rowsFromProjection(projection));
@@ -131,24 +277,41 @@ export function MissingInformationChecklistPanel({
 
   if (!projection) return null;
 
-  const mergeProjection = (result: { broker_projection?: CaseIntakeProjection; server_timestamp?: string }) => {
+  const mergeProjection = (result: {
+    broker_projection?: CaseIntakeProjection;
+    customer_access?: CustomerAccessCard | null;
+    slice1_projection?: Slice1Projection | null;
+    server_timestamp?: string;
+  }) => {
     const next = result.broker_projection;
     if (!next) return;
+    const access = result.customer_access || next.customer_access || accessCard;
     const updated: SavedCase = {
       ...caseRecord,
-      p20_case_intake_projection: next,
-      case_intake_projection: next,
+      p20_case_intake_projection: { ...next, customer_access: access || next.customer_access },
+      case_intake_projection: { ...next, customer_access: access || next.customer_access },
       missing_information_checklist: next.missing_information_checklist,
       request_draft: next.request_draft,
       admin_lifecycle: next.admin_lifecycle,
+      customer_access: access || undefined,
       workbench_test: Boolean(next.is_test || caseRecord.workbench_test),
       updated_at: result.server_timestamp || caseRecord.updated_at,
     };
+    if (result.slice1_projection) {
+      updated.slice1_projection = result.slice1_projection;
+      updated.p20_slice1_projection = result.slice1_projection;
+      if (result.slice1_projection.open_request) {
+        updated.slice1_request_summary = result.slice1_projection.open_request;
+        updated.p20_slice1_request_summary = result.slice1_projection.open_request;
+      }
+      updated.slice1_capability_version = 1;
+      updated.p20_slice1_capability_version = 1;
+    }
     onCaseChange?.(updated);
   };
 
   const handleSaveDraft = async () => {
-    if (inFlight.current || saving) return;
+    if (inFlight.current || saving || requestSent) return;
     inFlight.current = true;
     setSaving(true);
     setError(null);
@@ -183,10 +346,11 @@ export function MissingInformationChecklistPanel({
         return;
       }
       mergeProjection(result);
+      setEditing(false);
       message.success(
         result.outcome === 'replayed'
           ? 'Request draft already saved; refreshed.'
-          : 'Request draft saved. Request More is not sent yet.',
+          : 'Request draft saved.',
       );
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -204,8 +368,60 @@ export function MissingInformationChecklistPanel({
     }
   };
 
+  const handleSendRequest = async () => {
+    if (inFlight.current || sending || !projection.request_draft?.draft_id) return;
+    inFlight.current = true;
+    setSending(true);
+    setError(null);
+    if (!sendCommandRef.current) {
+      sendCommandRef.current = newIds('send_request');
+    }
+    const ids = sendCommandRef.current;
+    try {
+      const result = await sendCaseRequest(caseRecord.case_id, {
+        ...ids,
+        expected_case_version: expectedVersion,
+        request_draft_id: projection.request_draft.draft_id,
+      });
+      if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
+        setError('Case was updated elsewhere. Refreshing…');
+        sendCommandRef.current = null;
+        await refreshCase?.();
+        message.warning('Version conflict — case refreshed. Review and send again.');
+        return;
+      }
+      if (result.outcome === 'rejected') {
+        setError(result.error_code || 'Send Request rejected');
+        sendCommandRef.current = null;
+        return;
+      }
+      mergeProjection(result);
+      setEditing(false);
+      message.success(
+        result.outcome === 'replayed'
+          ? 'Request already sent; showing customer access.'
+          : 'Request sent to customer.',
+      );
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        sendCommandRef.current = null;
+        setError('Version conflict. Refreshing case…');
+        await refreshCase?.();
+        message.warning('Stale version — refreshed.');
+      } else {
+        // Keep same command identity for retry after transport loss.
+        setError('Could not send request. Retry uses the same command.');
+        message.error('Send Request failed — tap again to retry safely');
+      }
+    } finally {
+      setSending(false);
+      inFlight.current = false;
+    }
+  };
+
   const handleMarkNotApplicable = async (fieldKey: string) => {
-    if (inFlight.current) return;
+    if (inFlight.current || requestSent) return;
     const reason = (naReason[fieldKey] || '').trim();
     if (!reason) {
       message.warning('Enter a reason before marking not applicable.');
@@ -240,7 +456,7 @@ export function MissingInformationChecklistPanel({
   };
 
   const handleNeedsCorrection = async (fieldKey: string) => {
-    if (inFlight.current) return;
+    if (inFlight.current || requestSent) return;
     inFlight.current = true;
     setSaving(true);
     setError(null);
@@ -268,123 +484,135 @@ export function MissingInformationChecklistPanel({
     }
   };
 
+  const showAccessCard = requestSent && accessCard && !editing;
+  const showDraftEditor = !showAccessCard;
+
   return (
     <div style={{ marginBottom: 16 }}>
       <Space style={{ marginBottom: 8 }} wrap>
-        <Text strong>Missing Information Checklist</Text>
+        <Text strong>Request draft</Text>
         {projection.is_test || caseRecord.workbench_test ? <Tag color="orange">TEST / QA</Tag> : null}
-        <Tag>{projection.admin_lifecycle || 'draft'}</Tag>
-        <Text type="secondary">v{projection.aggregate_version}</Text>
+        {requestSent ? <Tag color="blue">Sent</Tag> : <Tag>{projection.admin_lifecycle || 'draft'}</Tag>}
       </Space>
-      <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
-        Authoritative facts and detected gaps are shown below. Your selection becomes a request draft only —
-        it does not send Request More or create a customer task.
-      </Paragraph>
+
+      {showAccessCard && accessCard ? (
+        <CustomerAccessReadyCard
+          access={accessCard}
+          draftItems={projection.request_draft?.items || []}
+          slice1Projection={caseRecord.slice1_projection || caseRecord.p20_slice1_projection}
+        />
+      ) : null}
+
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 8 }} /> : null}
-      <Space direction="vertical" style={{ width: '100%' }} size={10}>
-        {rows.map((row) => (
-          <div
-            key={row.field_key}
-            style={{
-              border: '1px solid #f0f0f0',
-              padding: 10,
-              background: row.selected ? '#fafafa' : '#fff',
-            }}
-          >
-            <Space wrap style={{ marginBottom: 6 }}>
-              <Checkbox
-                checked={row.selected}
-                disabled={row.status === 'confirmed' && row.request_mode === 'none'}
-                onChange={(e) =>
-                  setRows((prev) =>
-                    prev.map((r) =>
-                      r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
-                    ),
-                  )
-                }
+
+      {showDraftEditor ? (
+        <>
+          <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
+            Select what the customer should provide. Save the draft, then send the request.
+          </Paragraph>
+          <Space direction="vertical" style={{ width: '100%' }} size={10}>
+            {rows.map((row) => (
+              <div
+                key={row.field_key}
+                style={{
+                  border: '1px solid #f0f0f0',
+                  padding: 10,
+                  background: row.selected ? '#fafafa' : '#fff',
+                }}
               >
-                {row.label}
-              </Checkbox>
-              <Tag color={statusColorFixed(row.status)}>{row.status}</Tag>
-              {row.is_authoritative_fact ? <Tag>authoritative fact</Tag> : <Tag>detected gap</Tag>}
-            </Space>
-            {row.value ? (
-              <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-                Current value: {String(row.value)}
-              </Text>
-            ) : null}
-            {row.previous_value ? (
-              <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-                Previous value preserved: {String(row.previous_value)}
-              </Text>
-            ) : null}
-            <Input
-              size="small"
-              placeholder="Customer-facing label"
-              value={row.label}
-              onChange={(e) =>
-                setRows((prev) =>
-                  prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
-                )
-              }
-              style={{ marginBottom: 6 }}
-            />
-            <TextArea
-              rows={2}
-              placeholder="Customer-facing instructions (optional)"
-              value={row.instructions}
-              onChange={(e) =>
-                setRows((prev) =>
-                  prev.map((r) =>
-                    r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
-                  ),
-                )
-              }
-            />
-            <Space wrap style={{ marginTop: 8 }}>
-              {row.status !== 'not_applicable' && row.status !== 'confirmed' ? (
-                <>
-                  <Input
-                    size="small"
-                    placeholder="N/A reason"
-                    value={naReason[row.field_key] || ''}
+                <Space wrap style={{ marginBottom: 6 }}>
+                  <Checkbox
+                    checked={row.selected}
+                    disabled={row.status === 'confirmed' && row.request_mode === 'none'}
                     onChange={(e) =>
-                      setNaReason((prev) => ({ ...prev, [row.field_key]: e.target.value }))
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
+                        ),
+                      )
                     }
-                    style={{ width: 180 }}
-                  />
-                  <Button size="small" onClick={() => void handleMarkNotApplicable(row.field_key)} disabled={saving}>
-                    Mark N/A
-                  </Button>
-                </>
-              ) : null}
-              {row.value && row.status !== 'needs_correction' ? (
-                <Button size="small" onClick={() => void handleNeedsCorrection(row.field_key)} disabled={saving}>
-                  Request correction
+                  >
+                    {row.label}
+                  </Checkbox>
+                  <Tag color={statusColorFixed(row.status)}>{row.status}</Tag>
+                </Space>
+                {row.value ? (
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+                    Current value: {String(row.value)}
+                  </Text>
+                ) : null}
+                <Input
+                  size="small"
+                  placeholder="Customer-facing label"
+                  value={row.label}
+                  onChange={(e) =>
+                    setRows((prev) =>
+                      prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
+                    )
+                  }
+                  style={{ marginBottom: 6 }}
+                />
+                <TextArea
+                  rows={2}
+                  placeholder="Customer instruction (optional)"
+                  value={row.instructions}
+                  onChange={(e) =>
+                    setRows((prev) =>
+                      prev.map((r) =>
+                        r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
+                      ),
+                    )
+                  }
+                />
+                <Space wrap style={{ marginTop: 8 }}>
+                  {row.status !== 'not_applicable' && row.status !== 'confirmed' ? (
+                    <>
+                      <Input
+                        size="small"
+                        placeholder="N/A reason"
+                        value={naReason[row.field_key] || ''}
+                        onChange={(e) =>
+                          setNaReason((prev) => ({ ...prev, [row.field_key]: e.target.value }))
+                        }
+                        style={{ width: 180 }}
+                      />
+                      <Button size="small" onClick={() => void handleMarkNotApplicable(row.field_key)} disabled={saving}>
+                        Mark N/A
+                      </Button>
+                    </>
+                  ) : null}
+                  {row.value && row.status !== 'needs_correction' ? (
+                    <Button size="small" onClick={() => void handleNeedsCorrection(row.field_key)} disabled={saving}>
+                      Needs correction
+                    </Button>
+                  ) : null}
+                </Space>
+              </div>
+            ))}
+          </Space>
+          <Space style={{ marginTop: 12 }} wrap>
+            {projection.request_draft && !editing ? (
+              <>
+                <Button
+                  type="primary"
+                  onClick={() => void handleSendRequest()}
+                  loading={sending}
+                  disabled={sending || !projection.request_draft.items?.length}
+                >
+                  Send Request
                 </Button>
-              ) : null}
-            </Space>
-          </div>
-        ))}
-      </Space>
-      <Space style={{ marginTop: 12 }} wrap>
-        <Button type="primary" onClick={() => void handleSaveDraft()} loading={saving} disabled={saving}>
-          Save request draft ({selectedCount})
-        </Button>
-        {projection.request_draft ? (
-          <Text type="secondary">
-            Saved draft {projection.request_draft.draft_id} · v{projection.request_draft.draft_version}
-          </Text>
-        ) : (
-          <Text type="secondary">No draft saved yet</Text>
-        )}
-      </Space>
-      <Alert
-        style={{ marginTop: 10 }}
-        type="info"
-        showIcon
-        message="Customer next action: none. Send Request More is the next capability."
-      />
+                <Button onClick={() => setEditing(true)} disabled={sending}>
+                  Edit
+                </Button>
+              </>
+            ) : (
+              <Button type="primary" onClick={() => void handleSaveDraft()} loading={saving} disabled={saving}>
+                Save request draft ({selectedCount})
+              </Button>
+            )}
+          </Space>
+        </>
+      ) : null}
     </div>
   );
 }

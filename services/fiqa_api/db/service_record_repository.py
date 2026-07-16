@@ -2572,6 +2572,300 @@ def make_case_intake_postgres_store() -> _PostgresCaseIntakeStore:
     return _PostgresCaseIntakeStore()
 
 
+# ---------------------------------------------------------------------------
+# P20 Capability 3A — SendRequest + customer access
+# ---------------------------------------------------------------------------
+
+_CUSTOMER_ACCESS_SCHEMA_READY = False
+
+
+def _ensure_customer_access_schema(cur: Any) -> None:
+    global _CUSTOMER_ACCESS_SCHEMA_READY
+    if _CUSTOMER_ACCESS_SCHEMA_READY:
+        return
+    _ensure_slice1_schema(cur)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS claim_customer_access (
+            access_id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL REFERENCES service_records (record_id) ON DELETE CASCADE,
+            request_group_id TEXT NOT NULL REFERENCES claim_request_groups (request_id) ON DELETE CASCADE,
+            tenant_id TEXT,
+            office_id TEXT,
+            token_hash TEXT NOT NULL,
+            token_nonce TEXT NOT NULL,
+            token_iat INTEGER NOT NULL,
+            token_exp INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ready',
+            access_version INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT NOT NULL,
+            issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            expires_at TIMESTAMPTZ NOT NULL,
+            completed_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_customer_access_ready_group
+        ON claim_customer_access (request_group_id)
+        WHERE status = 'ready'
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_customer_access_ready_case
+        ON claim_customer_access (case_id)
+        WHERE status = 'ready'
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_claim_customer_access_case
+        ON claim_customer_access (case_id, updated_at DESC)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_claim_customer_access_token_hash
+        ON claim_customer_access (token_hash)
+        """
+    )
+    _CUSTOMER_ACCESS_SCHEMA_READY = True
+
+
+class _PostgresSendRequestStore:
+    """Postgres store for atomic SendRequest (intake + Slice 1 + customer access)."""
+
+    def __init__(self) -> None:
+        self._cur: Any = None
+        self._slice1 = _PostgresSlice1Store()
+        self._intake = _PostgresCaseIntakeStore()
+
+    def _load_ready_access(self, cur: Any, case_id: str) -> Any:
+        from services.fiqa_api.inbox_triage.p20_send_request_command_service import CustomerAccessRecord
+
+        cur.execute(
+            """
+            SELECT access_id, case_id, request_group_id, tenant_id, office_id,
+                   token_hash, token_nonce, token_iat, token_exp, status, access_version,
+                   created_by, issued_at, expires_at, completed_at
+            FROM claim_customer_access
+            WHERE case_id = %s AND status = 'ready'
+            ORDER BY issued_at DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        a = dict(row)
+        return CustomerAccessRecord(
+            access_id=str(a["access_id"]),
+            case_id=str(a["case_id"]),
+            request_group_id=str(a["request_group_id"]),
+            tenant_id=_str(a.get("tenant_id")) or None,
+            office_id=_str(a.get("office_id")) or None,
+            token_hash=str(a.get("token_hash") or ""),
+            token_nonce=str(a.get("token_nonce") or ""),
+            token_iat=int(a["token_iat"]),
+            token_exp=int(a["token_exp"]),
+            status=str(a.get("status") or "ready"),
+            access_version=int(a.get("access_version") or 1),
+            created_by=str(a.get("created_by") or ""),
+            issued_at=_slice1_iso(a.get("issued_at")),
+            expires_at=_slice1_iso(a.get("expires_at")),
+            completed_at=_slice1_iso(a.get("completed_at")) or None,
+        )
+
+    def read_snapshot(self, case_id: str) -> Any:
+        from psycopg.rows import dict_row
+        from services.fiqa_api.inbox_triage.p20_send_request_command_service import SendRequestSnapshot
+
+        cid = _str(case_id)
+        if not cid:
+            return None
+        with service_record_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                _ensure_office_owner_org_schema(cur)
+                _ensure_case_intake_schema(cur)
+                _ensure_slice1_schema(cur)
+                _ensure_customer_access_schema(cur)
+                intake_snap = self._intake._snapshot(cur, cid, lock_case=False)
+                if intake_snap is None:
+                    return None
+                slice1_snap = self._slice1._snapshot(cur, cid, lock_case=False)
+                ready_access = None
+                try:
+                    ready_access = self._load_ready_access(cur, cid)
+                except Exception:
+                    ready_access = None
+                return SendRequestSnapshot(
+                    case=intake_snap.case,
+                    intake_aggregate=intake_snap.aggregate,
+                    draft=intake_snap.draft,
+                    slice1_aggregate=slice1_snap.aggregate if slice1_snap else None,
+                    open_group=slice1_snap.group if slice1_snap else None,
+                    open_items=list(slice1_snap.items) if slice1_snap else [],
+                    ready_access=ready_access,
+                    latest_intake_events=list(intake_snap.latest_events),
+                    latest_slice1_events=list(slice1_snap.latest_events) if slice1_snap else [],
+                )
+
+    def insert_group(self, group: Any) -> None:
+        self._slice1._cur = self._cur
+        self._slice1.insert_group(group)
+
+    def insert_items(self, items: list[Any]) -> None:
+        self._slice1._cur = self._cur
+        self._slice1.insert_items(items)
+
+    def insert_slice1_events(self, events: list[dict[str, Any]]) -> None:
+        self._slice1._cur = self._cur
+        self._slice1.insert_events(events)
+
+    def upsert_slice1_aggregate(self, aggregate: Any) -> None:
+        self._slice1._cur = self._cur
+        self._slice1.upsert_aggregate(aggregate)
+
+    def update_legacy_projection(self, case_id: str, patch: dict[str, Any]) -> None:
+        self._slice1._cur = self._cur
+        self._slice1.update_legacy_projection(case_id, patch)
+
+    def upsert_intake_aggregate(self, aggregate: Any) -> None:
+        self._intake._cur = self._cur
+        self._intake.upsert_aggregate(aggregate)
+
+    def upsert_draft(self, draft: Any) -> None:
+        self._intake._cur = self._cur
+        self._intake.upsert_draft(draft)
+
+    def insert_intake_events(self, events: list[dict[str, Any]]) -> None:
+        self._intake._cur = self._cur
+        self._intake.insert_events(events)
+
+    def update_case_extra(self, case_id: str, patch: dict[str, Any]) -> None:
+        self._intake._cur = self._cur
+        self._intake.update_case_extra(case_id, patch)
+
+    def insert_customer_access(self, access: Any) -> None:
+        self._cur.execute(
+            """
+            INSERT INTO claim_customer_access (
+                access_id, case_id, request_group_id, tenant_id, office_id,
+                token_hash, token_nonce, token_iat, token_exp, status, access_version,
+                created_by, issued_at, expires_at, completed_at
+            ) VALUES (
+                %(access_id)s, %(case_id)s, %(request_group_id)s, %(tenant_id)s, %(office_id)s,
+                %(token_hash)s, %(token_nonce)s, %(token_iat)s, %(token_exp)s, %(status)s,
+                %(access_version)s, %(created_by)s,
+                COALESCE(%(issued_at)s::timestamptz, now()),
+                COALESCE(%(expires_at)s::timestamptz, now()),
+                %(completed_at)s
+            )
+            """,
+            {
+                "access_id": access.access_id,
+                "case_id": access.case_id,
+                "request_group_id": access.request_group_id,
+                "tenant_id": access.tenant_id,
+                "office_id": access.office_id,
+                "token_hash": access.token_hash,
+                "token_nonce": access.token_nonce,
+                "token_iat": int(access.token_iat),
+                "token_exp": int(access.token_exp),
+                "status": access.status,
+                "access_version": int(access.access_version),
+                "created_by": access.created_by,
+                "issued_at": access.issued_at or None,
+                "expires_at": access.expires_at or None,
+                "completed_at": access.completed_at,
+            },
+        )
+
+    def accept(
+        self,
+        *,
+        case_id: str,
+        actor_identity: str,
+        command_id: str,
+        idempotency_key: str,
+        command_type: str,
+        handler: Any,
+    ) -> dict[str, Any]:
+        from psycopg.rows import dict_row
+        from services.fiqa_api.inbox_triage.p20_send_request_command_service import SendRequestSnapshot
+
+        cid = _str(case_id)
+        if not cid:
+            raise ValueError("case_id_required")
+        with service_record_connection() as conn:
+            with conn.transaction():
+                with conn.cursor(row_factory=dict_row) as cur:
+                    _ensure_office_owner_org_schema(cur)
+                    _ensure_case_intake_schema(cur)
+                    _ensure_slice1_schema(cur)
+                    _ensure_customer_access_schema(cur)
+                    intake_snap = self._intake._snapshot(cur, cid, lock_case=True)
+                    if intake_snap is None:
+                        raise ValueError("case_not_found")
+                    slice1_snap = self._slice1._snapshot(cur, cid, lock_case=False)
+                    ready_access = self._load_ready_access(cur, cid)
+                    snapshot = SendRequestSnapshot(
+                        case=intake_snap.case,
+                        intake_aggregate=intake_snap.aggregate,
+                        draft=intake_snap.draft,
+                        slice1_aggregate=slice1_snap.aggregate if slice1_snap else None,
+                        open_group=slice1_snap.group if slice1_snap else None,
+                        open_items=list(slice1_snap.items) if slice1_snap else [],
+                        ready_access=ready_access,
+                        latest_intake_events=list(intake_snap.latest_events),
+                        latest_slice1_events=list(slice1_snap.latest_events) if slice1_snap else [],
+                    )
+                    cur.execute(
+                        """
+                        SELECT response
+                        FROM claim_intake_command_outcomes
+                        WHERE case_id = %s
+                          AND (
+                            (actor_identity = %s AND idempotency_key = %s)
+                            OR command_id = %s
+                          )
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                        """,
+                        (cid, actor_identity, idempotency_key, command_id),
+                    )
+                    prior = cur.fetchone()
+                    if prior and isinstance(prior.get("response"), dict):
+                        setattr(snapshot, "stored_outcome", prior["response"])
+                        return handler(self, snapshot)
+                    self._cur = cur
+                    self._slice1._cur = cur
+                    self._intake._cur = cur
+                    response = handler(self, snapshot)
+                    self._intake._persist_outcome(
+                        cur,
+                        case_id=cid,
+                        actor_identity=actor_identity,
+                        command_id=command_id,
+                        idempotency_key=idempotency_key,
+                        command_type=command_type,
+                        response=response,
+                    )
+                    return response
+
+
+def make_send_request_postgres_store() -> _PostgresSendRequestStore:
+    if not service_record_database_url():
+        raise RuntimeError("p20_send_request_requires_service_record_database_url")
+    return _PostgresSendRequestStore()
+
+
 _PG_CLIENT_LIST_FILTER = """
 (
   (

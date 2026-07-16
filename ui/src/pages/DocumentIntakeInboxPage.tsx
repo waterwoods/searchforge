@@ -493,14 +493,16 @@ function BrokerCaseDetail({
           onCaseChange={(updated) => onCaseChange?.(updated)}
           refreshCase={onRefreshCase}
         />
-        <StructuredRequestMorePanel
-          key={caseItem.case_id}
-          caseRecord={caseItem}
-          projectionLoading={projectionLoading}
-          projectionLoadError={projectionLoadError}
-          onCaseChange={(updated) => onCaseChange?.(updated)}
-          refreshCase={onRefreshCase}
-        />
+        {!(caseItem.customer_access?.access_ready || caseItem.p20_case_intake_projection?.customer_access?.access_ready) ? (
+          <StructuredRequestMorePanel
+            key={caseItem.case_id}
+            caseRecord={caseItem}
+            projectionLoading={projectionLoading}
+            projectionLoadError={projectionLoadError}
+            onCaseChange={(updated) => onCaseChange?.(updated)}
+            refreshCase={onRefreshCase}
+          />
+        ) : null}
         {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
@@ -613,14 +615,16 @@ function BrokerCaseDetail({
         onCaseChange={(updated) => onCaseChange?.(updated)}
         refreshCase={onRefreshCase}
       />
-      <StructuredRequestMorePanel
-        key={caseItem.case_id}
-        caseRecord={caseItem}
-        projectionLoading={projectionLoading}
-        projectionLoadError={projectionLoadError}
-        onCaseChange={(updated) => onCaseChange?.(updated)}
-        refreshCase={onRefreshCase}
-      />
+      {!(caseItem.customer_access?.access_ready || caseItem.p20_case_intake_projection?.customer_access?.access_ready) ? (
+        <StructuredRequestMorePanel
+          key={caseItem.case_id}
+          caseRecord={caseItem}
+          projectionLoading={projectionLoading}
+          projectionLoadError={projectionLoadError}
+          onCaseChange={(updated) => onCaseChange?.(updated)}
+          refreshCase={onRefreshCase}
+        />
+      ) : null}
       {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
         <MissingItemsCard fields={missingFields} />
       ) : null}

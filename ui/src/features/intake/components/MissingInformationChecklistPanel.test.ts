@@ -1,10 +1,13 @@
 /**
- * P20 Capability 2 — Missing Information Checklist / draft helpers.
+ * P20 Capability 2+3A — Missing Information / Send Request helpers.
  * Run: npx tsx ui/src/features/intake/components/MissingInformationChecklistPanel.test.ts
  */
 import assert from 'node:assert/strict';
-import { resolveCaseIntakeProjection } from './MissingInformationChecklistPanel';
-import type { SavedCase } from '@/api/inboxTriage';
+import {
+  resolveCaseIntakeProjection,
+  resolveCustomerAccessCard,
+} from './MissingInformationChecklistPanel';
+import type { CustomerAccessCard, SavedCase } from '@/api/inboxTriage';
 
 function baseCase(overrides: Partial<SavedCase> = {}): SavedCase {
   return {
@@ -23,6 +26,17 @@ function baseCase(overrides: Partial<SavedCase> = {}): SavedCase {
     ...overrides,
   } as SavedCase;
 }
+
+const accessCard: CustomerAccessCard = {
+  access_ready: true,
+  request_sent: true,
+  simple_status: 'Waiting for customer',
+  launch_url: 'https://ui-smoky-beta.vercel.app/task/claim/h5t1.example',
+  copy_link: 'https://ui-smoky-beta.vercel.app/task/claim/h5t1.example',
+  qr_payload: 'https://ui-smoky-beta.vercel.app/task/claim/h5t1.example',
+  instruction_zh: '让客户用微信扫码并补充资料。',
+  progress: { satisfied_count: 0, total_count: 1 },
+};
 
 {
   const projection = {
@@ -74,6 +88,72 @@ function baseCase(overrides: Partial<SavedCase> = {}): SavedCase {
 
 {
   assert.equal(resolveCaseIntakeProjection(baseCase({ workbench_test: false })), null);
+}
+
+{
+  const fromCase = resolveCustomerAccessCard(baseCase({ customer_access: accessCard }));
+  assert.equal(fromCase?.access_ready, true);
+  assert.equal(fromCase?.copy_link, fromCase?.qr_payload);
+  assert.equal(fromCase?.simple_status, 'Waiting for customer');
+  assert.equal(fromCase?.progress?.total_count, 1);
+}
+
+{
+  const fromProj = resolveCustomerAccessCard(
+    baseCase({
+      p20_case_intake_projection: {
+        case_id: 'case_test_intake',
+        aggregate_version: 3,
+        admin_lifecycle: 'active',
+        request_draft: {
+          draft_id: 'draft_1',
+          draft_version: 1,
+          status: 'sent',
+          items: [
+            {
+              field_key: 'vin',
+              item_type: 'vin',
+              label: 'VIN',
+              instructions: '',
+              required: true,
+              position: 1,
+            },
+          ],
+        },
+        customer_access: accessCard,
+      },
+    }),
+  );
+  assert.equal(fromProj?.launch_url, accessCard.launch_url);
+}
+
+{
+  // QR/link must share the same access representation.
+  assert.equal(accessCard.qr_payload, accessCard.copy_link);
+  assert.equal(accessCard.qr_payload, accessCard.launch_url);
+}
+
+{
+  // Preparing fallback keeps Copy Link usable when QR payload missing.
+  const preparing: CustomerAccessCard = {
+    access_ready: true,
+    request_sent: true,
+    message: 'Request sent. Code is still preparing.',
+    copy_link: 'https://ui-smoky-beta.vercel.app/task/claim/h5t1.example',
+    launch_url: 'https://ui-smoky-beta.vercel.app/task/claim/h5t1.example',
+    qr_payload: null,
+  };
+  assert.ok(preparing.copy_link);
+  assert.equal(preparing.qr_payload, null);
+}
+
+{
+  // Default UI helpers must not require technical IDs.
+  const keys = Object.keys(accessCard);
+  assert.ok(!keys.includes('access_id'));
+  assert.ok(!keys.includes('request_group_id'));
+  assert.ok(!keys.includes('token'));
+  assert.ok(!keys.includes('aggregate_version'));
 }
 
 console.log('MissingInformationChecklistPanel.test: PASS');

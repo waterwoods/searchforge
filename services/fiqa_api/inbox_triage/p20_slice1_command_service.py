@@ -337,6 +337,28 @@ def redact_case_slice1_responses_for_list(case: dict[str, Any]) -> dict[str, Any
                 next_items.append(item)
             summary_out[list_key] = next_items
         row[key] = summary_out
+    # Capability 3A: list lane keeps Waiting label; strip launch/token material.
+    access = row.get("customer_access")
+    if isinstance(access, dict) and (access.get("access_ready") or access.get("request_sent")):
+        row["customer_access"] = {
+            "access_ready": True,
+            "request_sent": True,
+            "simple_status": "Waiting for customer",
+            "progress": access.get("progress"),
+        }
+        row["workbench_queue_label"] = "Waiting for customer"
+    for proj_key in ("p20_case_intake_projection", "case_intake_projection"):
+        proj = row.get(proj_key)
+        if isinstance(proj, dict) and isinstance(proj.get("customer_access"), dict):
+            proj_out = dict(proj)
+            ca = proj_out["customer_access"]
+            proj_out["customer_access"] = {
+                "access_ready": True,
+                "request_sent": True,
+                "simple_status": "Waiting for customer",
+                "progress": ca.get("progress") if isinstance(ca, dict) else None,
+            }
+            row[proj_key] = proj_out
     return row
 
 

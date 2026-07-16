@@ -1,7 +1,8 @@
 """P20 Capability 2 — Broker New Case + Missing Information + Request Draft.
 
-Administrative/pre-task capability. Does not create Slice 1 Request More groups,
-customer next actions, invites, or QR/token access.
+Administrative/pre-task capability. Does not create Slice 1 Request More groups
+by itself. Capability 3A SendRequest promotes a saved draft into Request More
++ customer access.
 """
 
 from __future__ import annotations
@@ -199,11 +200,12 @@ def _allowed_next_commands(
     open_request: bool,
 ) -> list[str]:
     commands = ["SaveRequestDraft", "UpdateFactStatus"]
-    if admin_lifecycle == ADMIN_LIFECYCLE_DRAFT and not open_request:
-        # Send Request is next capability; surface as blocked intent only.
-        commands.append("PrepareSendRequestMore")  # not executable in this capability
-    if has_draft:
+    if admin_lifecycle == ADMIN_LIFECYCLE_DRAFT and not open_request and has_draft:
+        commands.append("SendRequest")
+    if has_draft and not open_request:
         commands.append("EditRequestDraft")
+    if open_request:
+        commands.append("WaitForCustomer")
     return commands
 
 

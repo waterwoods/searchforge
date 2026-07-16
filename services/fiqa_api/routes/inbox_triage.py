@@ -116,6 +116,7 @@ from services.fiqa_api.inbox_triage.entity_repository import (
 from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import default_case_intake_service
+from services.fiqa_api.inbox_triage.p20_send_request_command_service import default_send_request_service
 from services.fiqa_api.analytics.minimal_events import track_event
 from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
 from services.fiqa_api.analytics.triage_funnel import (
@@ -805,6 +806,14 @@ class SaveRequestDraftBody(BaseModel):
     expected_case_version: int = Field(..., ge=0)
     items: list[RequestDraftItemBody] = Field(default_factory=list)
     draft_id: str | None = Field(default=None, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
+class SendRequestBody(BaseModel):
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    expected_case_version: int = Field(..., ge=0)
+    request_draft_id: str = Field(..., min_length=4, max_length=128)
     correlation_id: str | None = Field(default=None, max_length=128)
 
 
@@ -1941,6 +1950,18 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
                 case["workbench_test"] = True
     except Exception as exc:
         logger.warning("Case intake projection refresh failed for case %s: %s", cid, exc)
+    try:
+        access_card = default_send_request_service().fetch_customer_access_card(cid)
+        if isinstance(access_card, dict):
+            case["customer_access"] = access_card
+            intake = case.get("p20_case_intake_projection")
+            if isinstance(intake, dict):
+                intake = dict(intake)
+                intake["customer_access"] = access_card
+                case["p20_case_intake_projection"] = intake
+                case["case_intake_projection"] = intake
+    except Exception as exc:
+        logger.warning("Customer access card refresh failed for case %s: %s", cid, exc)
     return sanitize_case_for_workbench_api(case)
 
 
@@ -2073,6 +2094,51 @@ async def post_case_request_draft(
     outcome = str(result.get("outcome") or "")
     if outcome in {"accepted", "replayed"}:
         http_response.status_code = 200 if outcome == "replayed" else 201
+        return result
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail=result)
+    raise HTTPException(status_code=422, detail=result)
+
+
+@router.post("/cases/{case_id}/send-request")
+async def post_case_send_request(
+    case_id: str,
+    body: SendRequestBody,
+    http_request: Request,
+    http_response: Response,
+) -> dict[str, Any]:
+    """Capability 3A: promote saved draft → Slice 1 Request More + customer QR/link."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    assert_case_client_access_allowed(http_request, row)
+    broker_identity = _broker_actor_identity(http_request)
+    office_id = client_asserted_office_id(http_request)
+    tenant_id = resolve_server_client_id() or None
+    try:
+        result = default_send_request_service().send_request(
+            case_id=case_id,
+            broker_id=broker_identity,
+            request_draft_id=body.request_draft_id,
+            expected_case_version=body.expected_case_version,
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            correlation_id=body.correlation_id,
+            office_id=office_id,
+            tenant_id=tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "accepted":
+        http_response.status_code = 201
+        return result
+    if outcome == "replayed":
+        http_response.status_code = 200
         return result
     if outcome == "conflict":
         raise HTTPException(status_code=409, detail=result)

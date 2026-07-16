@@ -307,6 +307,25 @@ export type CaseIntakeRequestDraft = {
     content_hash?: string;
 };
 
+export type CustomerAccessCard = {
+    access_ready?: boolean;
+    access_status?: string;
+    status?: string;
+    launch_url?: string | null;
+    qr_payload?: string | null;
+    copy_link?: string | null;
+    mini_program_path?: string;
+    expires_at?: string;
+    channel?: string;
+    instruction_zh?: string;
+    simple_status?: string;
+    request_sent?: boolean;
+    qr_preparing?: boolean;
+    message?: string;
+    progress?: { satisfied_count?: number; total_count?: number } | null;
+    production_qr_blocker?: string;
+};
+
 export type CaseIntakeProjection = {
     case_id: string;
     capability?: string;
@@ -321,10 +340,25 @@ export type CaseIntakeProjection = {
     missing_information_checklist?: MissingInformationChecklistItem[];
     request_draft?: CaseIntakeRequestDraft | null;
     open_request_more?: { request_id?: string; status?: string } | null;
+    customer_access?: CustomerAccessCard | null;
     customer_next_action?: null;
     allowed_next_commands?: string[];
+    simple_status?: string;
     server_timestamp?: string;
     auth_posture?: string;
+};
+
+export type SendRequestCommand = {
+    command_id: string;
+    idempotency_key: string;
+    expected_case_version: number;
+    request_draft_id: string;
+    correlation_id?: string;
+};
+
+export type SendRequestCommandResult = CaseIntakeCommandResult & {
+    customer_access?: CustomerAccessCard | null;
+    slice1_projection?: Slice1Projection | null;
 };
 
 export type CaseIntakeCommandResult = {
@@ -691,6 +725,8 @@ export interface SavedCase extends TriageResult {
     /** Capability 2 projection blob */
     p20_case_intake_projection?: CaseIntakeProjection;
     case_intake_projection?: CaseIntakeProjection;
+    /** Capability 3A: customer QR/link access card after Send Request */
+    customer_access?: CustomerAccessCard | null;
     /** Workbench: soft-archive (hidden in default “正式” views) */
     workbench_archived?: boolean;
     /** explicit add_car lane vs heuristic legacy vs other */
@@ -983,6 +1019,27 @@ export async function saveCaseRequestDraft(
         },
     );
     return response.data;
+}
+
+export async function sendCaseRequest(
+    caseId: string,
+    command: SendRequestCommand,
+): Promise<SendRequestCommandResult> {
+    try {
+        const response = await request.post<SendRequestCommandResult>(
+            `/api/inbox/cases/${encodeURIComponent(caseId)}/send-request`,
+            {
+                command_id: command.command_id,
+                idempotency_key: command.idempotency_key,
+                expected_case_version: command.expected_case_version,
+                request_draft_id: command.request_draft_id,
+                correlation_id: command.correlation_id,
+            },
+        );
+        return response.data;
+    } catch (error) {
+        throw normalizeSlice1RequestMoreError(error);
+    }
 }
 
 export async function updateCaseFactStatus(
