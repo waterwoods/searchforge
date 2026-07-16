@@ -4,5 +4,6 @@
     "task-shell": "/components/task-shell/index",
     "task-cta": "/components/task-cta/index",
     "task-error": "/components/task-error/index"
-  }
+  },
+  "enablePullDownRefresh": true
 }

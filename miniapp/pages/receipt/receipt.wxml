@@ -34,6 +34,8 @@
       <view class="section-label section-gap">可能还需补充</view>
       <view class="list-item {{showSupplement ? 'missing' : ''}}">{{materialsNote}}</view>
 
+      <view wx:if="{{slice1Enabled && slice1ProgressText}}" class="list-item">{{slice1ProgressText}}</view>
+
       <view class="disclaimer">{{disclaimer}}</view>
     </view>
   </task-shell>
@@ -41,10 +43,10 @@
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
       wx:if="{{submitted}}"
-      label="补充或修改资料"
-      disabled="{{busy.navigating}}"
-      loading="{{busy.navigating}}"
-      disabledReason="{{ctaDisabledReason}}"
+      label="{{slice1Enabled ? slice1PrimaryLabel : '补充或修改资料'}}"
+      disabled="{{slice1Enabled ? (slice1WaitingForBroker || busy.navigating || busy.retrying || slice1LoadFailed) : (busy.navigating || busy.retrying)}}"
+      loading="{{busy.navigating || busy.retrying}}"
+      disabledReason="{{slice1LoadFailed ? (errorState.message || '加载失败，请重试') : (slice1Enabled && slice1WaitingForBroker ? '资料已提交，等待经纪人审核' : ctaDisabledReason)}}"
       bindtap="onEditSupplementInfo"
     />
     <task-cta
