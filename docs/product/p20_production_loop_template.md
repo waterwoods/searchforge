@@ -68,6 +68,7 @@ metrics.
 - [ ] Idempotency: no duplicate command, event, or timeline entry
 - [ ] Visible recovery; no silent fallback, no-op, or infinite loading
 - [ ] Founder Form Gate (if any form changed) — see North Star §I
+- [ ] Founder Entry and Navigation Gate — see North Star §J
 - [ ] Founder/manual QA evidence recorded before Capability Done
 
 Use the exact gate definitions in the governing SSOT; do not reinterpret them
@@ -89,6 +90,18 @@ If a customer/broker form changed, confirm before Release:
 - [ ] Accepted submit visible downstream
 - [ ] DevTools full-compile + physical-device smoke done
 - [ ] A real user can complete it without Cursor guidance
+
+### Founder Entry and Navigation Gate quick check (governing SSOT: North Star §J)
+
+- [ ] Every primary navigation destination renders non-blank content
+- [ ] Home from success/result reaches usable Start Claim entry
+- [ ] Restored sessions cannot strand users on stale result pages
+- [ ] Start New Claim resets only claim-draft state
+- [ ] Page shell renders before remote data completes
+- [ ] Loading / error / empty states are visible and actionable
+- [ ] Tested after fresh launch, submit, resume, Preview reopen
+- [ ] Physical-device Preview smoke is a release blocker
+- [ ] Blank screen at any point = FAIL
 
 ## Loop result
 

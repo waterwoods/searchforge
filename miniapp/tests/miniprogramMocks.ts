@@ -27,15 +27,26 @@ export function installMiniProgramGlobals(): void {
     latestPage = { options };
     return options;
   };
+  const memory = new Map<string, unknown>();
   (globalThis as Record<string, unknown>).wx = {
     redirectTo: () => undefined,
+    reLaunch: () => undefined,
+    navigateTo: () => undefined,
     showToast: () => undefined,
+    showModal: () => undefined,
     navigateBack: (opts?: { success?: () => void }) => {
       opts?.success?.();
       return undefined;
     },
     request: () => undefined,
     uploadFile: () => undefined,
+    setStorageSync: (key: string, value: unknown) => {
+      memory.set(key, value);
+    },
+    getStorageSync: (key: string) => memory.get(key),
+    removeStorageSync: (key: string) => {
+      memory.delete(key);
+    },
   };
 }
 

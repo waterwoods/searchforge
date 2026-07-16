@@ -64,5 +64,11 @@
       bindtap="onViewAll"
       disabled="{{busy.navigating}}"
     >查看全部资料</button>
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onBackHome"
+      disabled="{{busy.navigating}}"
+    >开始新报案</button>
   </view>
 </view>

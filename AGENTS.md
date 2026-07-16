@@ -38,6 +38,10 @@ Before every P20 implementation, release, or capability review:
   enable the CTA, optional/Request More/future fields never block, no hidden
   validation rule without Business Contract justification and a visible reason,
   and a real user can complete it without Cursor guidance.
+- Enforce the **Founder Entry and Navigation Gate** (North Star §J): Home from
+  success/result reaches a usable entry, restored sessions cannot strand users
+  on stale results, page shell renders before network, and a blank screen is
+  an automatic FAIL / release blocker.
 - Never mark Capability Done without recorded Founder/manual QA evidence.
 - Recommend **Auto** by default. Escalate to **Grok 4.5** only for a genuine
   cross-system blocker. Use **GPT-5.6 Terra Medium** only for architecture or

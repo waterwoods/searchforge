@@ -5,6 +5,13 @@
   margin-bottom: 16rpx;
 }
 
+.start-claim-page .init-error-block {
+  margin-bottom: 24rpx;
+  padding: 20rpx;
+  background: #fef2f2;
+  border-radius: 12rpx;
+}
+
 .start-claim-page .safety-footer {
   margin: 24rpx 32rpx 8rpx;
   font-size: 22rpx;

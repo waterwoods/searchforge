@@ -20,6 +20,7 @@ import {
   type Slice1CustomerView,
 } from "../../utils/slice1Customer";
 import type { Slice1RequestItem } from "../../types/task";
+import { reLaunchStartClaimHome } from "../../utils/startClaimEntry";
 
 type PageData = {
   loadingMessage: string;
@@ -303,6 +304,18 @@ Page({
         });
       },
     });
+  },
+
+  /**
+   * Explicit Home / Start New Claim from Submit Result.
+   * Clears claim-draft resume only, then reLaunches Start Claim so a prior
+   * submission cannot strand the customer on a blank or stale result stack.
+   */
+  onBackHome() {
+    if (this.isBusy("navigating")) return;
+    this.setBusy("navigating", true);
+    reLaunchStartClaimHome(wx);
+    this.setBusy("navigating", false);
   },
 
   onViewAll() {

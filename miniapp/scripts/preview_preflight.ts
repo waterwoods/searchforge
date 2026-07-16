@@ -39,8 +39,14 @@ try {
 try {
   const appJson = JSON.parse(readFileSync(join(miniappRoot, "app.json"), "utf8")) as {
     pages?: string[];
+    lazyCodeLoading?: string;
   };
   const pages = appJson.pages || [];
+  if (pages[0] !== "pages/start-claim/start-claim") {
+    errors.push(
+      `app.json pages[0] must be Start Claim Home target (got "${pages[0] || ""}")`,
+    );
+  }
   for (const required of [
     "pages/start-claim/start-claim",
     "pages/start-claim-success/start-claim-success",
@@ -52,8 +58,30 @@ try {
       errors.push(`app.json missing required page: ${required}`);
     }
   }
+  if (appJson.lazyCodeLoading === "requiredComponents") {
+    errors.push(
+      'lazyCodeLoading "requiredComponents" is blocked for Preview — Home→Start Claim blank-screen risk on physical device',
+    );
+  }
 } catch {
   errors.push("app.json is missing or unreadable");
+}
+
+try {
+  const privateConfigPath = join(miniappRoot, "project.private.config.json");
+  const privateRaw = readFileSync(privateConfigPath, "utf8");
+  const privateConfig = JSON.parse(privateRaw) as {
+    condition?: { miniprogram?: { list?: Array<{ pathName?: string; query?: string; name?: string }> } };
+  };
+  const list = privateConfig.condition?.miniprogram?.list || [];
+  const first = list[0];
+  if (first?.pathName === "pages/entry/entry" && String(first.query || "").includes("token=")) {
+    errors.push(
+      "project.private.config.json default compile condition launches entry with a token — Preview will open stale Receipt instead of Start Claim",
+    );
+  }
+} catch {
+  // private config is gitignored; absence is OK
 }
 
 const requiredRouteHints = [

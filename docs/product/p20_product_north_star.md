@@ -188,6 +188,39 @@ artificial minimum-length gates (description ≥ 10, location ≥ 3) rejected va
 Business Contract Must Have values such as `被车后装` and `路口`, with no visible
 explanation. This gate exists to make that class of failure a permanent blocker.
 
+### J. Founder Entry and Navigation Gate
+
+**SSOT for this gate. All checklists and rules reference this section; do not
+duplicate a conflicting copy.**
+
+Every customer Mini Program entry, Home, and post-submit navigation path must
+pass all of the following before Release. A blank screen at any point is an
+automatic FAIL and a release blocker.
+
+1. **Non-blank destinations.** Every primary navigation destination renders
+   non-blank content (form shell, loading, error, or actionable empty state).
+2. **Home from success/result.** Home from success/result pages reaches a
+   usable customer entry state (Start Claim form shell visible immediately).
+3. **No stale-result stranding.** Restored sessions cannot permanently strand
+   users on stale Submit Result / receipt pages with no path to a fresh entry.
+4. **Scoped Start New Claim reset.** Start New Claim / Home resets only
+   claim-draft resume state, not unrelated identity or API config.
+5. **Shell before network.** Page shell renders before remote data completes;
+   the Start Claim form must not wait on an API response to appear.
+6. **Visible recovery.** Loading, error, and empty states are visible and
+   actionable (clear Chinese copy + retry or safe way back).
+7. **Navigation matrix.** Navigation is tested after fresh launch, successful
+   submit, background/resume, and Preview reopen.
+8. **Physical Preview blocker.** Physical-device Preview smoke is a release
+   blocker for entry/Home paths.
+9. **Blank = FAIL.** Blank screen at any point = automatic FAIL.
+
+Regression origin: after a restored Submit Result (`提交结果` /
+`已提交给陈总`), tapping the top-left Home control reached Start Claim
+(`开始报案`) with a completely blank body — no fields, loading, error, or
+retry — blocking Founder Form QA. This gate exists to make that class of
+failure a permanent blocker.
+
 ## Required Cursor behavior
 
 For every P20 implementation, release, or capability-review task, Cursor must:

@@ -14,5 +14,10 @@
       label="联系{{brokerName}}"
       bindtap="onContactBroker"
     />
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onBackHome"
+    >开始新报案</button>
   </view>
 </view>

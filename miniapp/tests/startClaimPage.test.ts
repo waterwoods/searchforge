@@ -40,12 +40,15 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
   data.fieldErrors = {};
   data.errorMessage = "";
   data.errorRetryable = false;
+  data.pageReady = true;
+  data.initErrorMessage = "";
   data.busy = { submitting: false };
   const ctx: Record<string, any> = {
     ...page,
     ...overrides,
     route: "/pages/start-claim/start-claim",
     data,
+    _submitState: null,
     setData(patch: Record<string, unknown>) {
       Object.assign(this.data, patch);
     },
@@ -146,6 +149,68 @@ test("start-claim-success wxml shows founder-facing receipt copy only", () => {
   assert.match(wxml, /\{\{title\}\}/);
   assert.equal(wxml.includes("case_id"), false);
   assert.equal(wxml.includes("command_id"), false);
+});
+
+test("start-claim renders with no query parameters and clears stale resume", async () => {
+  const page = await loadStartClaimPage();
+  const { saveResumeToken, loadResumeToken } = await import("../utils/storage");
+  saveResumeToken("h5t1.prior-submitted");
+  const ctx = createPageContext(page);
+  page.onLoad.call(ctx);
+  assert.equal(ctx.data.pageReady, true);
+  assert.equal(ctx.data.initErrorMessage, "");
+  assert.match(String(ctx.data.missingHint || ""), /事故经过/);
+  assert.equal(loadResumeToken(), "");
+  // Required field keys exist for Home → Start Claim with empty query.
+  assert.equal(ctx.data.description, "");
+  assert.equal(ctx.data.accidentDatetime, "");
+  assert.equal(ctx.data.accidentLocation, "");
+  assert.equal(ctx.data.injuryStatus, "");
+});
+
+test("prior submitted claim storage does not hide the new form shell", async () => {
+  const page = await loadStartClaimPage();
+  const { saveResumeToken } = await import("../utils/storage");
+  saveResumeToken("h5t1.already-submitted");
+  const ctx = createPageContext(page, {
+    data: {
+      ...(page.data || {}),
+      pageReady: false,
+      initErrorMessage: "stale",
+      description: "old draft should reset",
+    },
+  });
+  // Recreate clean context after override merge
+  const clean = createPageContext(page);
+  page.onLoad.call(clean);
+  assert.equal(clean.data.pageReady, true);
+  assert.equal(clean.data.initErrorMessage, "");
+  assert.equal(clean.data.description, "");
+  assert.equal(clean.data.canSubmit, false);
+  void ctx;
+});
+
+test("initialization rejection surfaces error + retry without blanking form", async () => {
+  const page = await loadStartClaimPage();
+  const ctx = createPageContext(page);
+  page.onLoad.call(ctx);
+  ctx.setData({
+    initErrorMessage: "页面初始化失败，请重试或联系陈总。",
+    pageReady: true,
+  });
+  assert.match(String(ctx.data.initErrorMessage), /初始化失败|重试/);
+  assert.equal(ctx.data.pageReady, true);
+  page.onResetAndRetry.call(ctx);
+  assert.equal(ctx.data.initErrorMessage, "");
+  assert.equal(ctx.data.pageReady, true);
+  assert.match(String(ctx.data.missingHint || ""), /事故经过/);
+});
+
+test("Home → Start Claim still exposes required fields in wxml", () => {
+  const wxml = readFileSync(join(miniappRoot, "pages/start-claim/start-claim.wxml"), "utf8");
+  for (const label of ["事故经过", "事故时间", "事故地点", "是否有人受伤", "提交给陈总"]) {
+    assert.match(wxml, new RegExp(label));
+  }
 });
 
 test("start-claim submit is single-flight and retries with same identity", async () => {

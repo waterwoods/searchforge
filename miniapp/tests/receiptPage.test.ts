@@ -307,6 +307,34 @@ test("return home redirects to task home", async () => {
   assert.equal(ctx.data.busy.navigating, false);
 });
 
+test("Submit Result Home handler relaunches Start Claim", async () => {
+  const page = await loadReceiptPage();
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
+  };
+  const { saveResumeToken, loadResumeToken } = await import("../utils/storage");
+  saveResumeToken("h5t1.stale-receipt");
+
+  const ctx = createPageContext(page, {
+    data: {
+      ...page.data,
+      busy: {
+        loading: false,
+        saving: false,
+        uploading: false,
+        submitting: false,
+        navigating: false,
+        retrying: false,
+      },
+    },
+  });
+  page.onBackHome.call(ctx);
+  assert.deepEqual(launches, ["/pages/start-claim/start-claim"]);
+  assert.equal(loadResumeToken(), "");
+  assert.equal(ctx.data.busy.navigating, false);
+});
+
 test("next-step display prefers completion summary", async () => {
   const page = await loadReceiptPage();
   const task = buildTask({

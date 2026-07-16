@@ -148,8 +148,48 @@ function checkGate2UsingComponentsPaths() {
   }
 }
 
+function checkGate3AppJsonPageRegistration() {
+  const appJsonPath = path.join(miniappRoot, "app.json");
+  const parsed = parseJson(appJsonPath);
+  if (!parsed) return;
+  const pages = Array.isArray(parsed.pages) ? parsed.pages : [];
+  if (!pages.length) {
+    errors.push("Gate3 app.json pages[] is empty");
+    return;
+  }
+  if (pages[0] !== "pages/start-claim/start-claim") {
+    errors.push(
+      `Gate3 app.json pages[0] must be pages/start-claim/start-claim (Home target), got ${pages[0]}`,
+    );
+  }
+  for (const page of pages) {
+    if (typeof page !== "string" || !page.trim()) {
+      errors.push(`Gate3 invalid page entry: ${String(page)}`);
+      continue;
+    }
+    const base = path.join(miniappRoot, page);
+    for (const ext of [".ts", ".json", ".wxml", ".wxss"]) {
+      const full = `${base}${ext}`;
+      if (!existsSync(full)) {
+        errors.push(`Gate3 missing page file: ${path.relative(repoRoot, full)}`);
+        continue;
+      }
+      if (!resolveWithExactCase(miniappRoot, full)) {
+        errors.push(`Gate3 casing mismatch for page file: ${path.relative(repoRoot, full)}`);
+      }
+    }
+  }
+  if (parsed.lazyCodeLoading === "requiredComponents") {
+    // Known physical-Preview blank risk when Home opens a never-injected first page.
+    warnings.push(
+      "Gate3 lazyCodeLoading=requiredComponents is enabled; confirm Home→Start Claim is non-blank on physical Preview.",
+    );
+  }
+}
+
 checkGate1ComponentCompleteness();
 checkGate2UsingComponentsPaths();
+checkGate3AppJsonPageRegistration();
 
 if (warnings.length) {
   console.log("Component gate warnings:");

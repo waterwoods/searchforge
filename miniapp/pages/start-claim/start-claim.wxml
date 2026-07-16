@@ -1,8 +1,23 @@
 <view class="container start-claim-page">
+  <!-- Form shell always renders; never gate the whole page on network/ready. -->
   <view class="card">
     <view class="card-title">告诉陈总发生了什么</view>
     <view class="card-subtitle">
       先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。
+    </view>
+
+    <view wx:if="{{initErrorMessage}}" class="init-error-block">
+      <view class="error-text">{{initErrorMessage}}</view>
+      <button
+        class="btn-secondary"
+        hover-class="btn-secondary-hover"
+        bindtap="onResetAndRetry"
+      >重新加载表单</button>
+      <button
+        class="btn-secondary"
+        hover-class="btn-secondary-hover"
+        bindtap="onContactBroker"
+      >联系{{brokerName}}</button>
     </view>
 
     <view class="section-label">事故经过</view>

@@ -6,16 +6,24 @@ import {
   createStartClaimSubmitState,
   endStartClaimSubmit,
   mapStartClaimError,
-  type StartClaimSubmitState,
 } from "../../utils/startClaimLifecycle";
+import type { StartClaimSubmitState } from "../../utils/startClaimLifecycle";
 import {
   buildStartClaimPayload,
   validateStartClaimForm,
-  type StartClaimFieldErrors,
-  type StartClaimFieldKey,
 } from "../../utils/startClaimValidation";
-import { DEFAULT_SAFETY_COPY } from "../../utils/resolveTaskViewModel";
+import type {
+  StartClaimFieldErrors,
+  StartClaimFieldKey,
+} from "../../utils/startClaimValidation";
 import { contactBrokerModalCopy } from "../../utils/taskMapping";
+import {
+  START_CLAIM_MISSING_HINT,
+  START_CLAIM_SAFETY_COPY,
+  START_CLAIM_SUCCESS_ROUTE,
+  createEmptyStartClaimShell,
+  resetStartClaimDraftState,
+} from "../../utils/startClaimEntry";
 
 type PageData = {
   description: string;
@@ -30,6 +38,8 @@ type PageData = {
   shellSafetyCopy: string;
   errorMessage: string;
   errorRetryable: boolean;
+  pageReady: boolean;
+  initErrorMessage: string;
   busy: {
     submitting: boolean;
   };
@@ -43,32 +53,72 @@ type FormPatch = Partial<{
 }>;
 
 Page({
-  _submitState: createStartClaimSubmitState() as StartClaimSubmitState,
+  _submitState: null as StartClaimSubmitState | null,
 
   data: {
-    description: "",
-    charCount: 0,
-    accidentDatetime: "",
-    accidentLocation: "",
-    injuryStatus: "",
-    canSubmit: false,
-    missingHint: "请先填写：事故经过、事故时间、事故地点、是否受伤",
-    fieldErrors: {},
+    ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
     brokerName: appConfig.brokerDisplayName || "陈总",
-    shellSafetyCopy: DEFAULT_SAFETY_COPY,
-    errorMessage: "",
-    errorRetryable: false,
+    shellSafetyCopy: START_CLAIM_SAFETY_COPY,
     busy: {
       submitting: false,
     },
   } as PageData,
 
   onLoad() {
-    this._submitState = createStartClaimSubmitState();
+    try {
+      // Prior submitted resume must not block a fresh Start Claim after Home.
+      resetStartClaimDraftState();
+      this._submitState = createStartClaimSubmitState();
+      this.setData({
+        ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+        pageReady: true,
+        initErrorMessage: "",
+      });
+    } catch {
+      this.setData({
+        pageReady: true,
+        initErrorMessage: "页面初始化失败，请重试或联系陈总。",
+      });
+    }
+  },
+
+  onShow() {
+    // Home / reLaunch / resume must always show a usable form shell immediately.
+    if (!this.data.pageReady) {
+      this.setData({ pageReady: true });
+    }
+    if (!this._submitState) {
+      try {
+        this._submitState = createStartClaimSubmitState();
+      } catch {
+        this.setData({
+          initErrorMessage: "页面初始化失败，请重试或联系陈总。",
+        });
+      }
+    }
+  },
+
+  onResetAndRetry() {
+    try {
+      resetStartClaimDraftState();
+      this._submitState = createStartClaimSubmitState();
+      this.setData({
+        ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+        busy: { submitting: false },
+        initErrorMessage: "",
+        pageReady: true,
+      });
+    } catch {
+      this.setData({
+        pageReady: true,
+        initErrorMessage: "页面初始化失败，请重试或联系陈总。",
+      });
+    }
   },
 
   /** Merge patch into Page.data before computing validity (avoids setData race). */
   _applyFormPatch(patch: FormPatch, options?: { showErrors?: boolean }) {
+    const showErrors = Boolean(options && options.showErrors);
     const next = {
       description: patch.description !== undefined ? patch.description : this.data.description,
       accidentDatetime:
@@ -85,7 +135,7 @@ Page({
       canSubmit: validated.canSubmit,
       missingHint: validated.missingHint,
     };
-    if (options?.showErrors) {
+    if (showErrors) {
       dataPatch.fieldErrors = validated.errors;
       dataPatch.errorMessage = validated.ok ? "" : validated.missingHint;
     } else if (validated.canSubmit) {
@@ -167,6 +217,10 @@ Page({
       return;
     }
 
+    if (!this._submitState) {
+      this._submitState = createStartClaimSubmitState();
+    }
+
     const gate = beginStartClaimSubmit(this._submitState, {
       reuseIdentity: options.reuseIdentity,
     });
@@ -178,6 +232,7 @@ Page({
       errorRetryable: false,
       fieldErrors: {},
       missingHint: "",
+      initErrorMessage: "",
     });
 
     try {
@@ -202,7 +257,7 @@ Page({
       endStartClaimSubmit(this._submitState, true);
       this.setData({ busy: { submitting: false } });
       wx.redirectTo({
-        url: "/pages/start-claim-success/start-claim-success",
+        url: START_CLAIM_SUCCESS_ROUTE,
         fail: () => {
           wx.showToast({ title: "已提交", icon: "success" });
         },
