@@ -180,6 +180,72 @@ def test_request_draft_save_update_and_no_request_more():
     assert conflict["error_code"] == "version_conflict"
 
 
+def test_identical_request_draft_save_is_semantic_noop():
+    """Same semantic content must not append timeline events or bump version."""
+    svc, store = _svc()
+    created = svc.create_claim(
+        broker_id="office:demo",
+        office_id="demo-office",
+        tenant_id="tenant-demo",
+        command_id="cmd-create-noop",
+        idempotency_key="idem-create-noop",
+        inputs={"is_test": True},
+    )
+    case_id = created["case_id"]
+    first = svc.save_request_draft(
+        case_id=case_id,
+        broker_id="office:demo",
+        command_id="cmd-draft-noop-1",
+        idempotency_key="idem-draft-noop-1",
+        expected_case_version=2,
+        items=[
+            {
+                "field_key": "vin",
+                "item_type": "vin",
+                "label": "VIN",
+                "instructions": "Please send VIN",
+                "position": 1,
+                "selected": True,
+            }
+        ],
+    )
+    assert first["outcome"] == "accepted"
+    assert first["aggregate_version"] == 3
+    draft_item_id = store.drafts[case_id].items[0]["draft_item_id"]
+    events_after_first = [
+        e for e in store.events[case_id] if e["event_type"] == EVENT_REQUEST_DRAFT_SAVED
+    ]
+    assert len(events_after_first) == 1
+
+    second = svc.save_request_draft(
+        case_id=case_id,
+        broker_id="office:demo",
+        command_id="cmd-draft-noop-2",
+        idempotency_key="idem-draft-noop-2",
+        expected_case_version=3,
+        items=[
+            {
+                # Omitting draft_item_id previously churned identity and forced a new event.
+                "field_key": "vin",
+                "item_type": "vin",
+                "label": "VIN",
+                "instructions": "Please send VIN",
+                "position": 1,
+                "selected": True,
+            }
+        ],
+    )
+    assert second["outcome"] == "accepted"
+    assert second["aggregate_version"] == 3
+    assert second["event_ids"] == []
+    assert store.drafts[case_id].draft_version == 1
+    assert store.drafts[case_id].items[0]["draft_item_id"] == draft_item_id
+    events_after_second = [
+        e for e in store.events[case_id] if e["event_type"] == EVENT_REQUEST_DRAFT_SAVED
+    ]
+    assert len(events_after_second) == 1
+
+
 def test_version_conflict_and_transaction_rollback():
     svc, store = _svc()
     created = svc.create_claim(

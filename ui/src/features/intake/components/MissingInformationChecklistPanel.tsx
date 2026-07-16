@@ -29,6 +29,10 @@ import {
   isMvpSendableChecklistRow,
   isMvpSendableItemType,
 } from '@/features/intake/mvpRequestTypes';
+import {
+  RequestDraftAutosaveController,
+  type AutosavePhase,
+} from '@/features/intake/components/requestDraftAutosave';
 
 const AUTOSAVE_DEBOUNCE_MS = 600;
 
@@ -96,9 +100,9 @@ type DraftEditRow = {
   is_authoritative_fact?: boolean;
 };
 
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
+type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved' | 'failed';
 
-function buildDraftItemsFromRows(rows: DraftEditRow[]): CaseIntakeRequestDraftItem[] {
+export function buildDraftItemsFromRows(rows: DraftEditRow[]): CaseIntakeRequestDraftItem[] {
   return rows
     .filter((r) => r.selected && isMvpSendableItemType(r.item_type))
     .map((r, index) => ({
@@ -120,7 +124,7 @@ function unsupportedDraftItemLabels(items: CaseIntakeRequestDraftItem[] | undefi
     .filter(Boolean);
 }
 
-function rowsFromProjection(projection: CaseIntakeProjection): DraftEditRow[] {
+export function rowsFromProjection(projection: CaseIntakeProjection): DraftEditRow[] {
   const checklist = projection.missing_information_checklist || [];
   const draftItems = projection.request_draft?.items || [];
   const selectedKeys = new Set(
@@ -294,35 +298,82 @@ export function MissingInformationChecklistPanel({
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [naReason, setNaReason] = useState<Record<string, string>>({});
-  const inFlight = useRef(false);
+  const commandInFlight = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rowsHydratedRef = useRef(false);
+  const autosaveRef = useRef(new RequestDraftAutosaveController());
+  const rowsRef = useRef<DraftEditRow[]>([]);
+  const caseRecordRef = useRef(caseRecord);
+  const projectionRef = useRef(projection);
   const sendCommandRef = useRef<{ command_id: string; idempotency_key: string } | null>(null);
+  const savePromiseRef = useRef<Promise<{ ok: boolean; draftId?: string }> | null>(null);
   const expectedVersion = projection?.aggregate_version ?? 0;
   const requestSent =
     Boolean(accessCard?.access_ready || accessCard?.request_sent)
     || projection?.request_draft?.status === 'sent'
     || Boolean(projection?.open_request_more);
 
-  useEffect(() => {
-    rowsHydratedRef.current = false;
-    if (projection) setRows(rowsFromProjection(projection));
-  }, [caseRecord.case_id, projection?.aggregate_version, projection?.request_draft?.draft_version]);
+  rowsRef.current = rows;
+  caseRecordRef.current = caseRecord;
+  projectionRef.current = projection;
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    autosaveRef.current.clearTimer();
+  };
+
+  const syncPhase = (phase: AutosavePhase | SaveStatus) => {
+    setSaveStatus(phase as SaveStatus);
+  };
 
   useEffect(() => {
-    if (!projection || requestSent) return;
-    if (!rowsHydratedRef.current) {
-      rowsHydratedRef.current = true;
+    return () => {
+      clearAutosaveTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
+  }, []);
+
+  // Case change or safe server projection refresh (never overwrite dirty local edits).
+  useEffect(() => {
+    if (!projection) return;
+    const ctrl = autosaveRef.current;
+    const serverItems = projection.request_draft?.items || [];
+    const localItems = buildDraftItemsFromRows(rowsRef.current);
+    const caseChanged = ctrl.getCaseId() !== caseRecord.case_id;
+
+    if (caseChanged) {
+      clearAutosaveTimer();
+      ctrl.resetForCase(caseRecord.case_id, serverItems);
+      setRows(rowsFromProjection(projection));
+      syncPhase(ctrl.phase);
+      setError(null);
       return;
     }
-    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    autosaveTimerRef.current = setTimeout(() => {
-      void performAutosave();
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    };
-  }, [rows, projection?.aggregate_version, requestSent]);
+
+    if (requestSent) {
+      clearAutosaveTimer();
+      setRows(rowsFromProjection(projection));
+      ctrl.applyServerBaseline(serverItems);
+      syncPhase(ctrl.phase);
+      return;
+    }
+
+    if (!ctrl.shouldApplyPoll(serverItems, localItems)) {
+      return;
+    }
+
+    setRows(rowsFromProjection(projection));
+    ctrl.applyServerBaseline(serverItems);
+    syncPhase(ctrl.phase);
+  }, [
+    caseRecord.case_id,
+    projection?.aggregate_version,
+    projection?.request_draft?.draft_version,
+    projection?.request_draft?.content_hash,
+    requestSent,
+  ]);
 
   const selectedSendableCount = useMemo(
     () => rows.filter((r) => r.selected && isMvpSendableItemType(r.item_type)).length,
@@ -344,17 +395,18 @@ export function MissingInformationChecklistPanel({
   }) => {
     const next = result.broker_projection;
     if (!next) return;
+    const current = caseRecordRef.current;
     const access = result.customer_access || next.customer_access || accessCard;
     const updated: SavedCase = {
-      ...caseRecord,
+      ...current,
       p20_case_intake_projection: { ...next, customer_access: access || next.customer_access },
       case_intake_projection: { ...next, customer_access: access || next.customer_access },
       missing_information_checklist: next.missing_information_checklist,
       request_draft: next.request_draft,
       admin_lifecycle: next.admin_lifecycle,
       customer_access: access || undefined,
-      workbench_test: Boolean(next.is_test || caseRecord.workbench_test),
-      updated_at: result.server_timestamp || caseRecord.updated_at,
+      workbench_test: Boolean(next.is_test || current.workbench_test),
+      updated_at: result.server_timestamp || current.updated_at,
     };
     if (result.slice1_projection) {
       updated.slice1_projection = result.slice1_projection;
@@ -369,68 +421,128 @@ export function MissingInformationChecklistPanel({
     onCaseChange?.(updated);
   };
 
-  const performAutosave = async (): Promise<{ ok: boolean; draftId?: string }> => {
-    if (inFlight.current || requestSent) return { ok: false };
-    const items = buildDraftItemsFromRows(rows);
-    if (!items.length) {
-      setSaveStatus('idle');
-      return { ok: false };
+  const runAutosave = async (allowFollowUp = true): Promise<{ ok: boolean; draftId?: string }> => {
+    if (savePromiseRef.current) {
+      autosaveRef.current.queued = true;
+      const prior = await savePromiseRef.current;
+      if (!allowFollowUp) return prior;
+      if (!autosaveRef.current.isDirty(buildDraftItemsFromRows(rowsRef.current))) {
+        return prior;
+      }
+      return runAutosave(false);
     }
-    inFlight.current = true;
-    setSaveStatus('saving');
-    setError(null);
-    const ids = newIds('save_draft');
+
+    const exec = async (): Promise<{ ok: boolean; draftId?: string }> => {
+      const proj = projectionRef.current;
+      if (!proj || requestSent) return { ok: false };
+      const items = buildDraftItemsFromRows(rowsRef.current);
+      const started = autosaveRef.current.beginSave(items);
+      if (!started) {
+        syncPhase(autosaveRef.current.phase);
+        return {
+          ok: autosaveRef.current.phase === 'saved',
+          draftId: proj.request_draft?.draft_id,
+        };
+      }
+      setSaveStatus('saving');
+      setError(null);
+      const ids = newIds('save_draft');
+      const expected = proj.aggregate_version ?? 0;
+      try {
+        const result = await saveCaseRequestDraft(caseRecord.case_id, {
+          ...ids,
+          expected_case_version: expected,
+          items: started.items,
+          draft_id: proj.request_draft?.draft_id,
+        });
+        if (autosaveRef.current.isStale(started.generation)) {
+          return { ok: false };
+        }
+        if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
+          autosaveRef.current.failSave(started.generation);
+          setSaveStatus('failed');
+          setError('Case was updated elsewhere. Refresh to recover, then retry save.');
+          await refreshCase?.();
+          message.warning('Version conflict — case refreshed.');
+          return { ok: false };
+        }
+        if (result.outcome === 'rejected') {
+          autosaveRef.current.failSave(started.generation);
+          setSaveStatus('failed');
+          setError(result.error_code || 'Draft save rejected');
+          return { ok: false };
+        }
+        const serverItems = result.broker_projection?.request_draft?.items || started.items;
+        const { runFollowUp } = autosaveRef.current.acceptSave(started.generation, serverItems);
+        mergeProjection(result);
+        setSaveStatus('saved');
+        const draftId =
+          result.broker_projection?.request_draft?.draft_id || proj.request_draft?.draft_id;
+        if (runFollowUp && allowFollowUp) {
+          // At most one follow-up for newest content after in-flight edits.
+          savePromiseRef.current = null;
+          const follow = await runAutosave(false);
+          return follow.ok ? follow : { ok: true, draftId };
+        }
+        return { ok: true, draftId };
+      } catch (err) {
+        if (autosaveRef.current.isStale(started.generation)) {
+          return { ok: false };
+        }
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        autosaveRef.current.failSave(started.generation);
+        if (status === 409) {
+          setError('Version conflict. Refresh to recover, then retry save.');
+          await refreshCase?.();
+          message.warning('Stale version — refreshed.');
+        } else {
+          setError('Could not save request draft. Retry after refresh.');
+        }
+        setSaveStatus('failed');
+        return { ok: false };
+      }
+    };
+
+    const promise = exec();
+    savePromiseRef.current = promise;
     try {
-      const result = await saveCaseRequestDraft(caseRecord.case_id, {
-        ...ids,
-        expected_case_version: expectedVersion,
-        items,
-        draft_id: projection.request_draft?.draft_id,
-      });
-      if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
-        setSaveStatus('failed');
-        setError('Case was updated elsewhere. Refreshing…');
-        await refreshCase?.();
-        message.warning('Version conflict — case refreshed.');
-        return { ok: false };
-      }
-      if (result.outcome === 'rejected') {
-        setSaveStatus('failed');
-        setError(result.error_code || 'Draft save rejected');
-        return { ok: false };
-      }
-      mergeProjection(result);
-      setSaveStatus('saved');
-      return {
-        ok: true,
-        draftId: result.broker_projection?.request_draft?.draft_id || projection.request_draft?.draft_id,
-      };
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 409) {
-        setError('Version conflict. Refreshing case…');
-        await refreshCase?.();
-        message.warning('Stale version — refreshed.');
-      } else {
-        setError('Could not save request draft. Retry after refresh.');
-      }
-      setSaveStatus('failed');
-      return { ok: false };
+      return await promise;
     } finally {
-      inFlight.current = false;
+      if (savePromiseRef.current === promise) {
+        savePromiseRef.current = null;
+      }
     }
+  };
+
+  const armAutosaveTimer = () => {
+    clearAutosaveTimer();
+    autosaveRef.current.timerArmed = true;
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      autosaveRef.current.clearTimer();
+      void runAutosave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+  };
+
+  const applyUserRowEdit = (updater: (prev: DraftEditRow[]) => DraftEditRow[]) => {
+    if (requestSent) return;
+    const next = updater(rowsRef.current);
+    rowsRef.current = next;
+    setRows(next);
+    const items = buildDraftItemsFromRows(next);
+    const { armTimer, phase } = autosaveRef.current.onUserEdit(items);
+    syncPhase(phase);
+    if (armTimer) armAutosaveTimer();
+    else clearAutosaveTimer();
   };
 
   const flushAutosave = async (): Promise<{ ok: boolean; draftId?: string }> => {
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
-    }
-    return performAutosave();
+    clearAutosaveTimer();
+    return runAutosave(true);
   };
 
   const handleSendRequest = async () => {
-    if (inFlight.current || sending || requestSent) return;
+    if (commandInFlight.current || sending || requestSent) return;
     if (unsupportedInSavedDraft.length > 0) {
       setError(formatUnsupportedSendItems(unsupportedInSavedDraft));
       return;
@@ -443,39 +555,42 @@ export function MissingInformationChecklistPanel({
       setError('Save failed — retry save before sending.');
       return;
     }
-    if (saveStatus === 'saving' || autosaveTimerRef.current) {
-      const saved = await flushAutosave();
-      if (!saved.ok) return;
-    }
+    const needsFlush =
+      saveStatus === 'saving'
+      || saveStatus === 'unsaved'
+      || Boolean(autosaveTimerRef.current)
+      || autosaveRef.current.isDirty(buildDraftItemsFromRows(rowsRef.current));
     let latestDraftId = projection.request_draft?.draft_id || caseRecord.request_draft?.draft_id;
-    if (!latestDraftId || saveStatus !== 'saved') {
+    if (needsFlush || !latestDraftId) {
       const saved = await flushAutosave();
       if (!saved.ok) {
         setError('Waiting for draft save. Select VIN and try again.');
         return;
       }
-      latestDraftId = saved.draftId;
+      latestDraftId = saved.draftId || latestDraftId;
     }
     if (!latestDraftId) {
       setError('Draft not ready yet. Wait for Saved status.');
       return;
     }
 
-    inFlight.current = true;
+    commandInFlight.current = true;
     setSending(true);
     setError(null);
     if (!sendCommandRef.current) {
       sendCommandRef.current = newIds('send_request');
     }
     const ids = sendCommandRef.current;
+    const sendExpected =
+      projectionRef.current?.aggregate_version ?? expectedVersion;
     try {
       const result = await sendCaseRequest(caseRecord.case_id, {
         ...ids,
-        expected_case_version: expectedVersion,
+        expected_case_version: sendExpected,
         request_draft_id: latestDraftId,
       });
       if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
-        setError('Case was updated elsewhere. Refreshing…');
+        setError('Case was updated elsewhere. Refresh to recover, then send again.');
         sendCommandRef.current = null;
         await refreshCase?.();
         message.warning('Version conflict — case refreshed. Review and send again.');
@@ -500,7 +615,7 @@ export function MissingInformationChecklistPanel({
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         sendCommandRef.current = null;
-        setError('Version conflict. Refreshing case…');
+        setError('Version conflict. Refresh to recover, then send again.');
         await refreshCase?.();
         message.warning('Stale version — refreshed.');
       } else {
@@ -509,18 +624,18 @@ export function MissingInformationChecklistPanel({
       }
     } finally {
       setSending(false);
-      inFlight.current = false;
+      commandInFlight.current = false;
     }
   };
 
   const handleMarkNotApplicable = async (fieldKey: string) => {
-    if (inFlight.current || requestSent) return;
+    if (commandInFlight.current || requestSent) return;
     const reason = (naReason[fieldKey] || '').trim();
     if (!reason) {
       message.warning('Enter a reason before marking not applicable.');
       return;
     }
-    inFlight.current = true;
+    commandInFlight.current = true;
     setSaveStatus('saving');
     setError(null);
     try {
@@ -543,14 +658,14 @@ export function MissingInformationChecklistPanel({
       setError('Could not update fact status.');
       message.error('Fact status update failed');
     } finally {
-      setSaveStatus('idle');
-      inFlight.current = false;
+      setSaveStatus(autosaveRef.current.phase === 'saved' ? 'saved' : 'idle');
+      commandInFlight.current = false;
     }
   };
 
   const handleNeedsCorrection = async (fieldKey: string) => {
-    if (inFlight.current || requestSent) return;
-    inFlight.current = true;
+    if (commandInFlight.current || requestSent) return;
+    commandInFlight.current = true;
     setSaveStatus('saving');
     setError(null);
     try {
@@ -572,8 +687,8 @@ export function MissingInformationChecklistPanel({
     } catch {
       setError('Could not mark needs correction.');
     } finally {
-      setSaveStatus('idle');
-      inFlight.current = false;
+      setSaveStatus(autosaveRef.current.phase === 'saved' ? 'saved' : 'idle');
+      commandInFlight.current = false;
     }
   };
 
@@ -586,15 +701,14 @@ export function MissingInformationChecklistPanel({
         ? 'Saved'
         : saveStatus === 'failed'
           ? 'Save failed — Retry'
-          : selectedSendableCount > 0
+          : saveStatus === 'unsaved'
             ? 'Unsaved changes'
             : '';
   const canSend =
     selectedSendableCount > 0
     && unsupportedInSavedDraft.length === 0
     && saveStatus !== 'saving'
-    && saveStatus !== 'failed'
-    && Boolean(projection.request_draft?.draft_id || saveStatus === 'saved');
+    && saveStatus !== 'failed';
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -648,7 +762,7 @@ export function MissingInformationChecklistPanel({
                       checked={row.selected}
                       disabled={row.status === 'confirmed' && row.request_mode === 'none'}
                       onChange={(e) =>
-                        setRows((prev) =>
+                        applyUserRowEdit((prev) =>
                           prev.map((r) =>
                             r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
                           ),
@@ -679,7 +793,7 @@ export function MissingInformationChecklistPanel({
                       placeholder="Customer-facing label"
                       value={row.label}
                       onChange={(e) =>
-                        setRows((prev) =>
+                        applyUserRowEdit((prev) =>
                           prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
                         )
                       }
@@ -690,7 +804,7 @@ export function MissingInformationChecklistPanel({
                       placeholder="Customer instruction (optional)"
                       value={row.instructions}
                       onChange={(e) =>
-                        setRows((prev) =>
+                        applyUserRowEdit((prev) =>
                           prev.map((r) =>
                             r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
                           ),
@@ -762,7 +876,7 @@ export function MissingInformationChecklistPanel({
                 Send Request
               </Button>
               {saveStatus === 'failed' ? (
-                <Button onClick={() => void flushAutosave()} disabled={saveStatus === 'saving'}>
+                <Button onClick={() => void flushAutosave()}>
                   Save draft now
                 </Button>
               ) : null}

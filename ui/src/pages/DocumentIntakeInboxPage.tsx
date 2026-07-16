@@ -488,7 +488,7 @@ function BrokerCaseDetail({
           <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
         ) : null}
         <MissingInformationChecklistPanel
-          key={`intake-${caseItem.case_id}-${caseItem.p20_case_intake_projection?.aggregate_version ?? 0}`}
+          key={`intake-${caseItem.case_id}`}
           caseRecord={caseItem}
           onCaseChange={(updated) => onCaseChange?.(updated)}
           refreshCase={onRefreshCase}
@@ -610,7 +610,7 @@ function BrokerCaseDetail({
         <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
       ) : null}
       <MissingInformationChecklistPanel
-        key={`intake-${caseItem.case_id}-${caseItem.p20_case_intake_projection?.aggregate_version ?? 0}`}
+        key={`intake-${caseItem.case_id}`}
         caseRecord={caseItem}
         onCaseChange={(updated) => onCaseChange?.(updated)}
         refreshCase={onRefreshCase}

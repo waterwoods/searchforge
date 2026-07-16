@@ -79,6 +79,50 @@ def _stable_hash(payload: Any) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _semantic_draft_items(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Stable semantic payload for draft comparison (ignores draft_item_id churn)."""
+    rows: list[dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "field_key": item.get("field_key"),
+                "item_type": item.get("item_type"),
+                "label": item.get("label"),
+                "instructions": item.get("instructions"),
+                "required": bool(item.get("required", True)),
+                "position": int(item.get("position") or 0),
+                "request_mode": item.get("request_mode") or "request_missing",
+                "selected": bool(item.get("selected", True)),
+            }
+        )
+    rows.sort(key=lambda row: (int(row.get("position") or 0), str(row.get("field_key") or "")))
+    for index, row in enumerate(rows, start=1):
+        row["position"] = index
+    return rows
+
+
+def _preserve_draft_item_ids(
+    normalized_items: list[dict[str, Any]],
+    prior_items: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Reuse prior draft_item_id when field_key matches to avoid identity churn."""
+    prior_ids = {
+        str(item.get("field_key") or ""): str(item.get("draft_item_id") or "")
+        for item in (prior_items or [])
+        if isinstance(item, dict) and item.get("field_key") and item.get("draft_item_id")
+    }
+    out: list[dict[str, Any]] = []
+    for item in normalized_items:
+        row = dict(item)
+        field_key = str(row.get("field_key") or "")
+        if field_key and prior_ids.get(field_key):
+            row["draft_item_id"] = prior_ids[field_key]
+        out.append(row)
+    return out
+
+
 @dataclass
 class IntakeAggregate:
     case_id: str
@@ -627,7 +671,6 @@ class P20CaseIntakeCommandService:
         expected = _validate_expected_version(expected_case_version)
         normalized_items = _validate_draft_items(items)
         corr = (correlation_id or command_id).strip()[:128] or command_id
-        content_hash = _stable_hash(normalized_items)
 
         def _handle(tx: IntakeTx, snapshot: IntakeSnapshot) -> dict[str, Any]:
             if isinstance(getattr(snapshot, "stored_outcome", None), dict):
@@ -677,10 +720,14 @@ class P20CaseIntakeCommandService:
 
             timestamp = _utc_now_iso()
             prior = snapshot.draft
-            unchanged = (
-                prior is not None
-                and prior.content_hash == content_hash
-                and [dict(x) for x in prior.items] == normalized_items
+            stable_items = _preserve_draft_item_ids(
+                normalized_items,
+                prior.items if prior is not None else None,
+            )
+            content_hash = _stable_hash(_semantic_draft_items(stable_items))
+            unchanged = prior is not None and (
+                prior.content_hash == content_hash
+                or _semantic_draft_items(prior.items) == _semantic_draft_items(stable_items)
             )
             next_version = aggregate.aggregate_version
             event_ids: list[str] = []
@@ -692,7 +739,7 @@ class P20CaseIntakeCommandService:
                     draft_id=(draft_id or (prior.draft_id if prior else None) or f"draft_{uuid4().hex[:12]}"),
                     case_id=case_id,
                     draft_version=(prior.draft_version + 1) if prior else 1,
-                    items=normalized_items,
+                    items=stable_items,
                     content_hash=content_hash,
                     updated_by=broker_id,
                     created_at=(prior.created_at if prior else timestamp),
