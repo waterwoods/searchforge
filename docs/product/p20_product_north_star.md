@@ -151,6 +151,43 @@ Capability Done requires recorded end-to-end Founder/manual QA evidence for
 the supported journey. Automated tests, merged code, and deployment do not
 substitute for this evidence.
 
+### I. Founder Form Gate
+
+**SSOT for this gate. All checklists and rules reference this section; do not
+duplicate a conflicting copy.**
+
+Every customer- or broker-facing form (Start Claim, intake, Request More draft,
+review, and any future form) must pass all of the following before Release. Any
+failure is a release blocker.
+
+1. **Visible = canonical.** The value the user sees must equal the canonical
+   form state used for validation and payload.
+2. **Independent required fields.** Each required field is tested independently.
+3. **Complete → enabled.** Filling all required fields enables the primary CTA.
+4. **Optional never blocks.** Optional, Nice to Have, Request More, and future
+   fields never block submission.
+5. **No hidden rules.** No hidden length, format, or legacy validation rule may
+   exist without (a) a Business Contract justification and (b) a visible
+   field-level explanation.
+6. **Submit validates.** Clicking submit runs final validation and surfaces the
+   first invalid field (focus/scroll or explicit message).
+7. **CTA is not the only signal.** A disabled CTA must never be the only error
+   communication; a visible reason is always available.
+8. **Normalized payload.** The payload contains the normalized values shown to
+   the user.
+9. **Single-flight.** Duplicate taps create exactly one command/outcome.
+10. **Downstream visible.** An accepted submit is visible in the authoritative
+    downstream surface (read-after-write, gate A).
+11. **Device smoke.** DevTools full-compile and physical-device smoke are
+    required before Release.
+12. **User-completable.** A form is not Done until a real user can complete it
+    without Cursor guidance.
+
+Regression origin: the Start Claim submit button stayed disabled because hidden
+artificial minimum-length gates (description ≥ 10, location ≥ 3) rejected valid
+Business Contract Must Have values such as `被车后装` and `路口`, with no visible
+explanation. This gate exists to make that class of failure a permanent blocker.
+
 ## Required Cursor behavior
 
 For every P20 implementation, release, or capability-review task, Cursor must:

@@ -39,3 +39,22 @@
 .start-claim-page .choice-btn::after {
   border: none;
 }
+
+.start-claim-page .field-error {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #c0392b;
+  line-height: 1.4;
+}
+
+.start-claim-page .field-invalid {
+  border-color: #c0392b !important;
+}
+
+.start-claim-page .submit-hint {
+  margin: 0 32rpx 12rpx;
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.4;
+  text-align: center;
+}

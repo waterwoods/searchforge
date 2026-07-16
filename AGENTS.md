@@ -33,6 +33,11 @@ Before every P20 implementation, release, or capability review:
   unresolved P0 as **BLOCKED**.
 - Evaluate the final diff against Reliability, Simplicity, Smoothness,
   Business Value, Scope Control, and every hard release gate in the SSOT.
+- If any customer/broker form changed, enforce the **Founder Form Gate**
+  (North Star §I): visible value equals canonical state, all required fields
+  enable the CTA, optional/Request More/future fields never block, no hidden
+  validation rule without Business Contract justification and a visible reason,
+  and a real user can complete it without Cursor guidance.
 - Never mark Capability Done without recorded Founder/manual QA evidence.
 - Recommend **Auto** by default. Escalate to **Grok 4.5** only for a genuine
   cross-system blocker. Use **GPT-5.6 Terra Medium** only for architecture or

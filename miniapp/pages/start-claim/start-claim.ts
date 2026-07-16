@@ -8,6 +8,12 @@ import {
   mapStartClaimError,
   type StartClaimSubmitState,
 } from "../../utils/startClaimLifecycle";
+import {
+  buildStartClaimPayload,
+  validateStartClaimForm,
+  type StartClaimFieldErrors,
+  type StartClaimFieldKey,
+} from "../../utils/startClaimValidation";
 import { DEFAULT_SAFETY_COPY } from "../../utils/resolveTaskViewModel";
 import { contactBrokerModalCopy } from "../../utils/taskMapping";
 
@@ -18,6 +24,8 @@ type PageData = {
   accidentLocation: string;
   injuryStatus: string;
   canSubmit: boolean;
+  missingHint: string;
+  fieldErrors: StartClaimFieldErrors;
   brokerName: string;
   shellSafetyCopy: string;
   errorMessage: string;
@@ -27,19 +35,12 @@ type PageData = {
   };
 };
 
-function computeCanSubmit(data: {
+type FormPatch = Partial<{
   description: string;
   accidentDatetime: string;
   accidentLocation: string;
   injuryStatus: string;
-}): boolean {
-  return (
-    String(data.description || "").trim().length >= 10
-    && String(data.accidentDatetime || "").trim().length >= 2
-    && String(data.accidentLocation || "").trim().length >= 3
-    && ["yes", "no", "unknown"].includes(String(data.injuryStatus || "").trim())
-  );
-}
+}>;
 
 Page({
   _submitState: createStartClaimSubmitState() as StartClaimSubmitState,
@@ -51,6 +52,8 @@ Page({
     accidentLocation: "",
     injuryStatus: "",
     canSubmit: false,
+    missingHint: "请先填写：事故经过、事故时间、事故地点、是否受伤",
+    fieldErrors: {},
     brokerName: appConfig.brokerDisplayName || "陈总",
     shellSafetyCopy: DEFAULT_SAFETY_COPY,
     errorMessage: "",
@@ -64,30 +67,55 @@ Page({
     this._submitState = createStartClaimSubmitState();
   },
 
-  _refreshCanSubmit() {
-    this.setData({ canSubmit: computeCanSubmit(this.data) });
+  /** Merge patch into Page.data before computing validity (avoids setData race). */
+  _applyFormPatch(patch: FormPatch, options?: { showErrors?: boolean }) {
+    const next = {
+      description: patch.description !== undefined ? patch.description : this.data.description,
+      accidentDatetime:
+        patch.accidentDatetime !== undefined ? patch.accidentDatetime : this.data.accidentDatetime,
+      accidentLocation:
+        patch.accidentLocation !== undefined ? patch.accidentLocation : this.data.accidentLocation,
+      injuryStatus: patch.injuryStatus !== undefined ? patch.injuryStatus : this.data.injuryStatus,
+      // Mini Program cold-start has WeChat session reachability — contact not required.
+      reachabilityKnown: true,
+    };
+    const validated = validateStartClaimForm(next);
+    const dataPatch: Record<string, unknown> = {
+      ...patch,
+      canSubmit: validated.canSubmit,
+      missingHint: validated.missingHint,
+    };
+    if (options?.showErrors) {
+      dataPatch.fieldErrors = validated.errors;
+      dataPatch.errorMessage = validated.ok ? "" : validated.missingHint;
+    } else if (validated.canSubmit) {
+      dataPatch.fieldErrors = {};
+      dataPatch.missingHint = "";
+    } else {
+      // Keep button disabled explainable without shouting on every keystroke.
+      dataPatch.fieldErrors = this.data.fieldErrors || {};
+    }
+    this.setData(dataPatch);
+    return validated;
   },
 
   onDescriptionInput(e: WechatMiniprogram.Input) {
     const description = e.detail.value || "";
-    this.setData({ description, charCount: description.length });
-    this._refreshCanSubmit();
+    this._applyFormPatch({ description });
+    this.setData({ charCount: description.length });
   },
 
   onDatetimeInput(e: WechatMiniprogram.Input) {
-    this.setData({ accidentDatetime: e.detail.value || "" });
-    this._refreshCanSubmit();
+    this._applyFormPatch({ accidentDatetime: e.detail.value || "" });
   },
 
   onLocationInput(e: WechatMiniprogram.Input) {
-    this.setData({ accidentLocation: e.detail.value || "" });
-    this._refreshCanSubmit();
+    this._applyFormPatch({ accidentLocation: e.detail.value || "" });
   },
 
   onInjurySelect(e: WechatMiniprogram.TouchEvent) {
     const injuryStatus = String(e.currentTarget.dataset.value || "");
-    this.setData({ injuryStatus });
-    this._refreshCanSubmit();
+    this._applyFormPatch({ injuryStatus }, { showErrors: Boolean(injuryStatus) });
   },
 
   onContactBroker() {
@@ -100,14 +128,25 @@ Page({
   },
 
   async onSubmit() {
-    if (!computeCanSubmit(this.data)) {
-      this.setData({
-        errorMessage: "请先填写事故经过、时间、地点，并确认是否有人受伤。",
-        errorRetryable: false,
-      });
+    const validated = this._applyFormPatch({}, { showErrors: true });
+    if (!validated.ok) {
+      this._focusFirstInvalid(validated.firstInvalid);
       return;
     }
     await this.submitStartClaim({ reuseIdentity: false });
+  },
+
+  _focusFirstInvalid(field: StartClaimFieldKey | null) {
+    if (!field) return;
+    // Mini Program Input focus is best-effort; toast reinforces the visible field error.
+    const messages: Record<StartClaimFieldKey, string> = {
+      description: "请填写事故经过",
+      accidentDatetime: "请填写事故时间",
+      accidentLocation: "请填写事故地点",
+      injuryStatus: "请选择是否有人受伤",
+      contact: "请留下联系方式",
+    };
+    wx.showToast({ title: messages[field], icon: "none", duration: 2200 });
   },
 
   async onRetry() {
@@ -116,6 +155,18 @@ Page({
   },
 
   async submitStartClaim(options: { reuseIdentity: boolean }) {
+    const payload = buildStartClaimPayload({
+      description: this.data.description,
+      accidentDatetime: this.data.accidentDatetime,
+      accidentLocation: this.data.accidentLocation,
+      injuryStatus: this.data.injuryStatus,
+      reachabilityKnown: true,
+    });
+    if (!payload) {
+      this._applyFormPatch({}, { showErrors: true });
+      return;
+    }
+
     const gate = beginStartClaimSubmit(this._submitState, {
       reuseIdentity: options.reuseIdentity,
     });
@@ -125,16 +176,18 @@ Page({
       busy: { submitting: true },
       errorMessage: "",
       errorRetryable: false,
+      fieldErrors: {},
+      missingHint: "",
     });
 
     try {
       const result = await this.callStartClaim({
         command_id: gate.command_id,
         idempotency_key: gate.idempotency_key,
-        accident_description: this.data.description,
-        accident_datetime: this.data.accidentDatetime,
-        accident_location: this.data.accidentLocation,
-        injury_status: this.data.injuryStatus,
+        accident_description: payload.accident_description,
+        accident_datetime: payload.accident_datetime,
+        accident_location: payload.accident_location,
+        injury_status: payload.injury_status,
       });
       if (!result.ok) {
         const mapped = mapStartClaimError(result.error_code || "create_claim_failed");

@@ -67,10 +67,28 @@ metrics.
 - [ ] No unsupported request type is sendable
 - [ ] Idempotency: no duplicate command, event, or timeline entry
 - [ ] Visible recovery; no silent fallback, no-op, or infinite loading
+- [ ] Founder Form Gate (if any form changed) — see North Star §I
 - [ ] Founder/manual QA evidence recorded before Capability Done
 
 Use the exact gate definitions in the governing SSOT; do not reinterpret them
 from this abbreviated checklist.
+
+### Founder Form Gate quick check (governing SSOT: North Star §I)
+
+If a customer/broker form changed, confirm before Release:
+
+- [ ] Visible value equals canonical form state
+- [ ] Each required field tested independently
+- [ ] All required complete → primary CTA enabled
+- [ ] Optional / Request More / future fields never block submit
+- [ ] No hidden length/format/legacy rule without Business Contract + visible reason
+- [ ] Submit runs final validation and shows first invalid field
+- [ ] Disabled CTA is never the only error signal
+- [ ] Payload uses the normalized values shown to the user
+- [ ] Duplicate tap → one command/outcome
+- [ ] Accepted submit visible downstream
+- [ ] DevTools full-compile + physical-device smoke done
+- [ ] A real user can complete it without Cursor guidance
 
 ## Loop result
 

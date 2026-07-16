@@ -7,7 +7,7 @@
 
     <view class="section-label">事故经过</view>
     <textarea
-      class="textarea-field"
+      class="textarea-field {{fieldErrors.description ? 'field-invalid' : ''}}"
       placeholder="例如：等红灯时被后车追尾。"
       maxlength="2000"
       value="{{description}}"
@@ -17,24 +17,27 @@
       disabled="{{busy.submitting}}"
     />
     <view class="char-count">{{charCount}} 字</view>
+    <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
 
     <view class="section-label section-gap">事故时间</view>
     <input
-      class="input-field"
-      placeholder="例如：今天上午 10:30"
+      class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
+      placeholder="例如：今天上午 9 点 或 Today 9 am"
       value="{{accidentDatetime}}"
       bindinput="onDatetimeInput"
       disabled="{{busy.submitting}}"
     />
+    <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
 
     <view class="section-label section-gap">事故地点</view>
     <input
-      class="input-field"
+      class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
       placeholder="城市 / 路口 / 停车场"
       value="{{accidentLocation}}"
       bindinput="onLocationInput"
       disabled="{{busy.submitting}}"
     />
+    <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
 
     <view class="section-label section-gap">是否有人受伤</view>
     <view class="choice-row">
@@ -57,6 +60,7 @@
         disabled="{{busy.submitting}}"
       >不确定</button>
     </view>
+    <view wx:if="{{fieldErrors.injuryStatus}}" class="field-error">{{fieldErrors.injuryStatus}}</view>
   </view>
 
   <view class="card" wx:if="{{errorMessage}}">
@@ -79,6 +83,7 @@
   <view class="safety-footer">{{shellSafetyCopy}}</view>
 
   <view class="footer-cta">
+    <view wx:if="{{!canSubmit && missingHint && !busy.submitting}}" class="submit-hint">{{missingHint}}</view>
     <task-cta
       label="提交给陈总"
       disabled="{{busy.submitting || !canSubmit}}"
