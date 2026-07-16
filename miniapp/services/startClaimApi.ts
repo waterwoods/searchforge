@@ -10,6 +10,9 @@ export type CustomerStartClaimCommand = {
   command_id: string;
   idempotency_key: string;
   accident_description?: string;
+  accident_datetime?: string;
+  accident_location?: string;
+  injury_status?: string;
   correlation_id?: string;
 };
 
@@ -39,6 +42,9 @@ export async function startClaim(
     correlation_id: command.correlation_id || command.command_id,
     session_id: getPrototypeSessionId(),
     accident_description: (command.accident_description || "").trim() || undefined,
+    accident_datetime: (command.accident_datetime || "").trim() || undefined,
+    accident_location: (command.accident_location || "").trim() || undefined,
+    injury_status: (command.injury_status || "").trim() || undefined,
     is_test: Boolean(appConfig.prototypeMode),
   });
 }

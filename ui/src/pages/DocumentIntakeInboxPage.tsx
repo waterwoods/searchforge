@@ -475,16 +475,21 @@ function BrokerCaseDetail({
     isClaimGuidedCase(caseItem) && !isClaimBrokerDone(caseItem) && Boolean(onClaimBrokerDone);
   const isWeComMedia = isWeComMediaIntakeLane(caseItem.service_lane);
   const attachments = caseItem.case_attachments ?? [];
+  const isP20Intake = Boolean(caseItem.p20_case_intake_projection || caseItem.case_intake_projection);
 
   if (!hasFullPacket) {
     return (
       <div>
-        <Space style={{ marginBottom: 12 }} wrap>
-          {statusTag(readiness)}
-          <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
-        </Space>
-        <TopActionBanner caseItem={caseItem} blob={blob} />
-        {(caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
+        {!isP20Intake ? (
+          <>
+            <Space style={{ marginBottom: 12 }} wrap>
+              {statusTag(readiness)}
+              <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
+            </Space>
+            <TopActionBanner caseItem={caseItem} blob={blob} />
+          </>
+        ) : null}
+        {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
           <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
         ) : null}
         <MissingInformationChecklistPanel
@@ -493,15 +498,17 @@ function BrokerCaseDetail({
           onCaseChange={(updated) => onCaseChange?.(updated)}
           refreshCase={onRefreshCase}
         />
-        <StructuredRequestMorePanel
-          key={caseItem.case_id}
-          caseRecord={caseItem}
-          projectionLoading={projectionLoading}
-          projectionLoadError={projectionLoadError}
-          onCaseChange={(updated) => onCaseChange?.(updated)}
-          refreshCase={onRefreshCase}
-        />
-        {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
+        {!isP20Intake ? (
+          <StructuredRequestMorePanel
+            key={caseItem.case_id}
+            caseRecord={caseItem}
+            projectionLoading={projectionLoading}
+            projectionLoadError={projectionLoadError}
+            onCaseChange={(updated) => onCaseChange?.(updated)}
+            refreshCase={onRefreshCase}
+          />
+        ) : null}
+        {!isP20Intake && readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
         {isClaimGuidedCase(caseItem) ? (
@@ -598,13 +605,16 @@ function BrokerCaseDetail({
 
   return (
     <div>
-      <Space style={{ marginBottom: 12 }} wrap>
-        {statusTag(blob!.readiness_status || readiness)}
-        <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
-      </Space>
-
-      <TopActionBanner caseItem={caseItem} blob={blob} />
-      {(caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
+      {!isP20Intake ? (
+        <>
+          <Space style={{ marginBottom: 12 }} wrap>
+            {statusTag(blob!.readiness_status || readiness)}
+            <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
+          </Space>
+          <TopActionBanner caseItem={caseItem} blob={blob} />
+        </>
+      ) : null}
+      {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
         <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
       ) : null}
       <MissingInformationChecklistPanel
@@ -613,15 +623,17 @@ function BrokerCaseDetail({
         onCaseChange={(updated) => onCaseChange?.(updated)}
         refreshCase={onRefreshCase}
       />
-      <StructuredRequestMorePanel
-        key={caseItem.case_id}
-        caseRecord={caseItem}
-        projectionLoading={projectionLoading}
-        projectionLoadError={projectionLoadError}
-        onCaseChange={(updated) => onCaseChange?.(updated)}
-        refreshCase={onRefreshCase}
-      />
-      {readiness === 'NEED_INFO' && missingFields.length > 0 ? (
+      {!isP20Intake ? (
+        <StructuredRequestMorePanel
+          key={caseItem.case_id}
+          caseRecord={caseItem}
+          projectionLoading={projectionLoading}
+          projectionLoadError={projectionLoadError}
+          onCaseChange={(updated) => onCaseChange?.(updated)}
+          refreshCase={onRefreshCase}
+        />
+      ) : null}
+      {!isP20Intake && readiness === 'NEED_INFO' && missingFields.length > 0 ? (
         <MissingItemsCard fields={missingFields} />
       ) : null}
 

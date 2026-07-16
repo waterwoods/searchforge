@@ -390,12 +390,26 @@ def _minimum_create_inputs(body: dict[str, Any]) -> dict[str, Any]:
         "vehicle_model",
         "vehicle_information",
         "primary_vehicle_summary",
+        "own_vehicle_info",
         "policy_number",
         "accident_description",
+        "accident_datetime",
+        "accident_date",
+        "accident_location",
+        "injury_status",
+        "anyone_injured",
+        "police_involved",
+        "other_party_info",
+        "other_party_plate",
     ):
         val = str(known_facts_in.get(key) or body.get(key) or "").strip()
         if val:
             known_facts[key] = val
+    # Normalize injury alias for checklist seeding.
+    if known_facts.get("anyone_injured") and not known_facts.get("injury_status"):
+        known_facts["injury_status"] = known_facts["anyone_injured"]
+    if known_facts.get("accident_date") and not known_facts.get("accident_datetime"):
+        known_facts["accident_datetime"] = known_facts["accident_date"]
     return {
         "customer_name": customer_name,
         "customer_phone": customer_phone,
@@ -469,7 +483,7 @@ def _build_new_case_record(
         "issue_category": "claim_intake",
         "urgency": "normal",
         "manual_followup_needed": True,
-        "broker_next_step": "Review missing information and save request draft.",
+        "broker_next_step": "Review the accident first, then Request More only if needed.",
         "client_prep": "",
         "client_reply_draft": "",
         "handoff_ready": False,
@@ -484,7 +498,7 @@ def _build_new_case_record(
         "service_lane": SERVICE_LANE_CLAIM,
         "triage_mode": "greenfield",
         "office_case_title": title,
-        "office_broker_next_step": "Review missing information checklist",
+        "office_broker_next_step": "Review accident facts, then decide Request More",
         "p20_case_intake_capability_version": CAPABILITY_VERSION,
         "case_intake_capability_version": CAPABILITY_VERSION,
         "admin_lifecycle": ADMIN_LIFECYCLE_DRAFT,

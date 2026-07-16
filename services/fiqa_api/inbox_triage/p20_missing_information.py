@@ -26,42 +26,79 @@ ALL_FACT_STATUSES = frozenset(
     }
 )
 
-# Initial supported checklist fields for Claim intake.
+# Business Contract classes (SSOT: docs/product/p20_business_contract.md).
+BUSINESS_CLASS_MUST_HAVE = "must_have"
+BUSINESS_CLASS_NICE_TO_HAVE = "nice_to_have"
+BUSINESS_CLASS_REQUEST_MORE = "request_more"
+
+# Checklist fields for Cap2 Missing Information + Request More.
+# Must Have = accident understanding (opens Broker Review).
+# Nice to Have = helpful on initial intake; never blocks review.
+# Request More = broker-ordered follow-up (VIN / docs / evidence).
 CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
+    {
+        "field_key": "accident_description",
+        "label": "Accident description",
+        "customer_label": "What happened",
+        "item_type": "free_text",
+        "business_class": BUSINESS_CLASS_MUST_HAVE,
+        "severity": "critical",
+    },
+    {
+        "field_key": "accident_datetime",
+        "label": "Accident date",
+        "customer_label": "When it happened",
+        "item_type": "free_text",
+        "business_class": BUSINESS_CLASS_MUST_HAVE,
+        "severity": "critical",
+    },
+    {
+        "field_key": "accident_location",
+        "label": "Accident location",
+        "customer_label": "Where it happened",
+        "item_type": "free_text",
+        "business_class": BUSINESS_CLASS_MUST_HAVE,
+        "severity": "critical",
+    },
+    {
+        "field_key": "injury_status",
+        "label": "Anyone injured?",
+        "customer_label": "Was anyone injured?",
+        "item_type": "free_text",
+        "business_class": BUSINESS_CLASS_MUST_HAVE,
+        "severity": "critical",
+    },
+    {
+        "field_key": "photo_evidence",
+        "label": "Photos (optional)",
+        "customer_label": "Accident / vehicle photos",
+        "item_type": "photo_evidence",
+        "business_class": BUSINESS_CLASS_NICE_TO_HAVE,
+        "severity": "optional",
+    },
     {
         "field_key": "vin",
         "label": "VIN",
         "customer_label": "Vehicle VIN",
         "item_type": "vin",
-        "severity": "critical",
+        "business_class": BUSINESS_CLASS_REQUEST_MORE,
+        "severity": "optional",
     },
     {
         "field_key": "vehicle_information",
         "label": "Vehicle information",
         "customer_label": "Vehicle year / make / model",
         "item_type": "free_text",
-        "severity": "important",
+        "business_class": BUSINESS_CLASS_REQUEST_MORE,
+        "severity": "optional",
     },
     {
         "field_key": "policy_or_insurance_card",
-        "label": "Policy / insurance card",
-        "customer_label": "Policy number or insurance card photo",
+        "label": "Insurance card",
+        "customer_label": "Insurance card photo",
         "item_type": "policy_or_insurance_card",
-        "severity": "important",
-    },
-    {
-        "field_key": "accident_description",
-        "label": "Accident description",
-        "customer_label": "What happened (accident description)",
-        "item_type": "free_text",
-        "severity": "critical",
-    },
-    {
-        "field_key": "photo_evidence",
-        "label": "Photo evidence",
-        "customer_label": "Accident / vehicle photos",
-        "item_type": "photo_evidence",
-        "severity": "important",
+        "business_class": BUSINESS_CLASS_REQUEST_MORE,
+        "severity": "optional",
     },
 )
 
@@ -94,9 +131,13 @@ _VEHICLE_FACT_KEYS = (
     "vehicle_model",
     "primary_vehicle_summary",
     "vehicle_information",
+    "own_vehicle_info",
 )
 _POLICY_FACT_KEYS = ("policy_number", "insurance_card", "policy_or_insurance_card")
 _ACCIDENT_FACT_KEYS = ("accident_description", "accident_summary")
+_DATETIME_FACT_KEYS = ("accident_datetime", "accident_date", "accident_time")
+_LOCATION_FACT_KEYS = ("accident_location",)
+_INJURY_FACT_KEYS = ("injury_status", "anyone_injured")
 
 
 def _str(value: Any) -> str:
@@ -123,7 +164,10 @@ def _first_nonempty(facts: dict[str, Any], keys: tuple[str, ...]) -> str | None:
 
 
 def _vehicle_value(facts: dict[str, Any]) -> str | None:
-    direct = _first_nonempty(facts, ("vehicle_information", "primary_vehicle_summary"))
+    direct = _first_nonempty(
+        facts,
+        ("vehicle_information", "primary_vehicle_summary", "own_vehicle_info"),
+    )
     if direct:
         return direct
     parts = [
@@ -171,6 +215,12 @@ def seed_fact_records_from_case(case: dict[str, Any] | None) -> dict[str, dict[s
             value = _first_nonempty(facts, _POLICY_FACT_KEYS) or _str(case.get("policy_number")) or None
         elif key == "accident_description":
             value = _first_nonempty(facts, _ACCIDENT_FACT_KEYS)
+        elif key == "accident_datetime":
+            value = _first_nonempty(facts, _DATETIME_FACT_KEYS)
+        elif key == "accident_location":
+            value = _first_nonempty(facts, _LOCATION_FACT_KEYS)
+        elif key == "injury_status":
+            value = _first_nonempty(facts, _INJURY_FACT_KEYS)
         elif key == "photo_evidence":
             value = "received" if _photo_evidence_present(case, facts) else None
         if value:
@@ -261,18 +311,26 @@ def derive_missing_information_checklist(
             suggested = False
             request_mode = "none"
         mvp_sendable = is_mvp_sendable_item_type(meta["item_type"])
+        business_class = meta.get("business_class") or BUSINESS_CLASS_REQUEST_MORE
+        # Request More suggestions only — Must Have / Nice to Have are intake, not sendable draft seeds.
+        suggest_for_request = (
+            suggested
+            and mvp_sendable
+            and business_class == BUSINESS_CLASS_REQUEST_MORE
+        )
         items.append(
             {
                 "field_key": key,
                 "label": meta["label"],
                 "customer_label": meta["customer_label"],
                 "item_type": meta["item_type"],
+                "business_class": business_class,
                 "severity": meta["severity"],
                 "status": status,
                 "value": record.get("value"),
                 "previous_value": record.get("previous_value"),
                 "reason": _str(record.get("reason")),
-                "suggested_for_request": suggested and mvp_sendable,
+                "suggested_for_request": suggest_for_request,
                 "request_mode": request_mode,
                 "mvp_sendable": mvp_sendable,
                 "is_authoritative_fact": status

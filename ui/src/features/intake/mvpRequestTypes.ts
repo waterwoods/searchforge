@@ -29,7 +29,7 @@ export function brokerSendBlockedMessage(errorCode: string, unsupportedItems?: s
     return formatUnsupportedSendItems(unsupportedItems || []);
   }
   if (errorCode === 'request_draft_empty') {
-    return 'Select at least one supported item (VIN) before sending.';
+    return 'Select at least one supported Request More item (VIN) before sending.';
   }
   return errorCode;
 }

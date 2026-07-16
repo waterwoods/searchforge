@@ -58,6 +58,9 @@ class CustomerStartClaimBody(BaseModel):
     correlation_id: str | None = Field(default=None, max_length=128)
     session_id: str | None = Field(default=None, max_length=128)
     accident_description: str | None = Field(default=None, max_length=2000)
+    accident_datetime: str | None = Field(default=None, max_length=120)
+    accident_location: str | None = Field(default=None, max_length=500)
+    injury_status: str | None = Field(default=None, max_length=32)
     is_test: bool = Field(default=False)
 
 
@@ -74,6 +77,9 @@ async def post_customer_start_claim(
             correlation_id=body.correlation_id,
             session_id=body.session_id,
             accident_description=body.accident_description,
+            accident_datetime=body.accident_datetime,
+            accident_location=body.accident_location,
+            injury_status=body.injury_status,
             is_test=body.is_test,
         )
     except ValueError as exc:

@@ -26,7 +26,6 @@ import {
   Slice1RequestMoreError,
   saveCaseRequestDraft,
   sendCaseRequest,
-  updateCaseFactStatus,
 } from '@/api/inboxTriage';
 import {
   brokerSendBlockedMessage,
@@ -53,18 +52,6 @@ function newIds(prefix: string): { command_id: string; idempotency_key: string }
     command_id: `${prefix}_${stamp}`,
     idempotency_key: `${prefix}_idem_${stamp}`,
   };
-}
-
-function statusColorFixed(status: string): string {
-  const map: Record<string, string> = {
-    missing: 'magenta',
-    confirmed: 'green',
-    supplied_unconfirmed: 'blue',
-    needs_correction: 'orange',
-    not_applicable: 'default',
-    unknown: 'gold',
-  };
-  return map[status] || 'default';
 }
 
 export function resolveCaseIntakeProjection(caseRecord: SavedCase | null): CaseIntakeProjection | null {
@@ -321,46 +308,34 @@ function CustomerAccessReadyCard({
     <div
       style={{
         border: '1px solid #d9d9d9',
-        padding: 16,
+        borderRadius: 8,
+        padding: 18,
         background: review.reviewReady ? '#f6ffed' : '#fafafa',
         marginBottom: 12,
       }}
     >
       <Space direction="vertical" size={10} style={{ width: '100%' }}>
-        <Title level={5} style={{ margin: 0 }}>
-          Sent to customer
+        <Tag color={review.reviewReady ? 'success' : 'processing'}>
+          {review.reviewReady ? 'Your turn' : 'Customer is working'}
+        </Tag>
+        <Title level={4} style={{ margin: 0 }}>
+          {review.reviewReady ? 'Customer replied' : 'Waiting for customer'}
         </Title>
-        <Tag color={review.reviewReady ? 'success' : 'processing'}>{review.simpleStatus}</Tag>
         <Text type="secondary">
-          Progress: {review.satisfied} / {review.total}
+          {review.reviewReady
+            ? '先核对客户补充内容，再决定下一步。'
+            : '已向客户发出补充请求。'}
         </Text>
         {review.submittedVin ? (
-          <div style={{ padding: 8, background: '#fff', border: '1px solid #b7eb8f' }}>
+          <div style={{ padding: 12, background: '#fff', border: '1px solid #b7eb8f', borderRadius: 6 }}>
             <Text strong style={{ display: 'block', marginBottom: 4 }}>
-              Customer submitted VIN
+              Customer VIN
             </Text>
             <Text code copyable={{ text: review.submittedVin }}>
               {review.submittedVin}
             </Text>
           </div>
         ) : null}
-        {itemSummary.length > 0 ? (
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 4 }}>
-              Requested
-            </Text>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {itemSummary.map((label) => (
-                <li key={label}>
-                  <Text>{label}</Text>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        <Paragraph style={{ marginBottom: 0 }}>
-          {access.instruction_zh || '让客户用微信扫码并补充资料。'}
-        </Paragraph>
         {qrValue && !review.reviewReady ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
             <QRCode value={qrValue} size={168} />
@@ -374,11 +349,6 @@ function CustomerAccessReadyCard({
           />
         ) : null}
         <Space wrap>
-          {onRefreshStatus ? (
-            <Button onClick={() => void onRefreshStatus()} loading={Boolean(refreshing)}>
-              Refresh status
-            </Button>
-          ) : null}
           {link && !review.reviewReady ? (
             <Button
               type="primary"
@@ -394,30 +364,33 @@ function CustomerAccessReadyCard({
               Copy Link
             </Button>
           ) : null}
-          {showEdit && onEdit ? (
-            <Button onClick={onEdit}>Edit</Button>
-          ) : null}
         </Space>
         <Collapse
           ghost
           size="small"
           items={[
             {
-              key: 'advanced',
-              label: 'Details',
+              key: 'request-details',
+              label: 'Request details',
               children: (
-                <Space direction="vertical" size={4}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Channel: {access.channel || 'https_deep_link'}
+                <Space direction="vertical" size={8}>
+                  <Text type="secondary">
+                    Completed {review.satisfied} of {review.total}
                   </Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Expires: {access.expires_at || '—'}
-                  </Text>
-                  {access.production_qr_blocker ? (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      Production QR note: {access.production_qr_blocker}
-                    </Text>
+                  {itemSummary.length > 0 ? (
+                    <Text>Requested: {itemSummary.join(', ')}</Text>
                   ) : null}
+                  {!review.reviewReady ? (
+                    <Paragraph style={{ marginBottom: 0 }}>
+                      {access.instruction_zh || '让客户用微信扫码并补充资料。'}
+                    </Paragraph>
+                  ) : null}
+                  {onRefreshStatus ? (
+                    <Button size="small" onClick={() => void onRefreshStatus()} loading={Boolean(refreshing)}>
+                      Refresh
+                    </Button>
+                  ) : null}
+                  {showEdit && onEdit ? <Button size="small" onClick={onEdit}>Edit</Button> : null}
                 </Space>
               ),
             },
@@ -444,7 +417,6 @@ export function MissingInformationChecklistPanel({
   const [sending, setSending] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [naReason, setNaReason] = useState<Record<string, string>>({});
   const commandInFlight = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveRef = useRef(new RequestDraftAutosaveController());
@@ -854,70 +826,6 @@ export function MissingInformationChecklistPanel({
     }
   };
 
-  const handleMarkNotApplicable = async (fieldKey: string) => {
-    if (commandInFlight.current || requestSent) return;
-    const reason = (naReason[fieldKey] || '').trim();
-    if (!reason) {
-      message.warning('Enter a reason before marking not applicable.');
-      return;
-    }
-    commandInFlight.current = true;
-    setSaveStatus('saving');
-    setError(null);
-    try {
-      const ids = newIds('fact_na');
-      const result = await updateCaseFactStatus(caseRecord.case_id, {
-        ...ids,
-        expected_case_version: expectedVersion,
-        field_key: fieldKey,
-        status: 'not_applicable',
-        reason,
-      });
-      if (result.outcome === 'conflict') {
-        await refreshCase?.();
-        message.warning('Case updated — refreshed.');
-        return;
-      }
-      mergeProjection(result);
-      message.success('Marked not applicable (audited).');
-    } catch {
-      setError('Could not update fact status.');
-      message.error('Fact status update failed');
-    } finally {
-      setSaveStatus(autosaveRef.current.phase === 'saved' ? 'saved' : 'idle');
-      commandInFlight.current = false;
-    }
-  };
-
-  const handleNeedsCorrection = async (fieldKey: string) => {
-    if (commandInFlight.current || requestSent) return;
-    commandInFlight.current = true;
-    setSaveStatus('saving');
-    setError(null);
-    try {
-      const ids = newIds('fact_corr');
-      const result = await updateCaseFactStatus(caseRecord.case_id, {
-        ...ids,
-        expected_case_version: expectedVersion,
-        field_key: fieldKey,
-        status: 'needs_correction',
-        reason: 'Broker requested customer confirmation/correction',
-      });
-      if (result.outcome === 'conflict') {
-        await refreshCase?.();
-        message.warning('Case updated — refreshed.');
-        return;
-      }
-      mergeProjection(result);
-      message.success('Marked needs correction; prior value preserved.');
-    } catch {
-      setError('Could not mark needs correction.');
-    } finally {
-      setSaveStatus(autosaveRef.current.phase === 'saved' ? 'saved' : 'idle');
-      commandInFlight.current = false;
-    }
-  };
-
   const showAccessCard = requestSent && accessCard && !editing;
   const showDraftEditor = !showAccessCard;
   const saveStatusLabel =
@@ -938,12 +846,6 @@ export function MissingInformationChecklistPanel({
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <Space style={{ marginBottom: 8 }} wrap>
-        <Text strong>Request draft</Text>
-        {projection.is_test || caseRecord.workbench_test ? <Tag color="orange">TEST / QA</Tag> : null}
-        {requestSent ? <Tag color="blue">Sent</Tag> : <Tag>{projection.admin_lifecycle || 'draft'}</Tag>}
-      </Space>
-
       {showAccessCard && accessCard ? (
         <CustomerAccessReadyCard
           access={accessCard}
@@ -958,130 +860,129 @@ export function MissingInformationChecklistPanel({
 
       {showDraftEditor ? (
         <>
-          <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
-            Select VIN to request from the customer. Other fields are shown for context — customer
-            submit support is coming later.
+          <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>请客户补充</Title>
+          <Paragraph type="secondary" style={{ marginBottom: 8 }}>
+            先看清事故，再只发一项补充任务（当前可发：VIN）。
           </Paragraph>
+          {(() => {
+            const checklist = projection.missing_information_checklist || [];
+            const mustHaveGaps = checklist.filter(
+              (item) =>
+                (item.business_class === 'must_have' || item.severity === 'critical')
+                && item.status !== 'confirmed'
+                && item.status !== 'not_applicable'
+                && item.item_type !== 'vin',
+            );
+            const requestMoreCandidates = checklist.filter(
+              (item) =>
+                item.business_class === 'request_more'
+                || item.item_type === 'vin'
+                || item.item_type === 'policy_or_insurance_card'
+                || item.item_type === 'photo_evidence',
+            );
+            return (
+              <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 12 }}>
+                {mustHaveGaps.length > 0 ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="事故理解仍缺（Start Claim）"
+                    description={mustHaveGaps.map((i) => i.label).join(' · ')}
+                  />
+                ) : (
+                  <Alert
+                    type="success"
+                    showIcon
+                    message="事故理解已齐 — 可按需请客户补充"
+                  />
+                )}
+                {requestMoreCandidates.length > 0 ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Request More 候选：{requestMoreCandidates.map((i) => i.label).join(' · ')}
+                  </Text>
+                ) : null}
+              </Space>
+            );
+          })()}
           {unsupportedInSavedDraft.length > 0 ? (
             <Alert
               type="warning"
               showIcon
               style={{ marginBottom: 8 }}
               message={formatUnsupportedSendItems(unsupportedInSavedDraft)}
-              description="Update your selection to VIN only, wait for Saved, then send again."
+              description="当前仅支持发送 VIN。请只勾选 VIN，等待 Saved，再发送。"
             />
           ) : null}
           <Space direction="vertical" style={{ width: '100%' }} size={10}>
-            {rows.map((row) => {
-              const sendable = isMvpSendableItemType(row.item_type);
+            {rows.filter((row) => isMvpSendableItemType(row.item_type)).map((row) => {
               return (
               <div
                 key={row.field_key}
                 style={{
                   border: '1px solid #f0f0f0',
-                  padding: 10,
+                  borderRadius: 8,
+                  padding: 12,
                   background: row.selected ? '#fafafa' : '#fff',
-                  opacity: sendable ? 1 : 0.85,
                 }}
               >
                 <Space wrap style={{ marginBottom: 6 }}>
-                  {sendable ? (
-                    <Checkbox
-                      checked={row.selected}
-                      disabled={row.status === 'confirmed' && row.request_mode === 'none'}
-                      onChange={(e) =>
-                        applyUserRowEdit((prev) =>
-                          prev.map((r) =>
-                            r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
-                          ),
-                        )
-                      }
-                    >
-                      {row.label}
-                    </Checkbox>
-                  ) : (
-                    <Text>
-                      {row.label}{' '}
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        (Coming later)
-                      </Text>
-                    </Text>
-                  )}
-                  <Tag color={statusColorFixed(row.status)}>{row.status}</Tag>
+                  <Checkbox
+                    checked={row.selected}
+                    disabled={row.status === 'confirmed' && row.request_mode === 'none'}
+                    onChange={(e) =>
+                      applyUserRowEdit((prev) =>
+                        prev.map((r) =>
+                          r.field_key === row.field_key ? { ...r, selected: e.target.checked } : r,
+                        ),
+                      )
+                    }
+                  >
+                    {row.label}
+                  </Checkbox>
                 </Space>
-                {row.value ? (
-                  <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-                    Current value: {String(row.value)}
-                  </Text>
-                ) : null}
-                {sendable ? (
-                  <>
-                    <Input
-                      size="small"
-                      placeholder="Customer-facing label"
-                      value={row.label}
-                      onChange={(e) =>
-                        applyUserRowEdit((prev) =>
-                          prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
-                        )
-                      }
-                      style={{ marginBottom: 6 }}
-                    />
-                    <TextArea
-                      rows={2}
-                      placeholder="Customer instruction (optional)"
-                      value={row.instructions}
-                      onChange={(e) =>
-                        applyUserRowEdit((prev) =>
-                          prev.map((r) =>
-                            r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
-                          ),
-                        )
-                      }
-                    />
-                  </>
-                ) : (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Not sendable in the current MVP — VIN only.
-                  </Text>
-                )}
-                <Space wrap style={{ marginTop: 8 }}>
-                  {row.status !== 'not_applicable' && row.status !== 'confirmed' ? (
-                    <>
-                      <Input
-                        size="small"
-                        placeholder="N/A reason"
-                        value={naReason[row.field_key] || ''}
-                        onChange={(e) =>
-                          setNaReason((prev) => ({ ...prev, [row.field_key]: e.target.value }))
-                        }
-                        style={{ width: 180 }}
-                      />
-                      <Button
-                        size="small"
-                        onClick={() => void handleMarkNotApplicable(row.field_key)}
-                        disabled={saveStatus === 'saving'}
-                      >
-                        Mark N/A
-                      </Button>
-                    </>
-                  ) : null}
-                  {row.value && row.status !== 'needs_correction' ? (
-                    <Button
-                      size="small"
-                      onClick={() => void handleNeedsCorrection(row.field_key)}
-                      disabled={saveStatus === 'saving'}
-                    >
-                      Needs correction
-                    </Button>
-                  ) : null}
-                </Space>
+                <Collapse
+                  ghost
+                  size="small"
+                  items={[
+                    {
+                      key: `message-${row.field_key}`,
+                      label: 'Edit customer message',
+                      children: (
+                        <>
+                          <Input
+                            size="small"
+                            placeholder="Customer-facing label"
+                            value={row.label}
+                            onChange={(e) =>
+                              applyUserRowEdit((prev) =>
+                                prev.map((r) => (r.field_key === row.field_key ? { ...r, label: e.target.value } : r)),
+                              )
+                            }
+                            style={{ marginBottom: 6 }}
+                          />
+                          <TextArea
+                            rows={2}
+                            placeholder="Customer instruction (optional)"
+                            value={row.instructions}
+                            onChange={(e) =>
+                              applyUserRowEdit((prev) =>
+                                prev.map((r) =>
+                                  r.field_key === row.field_key ? { ...r, instructions: e.target.value } : r,
+                                ),
+                              )
+                            }
+                          />
+                        </>
+                      ),
+                    },
+                  ]}
+                />
               </div>
             );
             })}
           </Space>
           <Space style={{ marginTop: 12 }} direction="vertical" size={8}>
-            {saveStatusLabel ? (
+            {saveStatus === 'failed' && saveStatusLabel ? (
               <Text type={saveStatus === 'failed' ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
                 {saveStatusLabel}
                 {saveStatus === 'failed' ? (

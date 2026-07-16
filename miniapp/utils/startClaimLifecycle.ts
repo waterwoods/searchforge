@@ -63,6 +63,10 @@ export function mapStartClaimError(code: string): {
 }
 
 export const START_CLAIM_SUCCESS_COPY = {
-  title: "已收到您的报案",
-  bodyLines: ["陈总会尽快查看。", "如果需要补充资料，", "我们会通知您。"],
+  title: "已收到您的事故说明",
+  bodyLines: [
+    "陈总会先了解事故情况。",
+    "如需 VIN、保险卡或照片，",
+    "我们会再通知您补充。",
+  ],
 } as const;

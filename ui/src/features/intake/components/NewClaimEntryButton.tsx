@@ -11,8 +11,11 @@ type FormValues = {
   customer_name?: string;
   customer_phone?: string;
   contact_note?: string;
-  vin?: string;
   accident_description?: string;
+  accident_datetime?: string;
+  accident_location?: string;
+  injury_status?: string;
+  vin?: string;
 };
 
 export function NewClaimEntryButton({
@@ -40,6 +43,15 @@ export function NewClaimEntryButton({
     };
     lastCommand.current = ids;
     try {
+      const knownFacts: Record<string, string> = {};
+      if (values.accident_description) knownFacts.accident_description = values.accident_description;
+      if (values.accident_datetime) knownFacts.accident_datetime = values.accident_datetime;
+      if (values.accident_location) knownFacts.accident_location = values.accident_location;
+      if (values.injury_status) {
+        knownFacts.injury_status = values.injury_status;
+        knownFacts.anyone_injured = values.injury_status;
+      }
+      if (values.vin) knownFacts.vin = values.vin;
       const result = await createClaimCase({
         command_id: ids.command_id,
         idempotency_key: ids.idempotency_key,
@@ -49,12 +61,7 @@ export function NewClaimEntryButton({
         contact_note: values.contact_note,
         vin: values.vin,
         accident_description: values.accident_description,
-        known_facts: {
-          ...(values.vin ? { vin: values.vin } : {}),
-          ...(values.accident_description
-            ? { accident_description: values.accident_description }
-            : {}),
-        },
+        known_facts: knownFacts,
       });
       const caseId = String(result.case_id || result.broker_projection?.case_id || '').trim();
       if (!caseId) {
@@ -107,7 +114,7 @@ export function NewClaimEntryButton({
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message="Create an incomplete Claim. Missing information will be reviewed next. Request More is not sent yet."
+          message="先记录事故理解（经过 / 时间 / 地点 / 受伤）。VIN 属于请客户补充，不是开案必填。"
         />
         {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} /> : null}
         <Form
@@ -118,17 +125,26 @@ export function NewClaimEntryButton({
           <Form.Item name="is_test" valuePropName="checked">
             <Checkbox>Mark as TEST / QA Claim (no real customer PII required)</Checkbox>
           </Form.Item>
+          <Form.Item name="accident_description" label="Accident description (what happened)">
+            <Input.TextArea rows={3} placeholder="Short story of the accident" maxLength={2000} />
+          </Form.Item>
+          <Form.Item name="accident_datetime" label="Accident date / time">
+            <Input placeholder="Optional seed" maxLength={120} />
+          </Form.Item>
+          <Form.Item name="accident_location" label="Accident location">
+            <Input placeholder="Optional seed" maxLength={500} />
+          </Form.Item>
+          <Form.Item name="injury_status" label="Anyone injured? (yes / no / unknown)">
+            <Input placeholder="Optional seed" maxLength={32} />
+          </Form.Item>
           <Form.Item name="customer_name" label="Customer name (optional)">
             <Input placeholder="Optional — QA can use placeholder" maxLength={120} />
           </Form.Item>
           <Form.Item name="customer_phone" label="Customer phone (optional)">
             <Input placeholder="Optional" maxLength={40} />
           </Form.Item>
-          <Form.Item name="vin" label="VIN if known (optional)">
-            <Input placeholder="Leave blank to appear as missing" maxLength={32} />
-          </Form.Item>
-          <Form.Item name="accident_description" label="Accident description if known (optional)">
-            <Input.TextArea rows={3} placeholder="Optional" maxLength={2000} />
+          <Form.Item name="vin" label="VIN if already known (Request More — optional)">
+            <Input placeholder="Leave blank — request later if needed" maxLength={32} />
           </Form.Item>
           <Form.Item name="contact_note" label="Internal note (optional)">
             <Input.TextArea rows={2} maxLength={200} />

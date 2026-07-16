@@ -622,7 +622,7 @@ def _build_brief_summary(
 
     has_basics = bool(dt and loc and desc)
     if not has_basics:
-        return f"客户已发起理赔记录。事故时间、地点或经过仍需补充。已收到 {photo_count} 张照片。"
+        return f"客户已发起理赔记录。先看事故经过：时间、地点或经过仍需补充。已收到 {photo_count} 张照片。"
 
     injury_phrase = {
         "no": "客户表示人没事",
@@ -633,16 +633,16 @@ def _build_brief_summary(
     desc_short = desc[:80] + ("…" if desc and len(desc) > 80 else "") if desc else "事故经过已记录"
     parts = [f"客户报告{dt or '时间待确认'}在{loc or '地点待确认'}{desc_short}。"]
     parts.append(f"{injury_phrase}。")
-    parts.append(f"已收到 {photo_count} 张微信照片。")
+    if photo_count > 0:
+        parts.append(f"已收到 {photo_count} 张照片。")
     other = key_facts.get("other_party_info")
     if other:
         parts.append("对方信息已在叙述中提及。")
-    else:
-        parts.append("对方保险信息尚未确认。")
     return "".join(parts)
 
 
 def _build_missing_info(key_facts: dict[str, Any], photo_count: int) -> list[dict[str, str]]:
+    """Broker Review gaps — Must Have first; Nice to Have never blocks opening review."""
     items: list[dict[str, str]] = []
 
     def add(key: str, label: str, severity: str, reason: str) -> None:
@@ -650,25 +650,25 @@ def _build_missing_info(key_facts: dict[str, Any], photo_count: int) -> list[dic
             return
         items.append({"key": key, "label": label, "severity": severity, "reason": reason})
 
+    # Must Have — understand the accident (Business Contract).
     injury = str(key_facts.get("injury_status") or "unknown")
     if injury == "unknown":
         add("injury_status", "是否有人受伤", "critical", "unknown")
-
     if not _str_or_none(key_facts.get("accident_datetime")):
-        add("accident_datetime", "事故时间", "important", "missing")
+        add("accident_datetime", "事故时间", "critical", "missing")
     if not _str_or_none(key_facts.get("accident_location")):
-        add("accident_location", "事故地点", "important", "missing")
+        add("accident_location", "事故地点", "critical", "missing")
     if not _str_or_none(key_facts.get("accident_description")):
-        add("accident_description", "事故经过", "important", "missing")
-    if not key_facts.get("other_party_info"):
-        add("other_party_info", "对方车牌或保险信息", "important", "missing")
+        add("accident_description", "事故经过", "critical", "missing")
 
+    # Nice to Have — helpful, never framed as incomplete start.
+    if not key_facts.get("other_party_info"):
+        add("other_party_info", "对方信息（如已知）", "optional", "missing")
     police = str(key_facts.get("police_involved") or "unknown")
     if police == "unknown":
         add("police_involved", "是否报警", "optional", "unknown")
-
     if photo_count == 0:
-        add("photos", "车损或现场照片", "optional", "missing")
+        add("photos", "车损或现场照片（可选）", "optional", "missing")
 
     return items
 
@@ -733,20 +733,21 @@ def brief_highlights_are_broker_safe(highlights: list[dict[str, str]]) -> bool:
 
 
 def _build_next_best_question(missing_info: list[dict[str, str]]) -> str:
+    # Must Have first — understand the accident before documents / Nice to Have.
     priority_order = [
         ("injury_status", "请问有人受伤吗？"),
         ("accident_datetime", "请问事故大概是什么时候？"),
         ("accident_location", "请问事故在哪里发生的？"),
         ("accident_description", "能简单说一下事故是怎么发生的吗？"),
-        ("other_party_info", "请问对方车牌或保险信息拿到了吗？"),
-        ("police_involved", "请问现场有没有报警或 police report number？"),
-        ("photos", "如果方便，可以发几张车损或现场照片吗？"),
+        ("other_party_info", "如果方便，对方车牌或保险公司知道吗？（选填）"),
+        ("police_involved", "请问现场有没有报警？（选填）"),
+        ("photos", "如果方便，可以发几张车损或现场照片吗？（选填）"),
     ]
     missing_keys = {item["key"] for item in missing_info}
     for key, question in priority_order:
         if key in missing_keys:
             return question
-    return "如果方便，可以发几张车损或现场照片吗？"
+    return "事故情况已齐。如需 VIN 或证件，请用「请客户补充」。"
 
 
 def _derive_brief_confidence(

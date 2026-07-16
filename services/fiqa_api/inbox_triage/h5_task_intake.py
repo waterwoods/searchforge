@@ -90,10 +90,10 @@ _H5_DONE_DISCLAIMER: Final[str] = "这只是资料收集，不代表已经正式
 _H5_DONE_MISSING_CLEAR: Final[str] = "目前主要资料已收到，陈总会进一步确认。"
 _H5_DASHBOARD_TITLE: Final[str] = "我的事故资料"
 _H5_DASHBOARD_SUBTITLE: Final[str] = (
-    "你可以随时回来补充资料。陈总会看到这里的最新记录。"
+    "先告诉陈总发生了什么。照片和证件如需补充，陈总会再通知您。"
 )
 _H5_DASHBOARD_SUBMITTED_SUBTITLE: Final[str] = (
-    "资料已提交给陈总审核。你仍然可以继续补充照片、对方保险或其他细节。"
+    "资料已提交给陈总审核。如需继续补充 VIN、证件或照片，陈总会再通知您。"
 )
 EVIDENCE_GALLERY_LIMIT: Final[int] = 20
 _EVIDENCE_CATEGORY_LABELS: Final[dict[str, str]] = {
@@ -147,7 +147,8 @@ def _step_complete(case: dict[str, Any], step: str) -> bool:
         desc = str(facts.get("accident_description") or "").strip()
         return len(desc) >= 10
     if step == "vehicle_other_party":
-        return len(str(facts.get("own_vehicle_info") or "").strip()) >= 2
+        # Nice to Have / Request More — never blocks Must Have submit.
+        return True
     if step == "evidence":
         # Optional step — skip allowed; never blocks submit or review.
         return True
@@ -206,10 +207,11 @@ def _validate_step_fields(step: str, fields: dict[str, str]) -> dict[str, str]:
             raise ValueError("accident_description_too_long")
         return {"accident_description": desc}
     if step == "vehicle_other_party":
+        # Optional: vehicle identity is Request More; other driver is Nice to Have.
+        out: dict[str, str] = {}
         own = str(fields.get("own_vehicle_info") or "").strip()
-        if len(own) < 2:
-            raise ValueError("own_vehicle_info_required")
-        out: dict[str, str] = {"own_vehicle_info": own}
+        if own:
+            out["own_vehicle_info"] = own
         plate = str(fields.get("other_party_plate") or "").strip()
         other = str(fields.get("other_party_info") or "").strip()
         if plate:
@@ -217,9 +219,7 @@ def _validate_step_fields(step: str, fields: dict[str, str]) -> dict[str, str]:
         if other:
             out["other_party_info"] = other
         police = str(fields.get("police_involved") or fields.get("police_reported") or "").strip().lower()
-        if police:
-            if police not in ("yes", "no", "unknown"):
-                raise ValueError("invalid_police_value")
+        if police in ("yes", "no", "unknown"):
             out["police_involved"] = police
             out["police_reported"] = police
         return out
@@ -562,9 +562,9 @@ def build_customer_task_contract(case: dict[str, Any], *, task_id: str) -> dict[
         },
         {
             "key": "vehicle_other_party",
-            "label": "车辆和对方信息",
+            "label": "车辆和对方信息（选填）",
             "component_type": "short_text",
-            "required": True,
+            "required": False,
             "status": "received" if _step_complete(case, "vehicle_other_party") else "needed",
         },
     ]

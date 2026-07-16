@@ -28,6 +28,17 @@ function severityColor(severity: string): string {
   }
 }
 
+function severityLabel(severity: string): string {
+  switch ((severity || '').trim().toLowerCase()) {
+    case 'critical':
+      return '必填';
+    case 'important':
+      return '需补';
+    default:
+      return '选填';
+  }
+}
+
 function highlightColor(level: string): string {
   switch ((level || '').trim().toLowerCase()) {
     case 'important':
@@ -71,13 +82,13 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
   return (
     <Card
       size="small"
-      title="事故摘要"
+      title="事故摘要 · 先看发生了什么"
       style={{ marginBottom: 12 }}
       styles={{ body: { padding: '12px 16px' } }}
       extra={
         brief.confidence ? (
           <Tag color={brief.confidence === 'high' ? 'green' : brief.confidence === 'medium' ? 'blue' : 'default'}>
-            资料完整度 · {brief.confidence === 'high' ? '较全' : brief.confidence === 'medium' ? '部分' : '待补'}
+            事故理解 · {brief.confidence === 'high' ? '较清' : brief.confidence === 'medium' ? '部分' : '待补'}
           </Tag>
         ) : null
       }
@@ -145,13 +156,13 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
       {missing.length > 0 ? (
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-            还缺什么
+            事故理解缺口
           </Text>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {missing.map((item) => (
               <li key={item.key} style={{ fontSize: 13, marginBottom: 4 }}>
                 <Tag color={severityColor(item.severity)} style={{ marginRight: 6 }}>
-                  {item.severity === 'critical' ? '重要' : item.severity === 'important' ? '需补' : '可选'}
+                  {severityLabel(item.severity)}
                 </Tag>
                 {item.label}
               </li>

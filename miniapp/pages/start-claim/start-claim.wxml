@@ -1,11 +1,11 @@
 <view class="container start-claim-page">
   <view class="card">
-    <view class="card-title">开始报案</view>
+    <view class="card-title">告诉陈总发生了什么</view>
     <view class="card-subtitle">
-      把事故情况告诉{{brokerName}}。不必一次填全，稍后如需补充会通知您。
+      先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。
     </view>
 
-    <view class="section-label">一句话描述（可选）</view>
+    <view class="section-label">事故经过</view>
     <textarea
       class="textarea-field"
       placeholder="例如：等红灯时被后车追尾。"
@@ -17,13 +17,45 @@
       disabled="{{busy.submitting}}"
     />
     <view class="char-count">{{charCount}} 字</view>
-  </view>
 
-  <view class="card">
-    <view class="section-label">事故照片（可选）</view>
-    <view class="photo-placeholder">
-      <text class="photo-placeholder-title">Coming soon</text>
-      <text class="photo-placeholder-body">照片上传即将开放，本次可先提交文字描述。</text>
+    <view class="section-label section-gap">事故时间</view>
+    <input
+      class="input-field"
+      placeholder="例如：今天上午 10:30"
+      value="{{accidentDatetime}}"
+      bindinput="onDatetimeInput"
+      disabled="{{busy.submitting}}"
+    />
+
+    <view class="section-label section-gap">事故地点</view>
+    <input
+      class="input-field"
+      placeholder="城市 / 路口 / 停车场"
+      value="{{accidentLocation}}"
+      bindinput="onLocationInput"
+      disabled="{{busy.submitting}}"
+    />
+
+    <view class="section-label section-gap">是否有人受伤</view>
+    <view class="choice-row">
+      <button
+        class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"
+        data-value="no"
+        bindtap="onInjurySelect"
+        disabled="{{busy.submitting}}"
+      >没有受伤</button>
+      <button
+        class="choice-btn {{injuryStatus === 'yes' ? 'choice-btn-active' : ''}}"
+        data-value="yes"
+        bindtap="onInjurySelect"
+        disabled="{{busy.submitting}}"
+      >有人受伤</button>
+      <button
+        class="choice-btn {{injuryStatus === 'unknown' ? 'choice-btn-active' : ''}}"
+        data-value="unknown"
+        bindtap="onInjurySelect"
+        disabled="{{busy.submitting}}"
+      >不确定</button>
     </view>
   </view>
 
@@ -48,8 +80,8 @@
 
   <view class="footer-cta">
     <task-cta
-      label="提交"
-      disabled="{{busy.submitting}}"
+      label="提交给陈总"
+      disabled="{{busy.submitting || !canSubmit}}"
       loading="{{busy.submitting}}"
       bindtap="onSubmit"
     />

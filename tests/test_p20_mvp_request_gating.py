@@ -21,11 +21,18 @@ def test_checklist_flags_mvp_sendable_and_suggests_vin_only():
     checklist = derive_missing_information_checklist({})
     by_key = {row["field_key"]: row for row in checklist}
     assert by_key["vin"]["mvp_sendable"] is True
+    assert by_key["vin"]["business_class"] == "request_more"
+    assert by_key["vin"]["severity"] == "optional"
     assert by_key["vin"]["suggested_for_request"] is True
+    assert by_key["accident_description"]["business_class"] == "must_have"
+    assert by_key["accident_description"]["severity"] == "critical"
+    assert by_key["accident_description"]["suggested_for_request"] is False
     assert by_key["vehicle_information"]["mvp_sendable"] is False
+    assert by_key["vehicle_information"]["business_class"] == "request_more"
     assert by_key["vehicle_information"]["suggested_for_request"] is False
     assert by_key["policy_or_insurance_card"]["mvp_sendable"] is False
     assert by_key["policy_or_insurance_card"]["suggested_for_request"] is False
+    assert by_key["photo_evidence"]["business_class"] == "nice_to_have"
 
 
 def test_list_unsupported_send_item_labels():

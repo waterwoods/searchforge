@@ -51,5 +51,6 @@ test("success copy hides internals", () => {
   assert.equal(blob.includes("case_id"), false);
   assert.equal(blob.includes("aggregate_version"), false);
   assert.equal(blob.includes("command_id"), false);
-  assert.equal(START_CLAIM_SUCCESS_COPY.title, "已收到您的报案");
+  assert.equal(START_CLAIM_SUCCESS_COPY.title, "已收到您的事故说明");
+  assert.match(START_CLAIM_SUCCESS_COPY.bodyLines.join(""), /如需.*再通知您补充/);
 });

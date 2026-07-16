@@ -440,6 +440,11 @@ if [ -n "${CLIENT_ID:-}" ]; then
     ENV_VARS+=("CLIENT_ID=$CLIENT_ID")
 fi
 
+# P20 Customer Start Claim — server-derived office stamp for Mini Program cold-start Cap2 drafts
+if [ -n "${UNIFIED_INTAKE_CUSTOMER_START_CLAIM_OFFICE_ID:-}" ]; then
+    ENV_VARS+=("UNIFIED_INTAKE_CUSTOMER_START_CLAIM_OFFICE_ID=$UNIFIED_INTAKE_CUSTOMER_START_CLAIM_OFFICE_ID")
+fi
+
 # Optional: WeChat OAuth optional binding (staging/pilot — set in .env.cloudrun; never commit secrets)
 if [ -n "${WECHAT_APP_ID:-}" ]; then
     ENV_VARS+=("WECHAT_APP_ID=$WECHAT_APP_ID")

@@ -49,10 +49,18 @@ test("app.json registers start-claim pages first", () => {
   assert.ok(appJson.pages?.includes("pages/start-claim-success/start-claim-success"));
 });
 
-test("start-claim wxml uses Coming soon photo placeholder and no internal ids", () => {
+test("start-claim wxml asks accident Must Have and never teaches VIN-first", () => {
   const wxml = readFileSync(join(miniappRoot, "pages/start-claim/start-claim.wxml"), "utf8");
-  assert.match(wxml, /Coming soon/);
-  assert.match(wxml, /提交/);
+  assert.match(wxml, /告诉陈总发生了什么/);
+  assert.match(wxml, /事故经过/);
+  assert.match(wxml, /事故时间/);
+  assert.match(wxml, /事故地点/);
+  assert.match(wxml, /是否有人受伤/);
+  assert.match(wxml, /提交给陈总/);
+  assert.match(wxml, /如需再补充会通知您/);
+  assert.equal(wxml.includes("Coming soon"), false);
+  assert.equal(wxml.includes("Coming Later"), false);
+  assert.equal(wxml.includes("请填写 VIN"), false);
   assert.equal(wxml.includes("case_id"), false);
   assert.equal(wxml.includes("aggregate_version"), false);
   assert.equal(wxml.includes("command_id"), false);

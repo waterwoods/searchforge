@@ -831,14 +831,14 @@ export default function H5ClaimIntakePage() {
 
             {step === 'start' && (
               <div style={styles.card}>
-                <p>我是陈总办公室的值班助手。请按步骤填写，陈总会人工确认。</p>
+                <p>请先告诉陈总发生了什么。照片和证件不是现在必填；如需补充，陈总会再通知您。</p>
                 <button
                   type="button"
                   style={{ ...styles.btn, ...(saving ? styles.btnDisabled : {}) }}
                   disabled={saving}
                   onClick={() => setStep('injury')}
                 >
-                  开始填写
+                  开始说明事故
                 </button>
               </div>
             )}
@@ -946,12 +946,15 @@ export default function H5ClaimIntakePage() {
 
             {step === 'vehicle_other_party' && (
               <div style={styles.card}>
-                <label style={styles.label}>您的车辆信息</label>
+                <p style={{ marginTop: 0, marginBottom: 12, fontSize: 14, color: '#666', lineHeight: 1.55 }}>
+                  以下为选填。车辆 VIN / 证件资料如需补充，陈总会再单独请您提供。
+                </p>
+                <label style={styles.label}>您的车辆信息（选填）</label>
                 <input
                   style={styles.input}
                   value={ownVehicle}
                   onChange={(e) => setOwnVehicle(e.target.value)}
-                  placeholder="年份 / 品牌 / 车型"
+                  placeholder="年份 / 品牌 / 车型（选填）"
                 />
                 <label style={styles.label}>对方车牌（选填）</label>
                 <input
@@ -964,15 +967,15 @@ export default function H5ClaimIntakePage() {
                   style={styles.input}
                   value={otherPartyInfo}
                   onChange={(e) => setOtherPartyInfo(e.target.value)}
-                  placeholder="保险公司 / 联系方式"
+                  placeholder="保险公司 / 联系方式（选填）"
                 />
                 <button
                   type="button"
                   style={{
                     ...styles.btn,
-                    ...(ownVehicle.length < 2 || saving ? styles.btnDisabled : {}),
+                    ...(saving ? styles.btnDisabled : {}),
                   }}
-                  disabled={ownVehicle.length < 2 || saving}
+                  disabled={saving}
                   onClick={() =>
                     runSave('evidence', () =>
                       patchH5ClaimFields(taskToken, 'vehicle_other_party', {
@@ -984,6 +987,14 @@ export default function H5ClaimIntakePage() {
                   }
                 >
                   {saving ? '保存中…' : '下一步'}
+                </button>
+                <button
+                  type="button"
+                  style={{ ...styles.btnSecondary, ...(saving ? styles.btnDisabled : {}) }}
+                  disabled={saving}
+                  onClick={() => setStep('evidence')}
+                >
+                  跳过，继续
                 </button>
               </div>
             )}

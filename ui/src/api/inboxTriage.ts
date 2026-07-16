@@ -275,6 +275,7 @@ export type MissingInformationChecklistItem = {
     label: string;
     customer_label: string;
     item_type: string;
+    business_class?: 'must_have' | 'nice_to_have' | 'request_more' | string;
     severity?: string;
     status: MissingInfoFactStatus;
     value?: string | null;
@@ -282,6 +283,7 @@ export type MissingInformationChecklistItem = {
     reason?: string;
     suggested_for_request?: boolean;
     request_mode?: string;
+    mvp_sendable?: boolean;
     is_authoritative_fact?: boolean;
 };
 

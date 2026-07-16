@@ -50,6 +50,9 @@ def start_customer_claim(
     correlation_id: str | None = None,
     session_id: str | None = None,
     accident_description: str | None = None,
+    accident_datetime: str | None = None,
+    accident_location: str | None = None,
+    injury_status: str | None = None,
     is_test: bool = False,
     office_id: str | None = None,
     tenant_id: str | None = None,
@@ -59,9 +62,21 @@ def start_customer_claim(
     office = (office_id if office_id is not None else resolve_customer_start_claim_office_id())
     tenant = tenant_id if tenant_id is not None else (resolve_server_client_id() or None)
     description = str(accident_description or "").strip()[:2000]
+    datetime_value = str(accident_datetime or "").strip()[:120]
+    location = str(accident_location or "").strip()[:500]
+    injury = str(injury_status or "").strip().lower()
+    if injury not in ("yes", "no", "unknown"):
+        injury = ""
     known_facts: dict[str, Any] = {}
     if description:
         known_facts["accident_description"] = description
+    if datetime_value:
+        known_facts["accident_datetime"] = datetime_value
+    if location:
+        known_facts["accident_location"] = location
+    if injury:
+        known_facts["injury_status"] = injury
+        known_facts["anyone_injured"] = injury
     return default_case_intake_service().create_claim(
         broker_id=actor_identity,
         office_id=office,
@@ -73,6 +88,9 @@ def start_customer_claim(
         inputs={
             "is_test": bool(is_test),
             "accident_description": description or None,
+            "accident_datetime": datetime_value or None,
+            "accident_location": location or None,
+            "injury_status": injury or None,
             "known_facts": known_facts,
             "title": "Customer Claim intake" if not is_test else "QA Customer Claim intake",
         },

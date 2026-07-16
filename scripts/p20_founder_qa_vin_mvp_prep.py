@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""P20 Founder QA — create a fresh VIN-only MVP case on QA Cloud SQL.
+"""P20 Founder QA — create a fresh VIN Request More case on QA Cloud SQL.
 
-Creates: New Claim → VIN draft → Send Request (progress 0/1, QR ready).
+Business Contract: Start Claim seeds accident Must Have facts first.
+Then broker uses Request More for VIN (not VIN-first intake).
+
+Creates: New Claim (accident facts) → VIN draft → Send Request (progress 0/1, QR ready).
 Does not reuse prior experimental cases.
 
 Usage:
-  PYTHONPATH=. python3 scripts/p20_founder_qa_vin_mvp_prep.py --qa
+  PYTHONPATH=. python3 scripts/p20_founder_qa_vin_mvp_prep.py --qa --via-api
 """
 
 from __future__ import annotations
@@ -24,6 +27,120 @@ sys.path.insert(0, str(REPO))
 from scripts.demo_db_resolve import apply_qa_postgres_env, load_cloudrun_env_skip_db
 
 WORKBENCH_URL = "https://ui-smoky-beta.vercel.app/workbench/document-intake"
+API_BASE = os.environ.get("CHEN_KUI_CLOUD_API_URL", "https://fiqa-api-g7zatxrycq-uw.a.run.app")
+
+
+def _prep_via_live_api(out_path: str) -> int:
+    import urllib.request
+
+    api_key = (os.environ.get("UNIFIED_INTAKE_INTAKE_API_KEY") or "").strip()
+    if not api_key:
+        print("UNIFIED_INTAKE_INTAKE_API_KEY required for --via-api", file=sys.stderr)
+        return 2
+
+    headers = {"Content-Type": "application/json", "X-Unified-Intake-Api-Key": api_key}
+    stamp = _stamp()
+    tail = uuid4().hex[:12]
+
+    def post(path: str, body: dict) -> dict:
+        req = urllib.request.Request(
+            f"{API_BASE.rstrip('/')}{path}",
+            data=json.dumps(body).encode(),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            return json.loads(resp.read().decode())
+
+    def get(path: str) -> dict:
+        req = urllib.request.Request(
+            f"{API_BASE.rstrip('/')}{path}",
+            headers={"X-Unified-Intake-Api-Key": api_key},
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            return json.loads(resp.read().decode())
+
+    created = post(
+        "/api/inbox/claims",
+        {
+            "command_id": f"cmd_api_create_{tail}",
+            "idempotency_key": f"idem_api_create_{tail}",
+            "is_test": True,
+            "title": f"P20 Founder QA VIN Request More {stamp}",
+            "customer_name": "Founder QA Customer",
+            "contact_note": "Accident Must Have seeded; VIN via Request More",
+            "known_facts": {
+                "accident_description": "QA fixture rear-end at stoplight.",
+                "accident_datetime": "2026-07-15 morning",
+                "accident_location": "Irvine Blvd test intersection",
+                "injury_status": "no",
+                "anyone_injured": "no",
+            },
+        },
+    )
+    case_id = str(created.get("case_id") or "")
+    agg = int(created["broker_projection"]["aggregate_version"])
+    draft = post(
+        f"/api/inbox/cases/{case_id}/request-draft",
+        {
+            "command_id": f"cmd_api_draft_{tail}",
+            "idempotency_key": f"idem_api_draft_{tail}",
+            "expected_case_version": agg,
+            "items": [
+                {
+                    "field_key": "vin",
+                    "item_type": "vin",
+                    "label": "Vehicle VIN",
+                    "instructions": "Please enter the 17-character VIN from your vehicle registration.",
+                    "required": True,
+                    "position": 1,
+                    "selected": True,
+                    "request_mode": "request_missing",
+                }
+            ],
+        },
+    )
+    draft_id = str(draft["broker_projection"]["request_draft"]["draft_id"])
+    agg2 = int(draft["broker_projection"]["aggregate_version"])
+    sent = post(
+        f"/api/inbox/cases/{case_id}/send-request",
+        {
+            "command_id": f"cmd_api_send_{tail}",
+            "idempotency_key": f"idem_api_send_{tail}",
+            "expected_case_version": agg2,
+            "request_draft_id": draft_id,
+        },
+    )
+    access = sent.get("customer_access") or {}
+    token = str(access.get("copy_link") or "").rsplit("/", 1)[-1]
+    h5 = get(f"/api/h5/tasks/{token}/intake") if token else {}
+    na = (h5.get("slice1_projection") or {}).get("customer_next_action") or {}
+    handoff = {
+        "verdict": "READY_FOR_FOUNDER_QA",
+        "created_at_utc": stamp,
+        "case_id": case_id,
+        "draft_id": draft_id,
+        "workbench_url": WORKBENCH_URL,
+        "title": f"P20 Founder QA VIN MVP {stamp}",
+        "broker_expectation": {
+            "simple_status": access.get("simple_status"),
+            "progress_satisfied": (access.get("progress") or {}).get("satisfied_count"),
+            "progress_total": (access.get("progress") or {}).get("total_count"),
+            "requested_item": "VIN",
+            "qr_ready": bool(access.get("qr_payload") or access.get("copy_link")),
+        },
+        "customer_expectation": {
+            "required_input": na.get("required_input"),
+            "title": na.get("title") or "补充车辆 VIN",
+            "h5_intake_ok": na.get("required_input") == "vin",
+        },
+        "copy_link": access.get("copy_link"),
+        "qr_payload": access.get("qr_payload"),
+    }
+    Path(out_path).write_text(json.dumps(handoff, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(handoff, indent=2))
+    print(f"[OK] Handoff written: {out_path}")
+    return 0 if handoff["customer_expectation"]["h5_intake_ok"] else 1
 
 
 def _stamp() -> str:
@@ -38,6 +155,11 @@ def _ids(prefix: str) -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qa", action="store_true", help="Use QA Cloud SQL SSOT")
+    parser.add_argument(
+        "--via-api",
+        action="store_true",
+        help="Issue customer access via live Cloud Run (required for valid H5 tokens)",
+    )
     parser.add_argument("--out", default="/tmp/p20_founder_qa_vin_mvp_handoff.json")
     args = parser.parse_args()
     if not args.qa:
@@ -46,6 +168,10 @@ def main() -> int:
 
     load_cloudrun_env_skip_db()
     os.environ["ENV"] = "prod"
+
+    if args.via_api:
+        return _prep_via_live_api(args.out)
+
     ident = apply_qa_postgres_env(for_write=True)
     print(f"[INFO] QA Postgres: {ident.masked()}")
 
@@ -72,11 +198,15 @@ def main() -> int:
         idempotency_key=idem_create,
         inputs={
             "is_test": True,
-            "title": f"P20 Founder QA VIN MVP {stamp}",
+            "title": f"P20 Founder QA VIN Request More {stamp}",
             "customer_name": "Founder QA Customer",
-            "contact_note": "VIN-only MVP — do not reuse for other flows",
+            "contact_note": "Accident Must Have seeded; VIN via Request More",
             "known_facts": {
                 "accident_description": "QA fixture: minor rear-end at stoplight (not real PII).",
+                "accident_datetime": "2026-07-15 morning",
+                "accident_location": "Irvine Blvd test intersection",
+                "injury_status": "no",
+                "anyone_injured": "no",
             },
         },
     )
@@ -93,7 +223,18 @@ def main() -> int:
     checklist = created["broker_projection"].get("missing_information_checklist") or []
     vin_row = next((r for r in checklist if r.get("field_key") == "vin"), None)
     if not vin_row or str(vin_row.get("status") or "") != "missing":
-        print("Expected VIN to be the only actionable missing field", file=sys.stderr)
+        print("Expected VIN as Request More candidate (missing)", file=sys.stderr)
+        return 1
+    if str(vin_row.get("business_class") or "") != "request_more":
+        print("Expected VIN business_class=request_more", file=sys.stderr)
+        return 1
+    must_have_ok = all(
+        next((r for r in checklist if r.get("field_key") == key), {}).get("status")
+        != "missing"
+        for key in ("accident_description", "accident_datetime", "accident_location", "injury_status")
+    )
+    if not must_have_ok:
+        print("Expected accident Must Have facts to be seeded", file=sys.stderr)
         return 1
 
     cmd_draft, idem_draft = _ids("cmd_draft")

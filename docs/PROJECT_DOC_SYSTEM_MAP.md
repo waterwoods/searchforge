@@ -9,6 +9,7 @@
 - Default script path (run_demo_local.sh, demo_pre_checklist.sh)
 - Runtime paths (8001 default, 8000 Docker, recovery)
 - Scope guardrail
+- Mandatory P20 Product North Star and Production Loop
 
 Then use this map to find specific docs.
 
@@ -50,6 +51,8 @@ Read in this order. **Ignore everything else** until you need a specific task.
 |-----|---------|
 | `AGENTS.md` | Single entry point for agents |
 | `docs/CURRENT_PRODUCT_SHAPE.md` | **Current** product, deployment, paid-pilot env requirements |
+| `docs/product/p20_product_north_star.md` | **P20 product/release SSOT** — customer journey, scorecard, hard gates, Cursor behavior |
+| `docs/product/p20_production_loop_template.md` | Reusable one-objective P20 task and release worksheet |
 | `docs/SIMPLIFICATION_MASTER_PLAN.md` | **Reduction roadmap** — what to hide/archive/delete; brutally honest inventory |
 | `docs/UNIFIED_INTAKE_PRODUCT_AND_TECHNICAL_MASTER_OUTLINE.md` | **Macro blueprint** — product direction for major sprints; **not** deploy/runtime truth (see START HERE) |
 | `docs/goals/insurance_paid_pilot_goal.md` | Master goal, scope, deliverables |
@@ -142,6 +145,7 @@ Primary = single source of truth. Supporting = lighter summaries or one-purpose 
 | Demo prep | `docs/ANDY_QUICK_START.md`, `docs/ANDY_2MIN_BEFORE_DEMO.md` |
 | Deploy / 2am ops | `docs/runbooks/OPERATOR_CHEAT_SHEET.md`, `docs/runbooks/DEPLOY_TRUTH_MAP.md` |
 | Support / prod debug | `docs/runbooks/SUPPORT_TRUTH_MAP.md` |
+| P20 capability / release | `docs/product/p20_product_north_star.md`, `docs/product/p20_production_loop_template.md`, `docs/product/p20_business_contract.md` |
 | Broker meeting | `docs/runbooks/BROKER_VALUE_VALIDATION_MEETING_PACK.md` |
 | Ports / runtime | `docs/runbooks/RUNTIME_PATH_STANDARD.md` |
 | Quality bar | `docs/BROKER_DEMO_QUALITY_STANDARD.md` |

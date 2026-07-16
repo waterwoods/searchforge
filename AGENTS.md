@@ -2,6 +2,44 @@
 
 **For Cursor / OpenClaw:** Read this first when working on the broker project. This file is the single default entry point.
 
+## P20 Product North Star — Mandatory
+
+“We are optimizing the customer journey, not maximizing the feature count.
+
+Build the simplest system that reliably solves the user’s problem.
+
+Smoothness first. Complexity only when proven necessary.”
+
+Chinese product interpretation:
+
+“我们优化的是用户旅程，不是功能数量。
+
+先做最简单、能稳定解决问题的系统。
+
+先保证丝滑；只有真实需求证明必要时，才增加复杂度。”
+
+**Governing SSOT:** `docs/product/p20_product_north_star.md`
+**Required worksheet:** `docs/product/p20_production_loop_template.md`
+
+Before every P20 implementation, release, or capability review:
+
+- Read both documents above.
+- State exactly one user-facing objective and explicit out-of-scope items.
+- Enforce One Task, One Next Action, Smallest Working Solution, Complexity
+  Stays Inside, Main-Chain First, No Unsupported Choices, Read-After-Write,
+  and Capability Done Means User Done.
+- Use at most three one-objective automated loops; stop on PASS, never start
+  the next capability automatically, and mark three failed loops with an
+  unresolved P0 as **BLOCKED**.
+- Evaluate the final diff against Reliability, Simplicity, Smoothness,
+  Business Value, Scope Control, and every hard release gate in the SSOT.
+- Never mark Capability Done without recorded Founder/manual QA evidence.
+- Recommend **Auto** by default. Escalate to **Grok 4.5** only for a genuine
+  cross-system blocker. Use **GPT-5.6 Terra Medium** only for architecture or
+  Blueprint decisions.
+- Never use subagents unless the founder explicitly changes this rule.
+- Record future ideas only; do not implement unproven future features.
+
 ---
 
 ## 1. Read First (≤10 core docs)
