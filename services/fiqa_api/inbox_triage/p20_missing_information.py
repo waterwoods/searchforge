@@ -1,0 +1,306 @@
+"""P20 Capability 2 — deterministic missing-information projection.
+
+Statuses are derived from authoritative fact records and workflow/admin state.
+AI may suggest gaps but must not write confirmed status or transition state.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+FACT_STATUS_MISSING = "missing"
+FACT_STATUS_UNKNOWN = "unknown"
+FACT_STATUS_SUPPLIED_UNCONFIRMED = "supplied_unconfirmed"
+FACT_STATUS_CONFIRMED = "confirmed"
+FACT_STATUS_NEEDS_CORRECTION = "needs_correction"
+FACT_STATUS_NOT_APPLICABLE = "not_applicable"
+
+ALL_FACT_STATUSES = frozenset(
+    {
+        FACT_STATUS_MISSING,
+        FACT_STATUS_UNKNOWN,
+        FACT_STATUS_SUPPLIED_UNCONFIRMED,
+        FACT_STATUS_CONFIRMED,
+        FACT_STATUS_NEEDS_CORRECTION,
+        FACT_STATUS_NOT_APPLICABLE,
+    }
+)
+
+# Initial supported checklist fields for Claim intake.
+CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
+    {
+        "field_key": "vin",
+        "label": "VIN",
+        "customer_label": "Vehicle VIN",
+        "item_type": "vin",
+        "severity": "critical",
+    },
+    {
+        "field_key": "vehicle_information",
+        "label": "Vehicle information",
+        "customer_label": "Vehicle year / make / model",
+        "item_type": "free_text",
+        "severity": "important",
+    },
+    {
+        "field_key": "policy_or_insurance_card",
+        "label": "Policy / insurance card",
+        "customer_label": "Policy number or insurance card photo",
+        "item_type": "policy_or_insurance_card",
+        "severity": "important",
+    },
+    {
+        "field_key": "accident_description",
+        "label": "Accident description",
+        "customer_label": "What happened (accident description)",
+        "item_type": "free_text",
+        "severity": "critical",
+    },
+    {
+        "field_key": "photo_evidence",
+        "label": "Photo evidence",
+        "customer_label": "Accident / vehicle photos",
+        "item_type": "photo_evidence",
+        "severity": "important",
+    },
+)
+
+_FIELD_KEYS = frozenset(item["field_key"] for item in CHECKLIST_FIELDS)
+
+_VIN_FACT_KEYS = ("vin", "vehicle_vin", "own_vehicle_vin")
+_VEHICLE_FACT_KEYS = (
+    "vehicle_year",
+    "vehicle_make",
+    "vehicle_model",
+    "primary_vehicle_summary",
+    "vehicle_information",
+)
+_POLICY_FACT_KEYS = ("policy_number", "insurance_card", "policy_or_insurance_card")
+_ACCIDENT_FACT_KEYS = ("accident_description", "accident_summary")
+
+
+def _str(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_status(raw: Any) -> str | None:
+    status = _str(raw).lower().replace(" ", "_").replace("-", "_")
+    if status == "supplied_but_unconfirmed":
+        status = FACT_STATUS_SUPPLIED_UNCONFIRMED
+    if status == "disputed":
+        status = FACT_STATUS_NEEDS_CORRECTION
+    if status in ALL_FACT_STATUSES:
+        return status
+    return None
+
+
+def _first_nonempty(facts: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = _str(facts.get(key))
+        if value:
+            return value
+    return None
+
+
+def _vehicle_value(facts: dict[str, Any]) -> str | None:
+    direct = _first_nonempty(facts, ("vehicle_information", "primary_vehicle_summary"))
+    if direct:
+        return direct
+    parts = [
+        _str(facts.get("vehicle_year")),
+        _str(facts.get("vehicle_make")),
+        _str(facts.get("vehicle_model")),
+    ]
+    joined = " ".join(p for p in parts if p).strip()
+    return joined or None
+
+
+def _photo_evidence_present(case: dict[str, Any], facts: dict[str, Any]) -> bool:
+    if _str(facts.get("photo_evidence")):
+        return True
+    attachments = case.get("case_attachments")
+    if isinstance(attachments, list) and any(isinstance(a, dict) and a for a in attachments):
+        return True
+    slots = case.get("claim_attachment_slots")
+    if isinstance(slots, dict):
+        for slot in slots.values():
+            if not isinstance(slot, dict):
+                continue
+            status = _str(slot.get("status")).lower()
+            if status in {"received", "needs_retake"}:
+                return True
+            ids = slot.get("attachment_ids")
+            if isinstance(ids, list) and any(_str(x) for x in ids):
+                return True
+    return False
+
+
+def seed_fact_records_from_case(case: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """Build initial fact records from case known_facts / attachments (no confirmed writes)."""
+    case = case if isinstance(case, dict) else {}
+    facts = case.get("known_facts") if isinstance(case.get("known_facts"), dict) else {}
+    out: dict[str, dict[str, Any]] = {}
+    for meta in CHECKLIST_FIELDS:
+        key = meta["field_key"]
+        value: str | None = None
+        if key == "vin":
+            value = _first_nonempty(facts, _VIN_FACT_KEYS)
+        elif key == "vehicle_information":
+            value = _vehicle_value(facts)
+        elif key == "policy_or_insurance_card":
+            value = _first_nonempty(facts, _POLICY_FACT_KEYS) or _str(case.get("policy_number")) or None
+        elif key == "accident_description":
+            value = _first_nonempty(facts, _ACCIDENT_FACT_KEYS)
+        elif key == "photo_evidence":
+            value = "received" if _photo_evidence_present(case, facts) else None
+        if value:
+            out[key] = {
+                "field_key": key,
+                "status": FACT_STATUS_SUPPLIED_UNCONFIRMED,
+                "value": value,
+                "previous_value": None,
+                "reason": "",
+                "source": "case_seed",
+            }
+        else:
+            out[key] = {
+                "field_key": key,
+                "status": FACT_STATUS_MISSING,
+                "value": None,
+                "previous_value": None,
+                "reason": "",
+                "source": "case_seed",
+            }
+    return out
+
+
+def merge_fact_records(
+    existing: dict[str, Any] | None,
+    *,
+    case: dict[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Merge stored fact records with deterministic seed without demoting confirmed facts."""
+    seeded = seed_fact_records_from_case(case)
+    stored = existing if isinstance(existing, dict) else {}
+    merged: dict[str, dict[str, Any]] = {}
+    for key in _FIELD_KEYS:
+        base = dict(seeded.get(key) or {})
+        raw = stored.get(key)
+        if isinstance(raw, dict):
+            status = _normalize_status(raw.get("status"))
+            if status:
+                base["status"] = status
+            if "value" in raw:
+                base["value"] = raw.get("value")
+            if "previous_value" in raw:
+                base["previous_value"] = raw.get("previous_value")
+            if raw.get("reason") is not None:
+                base["reason"] = _str(raw.get("reason"))
+            if raw.get("source"):
+                base["source"] = _str(raw.get("source"))
+            # Never classify an existing confirmed value as missing.
+            if status == FACT_STATUS_CONFIRMED and not _str(base.get("value")):
+                base["value"] = _str(seeded.get(key, {}).get("value")) or base.get("value")
+            if status == FACT_STATUS_CONFIRMED:
+                base["status"] = FACT_STATUS_CONFIRMED
+        base["field_key"] = key
+        merged[key] = base
+    return merged
+
+
+def derive_missing_information_checklist(
+    fact_records: dict[str, Any] | None,
+    *,
+    case: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Authoritative checklist projection for broker review."""
+    records = merge_fact_records(fact_records, case=case)
+    items: list[dict[str, Any]] = []
+    for meta in CHECKLIST_FIELDS:
+        key = meta["field_key"]
+        record = records[key]
+        status = _normalize_status(record.get("status")) or FACT_STATUS_MISSING
+        # Confirmed and N/A are never default request suggestions.
+        # Missing / needs_correction are suggested; unconfirmed suggests confirmation mode.
+        if status in {FACT_STATUS_CONFIRMED, FACT_STATUS_NOT_APPLICABLE}:
+            suggested = False
+            request_mode = "none"
+        elif status == FACT_STATUS_SUPPLIED_UNCONFIRMED:
+            suggested = True
+            request_mode = "request_confirmation"
+        elif status == FACT_STATUS_NEEDS_CORRECTION:
+            suggested = True
+            request_mode = "request_correction"
+        elif status == FACT_STATUS_MISSING:
+            suggested = True
+            request_mode = "request_missing"
+        elif status == FACT_STATUS_UNKNOWN:
+            suggested = True
+            request_mode = "request_follow_up"
+        else:
+            suggested = False
+            request_mode = "none"
+        items.append(
+            {
+                "field_key": key,
+                "label": meta["label"],
+                "customer_label": meta["customer_label"],
+                "item_type": meta["item_type"],
+                "severity": meta["severity"],
+                "status": status,
+                "value": record.get("value"),
+                "previous_value": record.get("previous_value"),
+                "reason": _str(record.get("reason")),
+                "suggested_for_request": suggested,
+                "request_mode": request_mode,
+                "is_authoritative_fact": status
+                in {
+                    FACT_STATUS_CONFIRMED,
+                    FACT_STATUS_SUPPLIED_UNCONFIRMED,
+                    FACT_STATUS_NEEDS_CORRECTION,
+                },
+            }
+        )
+    return items
+
+
+def apply_fact_status_update(
+    fact_records: dict[str, Any] | None,
+    *,
+    field_key: str,
+    status: str,
+    reason: str = "",
+    value: Any = None,
+    preserve_previous: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Append-safe status update. Confirmed values are never silently deleted."""
+    key = _str(field_key)
+    if key not in _FIELD_KEYS:
+        raise ValueError("unsupported_checklist_field")
+    new_status = _normalize_status(status)
+    if not new_status:
+        raise ValueError("invalid_fact_status")
+    merged = merge_fact_records(fact_records)
+    current = dict(merged[key])
+    current_value = current.get("value")
+    if new_status == FACT_STATUS_NEEDS_CORRECTION and preserve_previous:
+        if current_value is not None and _str(current_value):
+            current["previous_value"] = current_value
+        if value is not None:
+            current["value"] = value
+    elif new_status == FACT_STATUS_NOT_APPLICABLE:
+        if not _str(reason):
+            raise ValueError("not_applicable_reason_required")
+        # Keep prior value for audit; do not wipe confirmed history.
+        if current_value is not None and _str(current_value) and current.get("previous_value") is None:
+            current["previous_value"] = current_value
+    elif value is not None:
+        current["value"] = value
+    if new_status == FACT_STATUS_MISSING and _normalize_status(current.get("status")) == FACT_STATUS_CONFIRMED:
+        raise ValueError("confirmed_fact_cannot_be_marked_missing")
+    current["status"] = new_status
+    current["reason"] = _str(reason)
+    current["source"] = "broker_command"
+    current["field_key"] = key
+    merged[key] = current
+    return merged

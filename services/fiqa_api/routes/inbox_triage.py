@@ -115,6 +115,7 @@ from services.fiqa_api.inbox_triage.entity_repository import (
 )
 from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
+from services.fiqa_api.inbox_triage.p20_case_intake_command_service import default_case_intake_service
 from services.fiqa_api.analytics.minimal_events import track_event
 from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
 from services.fiqa_api.analytics.triage_funnel import (
@@ -767,6 +768,53 @@ class RequestMoreCreateBody(BaseModel):
     requested_items: list[RequestMoreItemBody] = Field(..., min_length=1)
     reason: str = Field(default="", max_length=1000)
     request_id: str | None = Field(default=None, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
+class CreateClaimBody(BaseModel):
+    """Capability 2: Broker CreateClaim (incomplete Claim allowed)."""
+
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    is_test: bool = Field(default=False, description="Explicit QA/test Claim marker")
+    customer_name: str | None = Field(default=None, max_length=120)
+    customer_phone: str | None = Field(default=None, max_length=40)
+    contact_note: str | None = Field(default=None, max_length=200)
+    title: str | None = Field(default=None, max_length=160)
+    vin: str | None = Field(default=None, max_length=32)
+    accident_description: str | None = Field(default=None, max_length=2000)
+    known_facts: dict[str, Any] | None = Field(default=None)
+
+
+class RequestDraftItemBody(BaseModel):
+    field_key: str | None = Field(default=None, max_length=64)
+    item_type: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=160)
+    instructions: str = Field(default="", max_length=1000)
+    required: bool = Field(default=True)
+    position: int | None = Field(default=None, ge=1)
+    request_mode: str = Field(default="request_missing", max_length=64)
+    selected: bool = Field(default=True)
+    draft_item_id: str | None = Field(default=None, max_length=128)
+
+
+class SaveRequestDraftBody(BaseModel):
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    expected_case_version: int = Field(..., ge=0)
+    items: list[RequestDraftItemBody] = Field(default_factory=list)
+    draft_id: str | None = Field(default=None, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
+class UpdateFactStatusBody(BaseModel):
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    expected_case_version: int = Field(..., ge=0)
+    field_key: str = Field(..., min_length=1, max_length=64)
+    status: str = Field(..., min_length=1, max_length=64)
+    reason: str = Field(default="", max_length=1000)
     correlation_id: str | None = Field(default=None, max_length=128)
 
 
@@ -1881,6 +1929,18 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
                 case["slice1_request_summary"] = open_request
     except Exception as exc:
         logger.warning("Slice 1 projection refresh failed for case %s: %s", cid, exc)
+    try:
+        intake_projection = default_case_intake_service().fetch_projection(cid)
+        if isinstance(intake_projection, dict):
+            case["p20_case_intake_projection"] = intake_projection
+            case["case_intake_projection"] = intake_projection
+            case["missing_information_checklist"] = intake_projection.get("missing_information_checklist")
+            case["request_draft"] = intake_projection.get("request_draft")
+            case["admin_lifecycle"] = intake_projection.get("admin_lifecycle")
+            if intake_projection.get("is_test"):
+                case["workbench_test"] = True
+    except Exception as exc:
+        logger.warning("Case intake projection refresh failed for case %s: %s", cid, exc)
     return sanitize_case_for_workbench_api(case)
 
 
@@ -1917,6 +1977,131 @@ async def post_case_request_more(
             requested_items=[item.dict() for item in body.requested_items],
             reason=body.reason,
             request_id=body.request_id,
+            correlation_id=body.correlation_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "accepted":
+        http_response.status_code = 201
+        return result
+    if outcome == "replayed":
+        http_response.status_code = 200
+        return result
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail=result)
+    raise HTTPException(status_code=422, detail=result)
+
+
+@router.post("/claims")
+async def post_create_claim(
+    body: CreateClaimBody,
+    http_request: Request,
+    http_response: Response,
+) -> dict[str, Any]:
+    """Capability 2: Broker creates an incomplete Claim + missing-info projection."""
+    broker_identity = _broker_actor_identity(http_request)
+    # Tenant/office are server-derived; never trust client-supplied tenant_id/broker_id.
+    office_id = client_asserted_office_id(http_request)
+    tenant_id = resolve_server_client_id() or None
+    try:
+        result = default_case_intake_service().create_claim(
+            broker_id=broker_identity,
+            office_id=office_id,
+            tenant_id=tenant_id,
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            correlation_id=body.correlation_id,
+            inputs={
+                "is_test": body.is_test,
+                "customer_name": body.customer_name,
+                "customer_phone": body.customer_phone,
+                "contact_note": body.contact_note,
+                "title": body.title,
+                "vin": body.vin,
+                "accident_description": body.accident_description,
+                "known_facts": body.known_facts or {},
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "accepted":
+        http_response.status_code = 201
+        return result
+    if outcome == "replayed":
+        http_response.status_code = 200
+        return result
+    raise HTTPException(status_code=422, detail=result)
+
+
+@router.post("/cases/{case_id}/request-draft")
+async def post_case_request_draft(
+    case_id: str,
+    body: SaveRequestDraftBody,
+    http_request: Request,
+    http_response: Response,
+) -> dict[str, Any]:
+    """Capability 2: save broker-selected request draft (no active Request More)."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    broker_identity = _broker_actor_identity(http_request)
+    try:
+        result = default_case_intake_service().save_request_draft(
+            case_id=case_id,
+            broker_id=broker_identity,
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            expected_case_version=body.expected_case_version,
+            items=[item.dict() for item in body.items],
+            correlation_id=body.correlation_id,
+            draft_id=body.draft_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome in {"accepted", "replayed"}:
+        http_response.status_code = 200 if outcome == "replayed" else 201
+        return result
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail=result)
+    raise HTTPException(status_code=422, detail=result)
+
+
+@router.post("/cases/{case_id}/fact-status")
+async def post_case_fact_status(
+    case_id: str,
+    body: UpdateFactStatusBody,
+    http_request: Request,
+    http_response: Response,
+) -> dict[str, Any]:
+    """Capability 2: broker marks fact N/A / needs_correction (preserves prior values)."""
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    broker_identity = _broker_actor_identity(http_request)
+    try:
+        result = default_case_intake_service().update_fact_status(
+            case_id=case_id,
+            broker_id=broker_identity,
+            command_id=body.command_id,
+            idempotency_key=body.idempotency_key,
+            expected_case_version=body.expected_case_version,
+            field_key=body.field_key,
+            status=body.status,
+            reason=body.reason,
             correlation_id=body.correlation_id,
         )
     except ValueError as exc:

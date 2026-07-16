@@ -40,6 +40,8 @@ import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmen
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEvidenceChecklist';
 import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
+import { MissingInformationChecklistPanel } from '@/features/intake/components/MissingInformationChecklistPanel';
+import { NewClaimEntryButton } from '@/features/intake/components/NewClaimEntryButton';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import {
   CLAIM_INTAKE_SAFETY_NOTE,
@@ -482,6 +484,15 @@ function BrokerCaseDetail({
           <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
         </Space>
         <TopActionBanner caseItem={caseItem} blob={blob} />
+        {(caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
+          <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
+        ) : null}
+        <MissingInformationChecklistPanel
+          key={`intake-${caseItem.case_id}-${caseItem.p20_case_intake_projection?.aggregate_version ?? 0}`}
+          caseRecord={caseItem}
+          onCaseChange={(updated) => onCaseChange?.(updated)}
+          refreshCase={onRefreshCase}
+        />
         <StructuredRequestMorePanel
           key={caseItem.case_id}
           caseRecord={caseItem}
@@ -593,6 +604,15 @@ function BrokerCaseDetail({
       </Space>
 
       <TopActionBanner caseItem={caseItem} blob={blob} />
+      {(caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
+        <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
+      ) : null}
+      <MissingInformationChecklistPanel
+        key={`intake-${caseItem.case_id}-${caseItem.p20_case_intake_projection?.aggregate_version ?? 0}`}
+        caseRecord={caseItem}
+        onCaseChange={(updated) => onCaseChange?.(updated)}
+        refreshCase={onRefreshCase}
+      />
       <StructuredRequestMorePanel
         key={caseItem.case_id}
         caseRecord={caseItem}
@@ -938,7 +958,14 @@ export default function DocumentIntakeInboxPage() {
       dataIndex: 'customer_name',
       key: 'customer_name',
       width: 150,
-      render: (name: string) => <Text strong>{name}</Text>,
+      render: (name: string, row: QueueRow) => (
+        <Space size={6}>
+          <Text strong>{name}</Text>
+          {row.raw.workbench_test || row.raw.p20_case_intake_projection?.is_test ? (
+            <Tag color="orange">TEST</Tag>
+          ) : null}
+        </Space>
+      ),
     },
     {
       title: 'Lane',
@@ -1026,9 +1053,19 @@ export default function DocumentIntakeInboxPage() {
         style={{ borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
         styles={{ body: { padding: rows.length === 0 && !loading && !loadError ? 0 : undefined } }}
         extra={
-          <Button icon={<ReloadOutlined />} onClick={loadQueue} loading={loading}>
-            Refresh
-          </Button>
+          <Space>
+            <NewClaimEntryButton
+              onCreated={(created) => {
+                void loadQueue();
+                setOpenId(created.case_id);
+                setDetail(created);
+                setDetailLoadError(null);
+              }}
+            />
+            <Button icon={<ReloadOutlined />} onClick={loadQueue} loading={loading}>
+              Refresh
+            </Button>
+          </Space>
         }
       >
         {loading ? (

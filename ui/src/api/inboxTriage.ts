@@ -261,6 +261,120 @@ export type CreateRequestMoreCommand = {
     correlation_id?: string;
 };
 
+export type MissingInfoFactStatus =
+    | 'missing'
+    | 'unknown'
+    | 'supplied_unconfirmed'
+    | 'confirmed'
+    | 'needs_correction'
+    | 'not_applicable'
+    | string;
+
+export type MissingInformationChecklistItem = {
+    field_key: string;
+    label: string;
+    customer_label: string;
+    item_type: string;
+    severity?: string;
+    status: MissingInfoFactStatus;
+    value?: string | null;
+    previous_value?: string | null;
+    reason?: string;
+    suggested_for_request?: boolean;
+    request_mode?: string;
+    is_authoritative_fact?: boolean;
+};
+
+export type CaseIntakeRequestDraftItem = {
+    draft_item_id?: string;
+    field_key?: string | null;
+    item_type: string;
+    label: string;
+    instructions: string;
+    required: boolean;
+    position: number;
+    request_mode?: string;
+    selected?: boolean;
+};
+
+export type CaseIntakeRequestDraft = {
+    draft_id: string;
+    draft_version: number;
+    status: string;
+    items: CaseIntakeRequestDraftItem[];
+    updated_at?: string;
+    updated_by?: string;
+    content_hash?: string;
+};
+
+export type CaseIntakeProjection = {
+    case_id: string;
+    capability?: string;
+    capability_version?: number;
+    is_test?: boolean;
+    admin_lifecycle?: string;
+    workflow_state?: string | null;
+    aggregate_version: number;
+    office_id?: string | null;
+    tenant_id?: string | null;
+    known_facts?: Record<string, { status?: string; value?: unknown; previous_value?: unknown; reason?: string }>;
+    missing_information_checklist?: MissingInformationChecklistItem[];
+    request_draft?: CaseIntakeRequestDraft | null;
+    open_request_more?: { request_id?: string; status?: string } | null;
+    customer_next_action?: null;
+    allowed_next_commands?: string[];
+    server_timestamp?: string;
+    auth_posture?: string;
+};
+
+export type CaseIntakeCommandResult = {
+    outcome: Slice1CommandOutcome;
+    command_id: string;
+    correlation_id?: string;
+    idempotency_key: string;
+    event_ids: string[];
+    aggregate_version?: number;
+    case_id?: string;
+    broker_projection?: CaseIntakeProjection;
+    customer_projection?: { customer_next_action?: null; message?: string };
+    server_timestamp?: string;
+    error_code?: string;
+    original_outcome?: string;
+};
+
+export type CreateClaimCommand = {
+    command_id: string;
+    idempotency_key: string;
+    correlation_id?: string;
+    is_test?: boolean;
+    customer_name?: string;
+    customer_phone?: string;
+    contact_note?: string;
+    title?: string;
+    vin?: string;
+    accident_description?: string;
+    known_facts?: Record<string, string>;
+};
+
+export type SaveRequestDraftCommand = {
+    command_id: string;
+    idempotency_key: string;
+    expected_case_version: number;
+    items: CaseIntakeRequestDraftItem[];
+    draft_id?: string;
+    correlation_id?: string;
+};
+
+export type UpdateFactStatusCommand = {
+    command_id: string;
+    idempotency_key: string;
+    expected_case_version: number;
+    field_key: string;
+    status: MissingInfoFactStatus;
+    reason?: string;
+    correlation_id?: string;
+};
+
 export type Slice1RequestMoreErrorKind =
     | 'validation'
     | 'version_conflict'
@@ -568,6 +682,15 @@ export interface SavedCase extends TriageResult {
     customer_email?: string;
     /** Workbench: operator-marked test data */
     workbench_test?: boolean;
+    /** Capability 2: admin draft lifecycle (pre-task) */
+    admin_lifecycle?: string;
+    /** Capability 2: authoritative missing-information checklist */
+    missing_information_checklist?: MissingInformationChecklistItem[];
+    /** Capability 2: broker-selected request draft (not active Request More) */
+    request_draft?: CaseIntakeRequestDraft | null;
+    /** Capability 2 projection blob */
+    p20_case_intake_projection?: CaseIntakeProjection;
+    case_intake_projection?: CaseIntakeProjection;
     /** Workbench: soft-archive (hidden in default “正式” views) */
     workbench_archived?: boolean;
     /** explicit add_car lane vs heuristic legacy vs other */
@@ -806,6 +929,79 @@ export async function createCaseRequestMore(
     } catch (error) {
         throw normalizeSlice1RequestMoreError(error);
     }
+}
+
+function newCommandIds(prefix: string): { command_id: string; idempotency_key: string } {
+    const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    return {
+        command_id: `${prefix}_${stamp}`,
+        idempotency_key: `${prefix}_idem_${stamp}`,
+    };
+}
+
+export async function createClaimCase(command: CreateClaimCommand): Promise<CaseIntakeCommandResult> {
+    const ids = newCommandIds('create_claim');
+    const response = await request.post<CaseIntakeCommandResult>('/api/inbox/claims', {
+        command_id: command.command_id || ids.command_id,
+        idempotency_key: command.idempotency_key || ids.idempotency_key,
+        correlation_id: command.correlation_id,
+        is_test: Boolean(command.is_test),
+        customer_name: command.customer_name,
+        customer_phone: command.customer_phone,
+        contact_note: command.contact_note,
+        title: command.title,
+        vin: command.vin,
+        accident_description: command.accident_description,
+        known_facts: command.known_facts,
+    });
+    return response.data;
+}
+
+export async function saveCaseRequestDraft(
+    caseId: string,
+    command: SaveRequestDraftCommand,
+): Promise<CaseIntakeCommandResult> {
+    const response = await request.post<CaseIntakeCommandResult>(
+        `/api/inbox/cases/${encodeURIComponent(caseId)}/request-draft`,
+        {
+            command_id: command.command_id,
+            idempotency_key: command.idempotency_key,
+            expected_case_version: command.expected_case_version,
+            items: command.items.map((item, index) => ({
+                draft_item_id: item.draft_item_id,
+                field_key: item.field_key,
+                item_type: item.item_type,
+                label: item.label.trim(),
+                instructions: (item.instructions || '').trim(),
+                required: item.required !== false,
+                position: item.position || index + 1,
+                request_mode: item.request_mode || 'request_missing',
+                selected: item.selected !== false,
+            })),
+            draft_id: command.draft_id,
+            correlation_id: command.correlation_id,
+        },
+    );
+    return response.data;
+}
+
+export async function updateCaseFactStatus(
+    caseId: string,
+    command: UpdateFactStatusCommand,
+): Promise<CaseIntakeCommandResult> {
+    const response = await request.post<CaseIntakeCommandResult>(
+        `/api/inbox/cases/${encodeURIComponent(caseId)}/fact-status`,
+        {
+            command_id: command.command_id,
+            idempotency_key: command.idempotency_key,
+            expected_case_version: command.expected_case_version,
+            field_key: command.field_key,
+            status: command.status,
+            reason: command.reason || '',
+            correlation_id: command.correlation_id,
+        },
+    );
+    return response.data;
 }
 
 export async function listRecentCasesPage(params: {
