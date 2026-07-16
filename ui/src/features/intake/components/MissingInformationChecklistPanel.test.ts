@@ -4,11 +4,14 @@
  */
 import assert from 'node:assert/strict';
 import {
+  classifySendRequestError,
+  resolveAccessReviewState,
   resolveCaseIntakeProjection,
   resolveCustomerAccessCard,
+  resolveSendExpectedVersion,
 } from './MissingInformationChecklistPanel';
 import { isMvpSendableItemType } from '@/features/intake/mvpRequestTypes';
-import type { CustomerAccessCard, SavedCase } from '@/api/inboxTriage';
+import { Slice1RequestMoreError, type CustomerAccessCard, type SavedCase, type Slice1Projection } from '@/api/inboxTriage';
 
 function baseCase(overrides: Partial<SavedCase> = {}): SavedCase {
   return {
@@ -161,6 +164,123 @@ const accessCard: CustomerAccessCard = {
   assert.equal(isMvpSendableItemType('vin'), true);
   assert.equal(isMvpSendableItemType('free_text'), false);
   assert.equal(isMvpSendableItemType('policy_or_insurance_card'), false);
+}
+
+{
+  // Autosave flush version must win over stale projection for Send CAS.
+  assert.equal(
+    resolveSendExpectedVersion({
+      flushedVersion: 4,
+      lastAcceptedVersion: 3,
+      projectionVersion: 2,
+    }),
+    4,
+  );
+  assert.equal(
+    resolveSendExpectedVersion({
+      flushedVersion: null,
+      lastAcceptedVersion: 5,
+      projectionVersion: 2,
+    }),
+    5,
+  );
+  assert.equal(
+    resolveSendExpectedVersion({
+      projectionVersion: 1,
+    }),
+    1,
+  );
+}
+
+{
+  // A stale case response must refresh once — not become a generic failure.
+  const conflict = classifySendRequestError(
+    new Slice1RequestMoreError('stale', 'version_conflict', { status: 409 }),
+  );
+  assert.equal(conflict.kind, 'version_conflict');
+  assert.equal(conflict.clearCommandIdentity, true);
+  assert.match(conflict.toast, /Case updated/);
+
+  const timeout = classifySendRequestError(
+    new Slice1RequestMoreError('uncertain', 'timeout'),
+  );
+  assert.equal(timeout.kind, 'timeout');
+  assert.equal(timeout.clearCommandIdentity, false);
+
+  // Axios-shaped 409 without wrapper still classifies as conflict.
+  const axiosConflict = classifySendRequestError({ response: { status: 409 } });
+  assert.equal(axiosConflict.kind, 'version_conflict');
+  assert.equal(axiosConflict.clearCommandIdentity, true);
+}
+
+{
+  const waiting = resolveAccessReviewState(accessCard, {
+    case_id: 'case_test_intake',
+    workflow_state: 'broker_more_requested',
+    aggregate_version: 2,
+    open_request: {
+      request_id: 'rg_1',
+      status: 'open',
+      progress: { satisfied: 0, total: 1 },
+      items: [
+        {
+          request_item_id: 'ri_vin',
+          item_type: 'vin',
+          label: 'VIN',
+          status: 'active',
+          required: true,
+          position: 1,
+        },
+      ],
+    },
+  } as Slice1Projection);
+  assert.equal(waiting.reviewReady, false);
+  assert.equal(waiting.submittedVin, null);
+  assert.equal(waiting.satisfied, 0);
+  assert.equal(waiting.total, 1);
+}
+
+{
+  const readyProj = {
+    case_id: 'case_test_intake',
+    workflow_state: 'broker_review_ready',
+    aggregate_version: 3,
+    broker_next_action: { action_type: 'review_customer_response' },
+    open_request: {
+      request_id: 'rg_1',
+      status: 'open',
+      progress: { satisfied: 1, total: 1 },
+      items: [
+        {
+          request_item_id: 'ri_vin',
+          item_type: 'vin',
+          label: 'VIN',
+          status: 'satisfied',
+          required: true,
+          position: 1,
+          customer_response: {
+            kind: 'fact',
+            field_id: 'vin',
+            submitted_value: '1HGCM82633A004352',
+            review_status: 'satisfied',
+            applied_to_canonical_facts: false,
+          },
+        },
+      ],
+    },
+  } as Slice1Projection;
+  const readyAccess: CustomerAccessCard = {
+    ...accessCard,
+    // The access card can lag the authoritative Slice 1 projection by one read.
+    simple_status: 'Waiting for customer',
+    progress: { satisfied_count: 0, total_count: 1 },
+  };
+  const ready = resolveAccessReviewState(readyAccess, readyProj);
+  assert.equal(ready.reviewReady, true);
+  assert.equal(ready.submittedVin, '1HGCM82633A004352');
+  assert.equal(ready.satisfied, 1);
+  assert.equal(ready.total, 1);
+  assert.match(ready.simpleStatus, /Ready for Review/i);
 }
 
 console.log('MissingInformationChecklistPanel.test: PASS');

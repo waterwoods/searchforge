@@ -380,3 +380,21 @@ def test_slice1_customer_flow_still_works_after_send():
         fact={"field": "vin", "value": "1HGCM82633A004352"},
     )
     assert submit["outcome"] == "accepted"
+    assert submit["broker_projection"]["workflow_state"] == "broker_review_ready"
+    assert (
+        submit["broker_projection"]["open_request"]["items"][0]["customer_response"][
+            "submitted_value"
+        ]
+        == "1HGCM82633A004352"
+    )
+
+    # Access card readback after customer submit must surface Ready for Review + progress 1/1.
+    send_store.slice1_aggregates = dict(slice_store.aggregates)
+    send_store.groups = dict(slice_store.groups)
+    send_store.items = dict(slice_store.items)
+    send_store.slice1_events = dict(slice_store.events)
+    card = send_svc.fetch_customer_access_card("case_send_3a")
+    assert card is not None
+    assert card["simple_status"] == "Ready for Review"
+    assert card["progress"]["satisfied_count"] == 1
+    assert card["progress"]["total_count"] == 1

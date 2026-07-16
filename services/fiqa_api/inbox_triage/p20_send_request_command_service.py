@@ -171,14 +171,21 @@ def _access_public_card(
     access: CustomerAccessRecord,
     launch: CustomerLaunchTarget,
     request_summary: dict[str, Any] | None,
+    workflow_state: str | None = None,
 ) -> dict[str, Any]:
     progress = None
+    satisfied = 0
+    total = 0
     if isinstance(request_summary, dict):
         raw_progress = request_summary.get("progress") if isinstance(request_summary.get("progress"), dict) else {}
+        satisfied = int(raw_progress.get("satisfied") or 0)
+        total = int(raw_progress.get("total") or len(request_summary.get("items") or []))
         progress = {
-            "satisfied_count": int(raw_progress.get("satisfied") or 0),
-            "total_count": int(raw_progress.get("total") or len(request_summary.get("items") or [])),
+            "satisfied_count": satisfied,
+            "total_count": total,
         }
+    state = str(workflow_state or "").strip().lower()
+    review_ready = state == "broker_review_ready" or (total > 0 and satisfied >= total)
     card = launch.public_card()
     card.update(
         {
@@ -186,7 +193,7 @@ def _access_public_card(
             "access_status": access.status,
             "expires_at": access.expires_at,
             "progress": progress,
-            "simple_status": "Waiting for customer",
+            "simple_status": "Ready for Review" if review_ready else "Waiting for customer",
             "request_sent": True,
         }
     )
@@ -264,7 +271,9 @@ class P20SendRequestCommandService:
                 "qr_payload": None,
             }
         request_summary = None
+        workflow_state = None
         if snapshot.slice1_aggregate and snapshot.open_group:
+            workflow_state = snapshot.slice1_aggregate.workflow_state
             proj = _projection(
                 case_id=case_id,
                 state=snapshot.slice1_aggregate.workflow_state,
@@ -274,7 +283,12 @@ class P20SendRequestCommandService:
                 latest_events=snapshot.latest_slice1_events,
             )
             request_summary = proj.get("open_request")
-        return _access_public_card(access=access, launch=launch, request_summary=request_summary)
+        return _access_public_card(
+            access=access,
+            launch=launch,
+            request_summary=request_summary,
+            workflow_state=workflow_state,
+        )
 
     def validate_presented_access(self, case_id: str, token: str) -> str | None:
         snapshot = self.store.read_snapshot(case_id)
@@ -587,6 +601,7 @@ class P20SendRequestCommandService:
                 access=access,
                 launch=launch,
                 request_summary=slice1_projection.get("open_request"),
+                workflow_state=str(slice1_projection.get("workflow_state") or ""),
             )
 
             # Persist Slice 1 + access + intake lifecycle in one transaction.
@@ -730,10 +745,23 @@ class InMemorySendRequestStore:
         case = self.cases.get(case_id)
         if case is None:
             return None
-        open_group = next(
-            (g for g in self.groups.values() if g.case_id == case_id and g.status == GROUP_STATUS_OPEN),
-            None,
-        )
+        aggregate = self.slice1_aggregates.get(case_id)
+        open_group = None
+        if aggregate and aggregate.active_request_id:
+            open_group = self.groups.get(aggregate.active_request_id)
+        if open_group is None:
+            open_group = next(
+                (g for g in self.groups.values() if g.case_id == case_id and g.status == GROUP_STATUS_OPEN),
+                None,
+            )
+        if open_group is None:
+            candidates = [g for g in self.groups.values() if g.case_id == case_id]
+            if candidates:
+                open_group = sorted(
+                    candidates,
+                    key=lambda g: (g.updated_at or "", g.created_at or "", g.request_id),
+                    reverse=True,
+                )[0]
         open_items = (
             sorted(
                 [i for i in self.items.values() if i.request_id == open_group.request_id],
@@ -746,7 +774,7 @@ class InMemorySendRequestStore:
             case=dict(case),
             intake_aggregate=self.intake_aggregates.get(case_id),
             draft=self.drafts.get(case_id),
-            slice1_aggregate=self.slice1_aggregates.get(case_id),
+            slice1_aggregate=aggregate,
             open_group=open_group,
             open_items=open_items,
             ready_access=self.access_by_case.get(case_id),

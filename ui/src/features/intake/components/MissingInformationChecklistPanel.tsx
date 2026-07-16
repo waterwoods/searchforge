@@ -22,7 +22,12 @@ import type {
   SavedCase,
   Slice1Projection,
 } from '@/api/inboxTriage';
-import { saveCaseRequestDraft, sendCaseRequest, updateCaseFactStatus } from '@/api/inboxTriage';
+import {
+  Slice1RequestMoreError,
+  saveCaseRequestDraft,
+  sendCaseRequest,
+  updateCaseFactStatus,
+} from '@/api/inboxTriage';
 import {
   brokerSendBlockedMessage,
   formatUnsupportedSendItems,
@@ -33,8 +38,11 @@ import {
   RequestDraftAutosaveController,
   type AutosavePhase,
 } from '@/features/intake/components/requestDraftAutosave';
+import { resolveSlice1CustomerResponse } from '@/features/intake/components/StructuredRequestMorePanel';
 
 const AUTOSAVE_DEBOUNCE_MS = 600;
+/** Gentle while-open poll — avoid version churn / flicker. */
+const CUSTOMER_STATUS_POLL_MS = 12000;
 
 const { Text, Paragraph, Title } = Typography;
 const { TextArea } = Input;
@@ -85,6 +93,135 @@ export function resolveCustomerAccessCard(caseRecord: SavedCase | null): Custome
   const fromProj = resolveCaseIntakeProjection(caseRecord)?.customer_access;
   if (fromProj && typeof fromProj === 'object') return fromProj;
   return null;
+}
+
+/**
+ * Authoritative CAS version for Send Request.
+ * Prefer the version returned by the just-completed flush/save — never a stale
+ * React projection that has not re-rendered yet.
+ */
+export function resolveSendExpectedVersion(args: {
+  flushedVersion?: number | null;
+  lastAcceptedVersion?: number | null;
+  projectionVersion?: number | null;
+}): number {
+  if (typeof args.flushedVersion === 'number' && Number.isFinite(args.flushedVersion)) {
+    return args.flushedVersion;
+  }
+  if (typeof args.lastAcceptedVersion === 'number' && Number.isFinite(args.lastAcceptedVersion)) {
+    return args.lastAcceptedVersion;
+  }
+  if (typeof args.projectionVersion === 'number' && Number.isFinite(args.projectionVersion)) {
+    return args.projectionVersion;
+  }
+  return 0;
+}
+
+export type SendErrorDisposition = {
+  kind: 'version_conflict' | 'timeout' | 'rejected' | 'other';
+  clearCommandIdentity: boolean;
+  userMessage: string;
+  toast: string;
+};
+
+/** Map Send Request failures to one recoverable broker action. */
+export function classifySendRequestError(err: unknown): SendErrorDisposition {
+  if (err instanceof Slice1RequestMoreError) {
+    if (err.kind === 'version_conflict') {
+      return {
+        kind: 'version_conflict',
+        clearCommandIdentity: true,
+        userMessage: 'Case was updated. Review the refreshed draft, then send once.',
+        toast: 'Case updated — refreshed. Review and send again.',
+      };
+    }
+    if (err.kind === 'timeout') {
+      return {
+        kind: 'timeout',
+        clearCommandIdentity: false,
+        userMessage: 'Network outcome uncertain. Tap Send once more to safely replay the same request.',
+        toast: 'Connection uncertain — tap Send once more to retry safely.',
+      };
+    }
+    if (err.kind === 'validation' || err.kind === 'feature_disabled' || err.kind === 'authorization') {
+      return {
+        kind: 'rejected',
+        clearCommandIdentity: true,
+        userMessage: err.message || 'Send Request was rejected. Refresh and review before retrying.',
+        toast: err.message || 'Send Request rejected',
+      };
+    }
+    return {
+      kind: 'other',
+      clearCommandIdentity: false,
+      userMessage: err.message || 'Could not send request. Tap again to retry with the same command.',
+      toast: err.message || 'Send Request failed — tap again to retry safely',
+    };
+  }
+  const status = (err as { response?: { status?: number }; status?: number })?.response?.status
+    ?? (err as { status?: number })?.status;
+  if (status === 409) {
+    return {
+      kind: 'version_conflict',
+      clearCommandIdentity: true,
+      userMessage: 'Case was updated. Review the refreshed draft, then send once.',
+      toast: 'Case updated — refreshed. Review and send again.',
+    };
+  }
+  return {
+    kind: 'other',
+    clearCommandIdentity: false,
+    userMessage: 'Could not send request. Tap again to retry with the same command.',
+    toast: 'Send Request failed — tap again to retry safely',
+  };
+}
+
+export function resolveAccessReviewState(
+  access: CustomerAccessCard | null | undefined,
+  slice1Projection?: Slice1Projection | null,
+): {
+  reviewReady: boolean;
+  satisfied: number;
+  total: number;
+  simpleStatus: string;
+  submittedVin: string | null;
+} {
+  const openRequest = slice1Projection?.open_request;
+  const total =
+    openRequest?.progress?.total
+    ?? access?.progress?.total_count
+    ?? 0;
+  const satisfied =
+    openRequest?.progress?.satisfied
+    ?? access?.progress?.satisfied_count
+    ?? 0;
+  const reviewReady =
+    slice1Projection?.workflow_state === 'broker_review_ready'
+    || slice1Projection?.broker_next_action?.action_type === 'review_customer_response'
+    || String(access?.simple_status || '').toLowerCase().includes('ready for review')
+    || (total > 0 && satisfied >= total);
+
+  let submittedVin: string | null = null;
+  for (const item of openRequest?.items || []) {
+    if (String(item.item_type || '').toLowerCase() !== 'vin') continue;
+    const response = resolveSlice1CustomerResponse(item, slice1Projection || null);
+    if (response?.kind === 'fact' && response.submitted_value) {
+      submittedVin = String(response.submitted_value);
+      break;
+    }
+  }
+
+  return {
+    reviewReady,
+    satisfied,
+    total,
+    simpleStatus: reviewReady
+      ? (access?.simple_status && String(access.simple_status).toLowerCase().includes('ready')
+        ? String(access.simple_status)
+        : 'Ready for Review')
+      : (access?.simple_status || 'Waiting for customer'),
+    submittedVin,
+  };
 }
 
 type DraftEditRow = {
@@ -162,25 +299,21 @@ function CustomerAccessReadyCard({
   slice1Projection,
   onEdit,
   showEdit,
+  onRefreshStatus,
+  refreshing,
 }: {
   access: CustomerAccessCard;
   draftItems: CaseIntakeRequestDraftItem[];
   slice1Projection?: Slice1Projection | null;
   onEdit?: () => void;
   showEdit?: boolean;
+  onRefreshStatus?: () => Promise<void>;
+  refreshing?: boolean;
 }) {
   const link = access.copy_link || access.launch_url || '';
   const qrValue = access.qr_payload || link;
   const openRequest = slice1Projection?.open_request;
-  const total =
-    access.progress?.total_count
-    ?? openRequest?.progress?.total
-    ?? draftItems.length
-    ?? 0;
-  const satisfied =
-    access.progress?.satisfied_count
-    ?? openRequest?.progress?.satisfied
-    ?? 0;
+  const review = resolveAccessReviewState(access, slice1Projection);
   const itemSummary =
     (openRequest?.items || draftItems || []).map((item) => String(item.label || item.item_type || '')).filter(Boolean);
 
@@ -189,7 +322,7 @@ function CustomerAccessReadyCard({
       style={{
         border: '1px solid #d9d9d9',
         padding: 16,
-        background: '#fafafa',
+        background: review.reviewReady ? '#f6ffed' : '#fafafa',
         marginBottom: 12,
       }}
     >
@@ -197,10 +330,20 @@ function CustomerAccessReadyCard({
         <Title level={5} style={{ margin: 0 }}>
           Sent to customer
         </Title>
-        <Tag color="processing">{access.simple_status || 'Waiting for customer'}</Tag>
+        <Tag color={review.reviewReady ? 'success' : 'processing'}>{review.simpleStatus}</Tag>
         <Text type="secondary">
-          Progress: {satisfied} / {total}
+          Progress: {review.satisfied} / {review.total}
         </Text>
+        {review.submittedVin ? (
+          <div style={{ padding: 8, background: '#fff', border: '1px solid #b7eb8f' }}>
+            <Text strong style={{ display: 'block', marginBottom: 4 }}>
+              Customer submitted VIN
+            </Text>
+            <Text code copyable={{ text: review.submittedVin }}>
+              {review.submittedVin}
+            </Text>
+          </div>
+        ) : null}
         {itemSummary.length > 0 ? (
           <div>
             <Text strong style={{ display: 'block', marginBottom: 4 }}>
@@ -218,19 +361,25 @@ function CustomerAccessReadyCard({
         <Paragraph style={{ marginBottom: 0 }}>
           {access.instruction_zh || '让客户用微信扫码并补充资料。'}
         </Paragraph>
-        {qrValue ? (
+        {qrValue && !review.reviewReady ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
             <QRCode value={qrValue} size={168} />
           </div>
-        ) : (
+        ) : null}
+        {!qrValue && !review.reviewReady ? (
           <Alert
             type="warning"
             showIcon
             message={access.message || 'Request sent. Code is still preparing.'}
           />
-        )}
+        ) : null}
         <Space wrap>
-          {link ? (
+          {onRefreshStatus ? (
+            <Button onClick={() => void onRefreshStatus()} loading={Boolean(refreshing)}>
+              Refresh status
+            </Button>
+          ) : null}
+          {link && !review.reviewReady ? (
             <Button
               type="primary"
               onClick={async () => {
@@ -244,9 +393,7 @@ function CustomerAccessReadyCard({
             >
               Copy Link
             </Button>
-          ) : (
-            <Button disabled>Copy Link</Button>
-          )}
+          ) : null}
           {showEdit && onEdit ? (
             <Button onClick={onEdit}>Edit</Button>
           ) : null}
@@ -257,7 +404,7 @@ function CustomerAccessReadyCard({
           items={[
             {
               key: 'advanced',
-              label: 'Advanced / Developer',
+              label: 'Details',
               children: (
                 <Space direction="vertical" size={4}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
@@ -305,7 +452,11 @@ export function MissingInformationChecklistPanel({
   const caseRecordRef = useRef(caseRecord);
   const projectionRef = useRef(projection);
   const sendCommandRef = useRef<{ command_id: string; idempotency_key: string } | null>(null);
-  const savePromiseRef = useRef<Promise<{ ok: boolean; draftId?: string }> | null>(null);
+  const savePromiseRef = useRef<Promise<{ ok: boolean; draftId?: string; aggregateVersion?: number }> | null>(null);
+  const lastAcceptedVersionRef = useRef<number | null>(
+    typeof projection?.aggregate_version === 'number' ? projection.aggregate_version : null,
+  );
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
   const expectedVersion = projection?.aggregate_version ?? 0;
   const requestSent =
     Boolean(accessCard?.access_ready || accessCard?.request_sent)
@@ -315,6 +466,12 @@ export function MissingInformationChecklistPanel({
   rowsRef.current = rows;
   caseRecordRef.current = caseRecord;
   projectionRef.current = projection;
+  if (typeof projection?.aggregate_version === 'number') {
+    const current = lastAcceptedVersionRef.current;
+    if (current == null || projection.aggregate_version >= current) {
+      lastAcceptedVersionRef.current = projection.aggregate_version;
+    }
+  }
 
   const clearAutosaveTimer = () => {
     if (autosaveTimerRef.current) {
@@ -334,6 +491,28 @@ export function MissingInformationChecklistPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
   }, []);
+
+  // While waiting for customer, gently refresh authoritative detail (no aggressive churn).
+  useEffect(() => {
+    if (!requestSent || !refreshCase || editing) return;
+    const review = resolveAccessReviewState(
+      accessCard,
+      caseRecord.slice1_projection || caseRecord.p20_slice1_projection,
+    );
+    if (review.reviewReady) return;
+    const timer = setInterval(() => {
+      void refreshCase();
+    }, CUSTOMER_STATUS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [
+    requestSent,
+    editing,
+    refreshCase,
+    accessCard?.simple_status,
+    accessCard?.progress?.satisfied_count,
+    caseRecord.slice1_projection?.workflow_state,
+    caseRecord.p20_slice1_projection?.workflow_state,
+  ]);
 
   // Case change or safe server projection refresh (never overwrite dirty local edits).
   useEffect(() => {
@@ -395,6 +574,10 @@ export function MissingInformationChecklistPanel({
   }) => {
     const next = result.broker_projection;
     if (!next) return;
+    if (typeof next.aggregate_version === 'number') {
+      lastAcceptedVersionRef.current = next.aggregate_version;
+      projectionRef.current = { ...next, customer_access: result.customer_access || next.customer_access || accessCard };
+    }
     const current = caseRecordRef.current;
     const access = result.customer_access || next.customer_access || accessCard;
     const updated: SavedCase = {
@@ -421,7 +604,7 @@ export function MissingInformationChecklistPanel({
     onCaseChange?.(updated);
   };
 
-  const runAutosave = async (allowFollowUp = true): Promise<{ ok: boolean; draftId?: string }> => {
+  const runAutosave = async (allowFollowUp = true): Promise<{ ok: boolean; draftId?: string; aggregateVersion?: number }> => {
     if (savePromiseRef.current) {
       autosaveRef.current.queued = true;
       const prior = await savePromiseRef.current;
@@ -432,7 +615,7 @@ export function MissingInformationChecklistPanel({
       return runAutosave(false);
     }
 
-    const exec = async (): Promise<{ ok: boolean; draftId?: string }> => {
+    const exec = async (): Promise<{ ok: boolean; draftId?: string; aggregateVersion?: number }> => {
       const proj = projectionRef.current;
       if (!proj || requestSent) return { ok: false };
       const items = buildDraftItemsFromRows(rowsRef.current);
@@ -442,12 +625,19 @@ export function MissingInformationChecklistPanel({
         return {
           ok: autosaveRef.current.phase === 'saved',
           draftId: proj.request_draft?.draft_id,
+          aggregateVersion:
+            lastAcceptedVersionRef.current
+            ?? proj.aggregate_version
+            ?? undefined,
         };
       }
       setSaveStatus('saving');
       setError(null);
       const ids = newIds('save_draft');
-      const expected = proj.aggregate_version ?? 0;
+      const expected = resolveSendExpectedVersion({
+        lastAcceptedVersion: lastAcceptedVersionRef.current,
+        projectionVersion: proj.aggregate_version,
+      });
       try {
         const result = await saveCaseRequestDraft(caseRecord.case_id, {
           ...ids,
@@ -463,7 +653,7 @@ export function MissingInformationChecklistPanel({
           setSaveStatus('failed');
           setError('Case was updated elsewhere. Refresh to recover, then retry save.');
           await refreshCase?.();
-          message.warning('Version conflict — case refreshed.');
+          message.warning('Case updated — refreshed.');
           return { ok: false };
         }
         if (result.outcome === 'rejected') {
@@ -478,13 +668,17 @@ export function MissingInformationChecklistPanel({
         setSaveStatus('saved');
         const draftId =
           result.broker_projection?.request_draft?.draft_id || proj.request_draft?.draft_id;
+        const aggregateVersion =
+          typeof result.broker_projection?.aggregate_version === 'number'
+            ? result.broker_projection.aggregate_version
+            : lastAcceptedVersionRef.current ?? undefined;
         if (runFollowUp && allowFollowUp) {
           // At most one follow-up for newest content after in-flight edits.
           savePromiseRef.current = null;
           const follow = await runAutosave(false);
-          return follow.ok ? follow : { ok: true, draftId };
+          return follow.ok ? follow : { ok: true, draftId, aggregateVersion };
         }
-        return { ok: true, draftId };
+        return { ok: true, draftId, aggregateVersion };
       } catch (err) {
         if (autosaveRef.current.isStale(started.generation)) {
           return { ok: false };
@@ -492,7 +686,7 @@ export function MissingInformationChecklistPanel({
         const status = (err as { response?: { status?: number } })?.response?.status;
         autosaveRef.current.failSave(started.generation);
         if (status === 409) {
-          setError('Version conflict. Refresh to recover, then retry save.');
+          setError('Case updated. Refresh, review, then retry save.');
           await refreshCase?.();
           message.warning('Stale version — refreshed.');
         } else {
@@ -536,9 +730,22 @@ export function MissingInformationChecklistPanel({
     else clearAutosaveTimer();
   };
 
-  const flushAutosave = async (): Promise<{ ok: boolean; draftId?: string }> => {
+  const flushAutosave = async (): Promise<{ ok: boolean; draftId?: string; aggregateVersion?: number }> => {
     clearAutosaveTimer();
     return runAutosave(true);
+  };
+
+  const refreshCustomerStatus = async () => {
+    if (!refreshCase || statusRefreshing) return;
+    setStatusRefreshing(true);
+    try {
+      await refreshCase();
+      message.success('Customer status refreshed.');
+    } catch {
+      message.error('Could not refresh customer status.');
+    } finally {
+      setStatusRefreshing(false);
+    }
   };
 
   const handleSendRequest = async () => {
@@ -561,13 +768,20 @@ export function MissingInformationChecklistPanel({
       || Boolean(autosaveTimerRef.current)
       || autosaveRef.current.isDirty(buildDraftItemsFromRows(rowsRef.current));
     let latestDraftId = projection.request_draft?.draft_id || caseRecord.request_draft?.draft_id;
-    if (needsFlush || !latestDraftId) {
+    let flushedVersion: number | null = null;
+    // Always flush once before Send so CAS uses the authoritative post-save version.
+    {
       const saved = await flushAutosave();
-      if (!saved.ok) {
+      if (!saved.ok && (needsFlush || !latestDraftId)) {
         setError('Waiting for draft save. Select VIN and try again.');
         return;
       }
-      latestDraftId = saved.draftId || latestDraftId;
+      if (saved.ok) {
+        latestDraftId = saved.draftId || latestDraftId;
+        if (typeof saved.aggregateVersion === 'number') {
+          flushedVersion = saved.aggregateVersion;
+        }
+      }
     }
     if (!latestDraftId) {
       setError('Draft not ready yet. Wait for Saved status.');
@@ -581,8 +795,11 @@ export function MissingInformationChecklistPanel({
       sendCommandRef.current = newIds('send_request');
     }
     const ids = sendCommandRef.current;
-    const sendExpected =
-      projectionRef.current?.aggregate_version ?? expectedVersion;
+    const sendExpected = resolveSendExpectedVersion({
+      flushedVersion,
+      lastAcceptedVersion: lastAcceptedVersionRef.current,
+      projectionVersion: projectionRef.current?.aggregate_version ?? expectedVersion,
+    });
     try {
       const result = await sendCaseRequest(caseRecord.case_id, {
         ...ids,
@@ -590,10 +807,11 @@ export function MissingInformationChecklistPanel({
         request_draft_id: latestDraftId,
       });
       if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
-        setError('Case was updated elsewhere. Refresh to recover, then send again.');
+        setError('Case was updated. Review the refreshed draft, then send once.');
         sendCommandRef.current = null;
+        if (result.broker_projection) mergeProjection(result);
         await refreshCase?.();
-        message.warning('Version conflict — case refreshed. Review and send again.');
+        message.warning('Case updated — refreshed. Review and send again.');
         return;
       }
       if (result.outcome === 'rejected') {
@@ -606,21 +824,29 @@ export function MissingInformationChecklistPanel({
       }
       mergeProjection(result);
       setEditing(false);
+      sendCommandRef.current = null;
       message.success(
         result.outcome === 'replayed'
           ? 'Request already sent; showing customer access.'
           : 'Request sent to customer.',
       );
     } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 409) {
+      const disposition = classifySendRequestError(err);
+      if (disposition.clearCommandIdentity) {
         sendCommandRef.current = null;
-        setError('Version conflict. Refresh to recover, then send again.');
+      }
+      setError(disposition.userMessage);
+      if (disposition.kind === 'version_conflict') {
+        const conflictResult = err instanceof Slice1RequestMoreError ? err.result : undefined;
+        if (conflictResult?.broker_projection) {
+          mergeProjection(conflictResult);
+        }
         await refreshCase?.();
-        message.warning('Stale version — refreshed.');
+        message.warning(disposition.toast);
+      } else if (disposition.kind === 'timeout') {
+        message.warning(disposition.toast);
       } else {
-        setError('Could not send request. Retry uses the same command.');
-        message.error('Send Request failed — tap again to retry safely');
+        message.error(disposition.toast);
       }
     } finally {
       setSending(false);
@@ -649,7 +875,7 @@ export function MissingInformationChecklistPanel({
       });
       if (result.outcome === 'conflict') {
         await refreshCase?.();
-        message.warning('Version conflict — refreshed.');
+        message.warning('Case updated — refreshed.');
         return;
       }
       mergeProjection(result);
@@ -679,7 +905,7 @@ export function MissingInformationChecklistPanel({
       });
       if (result.outcome === 'conflict') {
         await refreshCase?.();
-        message.warning('Version conflict — refreshed.');
+        message.warning('Case updated — refreshed.');
         return;
       }
       mergeProjection(result);
@@ -723,6 +949,8 @@ export function MissingInformationChecklistPanel({
           access={accessCard}
           draftItems={projection.request_draft?.items || []}
           slice1Projection={caseRecord.slice1_projection || caseRecord.p20_slice1_projection}
+          onRefreshStatus={refreshCase ? refreshCustomerStatus : undefined}
+          refreshing={statusRefreshing}
         />
       ) : null}
 

@@ -614,7 +614,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                                 </Text>
                                 {response.canonical_value ? (
                                     <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
-                                        Canonical claim VIN: <Text code>{String(response.canonical_value)}</Text>
+                                        Claim VIN: <Text code>{String(response.canonical_value)}</Text>
                                         {String(response.canonical_value) !== String(response.submitted_value ?? '')
                                             ? ' (differs from submitted)'
                                             : null}
@@ -641,7 +641,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>
                             Review status: {response?.review_status || status || '—'}
                             {' · '}
-                            Applied to canonical claim facts:{' '}
+                            Saved to claim:{' '}
                             {response?.applied_to_canonical_facts ? 'Yes' : 'No'}
                         </Text>
                     </div>
