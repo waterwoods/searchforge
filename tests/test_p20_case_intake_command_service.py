@@ -38,7 +38,7 @@ def test_create_incomplete_claim_and_missing_vin():
         inputs={"is_test": True, "customer_name": "QA Customer"},
     )
     assert result["outcome"] == "accepted"
-    assert result["aggregate_version"] == 1
+    assert result["aggregate_version"] == 2
     case_id = result["case_id"]
     assert case_id in store.cases
     assert store.cases[case_id]["workbench_test"] is True
@@ -117,7 +117,7 @@ def test_request_draft_save_update_and_no_request_more():
         broker_id="office:demo",
         command_id="cmd-draft-1",
         idempotency_key="idem-draft-1",
-        expected_case_version=1,
+        expected_case_version=2,
         items=[
             {
                 "field_key": "vin",
@@ -130,7 +130,7 @@ def test_request_draft_save_update_and_no_request_more():
         ],
     )
     assert saved["outcome"] == "accepted"
-    assert saved["aggregate_version"] == 2
+    assert saved["aggregate_version"] == 3
     assert store.drafts[case_id].items[0]["field_key"] == "vin"
     assert store.open_requests.get(case_id) is None
     assert saved["broker_projection"]["customer_next_action"] is None
@@ -141,7 +141,7 @@ def test_request_draft_save_update_and_no_request_more():
         broker_id="office:demo",
         command_id="cmd-draft-1",
         idempotency_key="idem-draft-1",
-        expected_case_version=1,
+        expected_case_version=2,
         items=[
             {
                 "field_key": "vin",
@@ -160,7 +160,7 @@ def test_request_draft_save_update_and_no_request_more():
         broker_id="office:demo",
         command_id="cmd-draft-2",
         idempotency_key="idem-draft-2",
-        expected_case_version=1,
+        expected_case_version=2,
         items=[
             {
                 "field_key": "vin",
@@ -231,7 +231,7 @@ def test_active_request_more_blocks_draft_save():
         broker_id="office:demo",
         command_id="cmd-draft-open",
         idempotency_key="idem-draft-open",
-        expected_case_version=1,
+        expected_case_version=2,
         items=[
             {
                 "field_key": "vin",

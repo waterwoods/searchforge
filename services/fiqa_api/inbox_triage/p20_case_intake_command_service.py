@@ -501,7 +501,7 @@ class P20CaseIntakeCommandService:
             aggregate = IntakeAggregate(
                 case_id=case_id,
                 admin_lifecycle=ADMIN_LIFECYCLE_DRAFT,
-                aggregate_version=1,
+                aggregate_version=2,
                 is_test=bool(normalized.get("is_test")),
                 office_id=office,
                 tenant_id=tenant,
@@ -544,7 +544,7 @@ class P20CaseIntakeCommandService:
                 "event_id": f"evt_{uuid4().hex[:16]}",
                 "event_type": EVENT_MISSING_INFORMATION_ASSESSED,
                 "sequence_number": 2,
-                "aggregate_version": 1,
+                "aggregate_version": 2,
                 "evidence": {
                     "checklist_count": len(projection["missing_information_checklist"]),
                     "missing_count": sum(
