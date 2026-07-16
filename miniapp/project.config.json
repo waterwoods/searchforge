@@ -33,7 +33,9 @@
     },
     "bundle": false,
     "useIsolateContext": true,
-    "useCompilerPlugins": ["typescript"]
+    "useCompilerPlugins": ["typescript"],
+    "ignoreDevUnusedFiles": false,
+    "ignoreUploadUnusedFiles": false
   },
   "compileType": "miniprogram",
   "libVersion": "3.5.5",

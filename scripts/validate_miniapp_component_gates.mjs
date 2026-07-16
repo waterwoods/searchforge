@@ -180,9 +180,27 @@ function checkGate3AppJsonPageRegistration() {
     }
   }
   if (parsed.lazyCodeLoading === "requiredComponents") {
-    // Known physical-Preview blank risk when Home opens a never-injected first page.
-    warnings.push(
-      "Gate3 lazyCodeLoading=requiredComponents is enabled; confirm Home→Start Claim is non-blank on physical Preview.",
+    // Known physical-Preview blank / wx://not-found risk when page code is omitted.
+    errors.push(
+      'Gate3 lazyCodeLoading=requiredComponents is blocked — physical Preview can show wx://not-found or a blank Home',
+    );
+  }
+
+  const projectPath = path.join(miniappRoot, "project.config.json");
+  const project = parseJson(projectPath);
+  if (project?.setting?.ignoreDevUnusedFiles === true) {
+    errors.push(
+      "Gate3 ignoreDevUnusedFiles=true is blocked — Preview can omit registered pages → wx://not-found",
+    );
+  }
+  if (project?.setting?.ignoreUploadUnusedFiles === true) {
+    errors.push(
+      "Gate3 ignoreUploadUnusedFiles=true is blocked — Experience packages can omit registered pages",
+    );
+  }
+  if (project && project.setting?.ignoreDevUnusedFiles !== false) {
+    errors.push(
+      "Gate3 project.config.json must set ignoreDevUnusedFiles=false explicitly",
     );
   }
 }

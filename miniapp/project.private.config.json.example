@@ -1,7 +1,9 @@
 {
   "description": "Copy to project.private.config.json for local WeChat DevTools overrides",
   "setting": {
-    "urlCheck": false
+    "urlCheck": false,
+    "ignoreDevUnusedFiles": false,
+    "ignoreUploadUnusedFiles": false
   },
   "condition": {
     "miniprogram": {

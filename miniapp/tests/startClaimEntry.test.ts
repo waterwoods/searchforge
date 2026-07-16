@@ -83,6 +83,29 @@ test("app.json Home page is start-claim and lazyCodeLoading is off", () => {
   assert.equal(appJson.lazyCodeLoading, undefined);
 });
 
+test("Preview package must not filter unused files (wx://not-found regression)", () => {
+  const project = JSON.parse(
+    readFileSync(join(miniappRoot, "project.config.json"), "utf8"),
+  ) as {
+    setting?: { ignoreDevUnusedFiles?: boolean; ignoreUploadUnusedFiles?: boolean };
+  };
+  assert.equal(project.setting?.ignoreDevUnusedFiles, false);
+  assert.equal(project.setting?.ignoreUploadUnusedFiles, false);
+
+  // Private overrides public; if present it must not re-enable the filter.
+  try {
+    const privateConfig = JSON.parse(
+      readFileSync(join(miniappRoot, "project.private.config.json"), "utf8"),
+    ) as {
+      setting?: { ignoreDevUnusedFiles?: boolean; ignoreUploadUnusedFiles?: boolean };
+    };
+    assert.notEqual(privateConfig.setting?.ignoreDevUnusedFiles, true);
+    assert.notEqual(privateConfig.setting?.ignoreUploadUnusedFiles, true);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+});
+
 test("receipt and success pages wire Home to Start Claim helper", () => {
   const receiptTs = readFileSync(join(miniappRoot, "pages/receipt/receipt.ts"), "utf8");
   const successTs = readFileSync(

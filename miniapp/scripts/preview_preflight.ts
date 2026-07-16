@@ -28,9 +28,21 @@ if (token.length > 0) {
 try {
   const project = JSON.parse(readFileSync(join(miniappRoot, "project.config.json"), "utf8")) as {
     appid?: string;
+    setting?: { ignoreDevUnusedFiles?: boolean; ignoreUploadUnusedFiles?: boolean };
   };
   if (!String(project.appid || "").trim()) {
     errors.push("project.config.json appid is required for Preview");
+  }
+  // Unused-file filtering can drop page/deps from the Preview package → wx://not-found.
+  if (project.setting?.ignoreDevUnusedFiles === true) {
+    errors.push(
+      'project.config.json ignoreDevUnusedFiles=true is blocked — Preview can package without Home page → wx://not-found',
+    );
+  }
+  if (project.setting?.ignoreUploadUnusedFiles === true) {
+    errors.push(
+      "project.config.json ignoreUploadUnusedFiles=true is blocked — Experience upload can omit registered pages",
+    );
   }
 } catch {
   errors.push("project.config.json is missing or unreadable");
@@ -71,8 +83,19 @@ try {
   const privateConfigPath = join(miniappRoot, "project.private.config.json");
   const privateRaw = readFileSync(privateConfigPath, "utf8");
   const privateConfig = JSON.parse(privateRaw) as {
+    setting?: { ignoreDevUnusedFiles?: boolean; ignoreUploadUnusedFiles?: boolean };
     condition?: { miniprogram?: { list?: Array<{ pathName?: string; query?: string; name?: string }> } };
   };
+  if (privateConfig.setting?.ignoreDevUnusedFiles === true) {
+    errors.push(
+      "project.private.config.json ignoreDevUnusedFiles=true overrides project config and can cause physical Preview wx://not-found",
+    );
+  }
+  if (privateConfig.setting?.ignoreUploadUnusedFiles === true) {
+    errors.push(
+      "project.private.config.json ignoreUploadUnusedFiles=true can omit registered pages from Experience packages",
+    );
+  }
   const list = privateConfig.condition?.miniprogram?.list || [];
   const first = list[0];
   if (first?.pathName === "pages/entry/entry" && String(first.query || "").includes("token=")) {
