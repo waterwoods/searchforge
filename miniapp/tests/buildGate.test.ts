@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   REQUIRED_APP_ID,
+  REQUIRED_PACK_IGNORE_CLI_GLOBS,
   REQUIRED_PREVIEW_PAGES,
   REQUIRED_QA_API_BASE_URL,
   REQUIRED_REQUEST_LEGAL_DOMAIN_HOST,
@@ -181,6 +182,40 @@ test("Build Gate FAILs on wrong apiProfile / loopback / legal-domain host", () =
   assert.ok(result.errors.some((e) => /loopback|apiBaseUrl/.test(e)));
 });
 
+test("Build Gate FAILs when CLI scripts are not packOptions-ignored", () => {
+  const snap = baseSnapshot();
+  snap.projectConfig = {
+    ...snap.projectConfig,
+    packOptions: {
+      ignore: [
+        { type: "glob", value: "tests/**" },
+        // scripts/** intentionally omitted — Preview would compile import.meta
+      ],
+    },
+  };
+  const result = evaluateMiniProgramBuildGate(snap);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((e) => /scripts\/\*\*/.test(e) && /import\.meta|CLI-only/.test(e)));
+});
+
+test("Build Gate FAILs when a runtime page imports scripts/", () => {
+  const snap = baseSnapshot();
+  snap.files["pages/start-claim/start-claim.ts"] =
+    'import { runMiniProgramBuildGate } from "../../scripts/build_gate";\nPage({})';
+  const result = evaluateMiniProgramBuildGate(snap);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((e) => /imports scripts\//.test(e)));
+});
+
+test("Build Gate FAILs when runtime code uses import.meta", () => {
+  const snap = baseSnapshot();
+  snap.files["pages/start-claim/start-claim.ts"] =
+    'const x = import.meta.url;\nPage({})';
+  const result = evaluateMiniProgramBuildGate(snap);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((e) => /import\.meta/.test(e)));
+});
+
 test("Build Gate permanent Preview contract constants are locked", () => {
   assert.equal(REQUIRED_APP_ID, "wxa610932351416622");
   assert.equal(REQUIRED_QA_API_BASE_URL, "https://fiqa-api-g7zatxrycq-uw.a.run.app");
@@ -190,7 +225,15 @@ test("Build Gate permanent Preview contract constants are locked", () => {
     "pages/entry/entry",
     "pages/receipt/receipt",
   ]);
+  assert.deepEqual([...REQUIRED_PACK_IGNORE_CLI_GLOBS], ["scripts/**", "tests/**"]);
   const appJson = JSON.parse(readFileSync(join(miniappRoot, "app.json"), "utf8"));
   assert.equal(appJson.pages?.[0], "pages/start-claim/start-claim");
   assert.equal(appJson.lazyCodeLoading, undefined);
+  const project = JSON.parse(readFileSync(join(miniappRoot, "project.config.json"), "utf8")) as {
+    packOptions?: { ignore?: Array<string | { type?: string; value?: string }> };
+  };
+  const ignoreVals = (project.packOptions?.ignore || []).map((e) =>
+    typeof e === "string" ? e : String(e?.value || ""),
+  );
+  assert.ok(ignoreVals.includes("scripts/**"), "project.config must pack-ignore scripts/**");
 });

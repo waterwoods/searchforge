@@ -28,5 +28,12 @@
     "./config.local.ts",
     "./typings.d.ts"
   ],
-  "exclude": ["node_modules", "tests", "tests/**", "**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "tests",
+    "tests/**",
+    "scripts",
+    "scripts/**",
+    "**/*.test.ts"
+  ]
 }

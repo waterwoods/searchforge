@@ -17,6 +17,16 @@ export const REQUIRED_PREVIEW_PAGES = [
   "pages/receipt/receipt",
 ] as const;
 
+/**
+ * CLI-only paths that must never enter the WeChat Preview / Experience package.
+ * Regression: scripts/build_gate.ts uses Node `import.meta` — if packaged,
+ * DevTools fails with "Cannot use 'import.meta' outside a module" before Preview.
+ */
+export const REQUIRED_PACK_IGNORE_CLI_GLOBS = [
+  "scripts/**",
+  "tests/**",
+] as const;
+
 export const REQUIRED_REGISTERED_PAGES = [
   "pages/start-claim/start-claim",
   "pages/start-claim-success/start-claim-success",
@@ -191,6 +201,39 @@ export function evaluateMiniProgramBuildGate(snapshot: BuildGateSnapshot): Build
     // Also catch ignoring whole pages/ tree
     if (packIgnore.some((p) => p === "pages/**" || p === "pages")) {
       errors.push("packOptions.ignore excludes pages/** — Preview package cannot contain Start Claim");
+    }
+  }
+
+  // Permanent regression: Node CLI scripts must never be reachable from Preview.
+  for (const required of REQUIRED_PACK_IGNORE_CLI_GLOBS) {
+    const covered = packIgnore.some(
+      (p) => p === required || p === required.replace(/\/\*\*$/, "") || p === required.replace(/\/\*\*$/, "/"),
+    );
+    if (!covered) {
+      errors.push(
+        `packOptions.ignore must exclude CLI-only path ${required} — WeChat Preview must not compile Node scripts (import.meta)`,
+      );
+    }
+  }
+
+  // Runtime pages/components must never import CLI scripts.
+  for (const [rel, content] of Object.entries(snapshot.files)) {
+    if (content == null) continue;
+    if (!rel.startsWith("pages/") && !rel.startsWith("components/")) continue;
+    if (!/\.(ts|js)$/.test(rel)) continue;
+    if (
+      /from\s+['"][^'"]*scripts\//.test(content)
+      || /require\s*\(\s*['"][^'"]*scripts\//.test(content)
+      || /import\s*\(\s*['"][^'"]*scripts\//.test(content)
+    ) {
+      errors.push(
+        `runtime file ${rel} imports scripts/ — CLI-only code must not be reachable from Preview`,
+      );
+    }
+    if (/import\.meta/.test(content)) {
+      errors.push(
+        `runtime file ${rel} uses import.meta — breaks WeChat Preview ("Cannot use 'import.meta' outside a module")`,
+      );
     }
   }
 
