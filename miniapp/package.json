@@ -7,8 +7,10 @@
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:watch": "node --import tsx --test --watch tests/**/*.test.ts",
     "test:component-gates": "node ../scripts/validate_miniapp_component_gates.mjs",
+    "build:gate": "node --import tsx scripts/build_gate.ts",
     "preview:preflight": "node scripts/preview_preflight.mjs",
-    "test:config-profile": "node --import tsx --test tests/configProfile.test.ts"
+    "test:config-profile": "node --import tsx --test tests/configProfile.test.ts",
+    "test:build-gate": "node --import tsx --test tests/buildGate.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

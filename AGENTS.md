@@ -20,6 +20,7 @@ Chinese product interpretation:
 
 **Governing SSOT:** `docs/product/p20_product_north_star.md`
 **Required worksheet:** `docs/product/p20_production_loop_template.md`
+**Founder QA order:** `docs/product/p20_founder_qa_checklist.md`
 
 Before every P20 implementation, release, or capability review:
 
@@ -33,6 +34,10 @@ Before every P20 implementation, release, or capability review:
   unresolved P0 as **BLOCKED**.
 - Evaluate the final diff against Reliability, Simplicity, Smoothness,
   Business Value, Scope Control, and every hard release gate in the SSOT.
+- Enforce the **Mini Program Build Gate** (North Star §K) **before** Form,
+  Navigation, or physical Preview QA: `cd miniapp && npm run build:gate` must
+  PASS. Packaging regressions such as `wx://not-found` are automatic release
+  blockers.
 - If any customer/broker form changed, enforce the **Founder Form Gate**
   (North Star §I): visible value equals canonical state, all required fields
   enable the CTA, optional/Request More/future fields never block, no hidden
@@ -75,6 +80,7 @@ Full hierarchy: `docs/PROJECT_DOC_SYSTEM_MAP.md` → **START HERE** table.
 
 | Task | Command |
 |------|---------|
+| **Mini Program Build Gate** | `cd miniapp && npm run build:gate` (before Form/Nav/Preview QA) |
 | **Start demo** | `bash scripts/run_demo_local.sh` (default: product-only SaaS; lab: `RUN_DEMO_LAB=1`) |
 | **Pre-demo checklist** | `bash scripts/demo_pre_checklist.sh` |
 | **Recovery** (503 / embedding_warming) | `bash scripts/restore_8001_readiness.sh` |

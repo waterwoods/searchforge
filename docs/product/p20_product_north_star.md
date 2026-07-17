@@ -169,8 +169,9 @@ failure is a release blocker.
 5. **No hidden rules.** No hidden length, format, or legacy validation rule may
    exist without (a) a Business Contract justification and (b) a visible
    field-level explanation.
-6. **Submit validates.** Clicking submit runs final validation and surfaces the
-   first invalid field (focus/scroll or explicit message).
+6. **Submit validates.** Clicking submit runs final validation, does not call
+   the API when invalid, identifies the exact first invalid field, and focuses
+   or scrolls to it.
 7. **CTA is not the only signal.** A disabled CTA must never be the only error
    communication; a visible reason is always available.
 8. **Normalized payload.** The payload contains the normalized values shown to
@@ -205,12 +206,21 @@ Every customer/broker form must also pass:
 6. **Sibling preservation.** One field update cannot erase sibling fields.
 7. **Device input events.** Physical-device input/composition/blur paths are
    covered by tests or Founder smoke.
-8. **Typed failures.** Error messages distinguish local validation, transport,
-   domain/TLS/config, timeout, server validation, and server internal errors.
+8. **Typed failures.** Error messages distinguish local validation, request not
+   sent, transport, domain/TLS/config, timeout, authentication/configuration,
+   server validation, and server internal errors. Retry is offered only when it
+   is safe and useful; completed values remain intact.
 9. **Accepted-but-lost recovery.** Accepted-but-response-lost recovers via
    idempotent retry / receipt without creating a duplicate command outcome.
 10. **Downstream verify.** Every real-device submission is verified on the
     authoritative downstream surface.
+11. **Safe device diagnostics.** Prototype/QA evidence records the secret-free
+    request URL, method, start/end timestamps, HTTP status or transport
+    `errMsg`/`errno`, safe error code, command/idempotency identity, whether the
+    backend received it, and whether exactly one downstream outcome exists.
+12. **No unverified guarantee.** User copy must not promise that retry cannot
+    duplicate an outcome until persistent-store replay and downstream
+    exactly-once behavior are verified end to end.
 
 Regression origin: Start Claim showed populated fields and an enabled CTA while
 a stale missing-field banner still listed 事故经过/时间/地点, then submit failed
@@ -251,6 +261,67 @@ Regression origin: after a restored Submit Result (`提交结果` /
 retry — blocking Founder Form QA. This gate exists to make that class of
 failure a permanent blocker.
 
+### K. Mini Program Build Gate
+
+**SSOT for this gate. All checklists and rules reference this section; do not
+duplicate a conflicting copy.**
+
+This gate executes **before** Founder Form Gate (§I), Founder Entry and
+Navigation Gate (§J), and physical-device QA. If it fails, Release stops
+immediately — do not proceed to Form/Navigation/device QA.
+
+**Permanent Preview contract:** Preview package must always behave like the
+release package. Never allow page filtering, component filtering, hidden
+compile conditions, stale Preview tokens, a missing first page, or
+`wx://not-found`.
+
+Automated command (from `miniapp/`):
+
+```bash
+npm run build:gate
+```
+
+Repo-root equivalent: `node scripts/validate_miniapp_build_gate.mjs`
+
+The gate must verify at minimum:
+
+1. `app.json` page registration is valid and `pages[0]` is Start Claim.
+2. Every registered page exists on disk (`.ts` / `.json` / `.wxml` / `.wxss`).
+3. Every `usingComponents` path exists.
+4. Filename casing matches exactly.
+5. Required page and component files exist.
+6. Preview package contains Start Claim.
+7. Preview package contains Entry.
+8. Preview package contains Receipt.
+9. `ignoreDevUnusedFiles == false` (and `ignoreUploadUnusedFiles == false`).
+10. `lazyCodeLoading` uses the approved value (field omitted — never
+    `requiredComponents`).
+11. Compile condition is clean (`project.config.json` `condition: {}`; private
+    first path is Start Claim when present).
+12. No stale token is baked into a compile-condition launch query.
+13. AppID is the real Mini Program AppID (not `touristappid`).
+14. `apiProfile` is `qa` for Preview.
+15. Request合法域名 host matches the committed QA API host
+    (`fiqa-api-g7zatxrycq-uw.a.run.app`); WeChat admin must whitelist this host
+    before physical Preview.
+16. Preview preflight passes.
+
+Regression origin: physical Preview Remote Debug showed
+`<body id="wx://not-found"></body>` because `ignoreDevUnusedFiles=true`
+filtered required page code out of the Preview package. This gate exists to
+make that packaging class a permanent blocker.
+
+**Founder sequence after Build Gate PASSes:**
+
+1. Clear DevTools cache (全部清除).
+2. Full compile.
+3. Generate a new Preview QR.
+4. Confirm Remote Debug connects.
+5. Confirm Start Claim renders (not `wx://not-found`).
+6. Run Founder Form Gate (§I).
+7. Run Founder Entry and Navigation Gate (§J).
+8. Complete physical-device QA.
+
 ## Required Cursor behavior
 
 For every P20 implementation, release, or capability-review task, Cursor must:
@@ -259,14 +330,16 @@ For every P20 implementation, release, or capability-review task, Cursor must:
    `docs/product/p20_production_loop_template.md` before implementation.
 2. State one user-facing objective and what is explicitly out of scope.
 3. Use the Production Loop and run no more than three automated loops.
-4. Evaluate the final diff against the five-part scorecard and hard release
+4. Enforce **Mini Program Build Gate (§K)** before Form (§I), Navigation (§J),
+   or physical Preview QA (`cd miniapp && npm run build:gate`).
+5. Evaluate the final diff against the five-part scorecard and hard release
    gates.
-5. Refuse to mark Capability Done without recorded Founder/manual QA evidence.
-6. Recommend **Auto** by default.
-7. Escalate to **Grok 4.5** only for a genuine cross-system blocker.
-8. Use **GPT-5.6 Terra Medium** only for architecture or Blueprint decisions.
-9. Never use subagents unless the founder explicitly changes this rule.
-10. Stop when the release gate passes; record future ideas without
+6. Refuse to mark Capability Done without recorded Founder/manual QA evidence.
+7. Recommend **Auto** by default.
+8. Escalate to **Grok 4.5** only for a genuine cross-system blocker.
+9. Use **GPT-5.6 Terra Medium** only for architecture or Blueprint decisions.
+10. Never use subagents unless the founder explicitly changes this rule.
+11. Stop when the release gate passes; record future ideas without
     implementing them or starting the next capability.
 
 ## Relationship to existing contracts

@@ -60,6 +60,7 @@ metrics.
 
 ## Hard-gate check
 
+- [ ] **Mini Program Build Gate** (North Star §K) — `cd miniapp && npm run build:gate` PASS before Form/Nav/device QA
 - [ ] Customer/Broker read-after-write consistency
 - [ ] One Task / One State / One Next Action
 - [ ] One primary CTA per screen
@@ -74,6 +75,21 @@ metrics.
 Use the exact gate definitions in the governing SSOT; do not reinterpret them
 from this abbreviated checklist.
 
+### Mini Program Build Gate quick check (governing SSOT: North Star §K)
+
+Must PASS before Form Gate, Navigation Gate, and physical Preview:
+
+- [ ] `npm run build:gate` PASS
+- [ ] `app.json` pages valid; `pages[0]` = Start Claim
+- [ ] Every page + usingComponents path exists with correct casing
+- [ ] Preview package includes Start Claim, Entry, Receipt
+- [ ] `ignoreDevUnusedFiles` / `ignoreUploadUnusedFiles` are false
+- [ ] `lazyCodeLoading` omitted (not `requiredComponents`)
+- [ ] Compile condition clean; no baked-in Preview token
+- [ ] AppID correct; `apiProfile=qa`; request合法域名 host = QA API host
+- [ ] Preview preflight PASS
+- [ ] After PASS: clear cache → full compile → new Preview → Start Claim renders (no `wx://not-found`)
+
 ### Founder Form Gate quick check (governing SSOT: North Star §I)
 
 If a customer/broker form changed, confirm before Release:
@@ -83,7 +99,7 @@ If a customer/broker form changed, confirm before Release:
 - [ ] All required complete → primary CTA enabled
 - [ ] Optional / Request More / future fields never block submit
 - [ ] No hidden length/format/legacy rule without Business Contract + visible reason
-- [ ] Submit runs final validation and shows first invalid field
+- [ ] Submit runs final validation, skips API when invalid, and focuses/scrolls first invalid field
 - [ ] Disabled CTA is never the only error signal
 - [ ] Payload uses the normalized values shown to the user
 - [ ] Duplicate tap → one command/outcome
@@ -100,9 +116,11 @@ If a customer/broker form changed, confirm before Release:
 - [ ] Draft restoration populates canonical state
 - [ ] One field update cannot erase siblings
 - [ ] Physical-device input events covered
-- [ ] Errors distinguish validation / transport / server
+- [ ] Errors distinguish validation / not-sent / transport / domain-TLS / timeout / auth-config / 4xx / 5xx
 - [ ] Accepted-but-response-lost recovers without duplicate
 - [ ] Real-device submit verified downstream
+- [ ] QA diagnostics include safe URL/method/timestamps/status/error/command identity
+- [ ] Retry copy makes no unverified no-duplicate promise
 
 ### Founder Entry and Navigation Gate quick check (governing SSOT: North Star §J)
 
