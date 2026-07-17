@@ -5,6 +5,7 @@
 
 export type TransportFailureKind =
   | "domain_not_allowed"
+  | "dns_error"
   | "tls_error"
   | "timeout"
   | "backend_unreachable"
@@ -55,6 +56,13 @@ export function classifyWxRequestFail(err: WxRequestFailLike | undefined | null)
   ) {
     return { code: "tls_error", errMsg, errno };
   }
+  if (
+    lower.includes("dns")
+    || lower.includes("name not resolved")
+    || lower.includes("could not resolve host")
+  ) {
+    return { code: "dns_error", errMsg, errno };
+  }
   if (lower.includes("timeout") || lower.includes("timed out")) {
     return { code: "timeout", errMsg, errno };
   }
@@ -79,6 +87,8 @@ export function buildRequestDiagnostic(input: {
     method: input.method,
     path: input.path,
     apiHost: input.apiHost,
+    requestStartedAt: input.startedAt,
+    requestEndedAt: input.endedAt,
     durationMs: Math.max(0, input.endedAt - input.startedAt),
     httpStatus: input.httpStatus ?? 0,
     errorCode: input.errorCode || "",

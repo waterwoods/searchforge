@@ -8,6 +8,7 @@ import {
   mergeCanonicalForm,
   normalizeAccidentDatetime,
   normalizeInjuryStatus,
+  normalizeStartClaimCanonicalForm,
   validateStartClaimForm,
 } from "../utils/startClaimValidation";
 
@@ -45,6 +46,30 @@ test("no injury selected → visible validation", () => {
   assert.equal(result.canSubmit, false);
   assert.match(result.errors.injuryStatus || "", /是否有人受伤/);
   assert.equal(result.firstInvalid, "injuryStatus");
+});
+
+test("every Business Contract Must Have is independently required", () => {
+  const complete = {
+    description: "追尾",
+    accidentDatetime: "今天上午 9 点",
+    accidentLocation: "路口",
+    injuryStatus: "no",
+    reachabilityKnown: true,
+  };
+  const fields = [
+    ["description", "description"],
+    ["accidentDatetime", "accidentDatetime"],
+    ["accidentLocation", "accidentLocation"],
+    ["injuryStatus", "injuryStatus"],
+  ] as const;
+
+  for (const [field, errorKey] of fields) {
+    const result = validateStartClaimForm({ ...complete, [field]: "" });
+    assert.equal(result.ok, false, field);
+    assert.equal(result.canSubmit, false, field);
+    assert.ok(result.errors[errorKey], field);
+    assert.match(result.missingHint, /请先填写/, field);
+  }
 });
 
 test("valid free-text date/time enables submit", () => {
@@ -122,11 +147,20 @@ test("VIN/photos/vehicle/card never appear in Start Claim validation", () => {
 });
 
 test("submit payload uses normalized Must Have only", () => {
-  const payload = buildStartClaimPayload({
+  const canonical = normalizeStartClaimCanonicalForm({
     description: " 被车后装 ",
     accidentDatetime: "  Today   9 am ",
     accidentLocation: " 路口 ",
     injuryStatus: "no",
+  });
+  assert.deepEqual(canonical, {
+    description: "被车后装",
+    accidentDatetime: "Today 9 am",
+    accidentLocation: "路口",
+    injuryStatus: "no",
+  });
+  const payload = buildStartClaimPayload({
+    ...canonical,
     reachabilityKnown: true,
   });
   assert.deepEqual(payload, {

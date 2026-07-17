@@ -37,14 +37,17 @@ export function mapStartClaimError(code: string): {
   message: string;
   retryable: boolean;
   kind:
+    | "request_not_sent"
     | "transport"
     | "config"
     | "timeout"
+    | "auth_config"
     | "server_validation"
     | "server_error"
     | "unknown";
 } {
   const normalized = String(code || "").trim();
+  const lower = normalized.toLowerCase();
   if (normalized === "domain_not_allowed") {
     return {
       kind: "config",
@@ -56,21 +59,28 @@ export function mapStartClaimError(code: string): {
   if (normalized === "tls_error") {
     return {
       kind: "config",
-      message: "安全连接失败，请稍后重试。如仍失败，请联系陈总办公室。",
+      message: "安全连接配置失败，请联系陈总办公室处理。",
+      retryable: false,
+    };
+  }
+  if (normalized === "dns_error") {
+    return {
+      kind: "config",
+      message: "无法解析报案服务地址，请稍后重试。如仍失败，请联系陈总办公室。",
       retryable: true,
     };
   }
   if (normalized === "timeout") {
     return {
       kind: "timeout",
-      message: "提交超时，请重试。如已提交成功，不会重复创建。",
+      message: "提交超时，结果暂时无法确认。请点一次重试查询提交结果。",
       retryable: true,
     };
   }
   if (normalized === "backend_unreachable") {
     return {
-      kind: "transport",
-      message: "暂时无法连接报案服务，请稍后重试。",
+      kind: "request_not_sent",
+      message: "报案服务连接检查未通过，本次尚未提交。请稍后重试。",
       retryable: true,
     };
   }
@@ -83,9 +93,23 @@ export function mapStartClaimError(code: string): {
   }
   if (normalized === "p20_case_intake_disabled") {
     return {
-      kind: "server_validation",
-      message: "报案功能暂时不可用，请稍后再试或联系陈总。",
-      retryable: true,
+      kind: "auth_config",
+      message: "报案服务尚未启用，请联系陈总办公室处理。",
+      retryable: false,
+    };
+  }
+  if (
+    lower === "unauthorized"
+    || lower === "forbidden"
+    || lower === "authentication_failed"
+    || lower === "configuration_error"
+    || lower === "http_401"
+    || lower === "http_403"
+  ) {
+    return {
+      kind: "auth_config",
+      message: "当前报案服务配置或访问权限无效，请联系陈总办公室处理。",
+      retryable: false,
     };
   }
   if (
@@ -95,8 +119,8 @@ export function mapStartClaimError(code: string): {
   ) {
     return {
       kind: "server_validation",
-      message: "提交内容未通过校验，请检查后重试。如仍失败，请联系陈总办公室。",
-      retryable: true,
+      message: "提交内容未通过服务校验，请检查填写内容。如仍失败，请联系陈总办公室。",
+      retryable: false,
     };
   }
   if (normalized.startsWith("http_5") || normalized === "create_claim_failed") {

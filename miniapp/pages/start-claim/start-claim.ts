@@ -14,6 +14,7 @@ import {
   buildStartClaimPayload,
   createEmptyCanonicalForm,
   mergeCanonicalForm,
+  normalizeStartClaimCanonicalForm,
   validateStartClaimForm,
 } from "../../utils/startClaimValidation";
 import type {
@@ -237,6 +238,19 @@ Page({
 
   _focusFirstInvalid(field: StartClaimFieldKey | null) {
     if (!field) return;
+    const anchors: Record<StartClaimFieldKey, string> = {
+      description: "#start-claim-description",
+      accidentDatetime: "#start-claim-datetime",
+      accidentLocation: "#start-claim-location",
+      injuryStatus: "#start-claim-injury",
+      contact: "#start-claim-contact",
+    };
+    if (typeof wx.pageScrollTo === "function") {
+      wx.pageScrollTo({
+        selector: anchors[field],
+        duration: 200,
+      });
+    }
     const messages: Record<StartClaimFieldKey, string> = {
       description: "请填写事故经过",
       accidentDatetime: "请填写事故时间",
@@ -254,6 +268,8 @@ Page({
   },
 
   async submitStartClaim(options: { reuseIdentity: boolean }) {
+    // Render the same normalized values that will be sent.
+    this._applyFormPatch(normalizeStartClaimCanonicalForm(this._form));
     const payload = buildStartClaimPayload({
       ...this._form,
       reachabilityKnown: true,
@@ -296,7 +312,24 @@ Page({
         injury_status: payload.injury_status,
       });
       if (!result.ok) {
-        const mapped = mapStartClaimError(result.error_code || "create_claim_failed");
+        const errorCode = result.error_code || "create_claim_failed";
+        const mapped = mapStartClaimError(errorCode);
+        if (appConfig.prototypeMode) {
+          console.info(
+            "[start-claim] submit diagnostic",
+            buildRequestDiagnostic({
+              method: "POST",
+              path: "/api/h5/customer/start-claim",
+              apiHost: String(appConfig.apiBaseUrl || QA_API_BASE_URL),
+              startedAt,
+              endedAt: Date.now(),
+              httpStatus: 200,
+              errorCode,
+              commandId: gate.command_id,
+              idempotencyKey: gate.idempotency_key,
+            }),
+          );
+        }
         this.setData({
           errorMessage: mapped.message,
           errorRetryable: mapped.retryable,

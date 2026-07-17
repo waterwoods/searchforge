@@ -6,6 +6,7 @@ export type RequestErrorCode =
   | "network_error"
   | "backend_unreachable"
   | "domain_not_allowed"
+  | "dns_error"
   | "tls_error"
   | "timeout"
   | "invalid_or_expired_task_link"

@@ -114,6 +114,18 @@ export function normalizeAccidentDatetime(raw: string): string {
   return String(raw || "").trim().replace(/\s+/g, " ");
 }
 
+/** Normalize the canonical model before rendering and payload construction. */
+export function normalizeStartClaimCanonicalForm(
+  input: StartClaimCanonicalForm,
+): StartClaimCanonicalForm {
+  return {
+    description: String(input.description || "").trim(),
+    accidentDatetime: normalizeAccidentDatetime(input.accidentDatetime),
+    accidentLocation: String(input.accidentLocation || "").trim(),
+    injuryStatus: normalizeInjuryStatus(input.injuryStatus),
+  };
+}
+
 export function isAccidentDatetimeAcceptable(raw: string): boolean {
   const value = normalizeAccidentDatetime(raw);
   if (!value) return false;

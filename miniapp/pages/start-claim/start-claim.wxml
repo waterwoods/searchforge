@@ -22,6 +22,7 @@
 
     <view class="section-label">事故经过</view>
     <textarea
+      id="start-claim-description"
       class="textarea-field {{fieldErrors.description ? 'field-invalid' : ''}}"
       placeholder="例如：等红灯时被后车追尾。"
       maxlength="2000"
@@ -37,6 +38,7 @@
 
     <view class="section-label section-gap">事故时间</view>
     <input
+      id="start-claim-datetime"
       class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
       placeholder="例如：今天上午 9 点 或 Today 9 am"
       value="{{accidentDatetime}}"
@@ -48,6 +50,7 @@
 
     <view class="section-label section-gap">事故地点</view>
     <input
+      id="start-claim-location"
       class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
       placeholder="城市 / 路口 / 停车场"
       value="{{accidentLocation}}"
@@ -57,7 +60,7 @@
     />
     <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
 
-    <view class="section-label section-gap">是否有人受伤</view>
+    <view id="start-claim-injury" class="section-label section-gap">是否有人受伤</view>
     <view class="choice-row">
       <button
         class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"

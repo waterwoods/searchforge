@@ -111,9 +111,9 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
   });
   page.onLoad.call(ctx);
 
-  page.onDescriptionInput.call(ctx, { detail: { value: "被车后装" } });
-  page.onDatetimeInput.call(ctx, { detail: { value: "Today 9 am" } });
-  page.onLocationInput.call(ctx, { detail: { value: "路口" } });
+  page.onDescriptionInput.call(ctx, { detail: { value: " 被车后装 " } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "  Today   9 am " } });
+  page.onLocationInput.call(ctx, { detail: { value: " 路口 " } });
   page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "no" } } });
 
   assert.equal(ctx.data.canSubmit, true);
@@ -132,6 +132,10 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
   assert.equal(calls[0]?.accident_datetime, "Today 9 am");
   assert.equal(calls[0]?.accident_location, "路口");
   assert.equal(calls[0]?.injury_status, "no");
+  assert.equal(ctx.data.description, calls[0]?.accident_description);
+  assert.equal(ctx.data.accidentDatetime, calls[0]?.accident_datetime);
+  assert.equal(ctx.data.accidentLocation, calls[0]?.accident_location);
+  assert.equal(ctx.data.injuryStatus, calls[0]?.injury_status);
   assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
 });
 
@@ -281,8 +285,12 @@ test("accepted-but-replayed retry reuses identity and shows receipt", async () =
 test("submit with missing injury shows field error instead of silent disable-only", async () => {
   const page = await loadStartClaimPage();
   const toasts: string[] = [];
+  const scrollTargets: string[] = [];
   (globalThis as Record<string, any>).wx.showToast = ({ title }: { title: string }) => {
     toasts.push(title);
+  };
+  (globalThis as Record<string, any>).wx.pageScrollTo = ({ selector }: { selector: string }) => {
+    scrollTargets.push(selector);
   };
   const ctx = createPageContext(page, {
     callStartClaim() {
@@ -298,6 +306,7 @@ test("submit with missing injury shows field error instead of silent disable-onl
   await page.onSubmit.call(ctx);
   assert.match(String(ctx.data.fieldErrors?.injuryStatus || ""), /是否有人受伤/);
   assert.ok(toasts.length >= 1);
+  assert.deepEqual(scrollTargets, ["#start-claim-injury"]);
 });
 
 test("start-claim-success wxml shows founder-facing receipt copy only", () => {
