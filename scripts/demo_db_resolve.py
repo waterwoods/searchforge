@@ -135,6 +135,22 @@ def resolve_db_identity(target: Target, *, for_write: bool = True) -> DbIdentity
 
 def apply_qa_postgres_env(*, for_write: bool = True) -> DbIdentity:
     """Set process env for Postgres-primary reads/writes against QA Cloud SQL."""
+    # P25R — Cloud Run already has SERVICE_RECORD_DATABASE_URL (Unix socket / VPC).
+    # Do not call gcloud inside the container (binary absent).
+    existing = (os.environ.get("SERVICE_RECORD_DATABASE_URL") or "").strip()
+    if existing and (
+        (os.environ.get("K_SERVICE") or "").strip()
+        or os.environ.get("QA_SEED_USE_EXISTING_DB_URL") == "1"
+    ):
+        u = urlparse(existing)
+        host = u.hostname or "cloudsql"
+        db = (u.path or "").lstrip("/").split("?")[0] or "caseiq"
+        os.environ["UNIFIED_INTAKE_DB_PRIMARY_READS"] = "1"
+        os.environ["UNIFIED_INTAKE_DB_PRIMARY_WRITES"] = "1"
+        os.environ["UNIFIED_INTAKE_JSON_CASE_WRITES"] = "0"
+        os.environ.pop("UNIFIED_INTAKE_JSON_READ_FALLBACK", None)
+        return DbIdentity("gcp-cloud-sql", host, db, None, "cloud-run-existing-url")
+
     ident = resolve_db_identity("qa", for_write=for_write)
     if ident.provider == "local-json":
         raise ValueError("apply_qa_postgres_env called with local target")
