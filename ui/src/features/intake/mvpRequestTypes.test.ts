@@ -10,8 +10,9 @@ import {
 } from './mvpRequestTypes';
 
 assert.equal(isMvpSendableItemType('vin'), true);
+assert.equal(isMvpSendableItemType('policy_or_insurance_card'), true);
 assert.equal(isMvpSendableItemType('free_text'), false);
-assert.equal(isMvpSendableItemType('policy_or_insurance_card'), false);
+assert.equal(isMvpSendableItemType('photo_evidence'), false);
 
 assert.match(
   formatUnsupportedSendItems(['Vehicle year / make / model']),
@@ -22,5 +23,7 @@ assert.match(
   brokerSendBlockedMessage('unsupported_draft_item_type_for_send', ['Policy / insurance card']),
   /Policy \/ insurance card/,
 );
+
+assert.match(brokerSendBlockedMessage('illegal_state'), /not ready for Request More/i);
 
 console.log('mvpRequestTypes.test: PASS');

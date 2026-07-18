@@ -37,7 +37,6 @@ from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
     ITEM_STATUS_QUEUED,
     SLICE1_CAPABILITY_VERSION,
     STATE_BROKER_MORE_REQUESTED,
-    STATE_BROKER_REVIEWING,
     Slice1Aggregate,
     Slice1Group,
     Slice1Item,
@@ -47,6 +46,7 @@ from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
     _legacy_projection_patch,
     _projection,
     _validate_items,
+    broker_may_create_request_more,
 )
 from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
 
@@ -481,7 +481,7 @@ class P20SendRequestCommandService:
                     intake_projection=current_intake,
                     error_code="case_not_active",
                 )
-            if slice1_state != STATE_BROKER_REVIEWING:
+            if not broker_may_create_request_more(slice1_state):
                 return _response(
                     outcome="rejected",
                     command_id=command_id,

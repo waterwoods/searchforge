@@ -1,9 +1,9 @@
 /**
  * P20 MVP contract — broker send + customer submit support.
- * Cap 3B currently implements VIN submission only.
+ * VIN = fact submit; policy_or_insurance_card = evidence submit.
  */
 
-export const MVP_SENDABLE_ITEM_TYPES = new Set(['vin']);
+export const MVP_SENDABLE_ITEM_TYPES = new Set(['vin', 'policy_or_insurance_card']);
 
 export function isMvpSendableItemType(itemType: string | null | undefined): boolean {
   return MVP_SENDABLE_ITEM_TYPES.has(String(itemType || '').trim().toLowerCase());
@@ -29,7 +29,16 @@ export function brokerSendBlockedMessage(errorCode: string, unsupportedItems?: s
     return formatUnsupportedSendItems(unsupportedItems || []);
   }
   if (errorCode === 'request_draft_empty') {
-    return 'Select at least one supported Request More item (VIN) before sending.';
+    return 'Select at least one supported Request More item (VIN or insurance card) before sending.';
+  }
+  if (errorCode === 'illegal_state') {
+    return 'This case is not ready for Request More yet. Refresh the case, then try VIN again.';
+  }
+  if (errorCode === 'open_request_exists') {
+    return 'A customer Request More is already open. Wait for the customer or refresh status.';
+  }
+  if (errorCode === 'lane_mismatch') {
+    return 'Request More is only available on Claim cases.';
   }
   return errorCode;
 }

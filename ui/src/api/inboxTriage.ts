@@ -543,7 +543,23 @@ function normalizeSlice1RequestMoreError(error: unknown): Slice1RequestMoreError
             result?.error_code === 'slice1_not_enabled' || errorCode === 'slice1_not_enabled'
                 ? 'feature_disabled'
                 : 'validation';
-        return new Slice1RequestMoreError('Request More was rejected by validation.', kind, { status, detail, result });
+        // Prefer server error_code so Send Request / Request More mismatches are not opaque.
+        const code = String(result?.error_code || errorCode || '').trim();
+        let message = 'Request More was rejected by validation.';
+        if (code === 'illegal_state') {
+            message = 'This case is not ready for Request More yet. Refresh the case, then try again.';
+        } else if (code === 'unsupported_draft_item_type_for_send') {
+            message = 'One or more selected items are not supported for customer submit yet.';
+        } else if (code === 'request_draft_empty') {
+            message = 'Select at least one supported Request More item before sending.';
+        } else if (code === 'open_request_exists') {
+            message = 'A customer Request More is already open. Wait for the customer or refresh status.';
+        } else if (code === 'slice1_not_enabled') {
+            message = 'Structured Request More is not enabled for this case.';
+        } else if (code) {
+            message = `Request More was rejected (${code}).`;
+        }
+        return new Slice1RequestMoreError(message, kind, { status, detail, result });
     }
     if (status && status >= 500) {
         return new Slice1RequestMoreError('Request More failed on the server.', 'server', { status, detail, result });

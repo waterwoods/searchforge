@@ -8,7 +8,7 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Final, Protocol
 from uuid import uuid4
 
 from services.fiqa_api.inbox_triage.p20_missing_information import MVP_SENDABLE_ITEM_TYPES
@@ -118,6 +118,43 @@ def _legacy_claim_state(case: dict[str, Any]) -> str:
 
 def _is_terminal_state(state: str) -> bool:
     return state in {"case_complete", "cancelled", "rejected", "archived"}
+
+
+# Customer default-intake / post-intake phases where broker may still send
+# exceptional Request More (P26G). Item-type MVP gating remains separate.
+_CUSTOMER_INTAKE_REQUEST_MORE_STATES: Final[frozenset[str]] = frozenset(
+    {
+        "claim_started",
+        "accident_basics_in_progress",
+        "accident_basics_complete",
+        "photos_in_progress",
+        "photos_complete",
+        "other_party_in_progress",
+        "other_party_complete",
+        "injury_police_in_progress",
+        "injury_police_complete",
+        "claim_summary_ready",
+        "intake_ready_for_broker",
+        "broker_review_ready",
+    }
+)
+
+
+def broker_may_create_request_more(state: str) -> bool:
+    """True when a new Request More may be opened from this workflow/claim state.
+
+    Customer Start Claim cases are *not* in ``broker_reviewing`` while default
+    intake is running. The Workbench still offers VIN / insurance Request More
+    as exceptional follow-up — the state gate must match that UI contract.
+    """
+    s = str(state or "").strip().lower()
+    if not s or _is_terminal_state(s):
+        return False
+    if s == STATE_BROKER_MORE_REQUESTED:
+        return False
+    if s == STATE_BROKER_REVIEWING:
+        return True
+    return s in _CUSTOMER_INTAKE_REQUEST_MORE_STATES
 
 
 @dataclass
@@ -841,7 +878,7 @@ class P20Slice1CommandService:
                     projection=current_projection,
                     error_code="case_not_active",
                 )
-            if current_state != STATE_BROKER_REVIEWING:
+            if not broker_may_create_request_more(current_state):
                 return _response(
                     outcome="rejected",
                     command_id=command_id,

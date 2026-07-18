@@ -228,6 +228,47 @@ def test_send_request_accepts_vin_only_draft():
     assert result["outcome"] == "accepted"
 
 
+def test_send_request_vin_only_from_customer_accident_basics_complete():
+    """P26H-Q2: Workbench shows 当前可发：VIN on customer Start Claim cases.
+
+    Those cases are in accident_basics_complete (not broker_review). Send must
+    accept exceptional VIN Request More — not reject as illegal_state.
+    """
+    store = InMemorySendRequestStore(
+        cases={
+            "case_send_3a": {
+                **_case(),
+                "claim_phase": "accident_basics_complete",
+                "created_by_actor": "customer",
+                "guided_workflow_state": "collecting_text_fields",
+            }
+        },
+        intake_aggregates={"case_send_3a": _intake()},
+        drafts={
+            "case_send_3a": _draft(
+                items=[
+                    {
+                        "draft_item_id": "di_1",
+                        "field_key": "vin",
+                        "item_type": "vin",
+                        "label": "VIN",
+                        "instructions": "请补充车辆 VIN",
+                        "required": True,
+                        "position": 1,
+                        "selected": True,
+                    }
+                ]
+            )
+        },
+    )
+    svc = P20SendRequestCommandService(store)
+    result = _send(svc)
+    assert result["outcome"] == "accepted", result
+    assert result.get("error_code") in (None, "")
+    assert store.groups
+    assert store.access_by_case
+
+
 def test_duplicate_command_replay_same_access():
     svc, store = _svc()
     first = _send(svc)
