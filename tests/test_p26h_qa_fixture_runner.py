@@ -277,3 +277,32 @@ def test_qa_harness_fail_closed_without_transport(monkeypatch):
     assert not report.ok
     assert report.failures[0].layer == "Fixture Runner"
     assert report.cleanup_result == "SKIPPED"
+
+
+def test_harness_tags_survive_postgres_extra_bag():
+    """Permanent regression: harness_run_id must round-trip through PG extra."""
+    from services.fiqa_api.db.service_record_repository import (
+        _build_extra,
+        _hydrate_extra_pilot_fields,
+    )
+
+    case = {
+        "case_id": "case_p26h_tag",
+        "workbench_test": True,
+        "demo_name": "p26h_ephemeral",
+        "harness_run_id": "p26h_20260718220000_deadbeef01",
+        "harness_created_at": "2026-07-18T22:00:00Z",
+        "harness_environment": "qa",
+        "harness_cleanup_eligible": True,
+        "exclude_from_production_metrics": True,
+    }
+    extra = _build_extra(case)
+    assert extra["harness_run_id"] == "p26h_20260718220000_deadbeef01"
+    assert extra["demo_name"] == "p26h_ephemeral"
+    assert extra["workbench_test"] is True
+
+    hydrated: dict = {"case_id": "case_p26h_tag"}
+    _hydrate_extra_pilot_fields(hydrated, extra)
+    assert hydrated["harness_run_id"] == "p26h_20260718220000_deadbeef01"
+    assert hydrated["harness_cleanup_eligible"] is True
+    assert fx._is_run_case(hydrated, "p26h_20260718220000_deadbeef01")

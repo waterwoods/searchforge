@@ -199,6 +199,17 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["demo_name"] = str(extra.get("demo_name")).strip()
     if isinstance(extra.get("demo_flags"), dict):
         case["demo_flags"] = dict(extra.get("demo_flags") or {})
+    # P26H ephemeral fixture tags (cleanup-scoped; never used for product logic)
+    if extra.get("harness_run_id"):
+        case["harness_run_id"] = str(extra.get("harness_run_id")).strip()
+    if extra.get("harness_created_at"):
+        case["harness_created_at"] = str(extra.get("harness_created_at")).strip()
+    if extra.get("harness_environment"):
+        case["harness_environment"] = str(extra.get("harness_environment")).strip()
+    if "harness_cleanup_eligible" in extra:
+        case["harness_cleanup_eligible"] = bool(extra.get("harness_cleanup_eligible"))
+    if "exclude_from_production_metrics" in extra:
+        case["exclude_from_production_metrics"] = bool(extra.get("exclude_from_production_metrics"))
     if "broker_confirmed_at" in extra:
         v = extra.get("broker_confirmed_at")
         case["broker_confirmed_at"] = str(v).strip() if v else None
@@ -252,6 +263,12 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "add_vehicle_phase",
         "demo_name",
         "demo_flags",
+        # P26H QA ephemeral fixture tags (scoped cleanup only)
+        "harness_run_id",
+        "harness_created_at",
+        "harness_environment",
+        "harness_cleanup_eligible",
+        "exclude_from_production_metrics",
         "broker_confirmed_at",
         "claim_mentioned_at",
         "claim_timeline",

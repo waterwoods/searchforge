@@ -312,7 +312,10 @@ def create_fresh_claim(
     if not run_id.startswith("p26h_"):
         raise ValueError("invalid_harness_run_id")
 
-    from services.fiqa_api.inbox_triage.case_store import _persist_case_after_update
+    from services.fiqa_api.inbox_triage.case_store import (
+        _persist_case_after_update,
+        get_case_by_id,
+    )
     from services.fiqa_api.inbox_triage.case_truth_repository import get_case_for_read
 
     # Stable command_id when caller supplies idempotency_key so Cap2 replay works.
@@ -336,8 +339,6 @@ def create_fresh_claim(
 
     case = get_case_for_read(case_id)
     if case is None:
-        from services.fiqa_api.inbox_triage.case_store import get_case_by_id
-
         case = get_case_by_id(case_id)
     if case is None and _FIXTURE_MEMORY_STORE is not None:
         case = dict(_FIXTURE_MEMORY_STORE.cases.get(case_id) or {})
@@ -365,6 +366,15 @@ def create_fresh_claim(
         _upsert_case_json(case_id, tagged)
     if _FIXTURE_MEMORY_STORE is not None:
         _FIXTURE_MEMORY_STORE.cases[case_id] = tagged
+
+    # Read-after-write: harness tags must survive the durable store (PG extra bag).
+    verified = get_case_for_read(case_id) or get_case_by_id(case_id)
+    if verified is None or not _is_run_case(verified, run_id):
+        raise RuntimeError(
+            "fixture_tag_not_durable:"
+            f"harness_run_id={run_id!r} case_id={case_id!r} "
+            f"stored_run={None if verified is None else verified.get('harness_run_id')!r}"
+        )
 
     return {
         "ok": True,

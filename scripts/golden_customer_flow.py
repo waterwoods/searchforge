@@ -441,19 +441,58 @@ def _task_map_from_inspect(inspect_payload: dict[str, Any]) -> dict[str, dict[st
     return _task_map(proj if isinstance(proj, dict) else {})
 
 
+def _verify_resume_token(
+    *,
+    token: str,
+    expected_case_id: str,
+    transport: str,
+    base_url: str,
+) -> tuple[bool, str | None]:
+    """Verify resume resolves expected case.
+
+    HTTP QA must use the deployed intake contract — local token secrets differ
+    from Cloud Run signing keys.
+    """
+    if transport == "http":
+        import json
+        import urllib.error
+        import urllib.request
+
+        url = f"{base_url.rstrip('/')}/api/h5/tasks/{token}/intake"
+        req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError:
+            return False, None
+        except Exception:
+            return False, None
+        case_id = str(body.get("case_id") or (body.get("task") or {}).get("case_id") or "").strip()
+        return case_id == expected_case_id, case_id or None
+
+    from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
+
+    claims = verify_h5_task_token(token) if token else None
+    actual = claims.case_id if claims else None
+    return bool(claims and claims.case_id == expected_case_id), actual
+
+
 def run_qa() -> FlowReport:
     """Deployed / in-process QA journey via authorized ephemeral fixture runner."""
     from scripts.p26h_fixture_client import FixtureClientError, open_fixture_client
-    from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
 
     report = FlowReport(run_id="uninitialized")
     client = None
+    transport_name = ""
+    transport_base = ""
     harness_run_id = ""
     cleanup_payload: dict[str, Any] = {}
     try:
         report.journey_step = "Fixture preflight"
         try:
             client, transport = open_fixture_client()
+            transport_name = transport.transport
+            transport_base = transport.base_url
         except FixtureClientError as exc:
             report.run_id = "no-transport"
             report.check(
@@ -516,15 +555,21 @@ def run_qa() -> FlowReport:
             layer="Case Creation",
             case_id=case_a,
         )
-        claims = verify_h5_task_token(token) if token else None
+        resume_ok, resume_actual = _verify_resume_token(
+            token=token,
+            expected_case_id=case_a,
+            transport=transport_name,
+            base_url=transport_base,
+        )
         report.check(
-            claims is not None and claims.case_id == case_a,
+            resume_ok,
             task="resume_token",
             source="system_default",
             expected=case_a,
-            actual=claims.case_id if claims else None,
+            actual=resume_actual,
             layer="Session / Resume",
             case_id=case_a,
+            detail=f"transport={transport_name}",
         )
         inspect_a = client.inspect(harness_run_id, case_a)
         tasks_a = _task_map_from_inspect(inspect_a)
@@ -597,15 +642,21 @@ def run_qa() -> FlowReport:
 
         # C — Resume same case
         report.journey_step = "C Resume"
-        resumed = verify_h5_task_token(token)
+        resume_ok2, resume_actual2 = _verify_resume_token(
+            token=token,
+            expected_case_id=case_a,
+            transport=transport_name,
+            base_url=transport_base,
+        )
         report.check(
-            resumed is not None and resumed.case_id == case_a,
+            resume_ok2,
             task="resume",
             source="system_default",
             expected=case_a,
-            actual=resumed.case_id if resumed else None,
+            actual=resume_actual2,
             layer="Session / Resume",
             case_id=case_a,
+            detail=f"transport={transport_name}",
         )
 
         # F — Expired token (safe failure)
