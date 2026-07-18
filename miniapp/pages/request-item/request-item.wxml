@@ -25,13 +25,14 @@
       <view class="meta-line" wx:if="{{lastServerUpdate}}">已同步最新状态</view>
     </view>
 
-    <block wx:elif="{{nextAction}}">
+    <!-- P26H-UI: bind showWorkSurface — never nextAction alone (system_default has null nextAction). -->
+    <block wx:elif="{{showWorkSurface}}">
       <view class="card">
         <view class="status-pill">需补充</view>
         <view class="card-title">{{nextActionTitle}}</view>
         <view class="card-subtitle">{{nextActionInstructions}}</view>
         <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
-        <view class="meta-line">进度 {{progress.satisfied}}/{{progress.total}}</view>
+        <view class="meta-line" wx:if="{{progress.total}}">进度 {{progress.satisfied}}/{{progress.total}}</view>
         <view class="meta-line" wx:if="{{brokerStatusLabel}}">经纪人状态：{{brokerStatusLabel}}</view>
         <view class="meta-line" wx:if="{{lastServerUpdate}}">已同步最新状态</view>
       </view>
@@ -111,7 +112,7 @@
     </block>
   </task-shell>
 
-  <view class="footer-cta" wx:if="{{!loading && !waitingForBroker && nextAction}}">
+  <view class="footer-cta" wx:if="{{showFooterCta && !waitingForBroker}}">
     <task-cta
       label="{{submitLabel}}"
       disabled="{{submitDisabled}}"

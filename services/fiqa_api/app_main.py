@@ -147,6 +147,7 @@ from services.fiqa_api.routes.ops_copilot import router as ops_copilot_router
 from services.fiqa_api.routes.ecommerce_agent import router as ecommerce_agent_router
 from services.fiqa_api.routes.jobhunter import router as jobhunter_router
 from services.fiqa_api.routes.inbox_triage import router as inbox_triage_router
+from services.fiqa_api.routes.p26h_fixture import router as p26h_fixture_router
 from services.fiqa_api.routes.add_car import router as add_car_router
 from services.fiqa_api.routes.analytics_dashboard import router as analytics_dashboard_router
 from services.fiqa_api.routes.h5_task_upload import router as h5_task_upload_router
@@ -1013,6 +1014,7 @@ async def ready():
 
 # Unified Intake product core + founder analytics (always mounted)
 app.include_router(inbox_triage_router)  # /api/inbox/*
+app.include_router(p26h_fixture_router)  # /api/inbox/support/p26h-fixture/*
 app.include_router(h5_task_upload_router)  # /api/h5/tasks/*
 app.include_router(h5_task_intake_router)  # /api/h5/tasks/*/intake|fields|submit
 app.include_router(add_car_router)  # /api/intake/add-car/*

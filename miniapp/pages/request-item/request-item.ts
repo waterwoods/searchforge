@@ -40,6 +40,7 @@ import {
   uploadPhaseDetail,
   type UploadPhase,
 } from "../../utils/uploadStateMachine";
+import { resolveRequestItemWorkSurface } from "../../utils/requestItemWorkSurface";
 
 /** P26G — Constitution system_default insurance without a Slice1 request row. */
 function resolveSystemDefaultInsurance(task: CustomerTask | null | undefined): {
@@ -127,6 +128,9 @@ type PageData = {
   submitDisabled: boolean;
   submitDisabledReason: string;
   shellSafetyCopy: string;
+  /** P26H-UI — Empty Page Gate; WXML must bind these, not nextAction alone. */
+  showWorkSurface: boolean;
+  showFooterCta: boolean;
   busy: {
     loading: boolean;
     saving: boolean;
@@ -233,6 +237,8 @@ Page({
     submitDisabled: false,
     submitDisabledReason: "",
     shellSafetyCopy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
+    showWorkSurface: false,
+    showFooterCta: false,
     busy: {
       loading: true,
       saving: false,
@@ -312,6 +318,8 @@ Page({
       if (!task) {
         this.safePageSetData({
           loading: false,
+          showWorkSurface: false,
+          showFooterCta: false,
           pageError: {
             code: "network_error",
             message: mapErrorMessage("network_error"),
@@ -327,6 +335,8 @@ Page({
       if (!isSlice1CustomerFlow(task) && !systemDefaultInsurance.enabled) {
         this.safePageSetData({
           loading: false,
+          showWorkSurface: false,
+          showFooterCta: false,
           pageError: {
             code: "slice1_not_enabled",
             message: "当前任务无需此步骤，请返回我的资料继续。",
@@ -431,10 +441,19 @@ Page({
     }
 
     const submitDisabled = waitingForBroker || !nextItemId;
+    const inputMode = waitingForBroker ? "none" : evidence ? "evidence" : text ? "text" : "none";
+    const nextActionForUi = useSystemDefaultInsurance ? null : nextAction;
+    const workSurface = resolveRequestItemWorkSurface({
+      loading: false,
+      waitingForBroker,
+      inputMode,
+      nextAction: nextActionForUi,
+      pageError: EMPTY_TASK_ERROR,
+    });
     // Titles/instructions already overlay Constitution via mapSlice1CustomerView.
     this.safePageSetData({
       task,
-      nextAction: useSystemDefaultInsurance ? null : nextAction,
+      nextAction: nextActionForUi,
       nextActionTitle: String(
         view.constitutionToday ||
           systemDefaultInsurance.title ||
@@ -454,7 +473,7 @@ Page({
       brokerStatusLabel: brokerStatusLabel(view.brokerStatus),
       lastServerUpdate: view.lastServerUpdate,
       waitingForBroker,
-      inputMode: waitingForBroker ? "none" : evidence ? "evidence" : text ? "text" : "none",
+      inputMode,
       itemType,
       inputLabel: copy.label,
       inputPlaceholder: copy.placeholder,
@@ -473,6 +492,8 @@ Page({
       submitDisabledReason: waitingForBroker ? "" : "",
       pageError: EMPTY_TASK_ERROR,
       loading: false,
+      showWorkSurface: workSurface.showWorkSurface,
+      showFooterCta: workSurface.showFooterCta,
     });
   },
 

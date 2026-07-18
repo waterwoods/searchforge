@@ -20,7 +20,8 @@ Chinese product interpretation:
 
 **Governing SSOT:** `docs/product/p20_product_north_star.md`
 **Required worksheet:** `docs/product/p20_production_loop_template.md`
-**Founder QA order:** `docs/product/p20_founder_qa_checklist.md`
+**Founder QA order:** `docs/product/p20_founder_qa_checklist.md`  
+**Production acceptance (release / demo / pilot):** `docs/product/p24f_golden_production_qa_flow.md` — one token, one Camry Case, full customer + broker journey. Not prototypes.
 
 Before every P20 implementation, release, or capability review:
 
@@ -81,6 +82,10 @@ Full hierarchy: `docs/PROJECT_DOC_SYSTEM_MAP.md` → **START HERE** table.
 | Task | Command |
 |------|---------|
 | **Mini Program Build Gate** | `cd miniapp && npm run build:gate` (before Form/Nav/Preview QA) |
+| **Claim release gate (local)** | `bash scripts/run_claim_release_gate.sh --local` → `READY FOR QA DEPLOY` |
+| **Claim release gate (QA)** | `bash scripts/run_claim_release_gate.sh --qa` → `READY FOR FOUNDER QA` (needs `P26H_QA_BASE_URL` + support key) |
+| **Golden Customer Flow** | `bash scripts/run_golden_customer_flow.sh --local\|--qa` |
+| **Golden Customer UI Journey** | `bash scripts/run_golden_customer_ui_flow.sh --local\|--qa` |
 | **Start demo** | `bash scripts/run_demo_local.sh` (default: product-only SaaS; lab: `RUN_DEMO_LAB=1`) |
 | **Pre-demo checklist** | `bash scripts/demo_pre_checklist.sh` |
 | **Recovery** (503 / embedding_warming) | `bash scripts/restore_8001_readiness.sh` |

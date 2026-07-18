@@ -440,6 +440,14 @@ if [ -n "${ENABLE_GOLDEN_QA_LAUNCH:-}" ]; then
     ENV_VARS+=("ENABLE_GOLDEN_QA_LAUNCH=$ENABLE_GOLDEN_QA_LAUNCH")
 fi
 
+# P26H — QA ephemeral fixture runner (QA-only; dual-flag + support key required)
+if [ -n "${ENABLE_P26H_FIXTURE_RUNNER:-}" ]; then
+    ENV_VARS+=("ENABLE_P26H_FIXTURE_RUNNER=$ENABLE_P26H_FIXTURE_RUNNER")
+fi
+if [ -n "${UNIFIED_INTAKE_QA_FIXTURE_SURFACE:-}" ]; then
+    ENV_VARS+=("UNIFIED_INTAKE_QA_FIXTURE_SURFACE=$UNIFIED_INTAKE_QA_FIXTURE_SURFACE")
+fi
+
 # Optional: default client pack (GET /api/inbox/client-config without ?client= uses this)
 if [ -n "${CLIENT_ID:-}" ]; then
     ENV_VARS+=("CLIENT_ID=$CLIENT_ID")
@@ -527,7 +535,12 @@ echo "Non-secret Unified Intake / persistence keys in this deploy bundle:"
 UNIFIED_BUNDLE_PRINTED=0
 for kv in "${ENV_VARS[@]}"; do
     case "$kv" in
-        UNIFIED_INTAKE_*=*)
+        UNIFIED_INTAKE_SUPPORT_API_KEY=*|UNIFIED_INTAKE_INTAKE_API_KEY=*)
+            key="${kv%%=*}"
+            echo "   ${key}=(set — value not printed)"
+            UNIFIED_BUNDLE_PRINTED=1
+            ;;
+        UNIFIED_INTAKE_*=*|ENABLE_P26H_FIXTURE_RUNNER=*|ENABLE_GOLDEN_QA_LAUNCH=*)
             echo "   $kv"
             UNIFIED_BUNDLE_PRINTED=1
             ;;
