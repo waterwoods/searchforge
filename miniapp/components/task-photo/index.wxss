@@ -80,6 +80,29 @@
   font-size: 26rpx;
 }
 
+.phase-badge {
+  position: absolute;
+  left: 12rpx;
+  bottom: 12rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.phase-selected {
+  background: rgba(55, 65, 81, 0.85);
+}
+
+.phase-uploaded {
+  background: rgba(29, 78, 216, 0.9);
+}
+
+.phase-confirmed {
+  background: rgba(6, 95, 70, 0.9);
+}
+
 .slot-error {
   color: #b91c1c;
   font-size: 24rpx;

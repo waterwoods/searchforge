@@ -20,7 +20,7 @@
     <view class="card" wx:if="{{pageState !== 'initializing'}}">
       <view class="card-title">补充事故照片</view>
       <view class="card-subtitle">
-        先上传必需照片。上传后会自动回读服务器确认，已上传 {{photoCount}}/{{photoTarget}} 张。
+        先上传必需照片。上传后会自动回读服务器确认，{{photoProgressText}}。
       </view>
       <view wx:if="{{uploadStage}}" class="upload-stage" aria-live="polite">{{uploadStage}}</view>
 

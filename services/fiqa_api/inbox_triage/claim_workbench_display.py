@@ -49,6 +49,23 @@ _CLAIM_EVIDENCE_SLOT_KEYS: frozenset[str] = frozenset(
     slot["slot_key"] for slot in CLAIM_EVIDENCE_SLOT_DEFINITIONS
 )
 
+# Gallery categories persisted by a prior upload bug / H5 gallery remap.
+# Constitution and Workbench still use canonical claim evidence slots.
+_GALLERY_CATEGORY_TO_CLAIM_SLOT: dict[str, str] = {
+    "vehicle_damage": "customer_damage_photo",
+    "other_vehicle_scene": "other_party_vehicle_photo",
+}
+
+
+def canonical_claim_evidence_slot(raw: str | None) -> str:
+    """Normalize gallery category or legacy alias → canonical claim evidence slot."""
+    slot = str(raw or "").strip().lower()
+    if not slot:
+        return ""
+    if slot in _CLAIM_EVIDENCE_SLOT_KEYS:
+        return slot
+    return _GALLERY_CATEGORY_TO_CLAIM_SLOT.get(slot, slot)
+
 _VALID_ATTACHMENT_SOURCES: frozenset[str] = frozenset(
     {"h5_task", "wecom", "broker_upload", "claim_h5"}
 )
@@ -145,7 +162,28 @@ def _claim_slot_state_map(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
     raw = case.get("claim_attachment_slots") or {}
     if not isinstance(raw, dict):
         return {}
-    return {str(k).strip().lower(): v for k, v in raw.items() if isinstance(v, dict)}
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        canon = canonical_claim_evidence_slot(str(key))
+        if not canon or canon not in _CLAIM_EVIDENCE_SLOT_KEYS:
+            continue
+        prev = out.get(canon)
+        if prev is None:
+            out[canon] = dict(value)
+            continue
+        # Merge category-key + canonical-key rows (prefer richer attachment_ids).
+        merged = dict(prev)
+        merged.update(value)
+        ids = list(prev.get("attachment_ids") or [])
+        for att_id in value.get("attachment_ids") or []:
+            if att_id not in ids:
+                ids.append(att_id)
+        if ids:
+            merged["attachment_ids"] = ids
+        out[canon] = merged
+    return out
 
 
 def _h5_flow_skipped_slots(case: dict[str, Any]) -> set[str]:
@@ -158,14 +196,14 @@ def _h5_flow_skipped_slots(case: dict[str, Any]) -> set[str]:
 
 
 def _attachment_slot_key(att: dict[str, Any]) -> str:
-    for key in ("slot_assignment", "slot_key", "claim_slot"):
-        value = str(att.get(key) or "").strip().lower()
+    for key in ("slot_assignment", "slot_key", "claim_slot", "evidence_category"):
+        value = canonical_claim_evidence_slot(str(att.get(key) or ""))
         if value:
             return value
     meta = att.get("metadata")
     if isinstance(meta, dict):
-        for key in ("slot_assignment", "slot_key", "claim_slot"):
-            value = str(meta.get(key) or "").strip().lower()
+        for key in ("slot_assignment", "slot_key", "claim_slot", "evidence_category"):
+            value = canonical_claim_evidence_slot(str(meta.get(key) or ""))
             if value:
                 return value
     return ""
@@ -176,9 +214,13 @@ def _is_claim_evidence_attachment(att: dict[str, Any]) -> bool:
         return False
     flow = str(att.get("flow") or "").strip().lower()
     slot = _attachment_slot_key(att)
-    if flow == FLOW_CLAIM_EVIDENCE_PACK:
+    if slot in _CLAIM_EVIDENCE_SLOT_KEYS:
         return True
-    return slot in _CLAIM_EVIDENCE_SLOT_KEYS
+    if flow == FLOW_CLAIM_EVIDENCE_PACK:
+        # Flow marker alone is not enough when slot is a non-claim category
+        # (e.g. other_evidence) — only count canonical claim photo slots.
+        return False
+    return False
 
 
 def _normalize_source_channel(source: str | None) -> str:

@@ -18,6 +18,11 @@ import {
 } from "../../utils/taskMapping";
 import { appConfig } from "../../utils/config";
 import { PHOTO_READ_BACK_CONFIG } from "../../utils/photoReadBack";
+import {
+  mergeUploadTransientAfterReconcile,
+  resolveUploadPhase,
+  uploadStatusText,
+} from "../../utils/uploadStateMachine";
 
 const SLOT_SEQUENCE = ["customer_damage_photo", "other_party_vehicle_photo"] as const;
 const SLOT_LABELS: Record<string, string> = {
@@ -53,6 +58,7 @@ type PageData = {
   uploadStage: string;
   photoCount: number;
   photoTarget: number;
+  photoProgressText: string;
   maxActivePhotos: number;
   uploadUrl: string;
   slots: SlotUi[];
@@ -177,13 +183,11 @@ function safeBusyState(value: Partial<PageData["busy"]> | undefined): PageData["
 function photoTaskUiPatch(
   target: WechatMiniprogram.Page.Instance,
   task: CustomerTask,
-): Pick<PageData, "task" | "uploadUrl" | "photoCount" | "photoTarget" | "slots"> {
+): Pick<PageData, "task" | "uploadUrl" | "photoCount" | "photoTarget" | "photoProgressText" | "slots"> {
   const count = photoCount(task);
   const uploadUrl = String(task.upload_url || "");
   const previous = safePreviousSlots((target.data as Partial<PageData>).slots);
-  const pendingIntentIds = new Set(
-    listPendingUploads(ensurePhotosPageState(target)).map((pending) => pending.uploadIntentId),
-  );
+  const pendingUploads = listPendingUploads(ensurePhotosPageState(target));
   const requirements = (task.task_contract?.evidence_requirements || []).filter((item) =>
     isPhotoSlot(item.slot),
   );
@@ -195,27 +199,52 @@ function photoTaskUiPatch(
           const requirementMet = received >= required;
           const prev = previous.find((slot) => slot.key === item.slot);
           const remaining = Math.max(required - received, 0);
+          const pending = pendingUploads.find((entry) => entry.slotKey === item.slot) || null;
+          const draft = mergeUploadTransientAfterReconcile({
+            prev,
+            pending: pending
+              ? { uploadIntentId: pending.uploadIntentId, localPath: pending.localPath }
+              : null,
+            projectionConfirmed: requirementMet,
+          });
+          const phase = resolveUploadPhase({
+            projectionConfirmed: requirementMet,
+            transient: draft,
+          });
           return {
             key: item.slot,
             label: item.label || SLOT_LABELS[item.slot] || item.slot || "事故照片",
             requirementMet,
-            ...preserveDraftState(prev, pendingIntentIds),
-            requiredHint: requirementMet ? "已满足要求 · 可添加更多" : `还需 ${remaining || 1} 张`,
-            statusText: requirementMet ? `已上传 ${received} 张` : `已上传 ${received}/${required}`,
+            localPath: draft.localPath,
+            uploadIntentId: draft.uploadIntentId,
+            uploaded: draft.uploaded,
+            uploading: draft.uploading,
+            progress: draft.progress,
+            error: draft.error,
+            canRetry: draft.canRetry,
+            canRemove: draft.canRemove,
+            requiredHint: requirementMet ? "已确认 · 可添加更多" : `还需 ${remaining || 1} 张`,
+            statusText: uploadStatusText({ phase, received, required }),
           } satisfies SlotUi;
         })
-      : fallbackSlots(count, previous, pendingIntentIds);
+      : fallbackSlots(count, previous, pendingUploads);
 
   const targetCount =
     requirements.length > 0
       ? requirements.reduce((sum, item) => sum + Math.max(Number(item.min) || 1, 1), 0)
       : prototypePhotoTarget();
+  const photoTarget = Math.max(targetCount, prototypePhotoTarget());
+  const photoProgressText =
+    count >= photoTarget
+      ? `已上传 ${count} 张，已满足 ${photoTarget} 张要求`
+      : `已上传 ${count} 张，目标 ${photoTarget} 张`;
 
   return {
     task,
     uploadUrl,
     photoCount: count,
-    photoTarget: Math.max(targetCount, prototypePhotoTarget()),
+    photoTarget,
+    photoProgressText,
     slots,
   };
 }
@@ -308,36 +337,39 @@ function isPhotoSlot(slot: string): boolean {
   return value.includes("photo") || value.includes("image");
 }
 
-function preserveDraftState(
-  prev?: SlotUi,
-  pendingIntentIds?: Set<string>,
-): Pick<SlotUi, "localPath" | "uploadIntentId" | "uploading" | "progress" | "error" | "canRetry" | "canRemove" | "uploaded"> {
-  const keepDraft = Boolean(prev?.error);
-  const keepPendingConfirm = Boolean(
-    prev?.uploadIntentId && !prev?.error && pendingIntentIds?.has(prev.uploadIntentId),
-  );
-  return {
-    localPath: keepDraft ? prev?.localPath || "" : "",
-    uploadIntentId: keepDraft || keepPendingConfirm ? prev?.uploadIntentId || "" : "",
-    uploaded: false,
-    uploading: false,
-    progress: keepDraft || keepPendingConfirm ? Math.max(Number(prev?.progress || 0), 0) : 0,
-    error: keepDraft ? prev?.error || "" : "",
-    canRetry: keepDraft && Boolean(prev?.error),
-    canRemove: keepDraft && Boolean(prev?.localPath || prev?.error),
-  };
-}
-
-function fallbackSlots(_count: number, previous?: SlotUi[], pendingIntentIds?: Set<string>): SlotUi[] {
+function fallbackSlots(
+  _count: number,
+  previous?: SlotUi[],
+  pendingUploads: PendingPhotoUpload[] = [],
+): SlotUi[] {
   return SLOT_SEQUENCE.map((key) => {
     const prev = previous?.find((slot) => slot.key === key);
+    const pending = pendingUploads.find((entry) => entry.slotKey === key) || null;
+    const draft = mergeUploadTransientAfterReconcile({
+      prev,
+      pending: pending
+        ? { uploadIntentId: pending.uploadIntentId, localPath: pending.localPath }
+        : null,
+      projectionConfirmed: false,
+    });
+    const phase = resolveUploadPhase({
+      projectionConfirmed: false,
+      transient: draft,
+    });
     return {
       key,
       label: SLOT_LABELS[key] || key,
       requirementMet: false,
-      ...preserveDraftState(prev, pendingIntentIds),
+      localPath: draft.localPath,
+      uploadIntentId: draft.uploadIntentId,
+      uploaded: draft.uploaded,
+      uploading: draft.uploading,
+      progress: draft.progress,
+      error: draft.error,
+      canRetry: draft.canRetry,
+      canRemove: draft.canRemove,
       requiredHint: "可添加照片",
-      statusText: "待上传",
+      statusText: uploadStatusText({ phase, received: 0, required: 1 }),
     };
   });
 }
@@ -352,6 +384,7 @@ Page({
     uploadUrl: "",
     photoCount: 0,
     photoTarget: prototypePhotoTarget(),
+    photoProgressText: `已上传 0 张，目标 ${prototypePhotoTarget()} 张`,
     maxActivePhotos: MAX_ACTIVE_PHOTOS,
     task: null as CustomerTask | null,
     taskViewModel: EMPTY_TASK_VIEW_MODEL,
@@ -583,6 +616,10 @@ Page({
   },
 
   async resolveUploadSlot(slotKey: string): Promise<string> {
+    // Prefer the slot the customer tapped so UI state and server slot stay aligned.
+    // Guided current_step must not remap a category the user already selected.
+    const explicit = String(slotKey || "").trim();
+    if (explicit) return explicit;
     const uploadUrl = this.data.uploadUrl || String(this.data.task?.upload_url || "");
     if (!uploadUrl) {
       throw new ApiRequestError("invalid_upload_url");
@@ -592,9 +629,9 @@ Page({
       const currentStep = String(info.current_step || "").trim();
       if (currentStep) return currentStep;
     } catch {
-      // Fall back to requested slot key if metadata endpoint is unavailable.
+      // Fall back when metadata endpoint is unavailable.
     }
-    return slotKey;
+    return "customer_damage_photo";
   },
 
   isReadBackConfirmed(beforeCount: number, afterTask: CustomerTask): boolean {
@@ -762,10 +799,12 @@ Page({
         localPath,
         uploadIntentId,
         uploading: true,
+        uploaded: false,
         progress: 0,
         error: "",
         canRetry: false,
         canRemove: false,
+        statusText: uploadStatusText({ phase: "uploading" }),
       });
 
       const beforeCount = this.data.photoCount;
@@ -803,12 +842,14 @@ Page({
       this.setBusy("uploading", false);
       this.updateSlot(slot.key, {
         uploading: false,
+        uploaded: true,
         progress: 100,
         error: "",
         canRetry: false,
         canRemove: false,
         localPath,
         uploadIntentId,
+        statusText: uploadStatusText({ phase: "uploaded" }),
       });
       this.setData({ uploadStage: "已上传，正在确认" });
 
@@ -856,6 +897,7 @@ Page({
         canRemove: true,
         localPath,
         uploadIntentId,
+        statusText: uploadStatusText({ phase: "failed" }),
       });
       if (msg) this.setData({ uploadStage: "上传失败，请重试" });
       if (msg) {

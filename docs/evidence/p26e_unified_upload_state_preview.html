@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P26E — Unified Upload State Machine</title>
+  <style>
+    :root {
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f8fafc;
+      --selected: #374151;
+      --uploading: #1d4ed8;
+      --uploaded: #1d4ed8;
+      --confirmed: #065f46;
+      --failed: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #eef2ff 0%, var(--bg) 40%, #fff 100%);
+    }
+    header {
+      padding: 28px 24px 8px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.55rem; }
+    .sub { color: var(--muted); margin: 0; line-height: 1.5; }
+    .grid {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 16px 24px 40px;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+    .panel h2 {
+      margin: 0 0 4px;
+      font-size: 1rem;
+    }
+    .panel p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    .preview {
+      position: relative;
+      height: 160px;
+      border-radius: 10px;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, #cbd5e1 0%, #94a3b8 40%, #64748b 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 600;
+    }
+    .preview.empty {
+      background: #f3f4f6;
+      color: var(--muted);
+      border: 1px dashed #d1d5db;
+    }
+    .badge {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .phase-selected { background: rgba(55, 65, 81, 0.9); }
+    .phase-uploading { background: rgba(29, 78, 216, 0.92); }
+    .phase-uploaded { background: rgba(29, 78, 216, 0.92); }
+    .phase-confirmed { background: rgba(6, 95, 70, 0.92); }
+    .phase-failed { background: rgba(185, 28, 28, 0.92); }
+    .mask {
+      position: absolute;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .arch {
+      max-width: 980px;
+      margin: 0 auto 24px;
+      padding: 0 24px;
+    }
+    .arch pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      overflow: auto;
+      font-size: 0.85rem;
+      line-height: 1.55;
+    }
+    .pass {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #d1fae5;
+      color: #065f46;
+      font-size: 12px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>P26E — Unified Upload State Machine</h1>
+    <p class="sub">
+      Insurance Card and Accident Photos share one lifecycle:
+      Selected → Uploading → Uploaded → Confirmed / Retry.
+      Thumbnail remains visible after Projection reconcile.
+    </p>
+  </header>
+
+  <section class="arch">
+    <pre>Task
+  ↓
+Unified Upload State Machine  (miniapp/utils/uploadStateMachine.ts)
+  ↓
+Constitution / Projection     (SSOT for Confirmed)
+  ↓
+Local transient               (path, progress, transport flags)
+  ↓
+Task Card / Slot UI</pre>
+  </section>
+
+  <section class="grid">
+    <article class="panel">
+      <h2>1. Selected</h2>
+      <p>Local path chosen; Projection not confirmed.</p>
+      <div class="preview">preview
+        <span class="badge phase-selected">已选择</span>
+      </div>
+      <div class="status">已选择</div>
+      <span class="pass">Insurance + Photos</span>
+    </article>
+
+    <article class="panel">
+      <h2>2. Uploading</h2>
+      <p>Transport in flight; progress mask on thumbnail.</p>
+      <div class="preview">preview
+        <div class="mask">上传中 45%</div>
+      </div>
+      <div class="status">上传中</div>
+      <span class="pass">Insurance + Photos</span>
+    </article>
+
+    <article class="panel">
+      <h2>3. Uploaded</h2>
+      <p>Transport done; awaiting Projection read-back / submit confirm.</p>
+      <div class="preview">preview
+        <span class="badge phase-uploaded">已上传</span>
+      </div>
+      <div class="status">已上传，确认中</div>
+      <span class="pass">Insurance + Photos</span>
+    </article>
+
+    <article class="panel">
+      <h2>4. Confirmed</h2>
+      <p>Projection confirms. Thumbnail must remain (session transient).</p>
+      <div class="preview">preview
+        <span class="badge phase-confirmed">已确认</span>
+      </div>
+      <div class="status">已确认</div>
+      <span class="pass">P26E fix — Photos no longer wipe</span>
+    </article>
+
+    <article class="panel">
+      <h2>5. Retry</h2>
+      <p>Failed transport keeps path + Retry CTA.</p>
+      <div class="preview">preview
+        <span class="badge phase-failed">可重试</span>
+      </div>
+      <div class="status">上传失败，可重试</div>
+      <span class="pass">Insurance + Photos</span>
+    </article>
+
+    <article class="panel">
+      <h2>Cold load (no local path)</h2>
+      <p>Projection confirmed earlier; no invented server thumbnail.</p>
+      <div class="preview empty">已确认</div>
+      <div class="status">已确认 · 可添加更多</div>
+      <span class="pass">Projection-only</span>
+    </article>
+  </section>
+</body>
+</html>

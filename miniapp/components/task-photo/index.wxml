@@ -16,12 +16,24 @@
         data-local-path="{{item.localPath}}"
         bindtap="onPreviewTap"
       />
-      <text wx:elif="{{item.requirementMet}}" class="uploaded-text">已上传并确认</text>
+      <text wx:elif="{{item.requirementMet}}" class="uploaded-text">已确认</text>
       <text wx:else class="placeholder-text">请上传 {{item.label}}</text>
 
       <view wx:if="{{item.uploading}}" class="progress-mask">
         <text>上传中 {{item.progress}}%</text>
       </view>
+      <view
+        wx:elif="{{item.localPath && item.requirementMet}}"
+        class="phase-badge phase-confirmed"
+      >已确认</view>
+      <view
+        wx:elif="{{item.localPath && item.uploaded && !item.uploading && !item.requirementMet}}"
+        class="phase-badge phase-uploaded"
+      >已上传</view>
+      <view
+        wx:elif="{{item.localPath && !item.uploaded && !item.uploading && !item.error && !item.requirementMet}}"
+        class="phase-badge phase-selected"
+      >已选择</view>
     </view>
 
     <text wx:if="{{item.error}}" class="slot-error">{{item.error}}</text>

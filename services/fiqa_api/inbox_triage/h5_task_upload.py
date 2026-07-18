@@ -500,7 +500,7 @@ def _assert_flow_slot_allowed(
 ) -> None:
     slot_norm = (slot or "").strip().lower()
     # Claim evidence is an append-first gallery, not a three-step workflow.
-    # Keep legacy slot names accepted for old H5 callers, but persist categories.
+    # Accept canonical slots or gallery categories; uploads persist canonical slots.
     if _is_claim_evidence_flow(claims):
         if slot_norm not in {*EVIDENCE_CATEGORIES, *_LEGACY_SLOT_TO_CATEGORY}:
             raise ValueError("slot_not_in_flow")
@@ -519,6 +519,22 @@ def _assert_flow_slot_allowed(
 def _evidence_category(slot: str) -> str:
     normalized = (slot or "").strip().lower()
     return _LEGACY_SLOT_TO_CATEGORY.get(normalized, normalized)
+
+
+def _canonical_claim_slot(slot: str) -> str:
+    """Accept canonical slot or gallery category; persist canonical claim slot keys."""
+    from services.fiqa_api.inbox_triage.claim_workbench_display import (
+        canonical_claim_evidence_slot,
+    )
+
+    normalized = (slot or "").strip().lower()
+    canon = canonical_claim_evidence_slot(normalized)
+    if canon in _CLAIM_SLOT_COPY:
+        return canon
+    # Already a known claim slot name even if metadata lookup uses aliases.
+    if normalized in _CLAIM_SLOT_COPY:
+        return normalized
+    return canon or normalized
 
 
 def _active_claim_photo_count(case: dict[str, Any]) -> int:
@@ -750,11 +766,18 @@ def ingest_h5_slot_upload(
         raise ValueError("case_not_found")
     _assert_case_eligible(case, claims)
 
+    evidence_category: str | None = None
     if claims.is_flow_token:
         if not slot:
             raise ValueError("slot_required")
         _assert_flow_slot_allowed(claims, case, slot)
-        target_slot = _evidence_category(slot) if _is_claim_evidence_flow(claims) else slot.strip().lower()
+        if _is_claim_evidence_flow(claims):
+            # Persist canonical claim slots for Constitution / Workbench One Truth.
+            # Keep gallery category separately for customer evidence gallery.
+            target_slot = _canonical_claim_slot(slot)
+            evidence_category = _evidence_category(target_slot)
+        else:
+            target_slot = slot.strip().lower()
     else:
         target_slot = (claims.slot or "").strip().lower()
         if slot and slot.strip().lower() != target_slot:
@@ -819,7 +842,7 @@ def ingest_h5_slot_upload(
         "broker_confirmed": False,
         "task_token_nonce": claims.nonce,
         "h5_upload_id": upload_id,
-        "evidence_category": target_slot if _is_claim_evidence_flow(claims) else None,
+        "evidence_category": evidence_category,
         "evidence_status": "confirmed",
         "submission_phase": "post_submit" if submitted else "pre_submit",
         "created_by": "customer",

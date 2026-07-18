@@ -164,6 +164,82 @@ def test_camry_after_upload_insurance_waiting_broker_and_dl_omitted():
     assert by_id[TASK_ID_STORY]["state"] == TASK_STATE_COMPLETED
 
 
+def test_insurance_today_one_truth_even_when_photo_slots_empty():
+    """Why says story+photos done; cards must not show competing pending photos."""
+    case = _camry_before_upload_case()
+    case["claim_evidence_summary"] = {
+        "received_slots": [],
+        "missing_required_slots": [],
+    }
+    projection = build_constitution_projection(ConstitutionInputs(case=case))
+    customer = projection["customer"]
+    assert "现场照片已经完成" in str(customer.get("why") or "")
+    by_id = _by_id(customer["tasks"])
+    assert by_id[TASK_ID_INSURANCE]["is_today"] is True
+    assert by_id[TASK_ID_PHOTOS]["state"] == TASK_STATE_COMPLETED
+    assert by_id[TASK_ID_PHOTOS]["actionable"] is False
+    assert by_id[TASK_ID_STORY]["state"] == TASK_STATE_COMPLETED
+    assert by_id[TASK_ID_STORY]["actionable"] is False
+
+
+def test_photo_uploads_as_gallery_categories_complete_accident_photos_task():
+    """P26F — live H5 uploads may store vehicle_damage; Constitution must still reconcile."""
+    case = _camry_after_upload_case()
+    # Stale seed summary with no photo slots (Founder regression shape).
+    case["claim_evidence_summary"] = {
+        "received_slots": ["policy_or_insurance_card"],
+        "missing_required_slots": ["customer_damage_photo"],
+    }
+    case["case_attachments"] = [
+        {
+            "attachment_id": "att_vd_1",
+            "source": "h5_task",
+            "msgtype": "image",
+            "mime_type": "image/jpeg",
+            "slot_assignment": "vehicle_damage",
+            "evidence_category": "vehicle_damage",
+            "evidence_status": "confirmed",
+            "flow": "claim_evidence_pack",
+        },
+        {
+            "attachment_id": "att_scene_1",
+            "source": "h5_task",
+            "msgtype": "image",
+            "mime_type": "image/jpeg",
+            "slot_assignment": "other_vehicle_scene",
+            "evidence_category": "other_vehicle_scene",
+            "evidence_status": "confirmed",
+            "flow": "claim_evidence_pack",
+        },
+    ]
+    case["claim_attachment_slots"] = {
+        "vehicle_damage": {
+            "status": "received",
+            "source_channel": "h5_task",
+            "attachment_ids": ["att_vd_1"],
+        }
+    }
+
+    projection = build_constitution_projection(ConstitutionInputs(case=case))
+    by_id = _by_id(projection["customer"]["tasks"])
+    photos = by_id[TASK_ID_PHOTOS]
+    assert photos["state"] == TASK_STATE_COMPLETED
+    assert photos["actionable"] is False
+    assert photos["progress"]["completed"] >= 1
+    assert photos["route"] is None
+
+
+def test_stale_summary_without_attachments_still_used_for_seeded_golden():
+    """Without live attachments, seeded claim_evidence_summary remains authority."""
+    case = _camry_before_upload_case()
+    case["case_attachments"] = []
+    case["claim_attachment_slots"] = {}
+    projection = build_constitution_projection(ConstitutionInputs(case=case))
+    by_id = _by_id(projection["customer"]["tasks"])
+    # Seeded scene_photo + insurance Today → photos completed (One Truth with Why).
+    assert by_id[TASK_ID_PHOTOS]["state"] == TASK_STATE_COMPLETED
+
+
 def test_tasks_are_projection_only_not_hardcoded_empty_when_no_case_signals():
     case = {
         "case_id": "case-empty-signals",

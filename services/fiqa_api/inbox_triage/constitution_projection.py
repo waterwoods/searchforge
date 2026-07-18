@@ -217,20 +217,51 @@ def _resolve_brief(
     return built if isinstance(built, dict) else None
 
 
+def _case_has_live_photo_evidence(case: Mapping[str, Any]) -> bool:
+    """True when Case carries attachment/slot rows that must beat a stale summary cache."""
+    slots = case.get("claim_attachment_slots")
+    if isinstance(slots, Mapping) and slots:
+        return True
+    for att in case.get("case_attachments") or []:
+        if not isinstance(att, Mapping):
+            continue
+        source = str(att.get("source") or "").strip().lower()
+        if source not in {"h5_task", "wecom", "broker_upload", "claim_h5"}:
+            continue
+        mime = str(att.get("mime_type") or "").lower()
+        msgtype = str(att.get("msgtype") or "").lower()
+        if mime.startswith("image/") or msgtype == "image":
+            return True
+    return False
+
+
 def _resolve_evidence(
     case: Mapping[str, Any],
     explicit: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
-    if isinstance(explicit, Mapping):
-        return dict(explicit)
-    raw = case.get("claim_evidence_summary")
-    if isinstance(raw, Mapping):
-        return dict(raw)
+    """Resolve evidence for Constitution.
+
+    When the Case has live photo attachments/slots, always rebuild from those
+    rows so Task Home cannot stay on a stale claim_evidence_summary cache
+    (P26F One Truth). Seeded summary is used only when no live signal exists.
+    """
+    stored = dict(explicit) if isinstance(explicit, Mapping) else None
+    if stored is None and isinstance(case.get("claim_evidence_summary"), Mapping):
+        stored = dict(case["claim_evidence_summary"])
+
+    built: dict[str, Any] | None = None
     try:
-        built = build_claim_evidence_summary(dict(case))
+        raw_built = build_claim_evidence_summary(dict(case))
+        if isinstance(raw_built, dict):
+            built = raw_built
     except Exception:
-        return None
-    return built if isinstance(built, dict) else None
+        built = None
+
+    if built is not None and _case_has_live_photo_evidence(case):
+        return built
+    if stored is not None:
+        return stored
+    return built
 
 
 def _resolve_claim_phase(
@@ -603,7 +634,14 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
 
     # 2) Accident Photos — existing upload capability only
     photo_completed, photo_total, any_photo = _photo_progress(deps)
-    if any_photo and photo_completed >= photo_total:
+    if insurance_is_today:
+        # One Truth with Why (_WHY_INSURANCE_CARD): do not compete with Today Focus.
+        photo_state = TASK_STATE_COMPLETED
+        photo_actionable = False
+        photo_is_today = False
+        if not any_photo:
+            photo_completed, photo_total = 1, 1
+    elif any_photo and photo_completed >= photo_total:
         photo_state = TASK_STATE_COMPLETED
         photo_actionable = False
         photo_is_today = False
@@ -637,7 +675,8 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
 
     # 3) Accident Story — task entry + placeholder for future voice/AI
     story_done = _has_accident_story(deps)
-    if story_done:
+    if story_done or insurance_is_today:
+        # One Truth: insurance Today implies story already finished for Focus/Why.
         story_state = TASK_STATE_COMPLETED
         story_actionable = False
         story_is_today = False

@@ -207,7 +207,8 @@ test("upload success confirms via read-back and clears busy uploading", async ()
   assert.equal(ctx.data.slots[0].requirementMet, true);
   assert.equal(ctx.data.slots[0].uploadIntentId, "");
   assert.equal(ctx.data.slots[0].canRetry, false);
-  assert.equal(ctx.data.slots[0].localPath, "");
+  assert.equal(ctx.data.slots[0].localPath, "/tmp/p1.jpg");
+  assert.equal(ctx.data.slots[0].statusText, "已确认");
   assert.equal(ctx.data.uploadStage, "上传完成");
   assert.ok(toasts.includes("上传完成"));
   assert.equal(timingLogs.length, 1);
@@ -350,8 +351,9 @@ test("retry uses existing local photo without repicking", async () => {
   assert.equal(ctx.data.slots[0].uploaded, false);
   assert.equal(ctx.data.slots[0].requirementMet, true);
   assert.equal(ctx.data.slots[0].canRetry, false);
-  assert.equal(ctx.data.slots[0].localPath, "");
+  assert.equal(ctx.data.slots[0].localPath, "/tmp/existing.jpg");
   assert.equal(ctx.data.slots[0].uploadIntentId, "");
+  assert.equal(ctx.data.slots[0].statusText, "已确认");
 
   CustomerTaskApi.getUploadTaskInfo = originalGetUploadTaskInfo;
   CustomerTaskApi.uploadPhoto = originalUploadPhoto;
@@ -1310,6 +1312,8 @@ test("onShow reconciles pending upload after backgrounding", async () => {
   assert.equal(ctx.data.uploadStage, "上传完成");
   assert.equal(ctx.data.slots[0].requirementMet, true);
   assert.equal(ctx.data.slots[0].uploading, false);
+  assert.equal(ctx.data.slots[0].localPath, "/tmp/bg.jpg");
+  assert.equal(ctx.data.slots[0].statusText, "已确认");
   assert.equal(page.hasPendingUploadForSlot.call(ctx, "customer_damage_photo"), false);
 
   CustomerTaskApi.getUploadTaskInfo = originalGetUploadTaskInfo;
