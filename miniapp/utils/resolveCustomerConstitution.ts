@@ -27,6 +27,9 @@ export type CustomerConstitutionTaskCard = {
   route?: string | null;
   actionable?: boolean | null;
   primary_action?: string | null;
+  /** P26G — system_default | broker_requested */
+  task_source?: string | null;
+  reason?: string | null;
 };
 
 export type CustomerConstitutionProjection = {

@@ -64,14 +64,24 @@
 
       <view class="card" wx:if="{{inputMode === 'evidence'}}">
         <view class="section-label">上传资料</view>
-        <view class="upload-stage" wx:if="{{uploadStatusText}}">{{uploadStatusText}}</view>
-        <image
-          wx:if="{{uploadItems[0].localPath}}"
-          class="preview-image"
-          mode="aspectFill"
-          src="{{uploadItems[0].localPath}}"
-          bindtap="onPreviewUpload"
-        />
+        <view class="upload-stage upload-phase-{{uploadPhase}}" wx:if="{{uploadStatusText}}">
+          {{uploadStatusText}}
+        </view>
+        <view class="preview-wrap" wx:if="{{uploadItems[0].localPath}}">
+          <image
+            class="preview-image"
+            mode="aspectFill"
+            src="{{uploadItems[0].localPath}}"
+            bindtap="onPreviewUpload"
+          />
+          <view wx:if="{{uploadItems[0].uploading}}" class="preview-mask">
+            上传中 {{uploadItems[0].progress}}%
+          </view>
+          <view
+            wx:elif="{{uploadPhaseLabel}}"
+            class="preview-badge phase-{{uploadPhase}}"
+          >{{uploadPhaseLabel}}</view>
+        </view>
         <button
           class="btn-secondary"
           hover-class="btn-secondary-hover"

@@ -19,6 +19,7 @@ import {
   REQUEST_ITEM_ROUTE,
   type Slice1CustomerView,
 } from "../../utils/slice1Customer";
+import { resolveCustomerConstitutionFromTask } from "../../utils/resolveCustomerConstitution";
 import type { Slice1RequestItem } from "../../types/task";
 import { reLaunchStartClaimHome } from "../../utils/startClaimEntry";
 
@@ -66,6 +67,13 @@ type PageData = {
 };
 
 function slice1PagePatch(view: Slice1CustomerView): Partial<PageData> {
+  const focusInstruction = String(
+    view.constitutionToday ||
+      view.nextAction?.title ||
+      view.constitutionWhy ||
+      view.nextAction?.instructions ||
+      "",
+  );
   return {
     slice1Enabled: view.enabled,
     slice1WaitingForBroker: view.waitingForBroker,
@@ -73,7 +81,7 @@ function slice1PagePatch(view: Slice1CustomerView): Partial<PageData> {
       ? "资料已提交，等待经纪人审核"
       : view.primaryCtaLabel || "补充陈总需要的资料",
     slice1PrimaryActionable: view.primaryActionable,
-    slice1Instruction: String(view.nextAction?.instructions || view.nextAction?.title || ""),
+    slice1Instruction: focusInstruction,
     slice1ProgressText:
       view.progress.total > 0 ? `进度 ${view.progress.satisfied}/${view.progress.total}` : "",
     slice1QueuedItems: view.queuedItems,
@@ -201,30 +209,47 @@ Page({
       String(task.task_contract?.timestamps?.updated_at || ""),
     );
 
-    const nextStep = view.enabled
-      ? view.waitingForBroker
-        ? "资料已提交，等待陈总查看"
-        : view.nextAction?.instructions ||
-          view.nextAction?.title ||
-          summary?.next_step ||
-          dash?.next_action ||
-          "请按陈总要求补充资料"
-      : summary?.next_step ||
-        dash?.next_action ||
-        (submitted
-          ? "已提交，等待陈总查看"
-          : vm.cta.label || `等待${broker}查看`);
+    // Prefer server Constitution Focus/Trust only; otherwise keep prior receipt copy.
+    const constitution = resolveCustomerConstitutionFromTask(task);
+    const serverToday =
+      constitution.fieldAuthority.today === "server" ? constitution.today : "";
+    const serverAfter =
+      constitution.fieldAuthority.after === "server" ? constitution.after : "";
+    const serverWhy =
+      constitution.fieldAuthority.why === "server" ? constitution.why : "";
+    const serverTrust =
+      constitution.fieldAuthority.careLine === "server" ||
+      constitution.fieldAuthority.careNote === "server"
+        ? [constitution.careLine, constitution.careNote].filter(Boolean).join("。")
+        : "";
 
-    const supplementHint = view.enabled
-      ? view.waitingForBroker
-        ? "资料已提交，等待经纪人审核"
-        : view.nextAction?.instructions ||
-          view.nextAction?.title ||
-          view.primaryCtaLabel ||
-          ""
-      : (task.missing_info || []).map((item) => item.label).filter(Boolean)[0] ||
-        (vm.missingItems || []).map((item) => item.label).filter(Boolean)[0] ||
-        (submitted ? "如有需要，可继续补充照片。" : "");
+    const nextStep = serverToday ||
+      serverAfter ||
+      (view.enabled
+        ? view.waitingForBroker
+          ? "资料已提交，等待陈总查看"
+          : view.nextAction?.title ||
+            view.nextAction?.instructions ||
+            summary?.next_step ||
+            dash?.next_action ||
+            "请按陈总要求补充资料"
+        : summary?.next_step ||
+          dash?.next_action ||
+          (submitted
+            ? "已提交，等待陈总查看"
+            : vm.cta.label || `等待${broker}查看`));
+
+    const supplementHint = serverWhy ||
+      (view.enabled
+        ? view.waitingForBroker
+          ? "资料已提交，等待经纪人审核"
+          : view.nextAction?.instructions ||
+            view.nextAction?.title ||
+            view.primaryCtaLabel ||
+            ""
+        : (task.missing_info || []).map((item) => item.label).filter(Boolean)[0] ||
+          (vm.missingItems || []).map((item) => item.label).filter(Boolean)[0] ||
+          (submitted ? "如有需要，可继续补充照片。" : ""));
 
     const supplementAllowed = view.enabled
       ? view.primaryActionable || view.waitingForBroker
@@ -232,9 +257,11 @@ Page({
           submitted || dash?.submitted_supplement_allowed || (task.missing_info || []).length > 0,
         );
 
-    const brokerContactNote = submitted
-      ? `${broker}会尽快查看您提交的资料，并在需要时通过微信联系您。`
-      : `如有问题，请通过微信联系${broker}。`;
+    const brokerContactNote = serverTrust
+      ? serverTrust
+      : submitted
+        ? `${broker}会尽快查看您提交的资料，并在需要时通过微信联系您。`
+        : `如有问题，请通过微信联系${broker}。`;
     const materialsNote = supplementHint
       ? supplementHint
       : `如有需要，${broker}可能请您补充更多材料，请留意微信消息。`;

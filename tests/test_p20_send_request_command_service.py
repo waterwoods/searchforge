@@ -155,7 +155,8 @@ def test_send_request_success_creates_group_access_and_projections():
     assert "token_hash" not in (result.get("customer_access") or {})
 
 
-def test_ordered_item_mapping_from_multi_item_draft_rejects_unsupported():
+def test_ordered_item_mapping_from_multi_item_draft_accepts_mvp_sendable_pair():
+    """VIN + insurance card are both MVP sendable — ordered group must accept."""
     svc, store = _svc(
         items=[
             {
@@ -181,11 +182,10 @@ def test_ordered_item_mapping_from_multi_item_draft_rejects_unsupported():
         ]
     )
     result = _send(svc)
-    assert result["outcome"] == "rejected"
-    assert result["error_code"] == "unsupported_draft_item_type_for_send"
-    assert "Insurance card" in (result.get("unsupported_items") or [])
-    assert store.groups == {}
-    assert store.access_by_case == {}
+    assert result["outcome"] == "accepted"
+    assert result["slice1_projection"]["open_request"]["progress"]["total"] == 2
+    assert store.groups
+    assert store.access_by_case
 
 
 def test_send_request_rejects_vehicle_information_only_draft():

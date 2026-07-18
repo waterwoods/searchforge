@@ -34,6 +34,47 @@ import {
   taskShellBindingsFromViewModel,
 } from "../../utils/resolveTaskViewModel";
 import { contactBrokerModalCopy, mapErrorMessage } from "../../utils/taskMapping";
+import {
+  resolveUploadPhase,
+  UPLOAD_PHASE_LABEL,
+  uploadPhaseDetail,
+  type UploadPhase,
+} from "../../utils/uploadStateMachine";
+
+/** P26G — Constitution system_default insurance without a Slice1 request row. */
+function resolveSystemDefaultInsurance(task: CustomerTask | null | undefined): {
+  enabled: boolean;
+  title: string;
+  why: string;
+} {
+  const customer = task?.constitution_projection?.customer;
+  const tasks = Array.isArray(customer?.tasks) ? customer.tasks : [];
+  const insurance = tasks.find((row) => {
+    if (!row || typeof row !== "object") return false;
+    const id = String((row as { task_id?: unknown }).task_id || "").trim();
+    return id === "insurance_card";
+  }) as
+    | {
+        actionable?: boolean;
+        task_source?: string;
+        title?: string;
+        primary_action?: string;
+        state?: string;
+      }
+    | undefined;
+  if (!insurance) return { enabled: false, title: "", why: "" };
+  const source = String(insurance.task_source || "system_default").trim();
+  const state = String(insurance.state || "").trim();
+  const actionable = Boolean(insurance.actionable) && state !== "completed" && state !== "waiting_broker";
+  if (!actionable || source === "broker_requested") {
+    return { enabled: false, title: "", why: "" };
+  }
+  return {
+    enabled: true,
+    title: String(insurance.primary_action || insurance.title || "上传保险卡").trim(),
+    why: String(customer?.why || "请上传清晰的保险卡照片").trim(),
+  };
+}
 
 type SubmissionState =
   | "idle"
@@ -69,6 +110,8 @@ type PageData = {
   submissionState: SubmissionState;
   uploadItems: UploadItemUi[];
   uploadStatusText: string;
+  uploadPhase: UploadPhase;
+  uploadPhaseLabel: string;
   draftValue: string;
   validationMessage: string;
   retryAvailable: boolean;
@@ -173,6 +216,8 @@ Page({
     submissionState: "idle",
     uploadItems: [{ ...EMPTY_UPLOAD_ITEM }],
     uploadStatusText: "",
+    uploadPhase: "idle",
+    uploadPhaseLabel: "",
     draftValue: "",
     validationMessage: "",
     retryAvailable: false,
@@ -313,15 +358,31 @@ Page({
   applyAuthoritativeTask(task: CustomerTask, options?: { restoreDraft?: boolean }) {
     const view = mapSlice1CustomerView(task);
     const nextAction = view.nextAction;
-    const itemType = String(nextAction?.required_input || "").trim();
+    let itemType = String(nextAction?.required_input || "").trim();
     const waitingForBroker = view.waitingForBroker;
-    const evidence = isEvidenceItemType(itemType) || String(nextAction?.action_type || "") === "provide_evidence";
-    const text = !waitingForBroker && !evidence && (itemType === "vin" || itemType === "free_text" || String(nextAction?.action_type || "") === "provide_fact");
+    const systemDefaultInsurance = resolveSystemDefaultInsurance(task);
+    const useSystemDefaultInsurance =
+      !waitingForBroker && !String(nextAction?.request_item_id || "").trim() && systemDefaultInsurance.enabled;
+    if (useSystemDefaultInsurance) {
+      itemType = "policy_or_insurance_card";
+    }
+    const evidence =
+      useSystemDefaultInsurance ||
+      isEvidenceItemType(itemType) ||
+      String(nextAction?.action_type || "") === "provide_evidence";
+    const text =
+      !waitingForBroker &&
+      !evidence &&
+      (itemType === "vin" || itemType === "free_text" || String(nextAction?.action_type || "") === "provide_fact");
     const copy = inputCopy(itemType);
     const internal = ensureInternal(this);
     const previousItemId = internal.activeRequestItemId;
-    const nextItemId = String(nextAction?.request_item_id || "").trim();
-    const requestId = String(nextAction?.request_id || view.openRequestId || "").trim();
+    const nextItemId = useSystemDefaultInsurance
+      ? "system_default_insurance_card"
+      : String(nextAction?.request_item_id || "").trim();
+    const requestId = useSystemDefaultInsurance
+      ? "system_default"
+      : String(nextAction?.request_id || view.openRequestId || "").trim();
     const caseId = String(task.case_id || "").trim();
 
     internal.caseId = caseId;
@@ -370,14 +431,18 @@ Page({
     // Titles/instructions already overlay Constitution via mapSlice1CustomerView.
     this.safePageSetData({
       task,
-      nextAction,
+      nextAction: useSystemDefaultInsurance ? null : nextAction,
       nextActionTitle: String(
         view.constitutionToday ||
+          systemDefaultInsurance.title ||
           nextAction?.title ||
           (waitingForBroker ? "资料已提交，等待经纪人审核" : ""),
       ),
       nextActionInstructions: String(
-        view.constitutionWhy || nextAction?.instructions || "",
+        view.constitutionWhy ||
+          systemDefaultInsurance.why ||
+          nextAction?.instructions ||
+          "",
       ),
       queuedItems: view.queuedItems,
       satisfiedItems: view.satisfiedItems,
@@ -392,11 +457,11 @@ Page({
       inputPlaceholder: copy.placeholder,
       draftValue,
       uploadItems: [uploadItem],
-      uploadStatusText: uploadItem.uploaded
-        ? "照片已上传，待提交确认"
-        : uploadItem.localPath
-          ? "已选择照片，尚未上传"
-          : "",
+      ...this.uploadPhasePatch(
+        uploadItem,
+        waitingForBroker ? "confirmed" : this.data.submissionState === "uncertain" ? "uncertain" : "idle",
+        waitingForBroker,
+      ),
       validationMessage: "",
       submissionState: waitingForBroker ? "confirmed" : this.data.submissionState === "uncertain" ? "uncertain" : "idle",
       retryAvailable: this.data.submissionState === "uncertain",
@@ -406,6 +471,37 @@ Page({
       pageError: EMPTY_TASK_ERROR,
       loading: false,
     });
+  },
+
+  uploadPhasePatch(
+    upload: UploadItemUi,
+    submissionState: SubmissionState,
+    waitingForBroker: boolean,
+  ): Pick<PageData, "uploadPhase" | "uploadPhaseLabel" | "uploadStatusText"> {
+    const projectionConfirmed =
+      waitingForBroker || submissionState === "confirmed";
+    const phase = resolveUploadPhase({
+      projectionConfirmed,
+      transient: {
+        localPath: upload.localPath,
+        uploading: upload.uploading || submissionState === "uploading",
+        uploaded: upload.uploaded,
+        attachmentId: upload.attachmentId,
+        error:
+          upload.error ||
+          (submissionState === "failed" ? mapErrorMessage("network_error") : ""),
+      },
+    });
+    const label = UPLOAD_PHASE_LABEL[phase];
+    const detail =
+      phase === "uploaded"
+        ? "已上传，待提交确认"
+        : uploadPhaseDetail(phase, upload.progress);
+    return {
+      uploadPhase: phase,
+      uploadPhaseLabel: label,
+      uploadStatusText: detail,
+    };
   },
 
   persistDraftSafe() {
@@ -450,14 +546,13 @@ Page({
     try {
       const chosen = await choosePhoto();
       const prepared = await preparePhotoForUpload(chosen);
+      const uploadItem = {
+        ...EMPTY_UPLOAD_ITEM,
+        localPath: prepared.tempFilePath,
+      };
       this.safePageSetData({
-        uploadItems: [
-          {
-            ...EMPTY_UPLOAD_ITEM,
-            localPath: prepared.tempFilePath,
-          },
-        ],
-        uploadStatusText: "已选择照片，尚未上传",
+        uploadItems: [uploadItem],
+        ...this.uploadPhasePatch(uploadItem, "idle", false),
         validationMessage: "",
         submissionState: "idle",
         retryAvailable: false,
@@ -505,23 +600,30 @@ Page({
     }
 
     this.setBusy("uploading", true);
+    const uploadingItem = { ...upload, uploading: true, error: "", progress: 0 };
     this.safePageSetData({
       submissionState: "uploading",
-      uploadStatusText: "正在上传…",
-      uploadItems: [{ ...upload, uploading: true, error: "", progress: 0 }],
+      uploadItems: [uploadingItem],
+      ...this.uploadPhasePatch(uploadingItem, "uploading", false),
     });
 
     try {
       const slot =
-        this.data.itemType === "policy_or_insurance_card" || this.data.itemType === "photo_evidence"
-          ? "other_evidence"
-          : "other_evidence";
+        this.data.itemType === "policy_or_insurance_card"
+          ? ensureInternal(this).activeRequestItemId === "system_default_insurance_card"
+            ? "policy_or_insurance_card"
+            : "other_evidence"
+          : this.data.itemType === "photo_evidence"
+            ? "other_evidence"
+            : "other_evidence";
       const response = await CustomerTaskApi.uploadPhoto(uploadUrl, localPath, slot, {
         uploadIntentId: `slice1-${ensureInternal(this).clientDraftId}`,
         onProgress: (progress) => {
           const current = (this.data.uploadItems || [])[0] || upload;
+          const next = { ...current, uploading: true, progress };
           this.safePageSetData({
-            uploadItems: [{ ...current, uploading: true, progress }],
+            uploadItems: [next],
+            ...this.uploadPhasePatch(next, "uploading", false),
           });
         },
       });
@@ -529,36 +631,34 @@ Page({
       if (!attachmentId) {
         throw new ApiRequestError("upload_missing_attachment_id");
       }
+      const uploadedItem = {
+        localPath,
+        uploading: false,
+        uploaded: true,
+        attachmentId,
+        error: "",
+        progress: 100,
+      };
       this.safePageSetData({
-        uploadItems: [
-          {
-            localPath,
-            uploading: false,
-            uploaded: true,
-            attachmentId,
-            error: "",
-            progress: 100,
-          },
-        ],
-        uploadStatusText: "照片已上传，待提交确认",
+        uploadItems: [uploadedItem],
+        ...this.uploadPhasePatch(uploadedItem, "idle", false),
       });
       this.persistDraftSafe();
       return attachmentId;
     } catch (error) {
       const code = error instanceof ApiRequestError ? error.code : "network_error";
+      const failedItem = {
+        ...upload,
+        localPath,
+        uploading: false,
+        uploaded: false,
+        attachmentId: "",
+        error: mapErrorMessage(code),
+        progress: 0,
+      };
       this.safePageSetData({
-        uploadItems: [
-          {
-            ...upload,
-            localPath,
-            uploading: false,
-            uploaded: false,
-            attachmentId: "",
-            error: mapErrorMessage(code),
-            progress: 0,
-          },
-        ],
-        uploadStatusText: "上传失败，可重试",
+        uploadItems: [failedItem],
+        ...this.uploadPhasePatch(failedItem, "failed", false),
         validationMessage: mapErrorMessage(code),
         submissionState: "failed",
         retryAvailable: true,
@@ -603,28 +703,81 @@ Page({
       } catch {
         return;
       }
-    } else if (itemType === "vin") {
-      const result = validateVin(String(this.data.draftValue || ""));
-      if (!result.ok) {
+    }
+
+    // P26G — system_default insurance: upload records the slot; no Slice1 submit.
+    if (internal.activeRequestItemId === "system_default_insurance_card") {
+      if (!evidence?.attachment_id) {
         this.safePageSetData({
-          validationMessage: result.message,
-          submissionState: "failed",
-          draftValue: result.normalized || this.data.draftValue,
-        });
-        return;
-      }
-      this.safePageSetData({ draftValue: result.normalized });
-      fact = { field: factFieldForItemType("vin"), value: result.normalized };
-    } else {
-      const result = validateFreeText(String(this.data.draftValue || ""));
-      if (!result.ok) {
-        this.safePageSetData({
-          validationMessage: result.message,
+          validationMessage: mapErrorMessage("evidence_required"),
           submissionState: "failed",
         });
         return;
       }
-      fact = { field: factFieldForItemType(itemType || "free_text"), value: result.normalized };
+      internal.submitInFlight = true;
+      this.setBusy("submitting", true);
+      this.safePageSetData({
+        submissionState: "submitting",
+        submitDisabled: true,
+        submitDisabledReason: "正在确认…",
+      });
+      try {
+        const refreshed = await CustomerTaskApi.getTask(token);
+        const app = getApp<IAppOption>();
+        app.task = refreshed;
+        clearRequestItemDraft(internal.caseId, internal.requestId, internal.activeRequestItemId);
+        this.applyAuthoritativeTask(refreshed, { restoreDraft: false });
+        const stillOpen = resolveSystemDefaultInsurance(refreshed).enabled;
+        this.safePageSetData({
+          submissionState: stillOpen ? "uncertain" : "confirmed",
+          submitDisabled: false,
+          submitDisabledReason: "",
+          retryAvailable: stillOpen,
+        });
+        if (!stillOpen) {
+          wx.showToast({ title: "保险卡已收到", icon: "success" });
+          setTimeout(() => this.goTaskHome(), 400);
+        } else {
+          wx.showToast({ title: "已上传，请确认状态", icon: "none" });
+        }
+      } catch {
+        this.safePageSetData({
+          submissionState: "uncertain",
+          retryAvailable: true,
+          submitDisabled: false,
+          submitDisabledReason: "",
+        });
+      } finally {
+        internal.submitInFlight = false;
+        this.setBusy("submitting", false);
+      }
+      return;
+    }
+
+    if (!evidenceMode) {
+      if (itemType === "vin") {
+        const result = validateVin(String(this.data.draftValue || ""));
+        if (!result.ok) {
+          this.safePageSetData({
+            validationMessage: result.message,
+            submissionState: "failed",
+            draftValue: result.normalized || this.data.draftValue,
+          });
+          return;
+        }
+        this.safePageSetData({ draftValue: result.normalized });
+        fact = { field: factFieldForItemType("vin"), value: result.normalized };
+      } else {
+        const result = validateFreeText(String(this.data.draftValue || ""));
+        if (!result.ok) {
+          this.safePageSetData({
+            validationMessage: result.message,
+            submissionState: "failed",
+          });
+          return;
+        }
+        fact = { field: factFieldForItemType(itemType || "free_text"), value: result.normalized };
+      }
     }
 
     if (!options.reuseIdentity && this.data.submissionState !== "uncertain") {

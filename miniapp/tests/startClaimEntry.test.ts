@@ -6,23 +6,39 @@ import { fileURLToPath } from "node:url";
 
 import { installMiniProgramGlobals } from "./miniprogramMocks";
 import {
+  ENTRY_ROUTE,
   START_CLAIM_ROUTE,
   assertStartClaimWxmlNotBlankable,
   createEmptyStartClaimShell,
+  hasActiveCustomerCase,
+  redirectStartClaimIfActiveCase,
+  reLaunchCustomerHome,
   reLaunchStartClaimHome,
   resetStartClaimDraftState,
+  resolveCustomerHomeUrl,
   resolveHomeStartClaimUrl,
 } from "../utils/startClaimEntry";
-import { loadResumeToken, saveResumeToken, saveSubmitIntentId, loadSubmitIntentId } from "../utils/storage";
+import { loadResumeToken, saveResumeToken, saveSubmitIntentId, loadSubmitIntentId, clearResumeToken } from "../utils/storage";
 
 installMiniProgramGlobals();
 
 const here = dirname(fileURLToPath(import.meta.url));
 const miniappRoot = join(here, "..");
 
-test("Home target is Start Claim route", () => {
+test("no active case → Home target is Start Claim", () => {
+  clearResumeToken();
+  assert.equal(hasActiveCustomerCase(), false);
   assert.equal(resolveHomeStartClaimUrl(), START_CLAIM_ROUTE);
+  assert.equal(resolveCustomerHomeUrl(), START_CLAIM_ROUTE);
   assert.equal(START_CLAIM_ROUTE, "/pages/start-claim/start-claim");
+});
+
+test("active case/token → Home target is Entry (Task Home bootstrap)", () => {
+  saveResumeToken("h5t1.active-camry");
+  assert.equal(hasActiveCustomerCase(), true);
+  assert.equal(resolveCustomerHomeUrl(), ENTRY_ROUTE);
+  assert.equal(ENTRY_ROUTE, "/pages/entry/entry");
+  clearResumeToken();
 });
 
 test("empty shell is pageReady with visible missing hint and no network dependency", () => {
@@ -47,6 +63,19 @@ test("Start New Claim resets only claim-draft resume markers", () => {
   );
 });
 
+test("reLaunchCustomerHome preserves active token and opens Entry", () => {
+  saveResumeToken("h5t1.active");
+  const launches: string[] = [];
+  reLaunchCustomerHome({
+    reLaunch: ({ url }) => {
+      launches.push(url);
+    },
+  });
+  assert.deepEqual(launches, [ENTRY_ROUTE]);
+  assert.equal(loadResumeToken(), "h5t1.active");
+  clearResumeToken();
+});
+
 test("reLaunchStartClaimHome clears draft and relaunches Start Claim", () => {
   saveResumeToken("h5t1.stale");
   const launches: string[] = [];
@@ -57,6 +86,32 @@ test("reLaunchStartClaimHome clears draft and relaunches Start Claim", () => {
   });
   assert.deepEqual(launches, [START_CLAIM_ROUTE]);
   assert.equal(loadResumeToken(), "");
+});
+
+test("redirectStartClaimIfActiveCase relaunches Entry without clearing token", () => {
+  saveResumeToken("h5t1.capsule-home");
+  const launches: string[] = [];
+  const redirected = redirectStartClaimIfActiveCase({
+    reLaunch: ({ url }) => {
+      launches.push(url);
+    },
+  });
+  assert.equal(redirected, true);
+  assert.deepEqual(launches, [ENTRY_ROUTE]);
+  assert.equal(loadResumeToken(), "h5t1.capsule-home");
+  clearResumeToken();
+});
+
+test("redirectStartClaimIfActiveCase is a no-op without token", () => {
+  clearResumeToken();
+  const launches: string[] = [];
+  const redirected = redirectStartClaimIfActiveCase({
+    reLaunch: ({ url }) => {
+      launches.push(url);
+    },
+  });
+  assert.equal(redirected, false);
+  assert.deepEqual(launches, []);
 });
 
 test("start-claim wxml has no blankable full-page guard", () => {
@@ -106,12 +161,13 @@ test("Preview package must not filter unused files (wx://not-found regression)",
   }
 });
 
-test("receipt and success pages wire Home to Start Claim helper", () => {
+test("receipt Start New Claim wires clear+Start Claim; start-claim redirects active Home", () => {
   const receiptTs = readFileSync(join(miniappRoot, "pages/receipt/receipt.ts"), "utf8");
   const successTs = readFileSync(
     join(miniappRoot, "pages/start-claim-success/start-claim-success.ts"),
     "utf8",
   );
+  const startClaimTs = readFileSync(join(miniappRoot, "pages/start-claim/start-claim.ts"), "utf8");
   const receiptWxml = readFileSync(join(miniappRoot, "pages/receipt/receipt.wxml"), "utf8");
   const successWxml = readFileSync(
     join(miniappRoot, "pages/start-claim-success/start-claim-success.wxml"),
@@ -121,6 +177,7 @@ test("receipt and success pages wire Home to Start Claim helper", () => {
   assert.match(receiptTs, /onBackHome/);
   assert.match(successTs, /reLaunchStartClaimHome/);
   assert.match(successTs, /onBackHome/);
+  assert.match(startClaimTs, /redirectStartClaimIfActiveCase/);
   assert.match(receiptWxml, /开始新报案/);
   assert.match(successWxml, /开始新报案/);
 });

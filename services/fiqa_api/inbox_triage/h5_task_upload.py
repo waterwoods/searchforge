@@ -44,6 +44,8 @@ EVIDENCE_CATEGORIES: tuple[str, ...] = (
     "vehicle_damage",
     "other_vehicle_scene",
     "other_evidence",
+    # P26G — system_default insurance card (no Slice1 request row required)
+    "policy_or_insurance_card",
 )
 _UPLOAD_INTENT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _LEGACY_SLOT_TO_CATEGORY = {
@@ -136,6 +138,18 @@ _CLAIM_SLOT_COPY: dict[str, dict[str, Any]] = {
         "skippable": True,
         "skip_reasons": list(SCENE_SKIP_REASONS),
         "max_files": 2,
+    },
+    "policy_or_insurance_card": {
+        "title": "理赔资料 · 保险卡",
+        "slot_title": "理赔资料 · 保险卡",
+        "task_label": "保险卡",
+        "slot_label": "保险卡",
+        "instruction": "请拍摄清晰的保险卡正面。",
+        "document_type": "policy_or_insurance_card",
+        "required_level": "available",
+        "required": False,
+        "skippable": False,
+        "max_files": 1,
     },
 }
 
@@ -528,6 +542,9 @@ def _canonical_claim_slot(slot: str) -> str:
     )
 
     normalized = (slot or "").strip().lower()
+    # P26G system_default insurance — keep document slot identity (not photo gallery).
+    if normalized in {"policy_or_insurance_card", "insurance_card", "insurance_card_photo"}:
+        return "policy_or_insurance_card"
     canon = canonical_claim_evidence_slot(normalized)
     if canon in _CLAIM_SLOT_COPY:
         return canon

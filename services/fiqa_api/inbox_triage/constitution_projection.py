@@ -22,6 +22,11 @@ from services.fiqa_api.inbox_triage.claim_workbench_display import (
     build_claim_evidence_summary,
     is_claim_broker_done,
 )
+from services.fiqa_api.inbox_triage.default_intake_plan import (
+    TASK_SOURCE_BROKER_REQUESTED,
+    TASK_SOURCE_SYSTEM_DEFAULT,
+    default_intake_plan_for_case,
+)
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHASE_BROKER_DONE,
     CLAIM_PHASE_BROKER_REVIEW,
@@ -356,7 +361,76 @@ def _is_insurance_card_task(
     return False
 
 
+def _insurance_satisfied_from_evidence(deps: _ResolvedDeps) -> bool:
+    """True when canonical insurance evidence exists without a Slice1 row."""
+    if "policy_or_insurance_card" in _received_slots(deps):
+        return True
+    slots = deps.case.get("claim_attachment_slots")
+    if isinstance(slots, Mapping):
+        row = slots.get("policy_or_insurance_card")
+        if isinstance(row, Mapping) and str(row.get("status") or "").strip().lower() == "received":
+            return True
+    for att in deps.case.get("case_attachments") or []:
+        if not isinstance(att, Mapping):
+            continue
+        for key in ("slot_assignment", "claim_slot", "evidence_category", "document_type"):
+            if str(att.get(key) or "").strip().lower() in _INSURANCE_CARD_INPUTS | {
+                "insurance_card",
+                "insurance_card_photo",
+            }:
+                status = str(att.get("evidence_status") or "confirmed").strip().lower()
+                if status in {"", "confirmed", "uploaded", "received"}:
+                    return True
+    return False
+
+
+def _insurance_satisfied(deps: _ResolvedDeps) -> bool:
+    if "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
+        return True
+    return _insurance_satisfied_from_evidence(deps)
+
+
+def _has_incomplete_default_intake(deps: _ResolvedDeps) -> bool:
+    """True when required system_default intake remains (not optional photos).
+
+    Optional photos stay available on Task Home but must not block
+    waiting_broker after required defaults (story + insurance) are done.
+    """
+    if not _has_accident_story(deps):
+        return True
+    if not _insurance_satisfied(deps):
+        return True
+    return False
+
+
+def _default_today_title(deps: _ResolvedDeps) -> str | None:
+    """First incomplete default-plan task title. None when required defaults done.
+
+    Order: story → insurance → optional photos (only when nothing required remains
+    and photos are still open — keeps motion without blocking broker wait).
+    """
+    if not _has_accident_story(deps):
+        return "填写事故经过"
+    if not _insurance_satisfied(deps):
+        return _TODAY_INSURANCE_CARD
+    photo_completed, photo_total, any_photo = _photo_progress(deps)
+    if photo_completed < photo_total or not any_photo:
+        # Optional: surface only when not already in a broker-hold wait path.
+        action = _slice1_customer_action(deps.slice1)
+        if _action_type(action) in _WAIT_BROKER_ACTION_TYPES:
+            return None
+        if _workflow_state(deps.slice1) in _SLICE1_REVIEW_READY_STATES:
+            return None
+        return "补充照片"
+    return None
+
+
 def _is_waiting_broker(deps: _ResolvedDeps, action: Mapping[str, Any] | None) -> bool:
+    # P26G: default intake incompleteness must never collapse to "waiting broker".
+    if _has_incomplete_default_intake(deps):
+        return False
+    if _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES:
+        return False
     if _action_type(action) in _WAIT_BROKER_ACTION_TYPES:
         return True
     if _workflow_state(deps.slice1) in _SLICE1_REVIEW_READY_STATES:
@@ -368,23 +442,19 @@ def _is_waiting_broker(deps: _ResolvedDeps, action: Mapping[str, Any] | None) ->
         if broker_type == "review_customer_response" or broker_status == "review_ready":
             return True
     phase = str(deps.claim_phase or "").strip().lower()
-    return phase in _BROKER_HOLD_PHASES and _action_type(action) not in _CUSTOMER_WORK_ACTION_TYPES
+    return phase in _BROKER_HOLD_PHASES
 
 
 def _customer_today(deps: _ResolvedDeps) -> str:
-    """Precedence: Slice1 action → open active item → phase fallback → safe wait."""
+    """Precedence: Slice1 action → open active item → default intake → phase wait."""
     action = _slice1_customer_action(deps.slice1)
     action_type = _action_type(action)
 
-    # 1. Structured Slice1 customer_next_action
+    # 1. Structured Slice1 customer_next_action (broker follow-up)
     if action_type in _CUSTOMER_WORK_ACTION_TYPES:
         title = _action_title(action)
         if title:
             return title
-    if action_type in _WAIT_BROKER_ACTION_TYPES:
-        return _TODAY_WAIT
-    if _is_waiting_broker(deps, action):
-        return _TODAY_WAIT
 
     # 2. Open request / missing-item evidence (active item only — never queued)
     active_item = _open_request_active_item(deps.slice1)
@@ -395,12 +465,22 @@ def _customer_today(deps: _ResolvedDeps) -> str:
             if label:
                 return label
 
-    # 3. Deterministic phase fallback — never invent a concrete task
+    # 3. P26G — system_default intake plan (no broker request required)
+    default_today = _default_today_title(deps)
+    if default_today:
+        return default_today
+
+    if action_type in _WAIT_BROKER_ACTION_TYPES:
+        return _TODAY_WAIT
+    if _is_waiting_broker(deps, action):
+        return _TODAY_WAIT
+
+    # 4. Deterministic phase fallback
     phase = str(deps.claim_phase or "").strip().lower()
     if phase in _BROKER_HOLD_PHASES:
         return _TODAY_WAIT
 
-    # 4. Safe neutral fallback
+    # 5. Safe neutral fallback
     return _TODAY_WAIT
 
 
@@ -440,6 +520,7 @@ def _customer_current_stage(deps: _ResolvedDeps, today: str) -> str:
     if today != _TODAY_WAIT and (
         _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES
         or bool(_open_request_active_item(deps.slice1))
+        or _has_incomplete_default_intake(deps)
     ):
         return STAGE_CUSTOMER_ACTION_NEEDED
     if _is_waiting_broker(deps, action):
@@ -531,8 +612,10 @@ def _task_card(
     route: str | None,
     actionable: bool,
     primary_action: str | None = None,
+    task_source: str = TASK_SOURCE_SYSTEM_DEFAULT,
+    reason: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    card: dict[str, Any] = {
         "task_id": task_id,
         "title": title,
         "state": state,
@@ -544,14 +627,27 @@ def _task_card(
         "route": route,
         "actionable": bool(actionable),
         "primary_action": primary_action,
+        "task_source": task_source,
     }
+    if reason:
+        card["reason"] = reason
+    return card
 
 
-def _has_open_insurance_path(deps: _ResolvedDeps, *, today: str) -> bool:
+def _broker_insurance_open(deps: _ResolvedDeps, *, today: str) -> bool:
+    """True only when Slice1 / open request owns insurance — not Today title alone."""
+    _ = today  # Today text is not a broker-source signal (P26G).
     action = _slice1_customer_action(deps.slice1)
-    active_item = _open_request_active_item(deps.slice1)
-    if _is_insurance_card_task(today=today, action=action, active_item=active_item):
+    if _required_input(action) in _INSURANCE_CARD_INPUTS:
         return True
+    active_item = _open_request_active_item(deps.slice1)
+    if isinstance(active_item, Mapping):
+        item_type = str(active_item.get("item_type") or "").strip().lower()
+        if item_type in _INSURANCE_CARD_INPUTS:
+            return True
+        label = str(active_item.get("label") or "").strip()
+        if label in {_TODAY_INSURANCE_CARD, "保险卡"}:
+            return True
     for item in _open_request_items(deps.slice1):
         item_type = str(item.get("item_type") or "").strip().lower()
         if item_type in _INSURANCE_CARD_INPUTS:
@@ -564,6 +660,20 @@ def _has_open_insurance_path(deps: _ResolvedDeps, *, today: str) -> bool:
     }
 
 
+def _has_open_insurance_path(deps: _ResolvedDeps, *, today: str) -> bool:
+    """Insurance is open via broker request OR system_default plan (P26G)."""
+    if _broker_insurance_open(deps, today=today):
+        return True
+    # Default intake: never require a broker request row to unlock insurance.
+    return not _insurance_satisfied(deps)
+
+
+def _insurance_task_source(deps: _ResolvedDeps, *, today: str) -> str:
+    if _broker_insurance_open(deps, today=today):
+        return TASK_SOURCE_BROKER_REQUESTED
+    return TASK_SOURCE_SYSTEM_DEFAULT
+
+
 def _insurance_task_state(
     deps: _ResolvedDeps,
     *,
@@ -571,7 +681,7 @@ def _insurance_task_state(
     stage: str,
     is_today: bool,
 ) -> tuple[str, bool]:
-    satisfied = "policy_or_insurance_card" in _satisfied_item_types(deps.slice1)
+    satisfied = _insurance_satisfied(deps)
     if satisfied:
         if stage == STAGE_WAITING_BROKER or _is_waiting_broker(
             deps, _slice1_customer_action(deps.slice1)
@@ -609,8 +719,11 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
     )
 
     tasks: list[dict[str, Any]] = []
+    # Bind default plan SSOT so Task Home never invents a parallel checklist.
+    _ = default_intake_plan_for_case(deps.case)
+    insurance_source = _insurance_task_source(deps, today=today)
 
-    # 1) Insurance Card — fully working production path
+    # 1) Insurance Card — system_default or broker_requested (never broker-gated for default)
     insurance_state, insurance_actionable = _insurance_task_state(
         deps, today=today, stage=stage, is_today=insurance_is_today
     )
@@ -618,6 +731,14 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
         TASK_STATE_COMPLETED,
         TASK_STATE_WAITING_BROKER,
     }
+    insurance_reason = None
+    if insurance_source == TASK_SOURCE_BROKER_REQUESTED and not insurance_done:
+        action = _slice1_customer_action(deps.slice1)
+        insurance_reason = str(
+            (action or {}).get("instructions")
+            or (action or {}).get("title")
+            or "陈总需要保险卡"
+        ).strip() or None
     tasks.append(
         _task_card(
             task_id=TASK_ID_INSURANCE,
@@ -629,6 +750,8 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             route=_ROUTE_REQUEST_ITEM if insurance_actionable else None,
             actionable=insurance_actionable,
             primary_action="上传保险卡" if insurance_actionable else None,
+            task_source=insurance_source,
+            reason=insurance_reason,
         )
     )
 
@@ -659,6 +782,11 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
         photo_state = TASK_STATE_PENDING
         photo_actionable = True
         photo_is_today = False
+    photo_source = (
+        TASK_SOURCE_BROKER_REQUESTED
+        if _required_input(action) == "photo_evidence"
+        else TASK_SOURCE_SYSTEM_DEFAULT
+    )
     tasks.append(
         _task_card(
             task_id=TASK_ID_PHOTOS,
@@ -670,6 +798,7 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             route=_ROUTE_PHOTOS if photo_actionable else None,
             actionable=photo_actionable,
             primary_action="补充照片" if photo_actionable else None,
+            task_source=photo_source,
         )
     )
 
@@ -699,6 +828,7 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             route=_ROUTE_STORY if story_actionable else None,
             actionable=story_actionable,
             primary_action="填写事故经过" if story_actionable else None,
+            task_source=TASK_SOURCE_SYSTEM_DEFAULT,
         )
     )
 
@@ -734,6 +864,8 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
                 route=None,
                 actionable=dl_actionable,
                 primary_action=None,
+                task_source=TASK_SOURCE_BROKER_REQUESTED,
+                reason="陈总需要驾驶证",
             )
         )
 

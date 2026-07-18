@@ -24,12 +24,15 @@ import type {
 } from "../../utils/startClaimValidation";
 import { contactBrokerModalCopy } from "../../utils/taskMapping";
 import {
+  ENTRY_ROUTE,
   START_CLAIM_MISSING_HINT,
   START_CLAIM_SAFETY_COPY,
   START_CLAIM_SUCCESS_ROUTE,
   createEmptyStartClaimShell,
+  redirectStartClaimIfActiveCase,
   resetStartClaimDraftState,
 } from "../../utils/startClaimEntry";
+import { saveResumeToken } from "../../utils/storage";
 
 type PageData = {
   description: string;
@@ -69,6 +72,15 @@ Page({
 
   onLoad() {
     try {
+      // P26D: capsule Home opens pages[0] (Start Claim). Active case → Task Home.
+      if (redirectStartClaimIfActiveCase(wx)) {
+        this.setData({
+          ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+          pageReady: true,
+          initErrorMessage: "",
+        });
+        return;
+      }
       resetStartClaimDraftState();
       this._submitState = createStartClaimSubmitState();
       this._form = createEmptyCanonicalForm();
@@ -346,6 +358,32 @@ Page({
       }
       endStartClaimSubmit(this._submitState, true);
       this.setData({ busy: { submitting: false } });
+      // P26G: persist resume token and open Task Home — no broker QR required.
+      const resumeToken = String(result.resume_token || "").trim();
+      if (resumeToken) {
+        saveResumeToken(resumeToken);
+        try {
+          const app = getApp<IAppOption>();
+          if (app) app.taskToken = resumeToken;
+        } catch {
+          // Entry bootstrap rehydrates from resume storage.
+        }
+        wx.reLaunch({
+          url: ENTRY_ROUTE,
+          fail: () => {
+            wx.redirectTo({
+              url: ENTRY_ROUTE,
+              fail: () => {
+                this.setData({
+                  errorMessage: "已创建案件，但打开我的资料失败。请从首页继续。",
+                  errorRetryable: false,
+                });
+              },
+            });
+          },
+        });
+        return;
+      }
       wx.redirectTo({
         url: START_CLAIM_SUCCESS_ROUTE,
         fail: () => {

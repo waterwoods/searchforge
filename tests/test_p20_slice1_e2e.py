@@ -172,7 +172,7 @@ def test_scenario1_single_fact_request_returns_to_broker_review():
     assert store.events["case_e2e"][-1]["state_after"] == "broker_review_ready"
 
 
-def test_scenario2_mvp_rejects_customer_submit_after_vin_for_queued_items():
+def test_scenario2_vin_then_insurance_card_then_photo_blocked():
     svc, store = _svc()
     items = [
         _item("VIN", 1, "vin"),
@@ -190,7 +190,7 @@ def test_scenario2_mvp_rejects_customer_submit_after_vin_for_queued_items():
     assert step1["customer_projection"]["customer_next_action"]["required_input"] == "policy_or_insurance_card"
     assert store.items["item_2"].status == ITEM_STATUS_ACTIVE
 
-    blocked = _submit_evidence(
+    step2 = _submit_evidence(
         svc,
         item_id="item_2",
         expected=step1["aggregate_version"],
@@ -198,9 +198,24 @@ def test_scenario2_mvp_rejects_customer_submit_after_vin_for_queued_items():
         command_id="cmd-customer-submit-2",
         idempotency_key="idem-customer-submit-2",
     )
+    assert step2["outcome"] == "accepted"
+    assert store.items["item_2"].status == ITEM_STATUS_SATISFIED
+    assert step2["customer_projection"]["customer_next_action"]["request_item_id"] == "item_3"
+    assert step2["customer_projection"]["customer_next_action"]["required_input"] == "photo_evidence"
+    assert store.items["item_3"].status == ITEM_STATUS_ACTIVE
+    assert store.groups["req_e2e"].status == GROUP_STATUS_OPEN
+
+    blocked = _submit_evidence(
+        svc,
+        item_id="item_3",
+        expected=step2["aggregate_version"],
+        attachment_id="att_damage_1",
+        command_id="cmd-customer-submit-3",
+        idempotency_key="idem-customer-submit-3",
+    )
     assert blocked["outcome"] == "rejected"
     assert blocked["error_code"] == "customer_submit_not_supported"
-    assert store.items["item_2"].status == ITEM_STATUS_ACTIVE
+    assert store.items["item_3"].status == ITEM_STATUS_ACTIVE
     assert store.groups["req_e2e"].status == GROUP_STATUS_OPEN
 
 

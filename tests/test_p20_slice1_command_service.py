@@ -293,6 +293,51 @@ def test_photo_evidence_submit_rejected_in_mvp():
     assert result["error_code"] == "customer_submit_not_supported"
 
 
+def test_insurance_card_evidence_submit_accepted():
+    svc, store = _svc()
+    created = _create(
+        svc,
+        items=[_item("Insurance card", 1, "policy_or_insurance_card")],
+    )
+    result = svc.submit_request_item(
+        case_id="case_slice1",
+        customer_id="h5:demo",
+        active_request_item_id="item_1",
+        command_id="cmd-submit-insurance-card",
+        idempotency_key="idem-submit-insurance-card",
+        expected_case_version=created["aggregate_version"],
+        client_draft_id="draft_insurance_card",
+        evidence={"attachment_id": "att_insurance_1"},
+    )
+    assert result["outcome"] == "accepted"
+    assert "error_code" not in result
+    cust = result["customer_projection"]
+    broker = result["broker_projection"]
+    assert cust["workflow_state"] == "broker_review_ready"
+    assert cust["customer_next_action"]["action_type"] == "wait_for_broker_review"
+    assert broker["broker_next_action"]["action_type"] == "review_customer_response"
+    assert store.items["item_1"].status == "satisfied"
+    event_types = [e["event_type"] for e in store.events["case_slice1"]]
+    assert "evidence_received" in event_types
+    assert "customer_request_item_satisfied" in event_types
+    assert "supplement_submitted" in event_types
+
+    # Idempotent retry — no duplicate events
+    count_after = len(store.events["case_slice1"])
+    replay = svc.submit_request_item(
+        case_id="case_slice1",
+        customer_id="h5:demo",
+        active_request_item_id="item_1",
+        command_id="cmd-submit-insurance-card",
+        idempotency_key="idem-submit-insurance-card",
+        expected_case_version=created["aggregate_version"],
+        client_draft_id="draft_insurance_card",
+        evidence={"attachment_id": "att_insurance_1"},
+    )
+    assert replay["outcome"] == "replayed"
+    assert len(store.events["case_slice1"]) == count_after
+
+
 def test_duplicate_submission_creates_no_duplicate_event_or_task():
     svc, store = _svc()
     created = _create(svc)

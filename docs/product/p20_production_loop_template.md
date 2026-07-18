@@ -125,7 +125,8 @@ If a customer/broker form changed, confirm before Release:
 ### Founder Entry and Navigation Gate quick check (governing SSOT: North Star §J)
 
 - [ ] Every primary navigation destination renders non-blank content
-- [ ] Home from success/result reaches usable Start Claim entry
+- [ ] Home with active token → Task Home; no token → Start Claim
+- [ ] Explicit「开始新报案」clears draft and opens Start Claim
 - [ ] Restored sessions cannot strand users on stale result pages
 - [ ] Start New Claim resets only claim-draft state
 - [ ] Page shell renders before remote data completes
@@ -133,6 +134,13 @@ If a customer/broker form changed, confirm before Release:
 - [ ] Tested after fresh launch, submit, resume, Preview reopen
 - [ ] Physical-device Preview smoke is a release blocker
 - [ ] Blank screen at any point = FAIL
+
+### Three Permanent Customer Flow Gates (governing SSOT: North Star §J2)
+
+- [ ] **First-Time Customer** — new customer completes normal intake with zero broker actions
+- [ ] **Return-Later** — same case continues without rescanning QR
+- [ ] **Exceptional Follow-Up** — broker request adds without wiping default intake
+- [ ] User Journey Contract filled for any new task type (`docs/product/p26g_user_journey_contract_template.md`)
 
 ## Loop result
 

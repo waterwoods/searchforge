@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
-    ADMIN_LIFECYCLE_DRAFT,
+    ADMIN_LIFECYCLE_ACTIVE,
     EVENT_CASE_CREATED,
     InMemoryIntakeStore,
     P20CaseIntakeCommandService,
@@ -52,14 +52,16 @@ def test_customer_start_claim_reuses_create_claim_and_workbench_projection(monke
     assert result["outcome"] == "accepted"
     case_id = result["case_id"]
     case = store.cases[case_id]
-    assert case["admin_lifecycle"] == ADMIN_LIFECYCLE_DRAFT
+    # P26G: customer-originated claim is active + collecting (resume issued).
+    assert case["admin_lifecycle"] == ADMIN_LIFECYCLE_ACTIVE
     assert case["created_by_actor"] == "customer"
+    assert result.get("resume_token")
     assert case["workbench_test"] is True
     assert case["known_facts"]["accident_description"] == "等红灯被追尾"
     assert case["asserted_org_id"] == "office_demo"
     assert case["client_id"] == "tenant_demo"
     projection = result["broker_projection"]
-    assert projection["admin_lifecycle"] == ADMIN_LIFECYCLE_DRAFT
+    assert projection["admin_lifecycle"] == ADMIN_LIFECYCLE_ACTIVE
     assert projection["customer_projection"]["customer_next_action"] is None
     vin = next(i for i in projection["missing_information_checklist"] if i["field_key"] == "vin")
     assert vin["status"] == FACT_STATUS_MISSING
@@ -105,9 +107,16 @@ def test_customer_safe_response_hides_internals():
         "command_id": "cmd_secret",
         "aggregate_version": 2,
         "broker_projection": {"admin_lifecycle": "draft"},
+        "resume_token": "h5t1.opaque-resume",
+        "resume_expires_at": "2026-07-25T00:00:00Z",
     }
     safe = customer_start_claim_response(raw)
-    assert safe == {"ok": True, "outcome": "accepted"}
+    assert safe == {
+        "ok": True,
+        "outcome": "accepted",
+        "resume_token": "h5t1.opaque-resume",
+        "resume_expires_at": "2026-07-25T00:00:00Z",
+    }
     assert "case_id" not in safe
     assert "command_id" not in safe
     assert "aggregate_version" not in safe
@@ -141,13 +150,19 @@ def test_customer_start_claim_api_accept_and_replay(monkeypatch):
     }
     first = client.post("/api/h5/customer/start-claim", json=body)
     assert first.status_code == 201
-    assert first.json() == {"ok": True, "outcome": "accepted"}
-    assert "case_id" not in first.json()
+    first_body = first.json()
+    assert first_body["ok"] is True
+    assert first_body["outcome"] == "accepted"
+    assert first_body.get("resume_token")
+    assert "case_id" not in first_body
 
     second = client.post("/api/h5/customer/start-claim", json=body)
     assert second.status_code == 200
-    assert second.json() == {"ok": True, "outcome": "replayed"}
+    second_body = second.json()
+    assert second_body["ok"] is True
+    assert second_body["outcome"] == "replayed"
+    assert second_body.get("resume_token")
     assert len(store.cases) == 1
     case = next(iter(store.cases.values()))
-    assert case["admin_lifecycle"] == ADMIN_LIFECYCLE_DRAFT
+    assert case["admin_lifecycle"] == ADMIN_LIFECYCLE_ACTIVE
     assert case["created_by_actor"] == "customer"

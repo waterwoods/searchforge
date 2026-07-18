@@ -26,7 +26,10 @@ from services.fiqa_api.inbox_triage.p20_missing_information import (
     seed_fact_records_from_case,
 )
 from services.fiqa_api.wecom.claim_state import (
+    CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
     CLAIM_PHASE_BROKER_REVIEW,
+    CLAIM_PHASE_STARTED,
+    GUIDED_STATE_COLLECTING_TEXT,
     GUIDED_STATE_READY_FOR_BROKER_REVIEW,
     SERVICE_LANE_CLAIM,
 )
@@ -452,9 +455,23 @@ def _build_new_case_record(
     if actor == "customer":
         source_text = f"[Customer] Mini Program Start Claim by {broker_id}"
         activity_message = "Customer started Claim case (Capability 2)."
+        # P26G: customer-originated claims collect default intake — not broker-gated.
+        has_story = bool(str(known_facts.get("accident_description") or "").strip())
+        claim_phase = (
+            CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE if has_story else CLAIM_PHASE_STARTED
+        )
+        guided_state = GUIDED_STATE_COLLECTING_TEXT
+        admin_lifecycle = ADMIN_LIFECYCLE_ACTIVE
+        broker_next = "Customer is completing default intake; review when ready."
+        office_next = "Customer completing default intake; Request More only if exceptional"
     else:
         source_text = f"[Broker] New Claim created by {broker_id}"
         activity_message = "Broker created Claim case (Capability 2)."
+        claim_phase = CLAIM_PHASE_BROKER_REVIEW
+        guided_state = GUIDED_STATE_READY_FOR_BROKER_REVIEW
+        admin_lifecycle = ADMIN_LIFECYCLE_DRAFT
+        broker_next = "Review the accident first, then Request More only if needed."
+        office_next = "Review accident facts, then decide Request More"
     return {
         "case_id": case_id,
         "case_status": "new",
@@ -483,25 +500,25 @@ def _build_new_case_record(
         "issue_category": "claim_intake",
         "urgency": "normal",
         "manual_followup_needed": True,
-        "broker_next_step": "Review the accident first, then Request More only if needed.",
+        "broker_next_step": broker_next,
         "client_prep": "",
         "client_reply_draft": "",
         "handoff_ready": False,
         "collected_fields": [],
         "still_needed_fields": still_needed,
         "known_facts": known_facts,
-        "claim_phase": CLAIM_PHASE_BROKER_REVIEW,
-        "guided_workflow_state": GUIDED_STATE_READY_FOR_BROKER_REVIEW,
+        "claim_phase": claim_phase,
+        "guided_workflow_state": guided_state,
         "workbench_tags": tags,
         "workbench_test": is_test,
         "lifecycle_status": "collecting",
         "service_lane": SERVICE_LANE_CLAIM,
         "triage_mode": "greenfield",
         "office_case_title": title,
-        "office_broker_next_step": "Review accident facts, then decide Request More",
+        "office_broker_next_step": office_next,
         "p20_case_intake_capability_version": CAPABILITY_VERSION,
         "case_intake_capability_version": CAPABILITY_VERSION,
-        "admin_lifecycle": ADMIN_LIFECYCLE_DRAFT,
+        "admin_lifecycle": admin_lifecycle,
         "asserted_org_id": office_id or "",
         "client_id": tenant_id or "",
         "created_by_broker": broker_id,
@@ -579,9 +596,15 @@ class P20CaseIntakeCommandService:
                 actor=create_actor,
             )
             fact_records = seed_fact_records_from_case(case)
+            # Customer Start Claim issues resume access immediately (P26G).
+            create_lifecycle = (
+                ADMIN_LIFECYCLE_ACTIVE
+                if create_actor == "customer"
+                else ADMIN_LIFECYCLE_DRAFT
+            )
             aggregate = IntakeAggregate(
                 case_id=case_id,
-                admin_lifecycle=ADMIN_LIFECYCLE_DRAFT,
+                admin_lifecycle=create_lifecycle,
                 aggregate_version=2,
                 is_test=bool(normalized.get("is_test")),
                 office_id=office,

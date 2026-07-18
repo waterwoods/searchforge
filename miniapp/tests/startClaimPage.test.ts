@@ -97,16 +97,22 @@ test("start-claim wxml asks accident Must Have and never teaches VIN-first", () 
 test("founder Must Have values enable CTA and send normalized payload", async () => {
   const page = await loadStartClaimPage();
   const calls: Array<Record<string, unknown>> = [];
-  const redirects: string[] = [];
-  (globalThis as Record<string, any>).wx.redirectTo = ({ url }: { url: string }) => {
-    redirects.push(url);
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
   };
   (globalThis as Record<string, any>).wx.showToast = () => {};
+  const { loadResumeToken, clearResumeToken } = await import("../utils/storage");
+  clearResumeToken();
 
   const ctx = createPageContext(page, {
     callStartClaim(command: Record<string, unknown>) {
       calls.push(command);
-      return Promise.resolve({ ok: true, outcome: "accepted" });
+      return Promise.resolve({
+        ok: true,
+        outcome: "accepted",
+        resume_token: "h5t1.p26g-fresh",
+      });
     },
   });
   page.onLoad.call(ctx);
@@ -136,7 +142,10 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
   assert.equal(ctx.data.accidentDatetime, calls[0]?.accident_datetime);
   assert.equal(ctx.data.accidentLocation, calls[0]?.accident_location);
   assert.equal(ctx.data.injuryStatus, calls[0]?.injury_status);
-  assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
+  // P26G: resume token → Entry / Task Home (not dead-end success).
+  assert.deepEqual(launches, ["/pages/entry/entry"]);
+  assert.equal(loadResumeToken(), "h5t1.p26g-fresh");
+  clearResumeToken();
 });
 
 test("founder live values complete → no missing hint + CTA enabled", async () => {
@@ -251,20 +260,26 @@ test("transport failure maps distinctly and preserves form", async () => {
   assert.equal(ctx.data.canSubmit, true);
 });
 
-test("accepted-but-replayed retry reuses identity and shows receipt", async () => {
+test("accepted-but-replayed retry reuses identity and opens Task Home", async () => {
   const page = await loadStartClaimPage();
   const calls: Array<Record<string, unknown>> = [];
-  const redirects: string[] = [];
-  (globalThis as Record<string, any>).wx.redirectTo = ({ url }: { url: string }) => {
-    redirects.push(url);
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
   };
+  const { clearResumeToken, loadResumeToken } = await import("../utils/storage");
+  clearResumeToken();
   const ctx = createPageContext(page, {
     callStartClaim(command: Record<string, unknown>) {
       calls.push(command);
       if (calls.length === 1) {
         throw new ApiRequestError("timeout");
       }
-      return Promise.resolve({ ok: true, outcome: "replayed" });
+      return Promise.resolve({
+        ok: true,
+        outcome: "replayed",
+        resume_token: "h5t1.p26g-replay",
+      });
     },
   });
   page.onLoad.call(ctx);
@@ -279,7 +294,9 @@ test("accepted-but-replayed retry reuses identity and shows receipt", async () =
   await page.onRetry.call(ctx);
   assert.equal(calls[1]?.command_id, firstId);
   assert.equal(calls[1]?.idempotency_key, calls[0]?.idempotency_key);
-  assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
+  assert.deepEqual(launches, ["/pages/entry/entry"]);
+  assert.equal(loadResumeToken(), "h5t1.p26g-replay");
+  clearResumeToken();
 });
 
 test("submit with missing injury shows field error instead of silent disable-only", async () => {
@@ -319,43 +336,40 @@ test("start-claim-success wxml shows founder-facing receipt copy only", () => {
   assert.equal(wxml.includes("command_id"), false);
 });
 
-test("start-claim renders with no query parameters and clears stale resume", async () => {
+test("start-claim with active resume redirects to Entry (Task Home), keeps token", async () => {
   const page = await loadStartClaimPage();
   const { saveResumeToken, loadResumeToken } = await import("../utils/storage");
   saveResumeToken("h5t1.prior-submitted");
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
+  };
   const ctx = createPageContext(page);
   page.onLoad.call(ctx);
+  assert.deepEqual(launches, ["/pages/entry/entry"]);
+  assert.equal(loadResumeToken(), "h5t1.prior-submitted");
   assert.equal(ctx.data.pageReady, true);
-  assert.equal(ctx.data.initErrorMessage, "");
-  assert.match(String(ctx.data.missingHint || ""), /事故经过/);
-  assert.equal(loadResumeToken(), "");
-  // Required field keys exist for Home → Start Claim with empty query.
-  assert.equal(ctx.data.description, "");
-  assert.equal(ctx.data.accidentDatetime, "");
-  assert.equal(ctx.data.accidentLocation, "");
-  assert.equal(ctx.data.injuryStatus, "");
 });
 
-test("prior submitted claim storage does not hide the new form shell", async () => {
+test("start-claim with no resume renders fresh form shell", async () => {
   const page = await loadStartClaimPage();
-  const { saveResumeToken } = await import("../utils/storage");
-  saveResumeToken("h5t1.already-submitted");
-  const ctx = createPageContext(page, {
-    data: {
-      ...(page.data || {}),
-      pageReady: false,
-      initErrorMessage: "stale",
-      description: "old draft should reset",
-    },
-  });
-  // Recreate clean context after override merge
+  const { clearResumeToken } = await import("../utils/storage");
+  clearResumeToken();
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
+  };
   const clean = createPageContext(page);
   page.onLoad.call(clean);
+  assert.deepEqual(launches, []);
   assert.equal(clean.data.pageReady, true);
   assert.equal(clean.data.initErrorMessage, "");
   assert.equal(clean.data.description, "");
   assert.equal(clean.data.canSubmit, false);
-  void ctx;
+  assert.match(String(clean.data.missingHint || ""), /事故经过/);
+  assert.equal(clean.data.accidentDatetime, "");
+  assert.equal(clean.data.accidentLocation, "");
+  assert.equal(clean.data.injuryStatus, "");
 });
 
 test("initialization rejection surfaces error + retry without blanking form", async () => {
@@ -389,10 +403,12 @@ test("start-claim submit is single-flight and retries with same identity", async
     resolveStart = resolve;
   });
 
-  const redirects: string[] = [];
-  (globalThis as Record<string, any>).wx.redirectTo = ({ url }: { url: string }) => {
-    redirects.push(url);
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
   };
+  const { clearResumeToken } = await import("../utils/storage");
+  clearResumeToken();
 
   const ctx = createPageContext(page, {
     callStartClaim(command: Record<string, unknown>) {
@@ -412,10 +428,11 @@ test("start-claim submit is single-flight and retries with same identity", async
   assert.equal(calls.length, 1);
   assert.equal(ctx.data.busy.submitting, true);
 
-  resolveStart?.({ ok: true, outcome: "accepted" });
+  resolveStart?.({ ok: true, outcome: "accepted", resume_token: "h5t1.p26g-flight" } as any);
   await first;
-  assert.deepEqual(redirects, ["/pages/start-claim-success/start-claim-success"]);
+  assert.deepEqual(launches, ["/pages/entry/entry"]);
   assert.equal(ctx.data.busy.submitting, false);
+  clearResumeToken();
 
   const retryCtx = createPageContext(page, {
     callStartClaim(command: Record<string, unknown>) {

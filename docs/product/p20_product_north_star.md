@@ -239,27 +239,64 @@ automatic FAIL and a release blocker.
 
 1. **Non-blank destinations.** Every primary navigation destination renders
    non-blank content (form shell, loading, error, or actionable empty state).
-2. **Home from success/result.** Home from success/result pages reaches a
-   usable customer entry state (Start Claim form shell visible immediately).
-3. **No stale-result stranding.** Restored sessions cannot permanently strand
-   users on stale Submit Result / receipt pages with no path to a fresh entry.
-4. **Scoped Start New Claim reset.** Start New Claim / Home resets only
-   claim-draft resume state, not unrelated identity or API config.
-5. **Shell before network.** Page shell renders before remote data completes;
+2. **Home routing (P26D).** Capsule / operational Home follows One Active Case:
+   - **If** an active case/token exists → Home → Task Home (via Entry bootstrap).
+   - **Else** → Home → Start Claim (fresh form shell).
+   `pages[0]` remains Start Claim for Build Gate packaging; Start Claim must
+   redirect to Entry when a resume token is present (must not clear it first).
+3. **Start New Claim vs Home.** Explicit「开始新报案」clears claim-draft resume
+   and opens Start Claim. Home with an active case must **not** clear the token.
+4. **No stale-result stranding.** Restored sessions cannot permanently strand
+   users on stale Submit Result / receipt pages with no path to a fresh entry
+   or Task Home.
+5. **Scoped Start New Claim reset.** Start New Claim resets only claim-draft
+   resume state, not unrelated identity or API config.
+6. **Shell before network.** Page shell renders before remote data completes;
    the Start Claim form must not wait on an API response to appear.
-6. **Visible recovery.** Loading, error, and empty states are visible and
+7. **Visible recovery.** Loading, error, and empty states are visible and
    actionable (clear Chinese copy + retry or safe way back).
-7. **Navigation matrix.** Navigation is tested after fresh launch, successful
+8. **Navigation matrix.** Navigation is tested after fresh launch, successful
    submit, background/resume, and Preview reopen.
-8. **Physical Preview blocker.** Physical-device Preview smoke is a release
+9. **Physical Preview blocker.** Physical-device Preview smoke is a release
    blocker for entry/Home paths.
-9. **Blank = FAIL.** Blank screen at any point = automatic FAIL.
+10. **Blank = FAIL.** Blank screen at any point = automatic FAIL.
 
-Regression origin: after a restored Submit Result (`提交结果` /
-`已提交给陈总`), tapping the top-left Home control reached Start Claim
-(`开始报案`) with a completely blank body — no fields, loading, error, or
-retry — blocking Founder Form QA. This gate exists to make that class of
-failure a permanent blocker.
+Regression origin: (1) restored Submit Result Home opened a blank Start Claim
+body; (2) P26A Founder QA — capsule Home with an active Camry token cleared
+resume and stranded the customer on「开始报案」instead of Task Home. This gate
+makes both classes permanent blockers.
+
+### J2. Three Permanent Customer Flow Gates (P26G)
+
+**SSOT for this gate. Every future customer workflow feature must pass all three.**
+
+**Invariant:** NORMAL CUSTOMER INTAKE MUST NOT REQUIRE A BROKER ACTION TO
+CONTINUE. Broker actions may request clarification, replacement evidence,
+exceptional documents, or reopen completed tasks — they must not unlock
+accident story, date, location, injury, vehicle/VIN, insurance card, or
+required accident photos.
+
+| Gate | Question | Hard FAIL if |
+|------|----------|--------------|
+| **1. First-Time Customer** | Can a completely new customer complete normal intake with zero broker actions? | Broker Request More / QR is required to see or complete default tasks |
+| **2. Return-Later** | Can the same customer exit and continue the same case without rescanning? | Ordinary continuation requires a new QR; resume token/session is ignored or unsafe |
+| **3. Exceptional Follow-Up** | Can Broker add a special request without replacing/hiding/corrupting default intake? | Default and broker-requested tasks overwrite each other; completed work returns to pending |
+
+**Task source contract:** every customer-facing task carries `task_source`
+(`system_default` | `broker_requested`). Display text is not the source
+identifier. Constitution owns the merged plan; clients do not invent checklists.
+
+**Resume contract:** first valid entry binds and persists a server-validated
+resume token; later app entry resolves the same active case → Task Home.
+Do not trust `active_case_id` from local storage alone. QR remains valid for
+first binding, new device, expired session, broker deep link, or a distinct
+new claim — not for every ordinary continuation.
+
+**User Journey Contract template** (required before any new task type is
+production-ready): Who initiates? When visible? Default / conditional /
+broker-requested? Who completes? What canonical fact/evidence completes it?
+Broker confirmation required? Return-later behavior? Refresh/re-entry?
+Timeline event? Constitution output? Broker view? Security boundary?
 
 ### K. Mini Program Build Gate
 
@@ -285,7 +322,9 @@ Repo-root equivalent: `node scripts/validate_miniapp_build_gate.mjs`
 
 The gate must verify at minimum:
 
-1. `app.json` page registration is valid and `pages[0]` is Start Claim.
+1. `app.json` page registration is valid and `pages[0]` is Start Claim
+   (capsule Home entry; active-case redirect to Task Home is enforced in
+   Start Claim / `startClaimEntry` — see §J Home routing).
 2. Every registered page exists on disk (`.ts` / `.json` / `.wxml` / `.wxss`).
 3. Every `usingComponents` path exists.
 4. Filename casing matches exactly.

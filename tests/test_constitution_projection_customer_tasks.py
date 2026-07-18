@@ -262,5 +262,9 @@ def test_tasks_are_projection_only_not_hardcoded_empty_when_no_case_signals():
     assert TASK_ID_INSURANCE in by_id
     assert TASK_ID_PHOTOS in by_id
     assert TASK_ID_STORY in by_id
+    # P26G: default intake is actionable without a broker request row.
+    assert by_id[TASK_ID_INSURANCE]["actionable"] is True
+    assert by_id[TASK_ID_INSURANCE]["task_source"] == "system_default"
+    assert projection["customer"]["today"] != "先不用操作"
     # DL omitted — production path not open.
     assert TASK_ID_DRIVER_LICENSE not in by_id

@@ -20,6 +20,9 @@ export type CustomerStartClaimResult = {
   ok: boolean;
   outcome: "accepted" | "replayed" | string;
   error_code?: string;
+  /** P26G — opaque signed resume token; persist for Task Home / return-later. */
+  resume_token?: string;
+  resume_expires_at?: string;
 };
 
 export function mintStartClaimCommandIds(): {

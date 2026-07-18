@@ -108,6 +108,10 @@ export function mapConstitutionTaskCard(raw: ConstitutionTaskCard): CustomerTask
       ? "已完成"
       : `${Math.min(completed, total)}/${total}`;
 
+  const isToday = Boolean(raw.is_today);
+  // P26D: Focus + footer CTA already carry Today's action — avoid triple "上传保险卡".
+  const primaryAction = isToday ? "" : nonEmpty(raw.primary_action);
+
   return {
     taskId,
     title,
@@ -116,9 +120,9 @@ export function mapConstitutionTaskCard(raw: ConstitutionTaskCard): CustomerTask
     progressCompleted: completed,
     progressTotal: total,
     progressText,
-    isToday: Boolean(raw.is_today),
+    isToday,
     actionable,
-    primaryAction: nonEmpty(raw.primary_action),
+    primaryAction,
     route: actionable ? ROUTE_MAP[routeKey] || "" : "",
     completionMark:
       state === "completed" || state === "waiting_broker" ? "✓" : state === "blocked" ? "·" : "○",

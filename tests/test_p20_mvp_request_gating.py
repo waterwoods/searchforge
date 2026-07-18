@@ -9,15 +9,15 @@ from services.fiqa_api.inbox_triage.p20_missing_information import (
 )
 
 
-def test_mvp_sendable_is_vin_only():
+def test_mvp_sendable_includes_vin_and_insurance_card():
     assert is_mvp_sendable_item_type("vin") is True
     assert is_mvp_sendable_item_type("VIN") is True
+    assert is_mvp_sendable_item_type("policy_or_insurance_card") is True
     assert is_mvp_sendable_item_type("free_text") is False
-    assert is_mvp_sendable_item_type("policy_or_insurance_card") is False
     assert is_mvp_sendable_item_type("photo_evidence") is False
 
 
-def test_checklist_flags_mvp_sendable_and_suggests_vin_only():
+def test_checklist_flags_mvp_sendable_vin_and_insurance_card():
     checklist = derive_missing_information_checklist({})
     by_key = {row["field_key"]: row for row in checklist}
     assert by_key["vin"]["mvp_sendable"] is True
@@ -30,8 +30,8 @@ def test_checklist_flags_mvp_sendable_and_suggests_vin_only():
     assert by_key["vehicle_information"]["mvp_sendable"] is False
     assert by_key["vehicle_information"]["business_class"] == "request_more"
     assert by_key["vehicle_information"]["suggested_for_request"] is False
-    assert by_key["policy_or_insurance_card"]["mvp_sendable"] is False
-    assert by_key["policy_or_insurance_card"]["suggested_for_request"] is False
+    assert by_key["policy_or_insurance_card"]["mvp_sendable"] is True
+    assert by_key["policy_or_insurance_card"]["suggested_for_request"] is True
     assert by_key["photo_evidence"]["business_class"] == "nice_to_have"
 
 

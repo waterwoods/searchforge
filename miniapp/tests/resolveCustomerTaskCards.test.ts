@@ -100,6 +100,8 @@ test("resolveCustomerTaskCardsFromTask uses Constitution tasks only", () => {
   assert.equal(cards[0].isToday, true);
   assert.equal(cards[0].actionable, true);
   assert.equal(cards[0].route, "/pages/request-item/request-item");
+  // P26D: Today card omits duplicate primaryAction (Focus + footer CTA own it).
+  assert.equal(cards[0].primaryAction, "");
   assert.equal(cards[3].taskId, "driver_license");
   assert.equal(cards[3].actionable, false);
 });

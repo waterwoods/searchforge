@@ -1,13 +1,19 @@
 /**
  * Customer Start Claim entry / Home navigation helpers (pure + thin wx wrappers).
  *
- * Keeps Home → Start Claim deterministic after Receipt / success / restored sessions.
+ * P26D Home routing contract:
+ * - Active case/token → Home lands on Task Home (via Entry bootstrap)
+ * - No active case → Home lands on Start Claim
+ * - Explicit「开始新报案」→ clear draft resume, then Start Claim
+ * - pages[0] remains Start Claim (Build Gate / WeChat capsule Home entry)
  */
 
-import { clearResumeToken, clearSubmitIntentId } from "./storage";
+import { loadResumeToken, clearResumeToken, clearSubmitIntentId } from "./storage";
 
 export const START_CLAIM_ROUTE = "/pages/start-claim/start-claim";
 export const START_CLAIM_SUCCESS_ROUTE = "/pages/start-claim-success/start-claim-success";
+export const ENTRY_ROUTE = "/pages/entry/entry";
+export const TASK_HOME_ROUTE = "/pages/task-home/task-home";
 
 /** Keep Start Claim free of heavy task-view imports (injection / Home path). */
 export const START_CLAIM_SAFETY_COPY =
@@ -51,7 +57,7 @@ export function createEmptyStartClaimShell(missingHint: string): StartClaimShell
 
 /**
  * Reset only claim-draft resume markers so a prior submitted task cannot strand
- * the customer on Receipt after Home / Start New Claim.
+ * the customer on Receipt after Start New Claim.
  * Does not clear anonymous session identity or API config.
  */
 export function resetStartClaimDraftState(): void {
@@ -59,27 +65,64 @@ export function resetStartClaimDraftState(): void {
   clearSubmitIntentId();
 }
 
-/** Home / Start New Claim must always target the customer entry form. */
+/** True when a resumable active case/token is present in local storage. */
+export function hasActiveCustomerCase(): boolean {
+  return Boolean(loadResumeToken());
+}
+
+/** Start Claim route — used when no active case, or after explicit Start New Claim. */
 export function resolveHomeStartClaimUrl(): string {
   return START_CLAIM_ROUTE;
 }
 
 /**
- * Deterministic Home navigation used by success/result pages.
- * Prefer reLaunch so restored stacks cannot return to a stale Receipt.
+ * Home destination for capsule Home / success return with an active case.
+ * Entry bootstrap rehydrates Task Home (or Receipt if already submitted).
  */
-export function reLaunchStartClaimHome(wxLike: {
+export function resolveCustomerHomeUrl(): string {
+  return hasActiveCustomerCase() ? ENTRY_ROUTE : START_CLAIM_ROUTE;
+}
+
+type WxNavigate = {
   reLaunch: (opts: { url: string; fail?: () => void }) => void;
-  redirectTo?: (opts: { url: string }) => void;
-}): void {
-  resetStartClaimDraftState();
-  const url = resolveHomeStartClaimUrl();
+  redirectTo?: (opts: { url: string; fail?: () => void }) => void;
+};
+
+function launchUrl(wxLike: WxNavigate, url: string): void {
   wxLike.reLaunch({
     url,
     fail: () => {
       wxLike.redirectTo?.({ url });
     },
   });
+}
+
+/**
+ * Deterministic Home navigation: active token → Entry/Task Home; else Start Claim.
+ * Does not clear resume — preserves One Active Case.
+ */
+export function reLaunchCustomerHome(wxLike: WxNavigate): void {
+  launchUrl(wxLike, resolveCustomerHomeUrl());
+}
+
+/**
+ * Explicit「开始新报案」: clear draft resume, then open Start Claim form.
+ * Prefer reLaunch so restored stacks cannot return to a stale Receipt.
+ */
+export function reLaunchStartClaimHome(wxLike: WxNavigate): void {
+  resetStartClaimDraftState();
+  launchUrl(wxLike, resolveHomeStartClaimUrl());
+}
+
+/**
+ * Capsule Home opens pages[0] (Start Claim). If an active case exists, redirect
+ * to Entry before the form clears resume — Task Home becomes operational home.
+ * Returns true when a redirect was started (caller must not reset draft).
+ */
+export function redirectStartClaimIfActiveCase(wxLike: WxNavigate): boolean {
+  if (!hasActiveCustomerCase()) return false;
+  launchUrl(wxLike, ENTRY_ROUTE);
+  return true;
 }
 
 /** WXML must never be able to hide the entire form shell. */
