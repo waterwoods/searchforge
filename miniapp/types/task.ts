@@ -172,6 +172,14 @@ export type CustomerConstitutionTrust = {
   care_note?: string | null;
 };
 
+export type CustomerConstitutionTaskAction = {
+  kind?: string | null;
+  route?: string | null;
+  task_type?: string | null;
+  task_source?: string | null;
+  request_item_id?: string | null;
+};
+
 export type CustomerConstitutionTaskCard = {
   task_id?: string | null;
   title?: string | null;
@@ -184,6 +192,8 @@ export type CustomerConstitutionTaskCard = {
   /** P26G — system_default | broker_requested */
   task_source?: string | null;
   reason?: string | null;
+  /** P26G-Q1 — semantic action; prefer over Chinese labels for routing */
+  action?: CustomerConstitutionTaskAction | null;
 };
 
 export type CustomerConstitutionProjection = {

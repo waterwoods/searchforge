@@ -22,7 +22,7 @@ export type CustomerTaskCardState =
   | "waiting_broker"
   | "blocked";
 
-export type CustomerTaskCardRoute = "request_item" | "photos" | "story" | "";
+export type CustomerTaskCardRoute = "request_item" | "insurance" | "photos" | "story" | "";
 
 export type ConstitutionTaskCard = {
   task_id?: string | null;
@@ -59,7 +59,10 @@ const STATE_LABELS: Record<CustomerTaskCardState, string> = {
 };
 
 const ROUTE_MAP: Record<string, string> = {
+  // Broker Request More follow-up (requires Slice1 / request_item_id).
   request_item: REQUEST_ITEM_ROUTE,
+  // P26G-Q1 — system_default insurance reuses the same upload page/engine.
+  insurance: REQUEST_ITEM_ROUTE,
   photos: "/pages/photos/photos",
   story: "/pages/story/story",
 };

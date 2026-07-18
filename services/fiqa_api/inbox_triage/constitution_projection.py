@@ -87,8 +87,14 @@ TASK_ID_STORY = "accident_story"
 TASK_ID_DRIVER_LICENSE = "driver_license"
 
 _ROUTE_REQUEST_ITEM = "request_item"
+# P26G-Q1 — system_default insurance upload (no Slice1 / request_item_id).
+_ROUTE_INSURANCE = "insurance"
 _ROUTE_PHOTOS = "photos"
 _ROUTE_STORY = "story"
+
+_WHY_INSURANCE_DEFAULT = "请上传清晰的保险卡照片，方便陈总继续处理。"
+_WHY_INSURANCE_AFTER_STORY = "事故经过已收到，请继续上传保险卡。"
+_AFTER_INSURANCE_DEFAULT = "上传后我们会继续整理资料。"
 
 _PHOTO_SLOTS = frozenset(
     {"scene_photo", "customer_damage_photo", "other_party_vehicle_photo"}
@@ -488,7 +494,14 @@ def _customer_why(deps: _ResolvedDeps, today: str) -> str:
     action = _slice1_customer_action(deps.slice1)
     active_item = _open_request_active_item(deps.slice1)
     if _is_insurance_card_task(today=today, action=action, active_item=active_item):
-        return _WHY_INSURANCE_CARD
+        # Camry broker Why only when story + photo evidence actually exist.
+        photo_completed, photo_total, any_photo = _photo_progress(deps)
+        photos_done = any_photo and photo_completed >= photo_total
+        if _has_accident_story(deps) and photos_done:
+            return _WHY_INSURANCE_CARD
+        if _has_accident_story(deps):
+            return _WHY_INSURANCE_AFTER_STORY
+        return _WHY_INSURANCE_DEFAULT
     if today == _TODAY_WAIT or _is_waiting_broker(deps, action):
         if _is_waiting_broker(deps, action):
             return _WHY_BROKER_REVIEW
@@ -500,7 +513,11 @@ def _customer_after(deps: _ResolvedDeps, today: str) -> str:
     action = _slice1_customer_action(deps.slice1)
     active_item = _open_request_active_item(deps.slice1)
     if _is_insurance_card_task(today=today, action=action, active_item=active_item):
-        return _AFTER_INSURANCE_CARD
+        photo_completed, photo_total, any_photo = _photo_progress(deps)
+        photos_done = any_photo and photo_completed >= photo_total
+        if _has_accident_story(deps) and photos_done:
+            return _AFTER_INSURANCE_CARD
+        return _AFTER_INSURANCE_DEFAULT
     if today == _TODAY_WAIT or _is_waiting_broker(deps, action):
         if _is_waiting_broker(deps, action):
             return _AFTER_WAIT_CONFIRM
@@ -614,6 +631,7 @@ def _task_card(
     primary_action: str | None = None,
     task_source: str = TASK_SOURCE_SYSTEM_DEFAULT,
     reason: str | None = None,
+    request_item_id: str | None = None,
 ) -> dict[str, Any]:
     card: dict[str, Any] = {
         "task_id": task_id,
@@ -631,6 +649,17 @@ def _task_card(
     }
     if reason:
         card["reason"] = reason
+    # P26G-Q1 — explicit semantic action (pages must not invent routes from labels).
+    if route and actionable:
+        action: dict[str, Any] = {
+            "kind": "open_route",
+            "route": route,
+            "task_type": task_id,
+            "task_source": task_source,
+        }
+        if request_item_id:
+            action["request_item_id"] = request_item_id
+        card["action"] = action
     return card
 
 
@@ -705,9 +734,10 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
 
     Hard rules:
     - No hard-coded page list on the client — this list is the authority.
-    - Insurance uses existing Slice1 / request_item path.
-    - Photos use existing upload slots only.
-    - Story is a task entry (voice/AI later).
+    - system_default insurance → route=insurance (upload engine, no request_item_id).
+    - broker_requested insurance → route=request_item (Slice1 follow-up).
+    - Photos use existing upload slots only; never fake-completed without evidence.
+    - Story completed only when this case has accident_description.
     - Driver License appears only while its production path is unfinished.
     """
     today = str(customer.get("today") or "").strip()
@@ -732,6 +762,7 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
         TASK_STATE_WAITING_BROKER,
     }
     insurance_reason = None
+    broker_request_item_id = None
     if insurance_source == TASK_SOURCE_BROKER_REQUESTED and not insurance_done:
         action = _slice1_customer_action(deps.slice1)
         insurance_reason = str(
@@ -739,6 +770,19 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             or (action or {}).get("title")
             or "陈总需要保险卡"
         ).strip() or None
+        broker_request_item_id = str(
+            (action or {}).get("request_item_id")
+            or (active_item or {}).get("request_item_id")
+            or ""
+        ).strip() or None
+    # system_default → insurance upload; broker_requested → Slice1 request_item.
+    insurance_route = None
+    if insurance_actionable:
+        insurance_route = (
+            _ROUTE_REQUEST_ITEM
+            if insurance_source == TASK_SOURCE_BROKER_REQUESTED
+            else _ROUTE_INSURANCE
+        )
     tasks.append(
         _task_card(
             task_id=TASK_ID_INSURANCE,
@@ -747,25 +791,26 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             completed=1 if insurance_done else 0,
             total=1,
             is_today=insurance_is_today and not insurance_done,
-            route=_ROUTE_REQUEST_ITEM if insurance_actionable else None,
+            route=insurance_route,
             actionable=insurance_actionable,
             primary_action="上传保险卡" if insurance_actionable else None,
             task_source=insurance_source,
             reason=insurance_reason,
+            request_item_id=broker_request_item_id,
         )
     )
 
     # 2) Accident Photos — existing upload capability only
+    # Case Isolation Gate: never mark completed without this case's evidence.
     photo_completed, photo_total, any_photo = _photo_progress(deps)
-    if insurance_is_today:
-        # One Truth with Why (_WHY_INSURANCE_CARD): do not compete with Today Focus.
+    photos_done = any_photo and photo_completed >= photo_total
+    if photos_done:
         photo_state = TASK_STATE_COMPLETED
         photo_actionable = False
         photo_is_today = False
-        if not any_photo:
-            photo_completed, photo_total = 1, 1
-    elif any_photo and photo_completed >= photo_total:
-        photo_state = TASK_STATE_COMPLETED
+    elif insurance_is_today:
+        # Today First: do not compete with insurance Focus — blocked, not fake-completed.
+        photo_state = TASK_STATE_BLOCKED
         photo_actionable = False
         photo_is_today = False
     elif today in {"补充车辆照片", "上传现场照片", "补充照片"} or (
@@ -775,8 +820,8 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
         photo_actionable = True
         photo_is_today = True
     elif any_photo:
-        photo_state = TASK_STATE_IN_PROGRESS if photo_completed < photo_total else TASK_STATE_COMPLETED
-        photo_actionable = photo_state != TASK_STATE_COMPLETED
+        photo_state = TASK_STATE_IN_PROGRESS
+        photo_actionable = True
         photo_is_today = False
     else:
         photo_state = TASK_STATE_PENDING
@@ -792,7 +837,7 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             task_id=TASK_ID_PHOTOS,
             title="事故照片",
             state=photo_state,
-            completed=photo_completed,
+            completed=photo_completed if any_photo or photos_done else 0,
             total=photo_total,
             is_today=photo_is_today,
             route=_ROUTE_PHOTOS if photo_actionable else None,
@@ -802,11 +847,15 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
         )
     )
 
-    # 3) Accident Story — task entry + placeholder for future voice/AI
+    # 3) Accident Story — completed only when this case has accident_description.
     story_done = _has_accident_story(deps)
-    if story_done or insurance_is_today:
-        # One Truth: insurance Today implies story already finished for Focus/Why.
+    if story_done:
         story_state = TASK_STATE_COMPLETED
+        story_actionable = False
+        story_is_today = False
+    elif insurance_is_today:
+        # Today First: defer behind insurance Focus without inventing completion.
+        story_state = TASK_STATE_BLOCKED
         story_actionable = False
         story_is_today = False
     elif today in {"填写事故经过", "补充事故经过", "事故经过"}:

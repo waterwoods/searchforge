@@ -15,6 +15,7 @@ from services.fiqa_api.inbox_triage.constitution_projection import (
     TASK_ID_INSURANCE,
     TASK_ID_PHOTOS,
     TASK_ID_STORY,
+    TASK_STATE_BLOCKED,
     TASK_STATE_COMPLETED,
     TASK_STATE_PENDING,
     ConstitutionInputs,
@@ -93,17 +94,23 @@ def test_gate1_new_claim_zero_broker_requests_has_default_tasks():
     insurance = by_id[TASK_ID_INSURANCE]
     assert insurance["task_source"] == TASK_SOURCE_SYSTEM_DEFAULT
     assert insurance["actionable"] is True
-    assert insurance["route"] == "request_item"
+    assert insurance["route"] == "insurance"
+    assert insurance["action"]["route"] == "insurance"
+    assert "request_item_id" not in insurance["action"]
     assert insurance["state"] in {TASK_STATE_PENDING, "in_progress"}
     assert insurance["is_today"] is True
     assert customer["today"] == "上传保险卡"
 
     photos = by_id[TASK_ID_PHOTOS]
     assert photos["task_source"] == TASK_SOURCE_SYSTEM_DEFAULT
-    # One Truth: when Today is insurance, photo card does not compete as pending.
+    # Today First: defer behind insurance Focus — blocked, never fake-completed.
+    assert photos["state"] == TASK_STATE_BLOCKED
+    assert photos["actionable"] is False
+    assert photos["progress"]["completed"] == 0
 
     story = by_id[TASK_ID_STORY]
     assert story["task_source"] == TASK_SOURCE_SYSTEM_DEFAULT
+    # Story completed only because this case has accident_description (Start Claim).
     assert story["state"] == TASK_STATE_COMPLETED
 
 
@@ -169,6 +176,8 @@ def test_gate3_broker_followup_adds_without_wiping_defaults():
     assert TASK_ID_INSURANCE in by_id
     assert by_id[TASK_ID_INSURANCE]["task_source"] == TASK_SOURCE_BROKER_REQUESTED
     assert by_id[TASK_ID_INSURANCE]["reason"]
+    assert by_id[TASK_ID_INSURANCE]["route"] == "request_item"
+    assert by_id[TASK_ID_INSURANCE]["action"]["route"] == "request_item"
     # Defaults remain present (photos still a card).
     assert by_id[TASK_ID_PHOTOS]["task_source"] == TASK_SOURCE_SYSTEM_DEFAULT
 

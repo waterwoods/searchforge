@@ -321,7 +321,10 @@ Page({
         });
         return;
       }
-      if (!isSlice1CustomerFlow(task)) {
+      // P26G-Q1 — allow system_default insurance without Slice1 projection.
+      // Broker request-item still requires Slice1; do not invent request rows.
+      const systemDefaultInsurance = resolveSystemDefaultInsurance(task);
+      if (!isSlice1CustomerFlow(task) && !systemDefaultInsurance.enabled) {
         this.safePageSetData({
           loading: false,
           pageError: {

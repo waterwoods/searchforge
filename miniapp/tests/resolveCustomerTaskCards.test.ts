@@ -131,6 +131,46 @@ test("primary route prefers today's actionable Constitution card", () => {
   assert.equal(resolveTaskHomePrimaryRoute(task), "/pages/request-item/request-item");
 });
 
+test("P26G-Q1 system_default insurance route maps to upload page (not label-based)", () => {
+  const card = mapConstitutionTaskCard({
+    task_id: "insurance_card",
+    title: "保险卡",
+    state: "in_progress",
+    progress: { completed: 0, total: 1 },
+    is_today: true,
+    route: "insurance",
+    actionable: true,
+    primary_action: "上传保险卡",
+  });
+  assert.ok(card);
+  assert.equal(card!.route, "/pages/request-item/request-item");
+  assert.equal(card!.actionable, true);
+
+  const photos = mapConstitutionTaskCard({
+    task_id: "accident_photos",
+    title: "事故照片",
+    state: "pending",
+    progress: { completed: 0, total: 1 },
+    is_today: false,
+    route: "photos",
+    actionable: true,
+    primary_action: "补充照片",
+  });
+  assert.equal(photos!.route, "/pages/photos/photos");
+
+  const story = mapConstitutionTaskCard({
+    task_id: "accident_story",
+    title: "事故经过",
+    state: "pending",
+    progress: { completed: 0, total: 1 },
+    is_today: false,
+    route: "story",
+    actionable: true,
+    primary_action: "填写事故经过",
+  });
+  assert.equal(story!.route, "/pages/story/story");
+});
+
 test("mapConstitutionTaskCard normalizes shared state model", () => {
   const card = mapConstitutionTaskCard({
     task_id: "accident_photos",

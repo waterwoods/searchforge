@@ -165,7 +165,7 @@ def test_camry_after_upload_insurance_waiting_broker_and_dl_omitted():
 
 
 def test_insurance_today_one_truth_even_when_photo_slots_empty():
-    """Why says story+photos done; cards must not show competing pending photos."""
+    """Today First: empty photos must not fake-complete; Why must not invent photo done."""
     case = _camry_before_upload_case()
     case["claim_evidence_summary"] = {
         "received_slots": [],
@@ -173,11 +173,15 @@ def test_insurance_today_one_truth_even_when_photo_slots_empty():
     }
     projection = build_constitution_projection(ConstitutionInputs(case=case))
     customer = projection["customer"]
-    assert "现场照片已经完成" in str(customer.get("why") or "")
+    why = str(customer.get("why") or "")
+    assert "现场照片已经完成" not in why
+    assert "事故经过已收到" in why or "请上传清晰的保险卡" in why
     by_id = _by_id(customer["tasks"])
     assert by_id[TASK_ID_INSURANCE]["is_today"] is True
-    assert by_id[TASK_ID_PHOTOS]["state"] == TASK_STATE_COMPLETED
+    assert by_id[TASK_ID_PHOTOS]["state"] == TASK_STATE_BLOCKED
     assert by_id[TASK_ID_PHOTOS]["actionable"] is False
+    assert by_id[TASK_ID_PHOTOS]["progress"]["completed"] == 0
+    # Story completed only from this case's accident_description.
     assert by_id[TASK_ID_STORY]["state"] == TASK_STATE_COMPLETED
     assert by_id[TASK_ID_STORY]["actionable"] is False
 
@@ -265,6 +269,7 @@ def test_tasks_are_projection_only_not_hardcoded_empty_when_no_case_signals():
     # P26G: default intake is actionable without a broker request row.
     assert by_id[TASK_ID_INSURANCE]["actionable"] is True
     assert by_id[TASK_ID_INSURANCE]["task_source"] == "system_default"
+    assert by_id[TASK_ID_INSURANCE]["route"] == "insurance"
     assert projection["customer"]["today"] != "先不用操作"
     # DL omitted — production path not open.
     assert TASK_ID_DRIVER_LICENSE not in by_id
