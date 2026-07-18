@@ -1,0 +1,32 @@
+{
+  "start_http_status": 201,
+  "start_outcome": "accepted",
+  "resume_token_issued": true,
+  "resume_token_preview": "h5t1.e…10fe",
+  "case_id": "case_247cde95a5e9",
+  "customer_name": "Founder P26G-R (anonymous session)",
+  "vehicle": "(none yet — default intake)",
+  "initial_claim_phase": "accident_basics_in_progress",
+  "broker_request_count": 0,
+  "default_task_count": 3,
+  "task_ids": [
+    "accident_photos",
+    "accident_story",
+    "insurance_card"
+  ],
+  "today": "上传保险卡",
+  "current_stage": "customer_action_needed",
+  "task_sources": {
+    "insurance_card": "system_default",
+    "accident_photos": "system_default",
+    "accident_story": "system_default"
+  },
+  "insurance_actionable": true,
+  "insurance_route": "request_item",
+  "photos_present": true,
+  "story_state": "completed",
+  "slice1_customer_next_action": null,
+  "session_id": "founder_p26g_r_20260718_113303",
+  "qa_api": "https://fiqa-api-g7zatxrycq-uw.a.run.app",
+  "revision_expected": "fiqa-api-00225-ckv"
+}
