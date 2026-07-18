@@ -1,0 +1,49 @@
+{
+  "revision_expected": "fiqa-api-00226-vnv",
+  "qa_api": "https://fiqa-api-g7zatxrycq-uw.a.run.app",
+  "start_http_status": 201,
+  "start_outcome": "accepted",
+  "resume_token_issued": true,
+  "resume_token_preview": "h5t1.e…ae80",
+  "case_id": "case_8a1754937290",
+  "initial_claim_phase": "accident_basics_in_progress",
+  "broker_request_count": 0,
+  "today": "上传保险卡",
+  "why": "事故经过已收到，请继续上传保险卡。",
+  "current_stage": "customer_action_needed",
+  "story_state": "completed",
+  "photos_state": "blocked",
+  "photos_progress": {
+    "completed": 0,
+    "total": 1
+  },
+  "insurance_route": "insurance",
+  "insurance_task_source": "system_default",
+  "insurance_action": {
+    "kind": "open_route",
+    "route": "insurance",
+    "task_type": "insurance_card",
+    "task_source": "system_default"
+  },
+  "task_sources": {
+    "insurance_card": "system_default",
+    "accident_photos": "system_default",
+    "accident_story": "system_default"
+  },
+  "checks": {
+    "health_live_ok": true,
+    "intake_path_ready": true,
+    "broker_request_count_0": true,
+    "today_not_wait": true,
+    "story_completed_from_basics": true,
+    "photos_not_completed": true,
+    "photos_progress_0": true,
+    "insurance_route_insurance": true,
+    "insurance_action_no_request_item_id": true,
+    "insurance_task_source_system_default": true,
+    "insurance_actionable": true,
+    "why_not_fake_photos_done": true
+  },
+  "all_checks_pass": true,
+  "session_id": "founder_p26g_q1_r_20260718_122448"
+}
