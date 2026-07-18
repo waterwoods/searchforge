@@ -157,10 +157,13 @@ export function LaunchGoldenQaPanel() {
                     />
                 ) : state?.status === 'ready_to_scan' ? (
                     <Alert
-                        type="info"
+                        type="warning"
                         showIcon
-                        message="Reset ready"
-                        description="Preview config is on the API host. For local DevTools auto-inject, use local UI (npm run dev) or: bash scripts/launch_golden_qa.sh --qa"
+                        message="Reset ready — inject Preview on your laptop"
+                        description={
+                            state.devtools_hint ||
+                            'Cloud Run cannot update WeChat DevTools. Run on this machine: bash scripts/launch_golden_qa.sh --qa — then 清缓存 → Preview. Stale compile tokens return case_not_found (404).'
+                        }
                     />
                 ) : null}
                 {state?.report_relpath ? (

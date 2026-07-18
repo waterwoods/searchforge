@@ -133,6 +133,19 @@ def launch_golden_qa(
         token_masked = handoff.get("token_masked")
 
         preview_meta: dict[str, Any] = {"preview_prepared": False}
+        # Cloud Run cannot write the Founder's gitignored DevTools private config.
+        # Never claim preview_prepared there (stale local tokens → case_not_found 404).
+        cloud_run = bool((os.getenv("K_SERVICE") or "").strip())
+        if prepare_preview and cloud_run:
+            prepare_preview = False
+            preview_meta = {
+                "preview_prepared": False,
+                "devtools_hint": (
+                    "Reset OK on QA API. On your laptop run: "
+                    "bash scripts/launch_golden_qa.sh --qa "
+                    "(or local Vite DEV Workbench) so DevTools compile mode gets this token."
+                ),
+            }
         if prepare_preview:
             _write_status(
                 {
