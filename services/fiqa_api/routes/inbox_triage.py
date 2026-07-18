@@ -1811,6 +1811,26 @@ async def get_recent_cases(
     except Exception as exc:
         logger.warning("Workbench enrich failed, returning raw cases: %s", exc)
         enriched = raw
+
+    # P24D1 — lightweight Constitution queue projection (no per-case Slice1 fetch).
+    # Uses stored/list Slice1 + already-enriched brief/evidence; detail stays authoritative.
+    try:
+        from services.fiqa_api.inbox_triage.constitution_projection import (
+            attach_constitution_queue_projection,
+        )
+
+        for row in enriched:
+            try:
+                attach_constitution_queue_projection(row)
+            except Exception as exc:
+                cid = str((row or {}).get("case_id") or "").strip() or "?"
+                logger.warning(
+                    "Constitution queue projection attach failed for case %s: %s",
+                    cid,
+                    exc,
+                )
+    except Exception as exc:
+        logger.warning("Constitution queue projection import/attach failed: %s", exc)
     from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
         redact_case_slice1_responses_for_list,
     )
@@ -1962,6 +1982,18 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
                 case["case_intake_projection"] = intake
     except Exception as exc:
         logger.warning("Customer access card refresh failed for case %s: %s", cid, exc)
+
+    # P24A — Constitution Projection skeleton (additive read-model only).
+    # After enrich + live Slice1 so deps are present; never mutates persisted Case.
+    try:
+        from services.fiqa_api.inbox_triage.constitution_projection import (
+            attach_constitution_projection,
+        )
+
+        attach_constitution_projection(case)
+    except Exception as exc:
+        logger.warning("Constitution projection attach failed for case %s: %s", cid, exc)
+
     return sanitize_case_for_workbench_api(case)
 
 
@@ -2701,6 +2733,71 @@ async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
     }
     if office_hint:
         out["support_office_hint_check"] = office_hint
+    return out
+
+
+@router.get("/support/launch-golden-qa/status")
+async def support_launch_golden_qa_status(request: Request) -> dict[str, Any]:
+    """P25 — Launch Golden QA status (no raw token). Support-gated internal tool."""
+    assert_support_export_authorized(request)
+    from scripts.launch_golden_qa import golden_qa_launch_enabled, public_status_view
+
+    return {
+        "ok": True,
+        "enabled": golden_qa_launch_enabled(),
+        **public_status_view(),
+    }
+
+
+@router.post("/support/launch-golden-qa")
+async def support_launch_golden_qa(request: Request) -> dict[str, Any]:
+    """
+    P25 — Launch Golden QA: reset Camry Golden Case + prepare DevTools Preview when possible.
+
+    Internal release tool only. Requires support auth + ENABLE_GOLDEN_QA_LAUNCH (or local ENV).
+    Never returns raw token in the durable status file; may include one-shot compile query
+    for local Preview prep (support-authorized callers only).
+    """
+    assert_support_export_authorized(request)
+    from scripts.launch_golden_qa import (
+        golden_qa_launch_enabled,
+        launch_golden_qa,
+        public_status_view,
+    )
+
+    if not golden_qa_launch_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="golden_qa_launch_disabled — set ENABLE_GOLDEN_QA_LAUNCH=1",
+        )
+
+    body: dict[str, Any] = {}
+    try:
+        raw = await request.json()
+        if isinstance(raw, dict):
+            body = raw
+    except Exception:
+        body = {}
+
+    target = str(body.get("target") or "qa").strip().lower()
+    if target not in ("qa", "cloud", "local"):
+        target = "qa"
+    if target == "cloud":
+        target = "qa"
+    prepare_preview = body.get("prepare_preview")
+    if prepare_preview is None:
+        prepare_preview = True
+
+    result = launch_golden_qa(
+        target=target,
+        prepare_preview=bool(prepare_preview),
+    )
+    public = public_status_view(result)
+    out: dict[str, Any] = {"ok": bool(result.get("ok")), **public}
+    # One-shot for local Vite / DevTools apply — not persisted in status file
+    if result.get("ok") and result.get("devtools_launch_query"):
+        out["devtools_launch_query"] = result.get("devtools_launch_query")
+        out["mini_program_path"] = result.get("mini_program_path")
     return out
 
 

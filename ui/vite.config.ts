@@ -7,6 +7,7 @@ import { defineConfig, loadEnv } from 'vite';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import react from '@vitejs/plugin-react';
+import { goldenQaPreviewPlugin } from './vite.goldenQaPlugin';
 
 /** Vercel hosts the UI on HTTPS; API must be an absolute HTTPS origin or browsers block requests (axios "Network Error"). */
 function assertVercelProductionApiBase(mode: string) {
@@ -62,7 +63,11 @@ export default defineConfig(({ mode }) => {
             '@': path.resolve(__dirname, 'src'),
         },
     },
-    plugins: [react()],
+    plugins: [
+        react(),
+        // DEV-only: local Preview inject for Launch Golden QA (never in production bundle logic)
+        ...(mode === 'development' ? [goldenQaPreviewPlugin(path.resolve(__dirname, '..'))] : []),
+    ],
     define: {
         __APP_VERSION__: JSON.stringify(getAppVersion()),
         __BUILD_TIME_ISO__: JSON.stringify(new Date().toISOString()),

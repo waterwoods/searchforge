@@ -87,3 +87,7 @@ miniapp/project.private.config.json
 
 # P19M-1A E2E smoke artifacts (may reference case ids)
 docs/evidence/p19m1a_devtools_e2e_smoke_*.json
+
+# P24G Camry Golden QA — session tokens / local store (never commit)
+docs/evidence/golden_qa/last_reset/
+data/camry_golden_qa_cases.json

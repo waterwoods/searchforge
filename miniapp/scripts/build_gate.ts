@@ -10,6 +10,7 @@ import {
   readdirSync,
   readFileSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +23,55 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const miniappRoot = join(here, "..");
+const TOKEN_QUERY_RE = /(?:^|[?&])token=/;
+
+/**
+ * P25 — Fail-closed: clear Golden session tokens from gitignored private compile
+ * conditions before Build Gate evaluation so tokens never package.
+ */
+export function clearGoldenSessionTokensFromPrivateConfig(): {
+  ok: boolean;
+  cleared: number;
+  error?: string;
+} {
+  const privatePath = join(miniappRoot, "project.private.config.json");
+  if (!existsSync(privatePath)) {
+    return { ok: true, cleared: 0 };
+  }
+  try {
+    const cfg = JSON.parse(readFileSync(privatePath, "utf8")) as {
+      condition?: { miniprogram?: { list?: Array<Record<string, unknown>> } };
+    };
+    const list = cfg?.condition?.miniprogram?.list;
+    if (!Array.isArray(list)) {
+      return { ok: true, cleared: 0 };
+    }
+    let cleared = 0;
+    for (const entry of list) {
+      const query = String(entry?.query || "");
+      if (TOKEN_QUERY_RE.test(query)) {
+        entry.query = "";
+        if (String(entry.pathName || "") === "pages/entry/entry") {
+          entry.name = "pages/entry/entry (token via query only)";
+        }
+        cleared += 1;
+      }
+    }
+    writeFileSync(privatePath, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+    // Verify
+    const verify = JSON.parse(readFileSync(privatePath, "utf8")) as {
+      condition?: { miniprogram?: { list?: Array<Record<string, unknown>> } };
+    };
+    for (const entry of verify?.condition?.miniprogram?.list || []) {
+      if (TOKEN_QUERY_RE.test(String(entry?.query || ""))) {
+        return { ok: false, cleared, error: "token_still_present_after_clear" };
+      }
+    }
+    return { ok: true, cleared };
+  } catch (err) {
+    return { ok: false, cleared: 0, error: String(err) };
+  }
+}
 
 function walkRelFiles(dir: string, prefix: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;
@@ -94,6 +144,17 @@ export function runMiniProgramBuildGate(): {
   errors: string[];
   requiredLegalDomainHost: string;
 } {
+  const clearResult = clearGoldenSessionTokensFromPrivateConfig();
+  if (!clearResult.ok) {
+    return {
+      ok: false,
+      errors: [
+        `Golden session token cleanup failed (fail-closed): ${clearResult.error || "unknown"}`,
+      ],
+      requiredLegalDomainHost: "",
+    };
+  }
+
   const snapshot = loadBuildGateSnapshotFromDisk();
   const result = evaluateMiniProgramBuildGate(snapshot);
 

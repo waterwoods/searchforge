@@ -54,7 +54,8 @@ import {
 import { hasDebugSignals, pickTriageResultCore } from '@/api/triageResultContract';
 import { copyToClipboard } from '@/utils/demoCopy';
 import { useClientConfig } from '@/context/ClientConfigContext';
-import { isUnifiedIntakeProductOnlyUi } from '@/config/productSurface';
+import { isQaToolsEnabled, isUnifiedIntakeProductOnlyUi } from '@/config/productSurface';
+import { LaunchGoldenQaPanel } from '@/features/intake/components/LaunchGoldenQaPanel';
 import { API_BASE_URL } from '@/api/config';
 import {
     getOfficeCaseBoundaryListTag,
@@ -1142,6 +1143,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 {error && (
                     <Alert type="error" message={error} showIcon closable onClose={() => setError(null)} />
                 )}
+                {isQaToolsEnabled() ? <LaunchGoldenQaPanel /> : null}
                 {productOnlyUi ? (
                     <Card size="small" title="快速体验（可选）">
                         <Space direction="vertical" size={8} style={{ width: '100%' }}>

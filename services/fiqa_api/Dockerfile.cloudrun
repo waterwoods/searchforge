@@ -60,6 +60,14 @@ COPY tools/ /app/tools/
 COPY experiments/ /app/experiments/
 COPY configs/ /app/configs/
 
+# P25 — Launch Golden QA support routes import scripts.launch_golden_qa / camry reset.
+COPY scripts/__init__.py /app/scripts/__init__.py
+COPY scripts/launch_golden_qa.py /app/scripts/launch_golden_qa.py
+COPY scripts/golden_qa_preview.py /app/scripts/golden_qa_preview.py
+COPY scripts/camry_golden_qa.py /app/scripts/camry_golden_qa.py
+COPY scripts/reset_camry_golden_qa.sh /app/scripts/reset_camry_golden_qa.sh
+COPY scripts/demo_db_resolve.py /app/scripts/demo_db_resolve.py
+
 # Set PYTHONPATH to include /app
 ENV PYTHONPATH=/app:${PYTHONPATH}
 

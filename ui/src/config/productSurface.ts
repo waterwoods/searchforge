@@ -22,3 +22,14 @@ export function isUnifiedIntakeProductOnlyUi(): boolean {
 export function isUnifiedIntakeSupervisedDemoUi(): boolean {
     return truthy(import.meta.env.VITE_UNIFIED_INTAKE_SUPERVISED_DEMO);
 }
+
+/**
+ * P25 — Internal QA Tools (Launch Golden QA).
+ * Visible in Vite DEV by default, or when VITE_ENABLE_QA_TOOLS=1.
+ * Never enable for customer-facing production builds unless explicitly set.
+ */
+export function isQaToolsEnabled(): boolean {
+    if (truthy(import.meta.env.VITE_ENABLE_QA_TOOLS)) return true;
+    if (truthy(import.meta.env.VITE_DISABLE_QA_TOOLS)) return false;
+    return Boolean(import.meta.env.DEV);
+}

@@ -1414,3 +1414,48 @@ export async function getScenarioLogicCenter(): Promise<ScenarioLogicCenter> {
     const response = await request.get<ScenarioLogicCenter>('/api/inbox/scenario-logic-center');
     return response.data;
 }
+
+/** P25 — Launch Golden QA (internal; support-gated). Never display raw token in product UI. */
+export type LaunchGoldenQaStatus = {
+    ok?: boolean;
+    enabled?: boolean;
+    status?: string;
+    case_id?: string | null;
+    expires_at?: string | null;
+    token_masked?: string | null;
+    preview_prepared?: boolean;
+    last_run_utc?: string | null;
+    failure_reason?: string | null;
+    report_relpath?: string | null;
+    devtools_hint?: string | null;
+    target?: string;
+    launch_in_flight?: boolean;
+    /** One-shot for local Preview prep only — do not render in UI */
+    devtools_launch_query?: string;
+    mini_program_path?: string;
+};
+
+function supportAuthHeaders(): Record<string, string> {
+    const key = String(import.meta.env.VITE_UNIFIED_INTAKE_SUPPORT_API_KEY || '').trim();
+    if (!key) return {};
+    return { 'X-Unified-Intake-Support-Key': key };
+}
+
+export async function getLaunchGoldenQaStatus(): Promise<LaunchGoldenQaStatus> {
+    const response = await request.get<LaunchGoldenQaStatus>('/api/inbox/support/launch-golden-qa/status', {
+        headers: supportAuthHeaders(),
+    });
+    return response.data;
+}
+
+export async function launchGoldenQa(body?: {
+    target?: 'qa' | 'local';
+    prepare_preview?: boolean;
+}): Promise<LaunchGoldenQaStatus> {
+    const response = await request.post<LaunchGoldenQaStatus>(
+        '/api/inbox/support/launch-golden-qa',
+        body || { target: 'qa', prepare_preview: true },
+        { headers: supportAuthHeaders(), timeout: 120000 },
+    );
+    return response.data;
+}

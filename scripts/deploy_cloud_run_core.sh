@@ -435,6 +435,11 @@ if [ -n "${UNIFIED_INTAKE_SUPPORT_API_KEY:-}" ]; then
     ENV_VARS+=("UNIFIED_INTAKE_SUPPORT_API_KEY=$UNIFIED_INTAKE_SUPPORT_API_KEY")
 fi
 
+# P25 — Launch Golden QA (internal Founder tool; off unless explicitly enabled)
+if [ -n "${ENABLE_GOLDEN_QA_LAUNCH:-}" ]; then
+    ENV_VARS+=("ENABLE_GOLDEN_QA_LAUNCH=$ENABLE_GOLDEN_QA_LAUNCH")
+fi
+
 # Optional: default client pack (GET /api/inbox/client-config without ?client= uses this)
 if [ -n "${CLIENT_ID:-}" ]; then
     ENV_VARS+=("CLIENT_ID=$CLIENT_ID")
