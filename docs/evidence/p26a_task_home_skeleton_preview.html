@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=390, initial-scale=1" />
+  <title>P26A Task Home Skeleton Preview</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --ink: #1a1a1a;
+      --muted: #6b7280;
+      --blue: #1a56db;
+      --green: #137333;
+      --orange: #c45c26;
+      --card: #fff;
+      --line: #e4e8ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Noto Sans SC", sans-serif;
+      background: #dfe3ea;
+      color: var(--ink);
+    }
+    .phone {
+      width: 390px;
+      min-height: 780px;
+      margin: 24px auto;
+      background: var(--bg);
+      border-radius: 28px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.18);
+      overflow: hidden;
+      position: relative;
+      padding-bottom: 120px;
+    }
+    .nav {
+      height: 88px;
+      background: #fff;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 12px;
+      font-weight: 600;
+      border-bottom: 1px solid #eee;
+    }
+    .content { padding: 16px; }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.04);
+    }
+    .title { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+    .trust { font-size: 13px; color: #374151; margin-bottom: 4px; }
+    .trust-note { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .kicker { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .focus { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+    .why, .after { font-size: 14px; color: #374151; margin-top: 8px; }
+    .section { margin: 16px 0 8px; font-size: 14px; font-weight: 600; color: #374151; }
+    .task {
+      display: flex; align-items: center; gap: 10px;
+      min-height: 64px; padding: 12px 14px; margin-bottom: 8px;
+      border-radius: 12px; background: #f8f9fb; border: 1px solid transparent;
+    }
+    .task.today { background: #f5f8ff; border-color: #c5d5f5; }
+    .task.done { background: #f3f4f6; }
+    .mark { width: 20px; text-align: center; color: var(--blue); }
+    .task.done .mark { color: var(--green); }
+    .body { flex: 1; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .t-title { font-size: 15px; font-weight: 600; }
+    .chip { font-size: 11px; color: var(--blue); background: #e8f0fe; padding: 1px 8px; border-radius: 999px; }
+    .meta { font-size: 12px; color: var(--muted); margin-top: 2px; display: flex; gap: 10px; }
+    .meta .active { color: var(--orange); }
+    .meta .ok { color: var(--green); }
+    .action { font-size: 12px; color: var(--blue); margin-top: 2px; }
+    .arrow { color: #9aa0a6; font-size: 22px; }
+    .cta {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 12px 16px 28px; background: linear-gradient(180deg, transparent, var(--bg) 30%);
+    }
+    .btn {
+      height: 48px; border: 0; border-radius: 12px; width: 100%;
+      background: var(--blue); color: #fff; font-size: 16px; font-weight: 600;
+    }
+    .label { text-align: center; color: #666; font-size: 12px; margin: 8px 0 0; }
+  </style>
+</head>
+<body>
+  <div class="phone" id="preview">
+    <div class="nav">事故资料</div>
+    <div class="content">
+      <div class="card">
+        <div class="title">我的事故资料</div>
+        <div class="trust">陈总已收到资料</div>
+        <div class="trust-note">如有需要，我们会联系您</div>
+        <div class="kicker">今天建议</div>
+        <div class="focus">上传保险卡</div>
+        <div class="why"><div class="kicker">为什么？</div>事故经过和现场照片已经完成。</div>
+        <div class="after"><div class="kicker">完成后</div>↓<br>陈总开始审核。</div>
+        <div class="section">任务</div>
+
+        <div class="task today">
+          <div class="mark">○</div>
+          <div class="body">
+            <div class="row"><span class="t-title">保险卡</span><span class="chip">今天</span></div>
+            <div class="meta"><span class="active">进行中</span><span>0/1</span></div>
+            <div class="action">上传保险卡</div>
+          </div>
+          <div class="arrow">›</div>
+        </div>
+        <div class="task done">
+          <div class="mark">✓</div>
+          <div class="body">
+            <div class="row"><span class="t-title">事故照片</span></div>
+            <div class="meta"><span class="ok">已完成</span><span>已完成</span></div>
+          </div>
+        </div>
+        <div class="task done">
+          <div class="mark">✓</div>
+          <div class="body">
+            <div class="row"><span class="t-title">事故经过</span></div>
+            <div class="meta"><span class="ok">已完成</span><span>已完成</span></div>
+          </div>
+        </div>
+        <div class="task">
+          <div class="mark">·</div>
+          <div class="body">
+            <div class="row"><span class="t-title">驾驶证</span></div>
+            <div class="meta"><span>稍后处理</span><span>0/1</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cta">
+      <button class="btn">上传保险卡</button>
+      <div class="label">P26A · Constitution-first Task Home skeleton</div>
+    </div>
+  </div>
+</body>
+</html>

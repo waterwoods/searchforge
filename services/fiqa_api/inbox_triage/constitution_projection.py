@@ -69,6 +69,28 @@ _BROKER_HOLD_PHASES = frozenset(
     }
 )
 
+# P26A — Customer Task Home cards (projection only; Slice1 remains workflow authority).
+TASK_STATE_PENDING = "pending"
+TASK_STATE_IN_PROGRESS = "in_progress"
+TASK_STATE_COMPLETED = "completed"
+TASK_STATE_WAITING_BROKER = "waiting_broker"
+TASK_STATE_BLOCKED = "blocked"
+
+TASK_ID_INSURANCE = "insurance_card"
+TASK_ID_PHOTOS = "accident_photos"
+TASK_ID_STORY = "accident_story"
+TASK_ID_DRIVER_LICENSE = "driver_license"
+
+_ROUTE_REQUEST_ITEM = "request_item"
+_ROUTE_PHOTOS = "photos"
+_ROUTE_STORY = "story"
+
+_PHOTO_SLOTS = frozenset(
+    {"scene_photo", "customer_damage_photo", "other_party_vehicle_photo"}
+)
+_DRIVER_LICENSE_LABELS = frozenset({"驾驶证", "驾驶员信息", "驾照"})
+_DRIVER_LICENSE_TYPES = frozenset({"driver_license", "drivers_license"})
+
 # P21 PRIORITY_BANDS (smallest port) — lower rank = higher in queue.
 BAND_BROKER_NOW = "broker_now"
 BAND_CUSTOMER_DONE_AWAITING = "customer_done_awaiting"
@@ -394,15 +416,326 @@ def _customer_current_stage(deps: _ResolvedDeps, today: str) -> str:
     return STAGE_WAITING
 
 
+def _open_request_items(slice1: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(slice1, Mapping):
+        return []
+    open_request = _mapping(slice1.get("open_request")) or {}
+    items = open_request.get("items")
+    if isinstance(items, list) and items:
+        return [dict(item) for item in items if isinstance(item, Mapping)]
+    out: list[dict[str, Any]] = []
+    active = _mapping(open_request.get("active_item"))
+    if active:
+        out.append(dict(active))
+    queued = open_request.get("queued_items")
+    if isinstance(queued, list):
+        for item in queued:
+            if isinstance(item, Mapping):
+                out.append(dict(item))
+    return out
+
+
+def _received_slots(deps: _ResolvedDeps) -> set[str]:
+    return {s.lower() for s in _str_list((deps.evidence or {}).get("received_slots"))}
+
+
+def _has_accident_story(deps: _ResolvedDeps) -> bool:
+    facts = deps.case.get("known_facts")
+    if not isinstance(facts, Mapping):
+        return False
+    return bool(str(facts.get("accident_description") or "").strip())
+
+
+def _photo_progress(deps: _ResolvedDeps) -> tuple[int, int, bool]:
+    """Return (completed, total, any_received) from evidence slots — no new upload service."""
+    received = _received_slots(deps)
+    photo_received = sorted(slot for slot in received if slot in _PHOTO_SLOTS)
+    completed = len(photo_received)
+    # Skeleton total: at least scene; prefer observed required missing when present.
+    missing = {
+        s.lower()
+        for s in _str_list((deps.evidence or {}).get("missing_required_slots"))
+        if s.lower() in _PHOTO_SLOTS
+    }
+    total = max(completed + len(missing), 1 if completed or missing else 1)
+    if completed == 0 and not missing:
+        # No photo signal yet — still expose the card as one pending unit.
+        total = 1
+    return completed, total, completed > 0
+
+
+def _item_looks_driver_license(item: Mapping[str, Any]) -> bool:
+    item_type = str(item.get("item_type") or "").strip().lower()
+    if item_type in _DRIVER_LICENSE_TYPES:
+        return True
+    label = str(item.get("label") or item.get("title") or "").strip()
+    return label in _DRIVER_LICENSE_LABELS
+
+
+def _driver_license_open(deps: _ResolvedDeps) -> dict[str, Any] | None:
+    """Return open DL item when production path is unfinished; else None (card omitted)."""
+    for item in _open_request_items(deps.slice1):
+        if not _item_looks_driver_license(item):
+            continue
+        status = str(item.get("status") or "").strip().lower()
+        if status in {"satisfied", "withdrawn", "superseded"}:
+            continue
+        return item
+    # Brief missing_info may still list 驾驶证 before Slice1 item materializes.
+    brief = deps.brief or {}
+    for label in _str_list(brief.get("missing_info")):
+        if label in _DRIVER_LICENSE_LABELS:
+            return {"label": label, "status": "queued", "item_type": "driver_license"}
+    return None
+
+
+def _task_card(
+    *,
+    task_id: str,
+    title: str,
+    state: str,
+    completed: int,
+    total: int,
+    is_today: bool,
+    route: str | None,
+    actionable: bool,
+    primary_action: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "task_id": task_id,
+        "title": title,
+        "state": state,
+        "progress": {
+            "completed": max(0, int(completed)),
+            "total": max(1, int(total)),
+        },
+        "is_today": bool(is_today),
+        "route": route,
+        "actionable": bool(actionable),
+        "primary_action": primary_action,
+    }
+
+
+def _has_open_insurance_path(deps: _ResolvedDeps, *, today: str) -> bool:
+    action = _slice1_customer_action(deps.slice1)
+    active_item = _open_request_active_item(deps.slice1)
+    if _is_insurance_card_task(today=today, action=action, active_item=active_item):
+        return True
+    for item in _open_request_items(deps.slice1):
+        item_type = str(item.get("item_type") or "").strip().lower()
+        if item_type in _INSURANCE_CARD_INPUTS:
+            return True
+        label = str(item.get("label") or "").strip()
+        if label in {_TODAY_INSURANCE_CARD, "保险卡"}:
+            return True
+    return "policy_or_insurance_card" in {
+        s.lower() for s in _str_list((deps.evidence or {}).get("missing_required_slots"))
+    }
+
+
+def _insurance_task_state(
+    deps: _ResolvedDeps,
+    *,
+    today: str,
+    stage: str,
+    is_today: bool,
+) -> tuple[str, bool]:
+    satisfied = "policy_or_insurance_card" in _satisfied_item_types(deps.slice1)
+    if satisfied:
+        if stage == STAGE_WAITING_BROKER or _is_waiting_broker(
+            deps, _slice1_customer_action(deps.slice1)
+        ):
+            return TASK_STATE_WAITING_BROKER, False
+        if _is_recently_done(deps):
+            return TASK_STATE_COMPLETED, False
+        return TASK_STATE_COMPLETED, False
+    open_path = _has_open_insurance_path(deps, today=today)
+    if is_today or _is_insurance_card_task(
+        today=today,
+        action=_slice1_customer_action(deps.slice1),
+        active_item=_open_request_active_item(deps.slice1),
+    ):
+        return TASK_STATE_IN_PROGRESS, open_path
+    return TASK_STATE_PENDING, open_path
+
+
+def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Derive visible Task Cards from Case + Slice1 + Evidence (Constitution read-model).
+
+    Hard rules:
+    - No hard-coded page list on the client — this list is the authority.
+    - Insurance uses existing Slice1 / request_item path.
+    - Photos use existing upload slots only.
+    - Story is a task entry (voice/AI later).
+    - Driver License appears only while its production path is unfinished.
+    """
+    today = str(customer.get("today") or "").strip()
+    stage = str(customer.get("current_stage") or "").strip()
+    action = _slice1_customer_action(deps.slice1)
+    active_item = _open_request_active_item(deps.slice1)
+    insurance_is_today = _is_insurance_card_task(
+        today=today, action=action, active_item=active_item
+    )
+
+    tasks: list[dict[str, Any]] = []
+
+    # 1) Insurance Card — fully working production path
+    insurance_state, insurance_actionable = _insurance_task_state(
+        deps, today=today, stage=stage, is_today=insurance_is_today
+    )
+    insurance_done = insurance_state in {
+        TASK_STATE_COMPLETED,
+        TASK_STATE_WAITING_BROKER,
+    }
+    tasks.append(
+        _task_card(
+            task_id=TASK_ID_INSURANCE,
+            title="保险卡",
+            state=insurance_state,
+            completed=1 if insurance_done else 0,
+            total=1,
+            is_today=insurance_is_today and not insurance_done,
+            route=_ROUTE_REQUEST_ITEM if insurance_actionable else None,
+            actionable=insurance_actionable,
+            primary_action="上传保险卡" if insurance_actionable else None,
+        )
+    )
+
+    # 2) Accident Photos — existing upload capability only
+    photo_completed, photo_total, any_photo = _photo_progress(deps)
+    if any_photo and photo_completed >= photo_total:
+        photo_state = TASK_STATE_COMPLETED
+        photo_actionable = False
+        photo_is_today = False
+    elif today in {"补充车辆照片", "上传现场照片", "补充照片"} or (
+        _required_input(action) == "photo_evidence"
+    ):
+        photo_state = TASK_STATE_IN_PROGRESS
+        photo_actionable = True
+        photo_is_today = True
+    elif any_photo:
+        photo_state = TASK_STATE_IN_PROGRESS if photo_completed < photo_total else TASK_STATE_COMPLETED
+        photo_actionable = photo_state != TASK_STATE_COMPLETED
+        photo_is_today = False
+    else:
+        photo_state = TASK_STATE_PENDING
+        photo_actionable = True
+        photo_is_today = False
+    tasks.append(
+        _task_card(
+            task_id=TASK_ID_PHOTOS,
+            title="事故照片",
+            state=photo_state,
+            completed=photo_completed,
+            total=photo_total,
+            is_today=photo_is_today,
+            route=_ROUTE_PHOTOS if photo_actionable else None,
+            actionable=photo_actionable,
+            primary_action="补充照片" if photo_actionable else None,
+        )
+    )
+
+    # 3) Accident Story — task entry + placeholder for future voice/AI
+    story_done = _has_accident_story(deps)
+    if story_done:
+        story_state = TASK_STATE_COMPLETED
+        story_actionable = False
+        story_is_today = False
+    elif today in {"填写事故经过", "补充事故经过", "事故经过"}:
+        story_state = TASK_STATE_IN_PROGRESS
+        story_actionable = True
+        story_is_today = True
+    else:
+        story_state = TASK_STATE_PENDING
+        story_actionable = True
+        story_is_today = False
+    tasks.append(
+        _task_card(
+            task_id=TASK_ID_STORY,
+            title="事故经过",
+            state=story_state,
+            completed=1 if story_done else 0,
+            total=1,
+            is_today=story_is_today,
+            route=_ROUTE_STORY if story_actionable else None,
+            actionable=story_actionable,
+            primary_action="填写事故经过" if story_actionable else None,
+        )
+    )
+
+    # 4) Driver License — only while unfinished (no permanent stub card)
+    dl_item = _driver_license_open(deps)
+    if dl_item is not None:
+        dl_status = str(dl_item.get("status") or "").strip().lower()
+        dl_is_active = dl_status == "active" or (
+            today in _DRIVER_LICENSE_LABELS
+            or today in {"确认驾驶员", "上传驾驶证"}
+        )
+        if dl_is_active and insurance_is_today:
+            # One Truth: today's Focus stays insurance; DL waits behind it.
+            dl_state = TASK_STATE_BLOCKED
+            dl_actionable = False
+            dl_is_today = False
+        elif dl_is_active:
+            dl_state = TASK_STATE_IN_PROGRESS
+            dl_actionable = False  # production path not finished — card only
+            dl_is_today = True
+        else:
+            dl_state = TASK_STATE_BLOCKED if insurance_is_today else TASK_STATE_PENDING
+            dl_actionable = False
+            dl_is_today = False
+        tasks.append(
+            _task_card(
+                task_id=TASK_ID_DRIVER_LICENSE,
+                title="驾驶证",
+                state=dl_state,
+                completed=0,
+                total=1,
+                is_today=dl_is_today,
+                route=None,
+                actionable=dl_actionable,
+                primary_action=None,
+            )
+        )
+
+    # Ensure exactly one is_today when customer owes work.
+    if stage == STAGE_CUSTOMER_ACTION_NEEDED:
+        today_marks = [t for t in tasks if t.get("is_today")]
+        if not today_marks:
+            for task in tasks:
+                if task.get("actionable") and task.get("state") in {
+                    TASK_STATE_IN_PROGRESS,
+                    TASK_STATE_PENDING,
+                }:
+                    if insurance_is_today and task["task_id"] == TASK_ID_INSURANCE:
+                        task["is_today"] = True
+                        break
+                    if not insurance_is_today:
+                        task["is_today"] = True
+                        break
+        else:
+            # Keep first today mark only.
+            seen = False
+            for task in tasks:
+                if task.get("is_today"):
+                    if seen:
+                        task["is_today"] = False
+                    seen = True
+
+    return tasks
+
+
 def _customer_projection(deps: _ResolvedDeps) -> dict[str, Any]:
     today = _customer_today(deps)
-    return {
+    customer = {
         "today": today,
         "why": _customer_why(deps, today),
         "after": _customer_after(deps, today),
         "trust": _customer_trust(deps, today),
         "current_stage": _customer_current_stage(deps, today),
     }
+    customer["tasks"] = _customer_tasks(deps, customer)
+    return customer
 
 
 def _placeholder_customer() -> dict[str, Any]:
@@ -415,6 +748,7 @@ def _placeholder_customer() -> dict[str, Any]:
             "care_note": None,
         },
         "current_stage": None,
+        "tasks": [],
     }
 
 

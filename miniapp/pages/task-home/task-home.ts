@@ -15,6 +15,11 @@ import {
   type Slice1CustomerView,
 } from "../../utils/slice1Customer";
 import type { Slice1RequestItem } from "../../types/task";
+import {
+  resolveCustomerTaskCardsFromTask,
+  resolveTaskHomePrimaryRoute,
+  type CustomerTaskCardView,
+} from "../../utils/resolveCustomerTaskCards";
 
 type PageData = {
   loadingMessage: string;
@@ -45,6 +50,17 @@ type PageData = {
   slice1QueuedItems: Slice1RequestItem[];
   slice1SatisfiedItems: Slice1RequestItem[];
   slice1BrokerStatusLabel: string;
+  /** P26A — Constitution Focus + Task Cards */
+  constitutionEnabled: boolean;
+  constitutionToday: string;
+  constitutionWhy: string;
+  constitutionAfter: string;
+  careLine: string;
+  careNote: string;
+  showCareLine: boolean;
+  showWaiting: boolean;
+  waitingLabel: string;
+  taskCards: CustomerTaskCardView[];
 };
 
 function brokerStatusLabel(status: string): string {
@@ -53,19 +69,56 @@ function brokerStatusLabel(status: string): string {
   return "";
 }
 
-function slice1PagePatch(view: Slice1CustomerView): Partial<PageData> {
+function slice1PagePatch(
+  view: Slice1CustomerView,
+  task: Parameters<typeof resolveCustomerTaskCardsFromTask>[0],
+  taskCards: CustomerTaskCardView[],
+): Partial<PageData> {
+  const focusInstruction = String(
+    view.constitutionToday ||
+      view.nextAction?.title ||
+      view.constitutionWhy ||
+      view.nextAction?.instructions ||
+      "",
+  );
+  const waiting =
+    view.waitingForBroker || view.currentStage === "waiting_broker" || view.currentStage === "waiting";
+  const serverCustomer = task?.constitution_projection?.customer;
+  const hasServerConstitution = Boolean(
+    serverCustomer &&
+      (String(serverCustomer.today || "").trim() ||
+        (Array.isArray(serverCustomer.tasks) && serverCustomer.tasks.length)),
+  );
   return {
     slice1Enabled: view.enabled,
     slice1WaitingForBroker: view.waitingForBroker,
     slice1PrimaryLabel: view.waitingForBroker
       ? "资料已提交，等待经纪人审核"
       : view.primaryCtaLabel || "补充陈总需要的资料",
-    slice1Instruction: String(view.nextAction?.instructions || view.nextAction?.title || ""),
+    slice1Instruction: focusInstruction,
     slice1ProgressText:
       view.progress.total > 0 ? `进度 ${view.progress.satisfied}/${view.progress.total}` : "",
     slice1QueuedItems: view.queuedItems,
     slice1SatisfiedItems: view.satisfiedItems,
     slice1BrokerStatusLabel: brokerStatusLabel(view.brokerStatus),
+    // Constitution-first UI only when server projection (or its task cards) is present.
+    constitutionEnabled: hasServerConstitution || taskCards.length > 0,
+    constitutionToday: view.constitutionToday,
+    constitutionWhy: view.constitutionWhy,
+    constitutionAfter: view.constitutionAfter,
+    careLine: view.careLine,
+    careNote: view.careNote,
+    showCareLine: Boolean(view.careLine),
+    showWaiting: waiting && !view.primaryActionable,
+    waitingLabel: waiting ? view.constitutionToday || "先不用操作" : "",
+  };
+}
+
+function taskCardsPatch(task: Parameters<typeof resolveCustomerTaskCardsFromTask>[0]): {
+  taskCards: CustomerTaskCardView[];
+} {
+  return {
+    taskCards: resolveCustomerTaskCardsFromTask(task),
   };
 }
 
@@ -96,11 +149,21 @@ Page({
     slice1QueuedItems: [],
     slice1SatisfiedItems: [],
     slice1BrokerStatusLabel: "",
+    constitutionEnabled: false,
+    constitutionToday: "",
+    constitutionWhy: "",
+    constitutionAfter: "",
+    careLine: "",
+    careNote: "",
+    showCareLine: false,
+    showWaiting: false,
+    waitingLabel: "",
+    taskCards: [],
   } as PageData,
 
   onLoad() {
     void this.ensureTaskInitialized({ ownerLoad: true }).then((task) => {
-      if (task) this.applySlice1Overlay(task);
+      if (task) this.applyConstitutionOverlay(task);
     });
   },
 
@@ -115,7 +178,7 @@ Page({
       });
     }
     void this.ensureTaskInitialized().then((task) => {
-      if (task) this.applySlice1Overlay(task);
+      if (task) this.applyConstitutionOverlay(task);
     });
   },
 
@@ -126,19 +189,23 @@ Page({
   onPullDownRefresh() {
     void this.rehydrateAuthoritativeTask()
       .then((task) => {
-        if (task) this.applySlice1Overlay(task);
+        if (task) this.applyConstitutionOverlay(task);
       })
       .finally(() => wx.stopPullDownRefresh());
   },
 
-  applySlice1Overlay(task: Parameters<typeof mapSlice1CustomerView>[0]) {
+  applyConstitutionOverlay(task: Parameters<typeof mapSlice1CustomerView>[0]) {
     const view = mapSlice1CustomerView(task);
-    this.setData(slice1PagePatch(view));
+    const cards = taskCardsPatch(task);
+    this.setData({
+      ...slice1PagePatch(view, task, cards.taskCards),
+      ...cards,
+    });
   },
 
   onRetry() {
     void this.retryLoadTask().then((task) => {
-      if (task) this.applySlice1Overlay(task);
+      if (task) this.applyConstitutionOverlay(task);
     });
   },
 
@@ -150,8 +217,9 @@ Page({
         this.onViewReceipt();
         return;
       }
-      if (view.primaryActionable) {
-        this.navigateOnce(REQUEST_ITEM_ROUTE);
+      const route = resolveTaskHomePrimaryRoute(task) || (view.primaryActionable ? REQUEST_ITEM_ROUTE : "");
+      if (route) {
+        this.navigateOnce(route);
         return;
       }
       this.onContactBroker();
@@ -167,6 +235,18 @@ Page({
     const route = this.resolveRouteFromCta(vm);
     if (!route || route === "/pages/task-home/task-home") return;
     this.navigateOnce(route);
+  },
+
+  onTapTaskCard(e: WechatMiniprogram.CustomEvent<{ taskId?: string }>) {
+    const taskId = String(e.detail?.taskId || "").trim();
+    const card = this.data.taskCards.find((row) => row.taskId === taskId);
+    if (!card?.actionable || !card.route) {
+      if (card?.state === "blocked") {
+        wx.showToast({ title: "请先完成今天的任务", icon: "none" });
+      }
+      return;
+    }
+    this.navigateOnce(card.route);
   },
 
   resolveRouteFromCta(vm: TaskViewModel): string {
@@ -193,7 +273,7 @@ Page({
   },
 
   onTapSupplementRow(e: WechatMiniprogram.TouchEvent) {
-    if (this.data.slice1Enabled) return;
+    if (this.data.slice1Enabled || this.data.taskCards.length) return;
     const detail = (e as WechatMiniprogram.CustomEvent<{ index?: number }>).detail;
     const index = Number(detail?.index ?? e.currentTarget.dataset.index);
     const row = this.data.taskViewModel?.missingItems[index];
@@ -213,7 +293,14 @@ Page({
   onViewAll() {
     const vm = this.data.taskViewModel;
     const lines: string[] = [];
-    if (this.data.slice1Enabled) {
+    if (this.data.taskCards.length) {
+      lines.push(
+        "任务：\n" +
+          this.data.taskCards
+            .map((row) => `${row.title}（${row.stateLabel} · ${row.progressText}）`)
+            .join("\n"),
+      );
+    } else if (this.data.slice1Enabled) {
       if (this.data.slice1Instruction) lines.push(this.data.slice1Instruction);
       if (this.data.slice1QueuedItems.length) {
         lines.push(
@@ -250,7 +337,8 @@ Page({
         wx.showToast({ title: "资料已提交，等待经纪人审核", icon: "none" });
         return;
       }
-      this.navigateOnce(REQUEST_ITEM_ROUTE);
+      const route = resolveTaskHomePrimaryRoute(this.data.task) || REQUEST_ITEM_ROUTE;
+      this.navigateOnce(route);
       return;
     }
     if (this.isBusy("navigating")) return;

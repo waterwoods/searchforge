@@ -5,6 +5,7 @@
     "task-cta": "/components/task-cta/index",
     "task-error": "/components/task-error/index",
     "task-status-card": "/components/task-status-card/index",
-    "task-progress": "/components/task-progress/index"
+    "task-progress": "/components/task-progress/index",
+    "task-card": "/components/task-card/index"
   }
 }

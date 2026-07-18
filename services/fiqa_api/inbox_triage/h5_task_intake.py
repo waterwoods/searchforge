@@ -706,6 +706,12 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
     if slice1_load_failed:
         result["slice1_projection_error"] = True
         result["customer_qa_marker"] = _customer_qa_marker(case, next_action=None)
+        _attach_h5_constitution_projection(
+            result,
+            case=case,
+            brief=brief,
+            slice1=None,
+        )
         return result
     if slice1_projection:
         result["slice1_projection"] = slice1_projection
@@ -725,7 +731,45 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         }
     else:
         result["customer_qa_marker"] = _customer_qa_marker(case, next_action=None)
+    _attach_h5_constitution_projection(
+        result,
+        case=case,
+        brief=brief,
+        slice1=slice1_projection if isinstance(slice1_projection, dict) else None,
+    )
     return result
+
+
+def _attach_h5_constitution_projection(
+    result: dict[str, Any],
+    *,
+    case: dict[str, Any],
+    brief: dict[str, Any] | None,
+    slice1: dict[str, Any] | None,
+) -> None:
+    """Additive customer Constitution on H5 intake. Never raises to caller."""
+    cid = str(case.get("case_id") or result.get("case_id") or "").strip() or "?"
+    try:
+        from services.fiqa_api.inbox_triage.constitution_projection import (
+            ConstitutionInputs,
+            build_constitution_customer_projection,
+        )
+
+        result["constitution_projection"] = build_constitution_customer_projection(
+            ConstitutionInputs(
+                case=case,
+                slice1=slice1,
+                brief=brief if isinstance(brief, dict) else None,
+                claim_phase=str(result.get("phase") or case.get("claim_phase") or "").strip()
+                or None,
+            )
+        )
+    except Exception as exc:
+        logger.warning(
+            "Constitution projection attach failed for H5 intake case %s: %s",
+            cid,
+            exc,
+        )
 
 
 def patch_intake_fields(

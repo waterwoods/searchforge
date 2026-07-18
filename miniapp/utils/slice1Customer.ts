@@ -9,6 +9,7 @@ import type {
   Slice1RequestItemType,
   Slice1RequestProgress,
 } from "../types/task";
+import { resolveCustomerConstitutionFromTask } from "./resolveCustomerConstitution";
 
 export const REQUEST_ITEM_ROUTE = "/pages/request-item/request-item";
 
@@ -28,6 +29,13 @@ export type Slice1CustomerView = {
   lastServerUpdate: string;
   waitingForBroker: boolean;
   openRequestId: string;
+  /** P24D2.1 — resolved Constitution Focus fields (server-first). */
+  constitutionToday: string;
+  constitutionWhy: string;
+  constitutionAfter: string;
+  careLine: string;
+  careNote: string;
+  currentStage: string;
 };
 
 export const EMPTY_SLICE1_PROGRESS: Slice1RequestProgress = {
@@ -52,6 +60,12 @@ export const EMPTY_SLICE1_VIEW: Slice1CustomerView = {
   lastServerUpdate: "",
   waitingForBroker: false,
   openRequestId: "",
+  constitutionToday: "",
+  constitutionWhy: "",
+  constitutionAfter: "",
+  careLine: "",
+  careNote: "",
+  currentStage: "",
 };
 
 const EVIDENCE_TYPES = new Set(["photo_evidence", "policy_or_insurance_card"]);
@@ -180,10 +194,25 @@ function primaryCtaForAction(action: Slice1CustomerNextAction | null): {
   };
 }
 
+function constitutionFieldsFromTask(task?: CustomerTask | null) {
+  const resolved = resolveCustomerConstitutionFromTask(task);
+  return {
+    constitutionToday: resolved.today,
+    constitutionWhy: resolved.why,
+    constitutionAfter: resolved.after,
+    careLine: resolved.careLine,
+    careNote: resolved.careNote,
+    currentStage: resolved.currentStage,
+  };
+}
+
 export function mapSlice1CustomerView(task?: CustomerTask | null): Slice1CustomerView {
   const projection = extractSlice1Projection(task);
   if (!projection) {
-    return { ...EMPTY_SLICE1_VIEW };
+    return {
+      ...EMPTY_SLICE1_VIEW,
+      ...constitutionFieldsFromTask(task),
+    };
   }
 
   const nextAction = projection.customer_next_action || null;
@@ -206,17 +235,36 @@ export function mapSlice1CustomerView(task?: CustomerTask | null): Slice1Custome
     remaining: queuedItems.length + (nextAction?.request_item_id ? 1 : 0),
   };
   const cta = primaryCtaForAction(nextAction);
-  const waitingForBroker = String(nextAction?.action_type || "") === "wait_for_broker_review";
+  const constitution = constitutionFieldsFromTask(task);
+  const waitingFromStage = constitution.currentStage === "waiting_broker";
+  const waitingFromAction = String(nextAction?.action_type || "") === "wait_for_broker_review";
+  const waitingForBroker = waitingFromStage || waitingFromAction;
+
+  // Overlay Constitution Today/Why onto display next-action (Slice1 SSOT on task unchanged).
+  let displayNextAction = nextAction;
+  if (nextAction && (constitution.constitutionToday || constitution.constitutionWhy)) {
+    displayNextAction = {
+      ...nextAction,
+      title: constitution.constitutionToday || nextAction.title,
+      instructions: constitution.constitutionWhy || nextAction.instructions,
+    };
+  }
+
+  // Actionable CTA prefers Constitution Today; waiting keeps Cap3B wait label.
+  const primaryCtaLabel =
+    !waitingForBroker && constitution.constitutionToday
+      ? constitution.constitutionToday
+      : cta.label;
 
   return {
     enabled: true,
     legacyFallback: false,
     workflowState: String(projection.workflow_state || ""),
     aggregateVersion: Number(projection.aggregate_version || 0),
-    nextAction,
-    primaryActionable: cta.actionable,
-    primaryCtaLabel: cta.label,
-    primaryRoute: cta.route,
+    nextAction: displayNextAction,
+    primaryActionable: waitingForBroker ? false : cta.actionable,
+    primaryCtaLabel,
+    primaryRoute: waitingForBroker ? "" : cta.route,
     queuedItems,
     satisfiedItems,
     progress: {
@@ -228,6 +276,7 @@ export function mapSlice1CustomerView(task?: CustomerTask | null): Slice1Custome
     lastServerUpdate: String(projection.server_timestamp || nextAction?.last_updated_at || ""),
     waitingForBroker,
     openRequestId: String(open?.request_id || nextAction?.request_id || ""),
+    ...constitution,
   };
 }
 

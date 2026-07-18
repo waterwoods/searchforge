@@ -11,6 +11,7 @@ import {
   storyComplete,
 } from "./taskMapping";
 import { isSlice1CustomerFlow, mapSlice1CustomerView, REQUEST_ITEM_ROUTE } from "./slice1Customer";
+import { resolveCustomerConstitutionFromTask } from "./resolveCustomerConstitution";
 import type {
   BusyState,
   CustomerTask,
@@ -365,13 +366,19 @@ export function resolveTaskViewModel(
     const progress = clampProgress(slice1.progress.satisfied, Math.max(slice1.progress.total, 1));
     const disabledByState = busy.loading || busy.submitting || busy.saving || busy.navigating;
     const disabledByError = Boolean(normalizedError?.blocking);
+    // Focus line: Constitution Today → Why → Slice1 display → dashboard.
+    const focusInstruction = normalizeUiString(
+      slice1.constitutionToday ||
+        slice1.nextAction?.title ||
+        slice1.constitutionWhy ||
+        slice1.nextAction?.instructions ||
+        task.dashboard_summary?.next_action,
+    );
     const baseVm = finalizeViewModel({
       source: "contract",
       shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
       title: normalizeUiString(task.title, "我的事故资料"),
-      instruction: normalizeUiString(
-        slice1.nextAction?.instructions || slice1.nextAction?.title || task.dashboard_summary?.next_action,
-      ),
+      instruction: focusInstruction,
       statusLabel: slice1.waitingForBroker ? "等待审核" : "需补充",
       statusTone: slice1.waitingForBroker ? "done" : "active",
       progress,
@@ -407,17 +414,25 @@ export function resolveTaskViewModel(
   }
 
   if (taskContract) {
+    const constitution = resolveCustomerConstitutionFromTask(task);
     const safeContract = normalizeContract(taskContract);
     const status = normalizeStatus(safeContract.task_status);
     const progress = clampProgress(
       safeContract.progress?.completed || 0,
       safeContract.progress?.total || 0,
     );
+    // Server Constitution Focus → existing contract instruction → local resolver fallback.
+    const serverFocus =
+      constitution.fieldAuthority.today === "server"
+        ? constitution.today
+        : constitution.fieldAuthority.why === "server"
+          ? constitution.why
+          : "";
     const baseVm = finalizeViewModel({
       source: "contract",
       shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
       title: safeContract.title || normalizeUiString(task.title, "我的事故资料"),
-      instruction: safeContract.instruction,
+      instruction: normalizeUiString(serverFocus || safeContract.instruction),
       statusLabel: status.label,
       statusTone: status.tone,
       progress,
@@ -447,6 +462,13 @@ export function resolveTaskViewModel(
     return applyRouteSpecificCta(baseVm, task, busy, normalizedError, pageContext);
   }
 
+  const constitution = resolveCustomerConstitutionFromTask(task);
+  const serverFocus =
+    constitution.fieldAuthority.today === "server"
+      ? constitution.today
+      : constitution.fieldAuthority.why === "server"
+        ? constitution.why
+        : "";
   const progress = clampProgress(
     Math.round((progressPercent(task) * Math.max(task.step_total || 1, 1)) / 100),
     task.step_total || 1,
@@ -456,7 +478,9 @@ export function resolveTaskViewModel(
     source: "legacy",
     shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
     title: normalizeUiString(task.title, "我的事故资料"),
-    instruction: normalizeUiString(task.dashboard_summary?.next_action),
+    instruction: normalizeUiString(
+      serverFocus || task.dashboard_summary?.next_action,
+    ),
     statusLabel: normalizeUiString(task.dashboard_summary?.status, "进行中"),
     statusTone: task.submitted ? "done" : "active",
     progress,

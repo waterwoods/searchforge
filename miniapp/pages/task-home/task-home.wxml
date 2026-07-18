@@ -17,7 +17,54 @@
       bind:contactBroker="onContactBroker"
     />
 
-    <view class="card" wx:if="{{slice1Enabled}}">
+    <!-- P26A Constitution-first Task Home -->
+    <view class="card" wx:if="{{constitutionEnabled || taskCards.length}}">
+      <view class="card-title">{{taskViewModel.title || '我的事故资料'}}</view>
+
+      <view wx:if="{{showCareLine}}" class="case-trust">
+        <view class="case-trust-care">{{careLine}}</view>
+        <view wx:if="{{careNote}}" class="case-trust-note">{{careNote}}</view>
+      </view>
+
+      <view wx:if="{{!showWaiting && constitutionToday}}" class="today-focus">
+        <view class="today-focus-kicker">今天建议</view>
+        <view class="today-focus-action">{{constitutionToday}}</view>
+        <view wx:if="{{constitutionWhy}}" class="today-focus-why">
+          <view class="today-focus-why-kicker">为什么？</view>
+          <view class="today-focus-why-body">{{constitutionWhy}}</view>
+        </view>
+        <view wx:if="{{constitutionAfter}}" class="today-focus-after">
+          <view class="today-focus-after-kicker">完成后</view>
+          <view class="today-focus-after-arrow">↓</view>
+          <view class="today-focus-after-body">{{constitutionAfter}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{showWaiting}}" class="waiting-block">
+        <view class="waiting-title">当前状态</view>
+        <view class="waiting-value">{{waitingLabel || constitutionToday || '先不用操作'}}</view>
+        <view wx:if="{{constitutionWhy}}" class="today-focus-why-body">{{constitutionWhy}}</view>
+      </view>
+
+      <view class="section-label section-gap" wx:if="{{taskCards.length}}">任务</view>
+      <task-card
+        wx:for="{{taskCards}}"
+        wx:key="taskId"
+        taskId="{{item.taskId}}"
+        title="{{item.title}}"
+        state="{{item.state}}"
+        stateLabel="{{item.stateLabel}}"
+        progressText="{{item.progressText}}"
+        isToday="{{item.isToday}}"
+        actionable="{{item.actionable}}"
+        primaryAction="{{item.primaryAction}}"
+        completionMark="{{item.completionMark}}"
+        bind:tapcard="onTapTaskCard"
+      />
+    </view>
+
+    <!-- Legacy Slice1 checklist only when Constitution tasks are absent -->
+    <view class="card" wx:elif="{{slice1Enabled}}">
       <view class="card-title">{{taskViewModel.title}}</view>
       <task-progress
         completed="{{taskViewModel.progress.completed}}"

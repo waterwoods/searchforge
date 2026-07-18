@@ -350,6 +350,82 @@ export type CaseIntakeProjection = {
     auth_posture?: string;
 };
 
+/** P24 — server Constitution broker queue slice (list / lightweight). */
+export type BrokerQueueSummaryProjection = {
+    band?: string | null;
+    label?: string | null;
+    why_attention?: string | null;
+};
+
+export type BrokerNextActionProjection = {
+    label?: string | null;
+    action_type?: string | null;
+    enabled?: boolean;
+    note?: string | null;
+};
+
+export type BrokerPriorityProjection = {
+    band?: string | null;
+    rank?: number | null;
+};
+
+/** Detail-only broker conclusion (absent on list projection). */
+export type BrokerCaseConclusionProjection = {
+    what_happened?: string | null;
+    known?: string[];
+    uncertain?: string[];
+    evidence?: string[];
+    customer_focus?: string | null;
+    customer_why?: string | null;
+    customer_after?: string | null;
+    customer_trust?: string | null;
+};
+
+export type BrokerQueueProjection = {
+    queue_summary?: BrokerQueueSummaryProjection | null;
+    next_action?: BrokerNextActionProjection | null;
+    priority?: BrokerPriorityProjection | null;
+    current_stage?: string | null;
+};
+
+export type BrokerDetailProjection = BrokerQueueProjection & {
+    case_conclusion?: BrokerCaseConclusionProjection | null;
+};
+
+export type CustomerConstitutionTaskCard = {
+    task_id?: string | null;
+    title?: string | null;
+    state?: string | null;
+    progress?: { completed?: number | null; total?: number | null } | null;
+    is_today?: boolean | null;
+    route?: string | null;
+    actionable?: boolean | null;
+    primary_action?: string | null;
+};
+
+export type CustomerConstitutionProjection = {
+    today?: string | null;
+    why?: string | null;
+    after?: string | null;
+    trust?: { care_line?: string | null; care_note?: string | null } | null;
+    current_stage?: string | null;
+    /** P26A — Constitution-first Customer Task Home cards. */
+    tasks?: CustomerConstitutionTaskCard[] | null;
+};
+
+/**
+ * P24 — additive Constitution Projection on case list/detail reads.
+ * List: broker queue slice (no case_conclusion, usually no customer).
+ * Detail: full customer + broker (includes case_conclusion).
+ */
+export type ConstitutionProjection = {
+    projection_version?: number;
+    case_id?: string | null;
+    current_stage?: string | null;
+    customer?: CustomerConstitutionProjection | null;
+    broker?: BrokerQueueProjection | BrokerDetailProjection | null;
+};
+
 export type SendRequestCommand = {
     command_id: string;
     idempotency_key: string;
@@ -483,6 +559,10 @@ export interface TriageResult {
     urgency: 'low' | 'medium' | 'high' | 'critical';
     manual_followup_needed: boolean;
     broker_next_step: string;
+    /** Office Chinese next-step line when present (legacy fallback for Constitution). */
+    office_broker_next_step?: string;
+    /** Office Chinese case title when present. */
+    office_case_title?: string;
     client_prep: string;
     client_reply_draft: string;
     case_id?: string;
@@ -655,6 +735,11 @@ export interface TriageResult {
     p20_slice1_projection?: Slice1Projection;
     slice1_request_summary?: Slice1RequestSummary;
     p20_slice1_request_summary?: Slice1RequestSummary;
+    /**
+     * P24 — server Constitution Projection (broker queue on list; full broker on detail).
+     * Prefer via resolveBrokerConstitution; legacy Workbench derivation remains fallback.
+     */
+    constitution_projection?: ConstitutionProjection | null;
     workbench_visible?: boolean;
     /** P18 Loop 1 — demo seed metadata (extra JSONB) */
     demo_name?: string;

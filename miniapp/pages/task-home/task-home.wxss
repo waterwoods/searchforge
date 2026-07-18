@@ -1,3 +1,83 @@
 .task-home-page .task-error {
   margin-bottom: 20rpx;
 }
+
+.case-trust {
+  margin: 8rpx 0 20rpx;
+}
+
+.case-trust-care {
+  font-size: 26rpx;
+  color: #374151;
+  font-weight: 500;
+}
+
+.case-trust-note {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #6b7280;
+}
+
+.today-focus {
+  margin: 8rpx 0 8rpx;
+  padding: 20rpx 0 8rpx;
+}
+
+.today-focus-kicker {
+  font-size: 24rpx;
+  color: #6b7280;
+  margin-bottom: 8rpx;
+}
+
+.today-focus-action {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.35;
+  margin-bottom: 16rpx;
+}
+
+.today-focus-why,
+.today-focus-after {
+  margin-top: 12rpx;
+}
+
+.today-focus-why-kicker,
+.today-focus-after-kicker {
+  font-size: 24rpx;
+  color: #6b7280;
+  margin-bottom: 4rpx;
+}
+
+.today-focus-why-body,
+.today-focus-after-body {
+  font-size: 28rpx;
+  color: #374151;
+  line-height: 1.45;
+}
+
+.today-focus-after-arrow {
+  color: #9aa0a6;
+  font-size: 24rpx;
+  margin: 4rpx 0;
+}
+
+.waiting-block {
+  margin: 12rpx 0 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  background: #f3f4f6;
+}
+
+.waiting-title {
+  font-size: 24rpx;
+  color: #6b7280;
+  margin-bottom: 6rpx;
+}
+
+.waiting-value {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8rpx;
+}

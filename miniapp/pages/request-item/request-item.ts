@@ -367,11 +367,18 @@ Page({
     }
 
     const submitDisabled = waitingForBroker || !nextItemId;
+    // Titles/instructions already overlay Constitution via mapSlice1CustomerView.
     this.safePageSetData({
       task,
       nextAction,
-      nextActionTitle: String(nextAction?.title || (waitingForBroker ? "资料已提交，等待经纪人审核" : "")),
-      nextActionInstructions: String(nextAction?.instructions || ""),
+      nextActionTitle: String(
+        view.constitutionToday ||
+          nextAction?.title ||
+          (waitingForBroker ? "资料已提交，等待经纪人审核" : ""),
+      ),
+      nextActionInstructions: String(
+        view.constitutionWhy || nextAction?.instructions || "",
+      ),
       queuedItems: view.queuedItems,
       satisfiedItems: view.satisfiedItems,
       progress: view.progress,

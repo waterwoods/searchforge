@@ -1,0 +1,19 @@
+<view
+  class="task-card state-{{state}} {{isToday ? 'is-today' : ''}} {{actionable ? 'actionable' : 'static'}}"
+  hover-class="{{actionable ? 'task-card-hover' : ''}}"
+  bindtap="onTap"
+>
+  <view class="task-card-mark">{{completionMark}}</view>
+  <view class="task-card-body">
+    <view class="task-card-title-row">
+      <text class="task-card-title">{{title}}</text>
+      <text wx:if="{{isToday}}" class="task-card-today">今天</text>
+    </view>
+    <view class="task-card-meta">
+      <text class="task-card-state">{{stateLabel}}</text>
+      <text class="task-card-progress">{{progressText}}</text>
+    </view>
+    <view wx:if="{{primaryAction && actionable}}" class="task-card-action">{{primaryAction}}</view>
+  </view>
+  <text wx:if="{{actionable}}" class="task-card-arrow">›</text>
+</view>

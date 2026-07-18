@@ -44,6 +44,39 @@ export type H5ClaimTaskContractV1 = {
   server_timestamp?: string;
 };
 
+/** P24D2 — additive Constitution Projection (customer slice). */
+export type H5CustomerConstitutionTrust = {
+  care_line?: string | null;
+  care_note?: string | null;
+};
+
+export type H5CustomerConstitutionTaskCard = {
+  task_id?: string | null;
+  title?: string | null;
+  state?: string | null;
+  progress?: { completed?: number | null; total?: number | null } | null;
+  is_today?: boolean | null;
+  route?: string | null;
+  actionable?: boolean | null;
+  primary_action?: string | null;
+};
+
+export type H5CustomerConstitutionProjection = {
+  today?: string | null;
+  why?: string | null;
+  after?: string | null;
+  trust?: H5CustomerConstitutionTrust | null;
+  current_stage?: string | null;
+  tasks?: H5CustomerConstitutionTaskCard[] | null;
+};
+
+export type H5ConstitutionProjection = {
+  projection_version?: number;
+  case_id?: string | null;
+  current_stage?: string | null;
+  customer?: H5CustomerConstitutionProjection | null;
+};
+
 export type H5ClaimIntakeInfo = {
   lane: string;
   flow: string;
@@ -71,6 +104,11 @@ export type H5ClaimIntakeInfo = {
   /** Authoritative Slice 1 projection when enabled */
   slice1_projection?: Slice1Projection | null;
   task_contract_v1?: H5ClaimTaskContractV1 | null;
+  /**
+   * P24D2 — server Customer Constitution (Today / Why / After / Trust).
+   * Additive; preferred Focus source when present.
+   */
+  constitution_projection?: H5ConstitutionProjection | null;
   /** True when Slice 1 was expected but live projection could not be loaded */
   slice1_projection_error?: boolean;
   /** QA/test claim only — never set for production customers */

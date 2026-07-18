@@ -166,6 +166,40 @@ export type Slice1SubmissionCommand = {
   evidence?: { attachment_id: string };
 };
 
+/** P24D2 — additive Constitution Projection (customer slice from H5 intake). */
+export type CustomerConstitutionTrust = {
+  care_line?: string | null;
+  care_note?: string | null;
+};
+
+export type CustomerConstitutionTaskCard = {
+  task_id?: string | null;
+  title?: string | null;
+  state?: string | null;
+  progress?: { completed?: number | null; total?: number | null } | null;
+  is_today?: boolean | null;
+  route?: string | null;
+  actionable?: boolean | null;
+  primary_action?: string | null;
+};
+
+export type CustomerConstitutionProjection = {
+  today?: string | null;
+  why?: string | null;
+  after?: string | null;
+  trust?: CustomerConstitutionTrust | null;
+  current_stage?: string | null;
+  /** P26A — Constitution-first Task Home cards. */
+  tasks?: CustomerConstitutionTaskCard[] | null;
+};
+
+export type ConstitutionProjection = {
+  projection_version?: number;
+  case_id?: string | null;
+  current_stage?: string | null;
+  customer?: CustomerConstitutionProjection | null;
+};
+
 export type CustomerTask = {
   lane: string;
   flow: string;
@@ -192,6 +226,11 @@ export type CustomerTask = {
   /** Additive Slice 1 projection — server authoritative when present. */
   slice1_projection?: Slice1Projection;
   task_contract_v1?: TaskContractV1;
+  /**
+   * P24D2 — server Customer Constitution (Today / Why / After / Trust).
+   * Prefer via resolveCustomerConstitution; local mock remains fallback.
+   */
+  constitution_projection?: ConstitutionProjection | null;
 };
 
 export type UploadSlotInfo = {
