@@ -379,7 +379,7 @@ export function resolveTaskViewModel(
       shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
       title: normalizeUiString(task.title, "我的事故资料"),
       instruction: focusInstruction,
-      statusLabel: slice1.waitingForBroker ? "等待审核" : "需补充",
+      statusLabel: slice1.waitingForBroker ? "等待经纪人" : "需补充材料",
       statusTone: slice1.waitingForBroker ? "done" : "active",
       progress,
       cta: normalizeTaskCta({

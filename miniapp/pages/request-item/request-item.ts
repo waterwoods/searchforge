@@ -872,7 +872,7 @@ Page({
             internal.commandId = "";
             internal.idempotencyKey = "";
             this.applyAuthoritativeTask(refreshed, { restoreDraft: true });
-            wx.showToast({ title: "已同步最新状态", icon: "none" });
+            wx.showToast({ title: "进度已更新", icon: "none" });
           }
         }
       } catch {
@@ -920,7 +920,7 @@ Page({
         waitingForBroker: mapSlice1CustomerView(nextTask).waitingForBroker,
       });
       wx.showToast({
-        title: mapSlice1CustomerView(nextTask).waitingForBroker ? "已提交，等待审核" : "已提交下一项",
+        title: mapSlice1CustomerView(nextTask).waitingForBroker ? "已提交，等待经纪人" : "已提交下一项",
         icon: "none",
       });
       return;

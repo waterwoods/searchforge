@@ -509,7 +509,7 @@ export default function H5ClaimIntakePage() {
     return (
       <>
         <div style={styles.card}>
-          <div style={styles.statusPill}>需补充</div>
+          <div style={styles.statusPill}>需补充材料</div>
           <h2 style={{ ...styles.dashboardTitle, marginBottom: 8 }}>{landing.title}</h2>
           <p style={{ margin: '0 0 8px', fontSize: 15, lineHeight: 1.55, color: '#444' }}>
             {landing.instructions}

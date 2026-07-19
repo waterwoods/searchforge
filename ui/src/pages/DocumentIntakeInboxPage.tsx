@@ -527,7 +527,7 @@ function BrokerCaseDetail({
             <PacketField label="Source" value="WeCom" />
           </Card>
         ) : Object.keys(knownFacts).length > 0 && !isClaimGuidedCase(caseItem) ? (
-          <Card size="small" title="Known Facts" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
+          <Card size="small" title="已知信息" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
             {Object.entries(knownFacts).map(([k, v]) => (
               <PacketField key={k} label={humanizeStructuredField(k)} value={String(v)} />
             ))}
@@ -594,7 +594,7 @@ function BrokerCaseDetail({
           </Button>
         ) : null}
         <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 16 }}>
-          Delete demo case / 删除测试案件
+          删除测试案件
         </Button>
       </div>
     );
@@ -746,7 +746,7 @@ function BrokerCaseDetail({
           </Button>
         ) : null}
         <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
-          Delete demo case / 删除测试案件
+          删除测试案件
         </Button>
       </Space>
     </div>

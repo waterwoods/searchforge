@@ -38,6 +38,10 @@ import {
   type AutosavePhase,
 } from '@/features/intake/components/requestDraftAutosave';
 import { resolveSlice1CustomerResponse } from '@/features/intake/components/StructuredRequestMorePanel';
+import {
+  CLAIM_PILOT_STATUS,
+  CLAIM_REQUEST_MORE_COPY,
+} from '@/features/intake/utils/claimPilotCopy';
 
 const AUTOSAVE_DEBOUNCE_MS = 600;
 /** Gentle while-open poll — avoid version churn / flicker. */
@@ -118,31 +122,31 @@ export function classifySendRequestError(err: unknown): SendErrorDisposition {
       return {
         kind: 'version_conflict',
         clearCommandIdentity: true,
-        userMessage: 'Case was updated. Review the refreshed draft, then send once.',
-        toast: 'Case updated — refreshed. Review and send again.',
+        userMessage: CLAIM_REQUEST_MORE_COPY.caseUpdatedReview,
+        toast: CLAIM_REQUEST_MORE_COPY.caseUpdatedToast,
       };
     }
     if (err.kind === 'timeout') {
       return {
         kind: 'timeout',
         clearCommandIdentity: false,
-        userMessage: 'Network outcome uncertain. Tap Send once more to safely replay the same request.',
-        toast: 'Connection uncertain — tap Send once more to retry safely.',
+        userMessage: CLAIM_REQUEST_MORE_COPY.networkUncertain,
+        toast: CLAIM_REQUEST_MORE_COPY.networkUncertainToast,
       };
     }
     if (err.kind === 'validation' || err.kind === 'feature_disabled' || err.kind === 'authorization') {
       return {
         kind: 'rejected',
         clearCommandIdentity: true,
-        userMessage: err.message || 'Send Request was rejected. Refresh and review before retrying.',
-        toast: err.message || 'Send Request rejected',
+        userMessage: err.message || CLAIM_REQUEST_MORE_COPY.sendRejected,
+        toast: err.message || CLAIM_REQUEST_MORE_COPY.sendRejected,
       };
     }
     return {
       kind: 'other',
       clearCommandIdentity: false,
-      userMessage: err.message || 'Could not send request. Tap again to retry with the same command.',
-      toast: err.message || 'Send Request failed — tap again to retry safely',
+      userMessage: err.message || CLAIM_REQUEST_MORE_COPY.sendFailedRetry,
+      toast: err.message || CLAIM_REQUEST_MORE_COPY.sendFailedRetry,
     };
   }
   const status = (err as { response?: { status?: number }; status?: number })?.response?.status
@@ -151,15 +155,15 @@ export function classifySendRequestError(err: unknown): SendErrorDisposition {
     return {
       kind: 'version_conflict',
       clearCommandIdentity: true,
-      userMessage: 'Case was updated. Review the refreshed draft, then send once.',
-      toast: 'Case updated — refreshed. Review and send again.',
+      userMessage: CLAIM_REQUEST_MORE_COPY.caseUpdatedReview,
+      toast: CLAIM_REQUEST_MORE_COPY.caseUpdatedToast,
     };
   }
   return {
     kind: 'other',
     clearCommandIdentity: false,
-    userMessage: 'Could not send request. Tap again to retry with the same command.',
-    toast: 'Send Request failed — tap again to retry safely',
+    userMessage: CLAIM_REQUEST_MORE_COPY.sendFailedRetry,
+    toast: CLAIM_REQUEST_MORE_COPY.sendFailedRetry,
   };
 }
 
@@ -203,10 +207,8 @@ export function resolveAccessReviewState(
     satisfied,
     total,
     simpleStatus: reviewReady
-      ? (access?.simple_status && String(access.simple_status).toLowerCase().includes('ready')
-        ? String(access.simple_status)
-        : 'Ready for Review')
-      : (access?.simple_status || 'Waiting for customer'),
+      ? CLAIM_PILOT_STATUS.waitingBroker
+      : CLAIM_PILOT_STATUS.waitingCustomer,
     submittedVin,
   };
 }
@@ -316,20 +318,24 @@ function CustomerAccessReadyCard({
     >
       <Space direction="vertical" size={10} style={{ width: '100%' }}>
         <Tag color={review.reviewReady ? 'success' : 'processing'}>
-          {review.reviewReady ? 'Your turn' : 'Customer is working'}
+          {review.reviewReady
+            ? CLAIM_REQUEST_MORE_COPY.chipWaitingBroker
+            : CLAIM_REQUEST_MORE_COPY.chipWaitingCustomer}
         </Tag>
         <Title level={4} style={{ margin: 0 }}>
-          {review.reviewReady ? 'Customer replied' : 'Waiting for customer'}
+          {review.reviewReady
+            ? CLAIM_REQUEST_MORE_COPY.waitingBrokerTitle
+            : CLAIM_REQUEST_MORE_COPY.waitingCustomerTitle}
         </Title>
         <Text type="secondary">
           {review.reviewReady
-            ? '先核对客户补充内容，再决定下一步。'
-            : '已向客户发出补充请求。'}
+            ? CLAIM_REQUEST_MORE_COPY.waitingBrokerBody
+            : CLAIM_REQUEST_MORE_COPY.waitingCustomerBody}
         </Text>
         {review.submittedVin ? (
           <div style={{ padding: 12, background: '#fff', border: '1px solid #b7eb8f', borderRadius: 6 }}>
             <Text strong style={{ display: 'block', marginBottom: 4 }}>
-              Customer VIN
+              {CLAIM_REQUEST_MORE_COPY.customerVin}
             </Text>
             <Text code copyable={{ text: review.submittedVin }}>
               {review.submittedVin}
@@ -345,7 +351,7 @@ function CustomerAccessReadyCard({
           <Alert
             type="warning"
             showIcon
-            message={access.message || 'Request sent. Code is still preparing.'}
+            message={access.message || CLAIM_REQUEST_MORE_COPY.codePreparing}
           />
         ) : null}
         <Space wrap>
@@ -355,13 +361,13 @@ function CustomerAccessReadyCard({
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(link);
-                  message.success('Link copied');
+                  message.success(CLAIM_REQUEST_MORE_COPY.linkCopied);
                 } catch {
-                  message.error('Could not copy link');
+                  message.error(CLAIM_REQUEST_MORE_COPY.copyFailed);
                 }
               }}
             >
-              Copy Link
+              {CLAIM_REQUEST_MORE_COPY.copyLink}
             </Button>
           ) : null}
         </Space>
@@ -371,26 +377,26 @@ function CustomerAccessReadyCard({
           items={[
             {
               key: 'request-details',
-              label: 'Request details',
+              label: CLAIM_REQUEST_MORE_COPY.requestDetails,
               children: (
                 <Space direction="vertical" size={8}>
                   <Text type="secondary">
-                    Completed {review.satisfied} of {review.total}
+                    {CLAIM_REQUEST_MORE_COPY.progressLine(review.satisfied, review.total)}
                   </Text>
                   {itemSummary.length > 0 ? (
-                    <Text>Requested: {itemSummary.join(', ')}</Text>
+                    <Text>{CLAIM_REQUEST_MORE_COPY.requestedLine(itemSummary.join('、'))}</Text>
                   ) : null}
                   {!review.reviewReady ? (
                     <Paragraph style={{ marginBottom: 0 }}>
-                      {access.instruction_zh || '让客户用微信扫码并补充资料。'}
+                      {access.instruction_zh || CLAIM_REQUEST_MORE_COPY.instructionDefault}
                     </Paragraph>
                   ) : null}
                   {onRefreshStatus ? (
                     <Button size="small" onClick={() => void onRefreshStatus()} loading={Boolean(refreshing)}>
-                      Refresh
+                      {CLAIM_REQUEST_MORE_COPY.refreshStatus}
                     </Button>
                   ) : null}
-                  {showEdit && onEdit ? <Button size="small" onClick={onEdit}>Edit</Button> : null}
+                  {showEdit && onEdit ? <Button size="small" onClick={onEdit}>修改</Button> : null}
                 </Space>
               ),
             },
@@ -623,15 +629,15 @@ export function MissingInformationChecklistPanel({
         if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
           autosaveRef.current.failSave(started.generation);
           setSaveStatus('failed');
-          setError('Case was updated elsewhere. Refresh to recover, then retry save.');
+          setError(CLAIM_REQUEST_MORE_COPY.caseUpdatedReview);
           await refreshCase?.();
-          message.warning('Case updated — refreshed.');
+          message.warning(CLAIM_REQUEST_MORE_COPY.caseUpdatedToast);
           return { ok: false };
         }
         if (result.outcome === 'rejected') {
           autosaveRef.current.failSave(started.generation);
           setSaveStatus('failed');
-          setError(result.error_code || 'Draft save rejected');
+          setError(result.error_code || CLAIM_REQUEST_MORE_COPY.saveFailed);
           return { ok: false };
         }
         const serverItems = result.broker_projection?.request_draft?.items || started.items;
@@ -658,11 +664,11 @@ export function MissingInformationChecklistPanel({
         const status = (err as { response?: { status?: number } })?.response?.status;
         autosaveRef.current.failSave(started.generation);
         if (status === 409) {
-          setError('Case updated. Refresh, review, then retry save.');
+          setError(CLAIM_REQUEST_MORE_COPY.caseUpdatedReview);
           await refreshCase?.();
-          message.warning('Stale version — refreshed.');
+          message.warning(CLAIM_REQUEST_MORE_COPY.caseUpdatedToast);
         } else {
-          setError('Could not save request draft. Retry after refresh.');
+          setError('草稿未能保存。请刷新后重试。');
         }
         setSaveStatus('failed');
         return { ok: false };
@@ -712,9 +718,9 @@ export function MissingInformationChecklistPanel({
     setStatusRefreshing(true);
     try {
       await refreshCase();
-      message.success('Customer status refreshed.');
+      message.success(CLAIM_REQUEST_MORE_COPY.statusRefreshed);
     } catch {
-      message.error('Could not refresh customer status.');
+      message.error(CLAIM_REQUEST_MORE_COPY.statusRefreshFailed);
     } finally {
       setStatusRefreshing(false);
     }
@@ -727,11 +733,11 @@ export function MissingInformationChecklistPanel({
       return;
     }
     if (selectedSendableCount < 1) {
-      setError('Select VIN before sending to the customer.');
+      setError(CLAIM_REQUEST_MORE_COPY.selectVinBeforeSend);
       return;
     }
     if (saveStatus === 'failed') {
-      setError('Save failed — retry save before sending.');
+      setError(CLAIM_REQUEST_MORE_COPY.saveFailedBeforeSend);
       return;
     }
     const needsFlush =
@@ -745,7 +751,7 @@ export function MissingInformationChecklistPanel({
     {
       const saved = await flushAutosave();
       if (!saved.ok && (needsFlush || !latestDraftId)) {
-        setError('Waiting for draft save. Select VIN and try again.');
+        setError(CLAIM_REQUEST_MORE_COPY.waitingDraftSave);
         return;
       }
       if (saved.ok) {
@@ -756,7 +762,7 @@ export function MissingInformationChecklistPanel({
       }
     }
     if (!latestDraftId) {
-      setError('Draft not ready yet. Wait for Saved status.');
+      setError(CLAIM_REQUEST_MORE_COPY.draftNotReady);
       return;
     }
 
@@ -779,17 +785,17 @@ export function MissingInformationChecklistPanel({
         request_draft_id: latestDraftId,
       });
       if (result.outcome === 'conflict' || result.error_code === 'version_conflict') {
-        setError('Case was updated. Review the refreshed draft, then send once.');
+        setError(CLAIM_REQUEST_MORE_COPY.caseUpdatedReview);
         sendCommandRef.current = null;
         if (result.broker_projection) mergeProjection(result);
         await refreshCase?.();
-        message.warning('Case updated — refreshed. Review and send again.');
+        message.warning(CLAIM_REQUEST_MORE_COPY.caseUpdatedToast);
         return;
       }
       if (result.outcome === 'rejected') {
         const unsupported = (result as { unsupported_items?: string[] }).unsupported_items;
         setError(
-          brokerSendBlockedMessage(String(result.error_code || 'Send Request rejected'), unsupported),
+          brokerSendBlockedMessage(String(result.error_code || 'rejected'), unsupported),
         );
         sendCommandRef.current = null;
         return;
@@ -799,8 +805,8 @@ export function MissingInformationChecklistPanel({
       sendCommandRef.current = null;
       message.success(
         result.outcome === 'replayed'
-          ? 'Request already sent; showing customer access.'
-          : 'Request sent to customer.',
+          ? CLAIM_REQUEST_MORE_COPY.alreadySent
+          : CLAIM_REQUEST_MORE_COPY.sentSuccess,
       );
     } catch (err) {
       const disposition = classifySendRequestError(err);
@@ -830,13 +836,13 @@ export function MissingInformationChecklistPanel({
   const showDraftEditor = !showAccessCard;
   const saveStatusLabel =
     saveStatus === 'saving'
-      ? 'Saving…'
+      ? CLAIM_REQUEST_MORE_COPY.saving
       : saveStatus === 'saved'
-        ? 'Saved'
+        ? CLAIM_REQUEST_MORE_COPY.saved
         : saveStatus === 'failed'
-          ? 'Save failed — Retry'
+          ? CLAIM_REQUEST_MORE_COPY.saveFailed
           : saveStatus === 'unsaved'
-            ? 'Unsaved changes'
+            ? CLAIM_REQUEST_MORE_COPY.unsaved
             : '';
   const canSend =
     selectedSendableCount > 0
@@ -860,9 +866,11 @@ export function MissingInformationChecklistPanel({
 
       {showDraftEditor ? (
         <>
-          <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>请客户补充</Title>
+          <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>
+            {CLAIM_REQUEST_MORE_COPY.panelTitle}
+          </Title>
           <Paragraph type="secondary" style={{ marginBottom: 8 }}>
-            先看清事故，再只发一项补充任务（当前可发：VIN）。
+            {CLAIM_REQUEST_MORE_COPY.panelSubtitle}
           </Paragraph>
           {(() => {
             const checklist = projection.missing_information_checklist || [];
@@ -886,19 +894,21 @@ export function MissingInformationChecklistPanel({
                   <Alert
                     type="info"
                     showIcon
-                    message="事故理解仍缺（Start Claim）"
+                    message={CLAIM_REQUEST_MORE_COPY.accidentGapsTitle}
                     description={mustHaveGaps.map((i) => i.label).join(' · ')}
                   />
                 ) : (
                   <Alert
                     type="success"
                     showIcon
-                    message="事故理解已齐 — 可按需请客户补充"
+                    message={CLAIM_REQUEST_MORE_COPY.accidentReadyTitle}
                   />
                 )}
                 {requestMoreCandidates.length > 0 ? (
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    Request More 候选：{requestMoreCandidates.map((i) => i.label).join(' · ')}
+                    {CLAIM_REQUEST_MORE_COPY.candidatesHint(
+                      requestMoreCandidates.map((i) => i.label).join(' · '),
+                    )}
                   </Text>
                 ) : null}
               </Space>
@@ -910,7 +920,7 @@ export function MissingInformationChecklistPanel({
               showIcon
               style={{ marginBottom: 8 }}
               message={formatUnsupportedSendItems(unsupportedInSavedDraft)}
-              description="当前仅支持发送 VIN。请只勾选 VIN，等待 Saved，再发送。"
+              description={CLAIM_REQUEST_MORE_COPY.vinOnlyHint}
             />
           ) : null}
           <Space direction="vertical" style={{ width: '100%' }} size={10}>
@@ -946,12 +956,12 @@ export function MissingInformationChecklistPanel({
                   items={[
                     {
                       key: `message-${row.field_key}`,
-                      label: 'Edit customer message',
+                      label: CLAIM_REQUEST_MORE_COPY.editMessage,
                       children: (
                         <>
                           <Input
                             size="small"
-                            placeholder="Customer-facing label"
+                            placeholder={CLAIM_REQUEST_MORE_COPY.customerLabelPlaceholder}
                             value={row.label}
                             onChange={(e) =>
                               applyUserRowEdit((prev) =>
@@ -962,7 +972,7 @@ export function MissingInformationChecklistPanel({
                           />
                           <TextArea
                             rows={2}
-                            placeholder="Customer instruction (optional)"
+                            placeholder={CLAIM_REQUEST_MORE_COPY.customerInstructionPlaceholder}
                             value={row.instructions}
                             onChange={(e) =>
                               applyUserRowEdit((prev) =>
@@ -989,7 +999,7 @@ export function MissingInformationChecklistPanel({
                   <>
                     {' '}
                     <Button type="link" size="small" onClick={() => void flushAutosave()} style={{ padding: 0 }}>
-                      Retry
+                      {CLAIM_REQUEST_MORE_COPY.retry}
                     </Button>
                   </>
                 ) : null}
@@ -1002,11 +1012,11 @@ export function MissingInformationChecklistPanel({
                 loading={sending}
                 disabled={sending || !canSend}
               >
-                Send Request
+                {CLAIM_REQUEST_MORE_COPY.sendButton}
               </Button>
               {saveStatus === 'failed' ? (
                 <Button onClick={() => void flushAutosave()}>
-                  Save draft now
+                  {CLAIM_REQUEST_MORE_COPY.saveDraftNow}
                 </Button>
               ) : null}
             </Space>

@@ -24,6 +24,6 @@ assert.match(
   /Policy \/ insurance card/,
 );
 
-assert.match(brokerSendBlockedMessage('illegal_state'), /not ready for Request More/i);
+assert.match(brokerSendBlockedMessage('illegal_state'), /不能发出补充请求/);
 
 console.log('mvpRequestTypes.test: PASS');

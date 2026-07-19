@@ -1,7 +1,10 @@
 /**
  * P20 MVP contract — broker send + customer submit support.
  * VIN = fact submit; policy_or_insurance_card = evidence submit.
+ * P27-B2 — broker-facing messages use claim-pilot Chinese office copy.
  */
+
+import { claimRequestMoreBlockedMessage } from '@/features/intake/utils/claimPilotCopy';
 
 export const MVP_SENDABLE_ITEM_TYPES = new Set(['vin', 'policy_or_insurance_card']);
 
@@ -18,27 +21,9 @@ export function isMvpSendableChecklistRow(row: {
 }
 
 export function formatUnsupportedSendItems(labels: string[]): string {
-  const unique = [...new Set(labels.map((l) => String(l || '').trim()).filter(Boolean))];
-  if (!unique.length) return 'One or more requested items are not supported yet.';
-  if (unique.length === 1) return `"${unique[0]}" is not supported for customer submit yet.`;
-  return `These items are not supported for customer submit yet: ${unique.join(', ')}.`;
+  return claimRequestMoreBlockedMessage('unsupported_draft_item_type_for_send', labels);
 }
 
 export function brokerSendBlockedMessage(errorCode: string, unsupportedItems?: string[] | null): string {
-  if (errorCode === 'unsupported_draft_item_type_for_send') {
-    return formatUnsupportedSendItems(unsupportedItems || []);
-  }
-  if (errorCode === 'request_draft_empty') {
-    return 'Select at least one supported Request More item (VIN or insurance card) before sending.';
-  }
-  if (errorCode === 'illegal_state') {
-    return 'This case is not ready for Request More yet. Refresh the case, then try VIN again.';
-  }
-  if (errorCode === 'open_request_exists') {
-    return 'A customer Request More is already open. Wait for the customer or refresh status.';
-  }
-  if (errorCode === 'lane_mismatch') {
-    return 'Request More is only available on Claim cases.';
-  }
-  return errorCode;
+  return claimRequestMoreBlockedMessage(errorCode, unsupportedItems);
 }

@@ -199,7 +199,7 @@ const accessCard: CustomerAccessCard = {
   );
   assert.equal(conflict.kind, 'version_conflict');
   assert.equal(conflict.clearCommandIdentity, true);
-  assert.match(conflict.toast, /Case updated/);
+  assert.match(conflict.toast, /案件已更新/);
 
   const timeout = classifySendRequestError(
     new Slice1RequestMoreError('uncertain', 'timeout'),
@@ -280,7 +280,7 @@ const accessCard: CustomerAccessCard = {
   assert.equal(ready.submittedVin, '1HGCM82633A004352');
   assert.equal(ready.satisfied, 1);
   assert.equal(ready.total, 1);
-  assert.match(ready.simpleStatus, /Ready for Review/i);
+  assert.equal(ready.simpleStatus, '等待经纪人');
 }
 
 console.log('MissingInformationChecklistPanel.test: PASS');

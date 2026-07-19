@@ -13,15 +13,19 @@ import {
     type TriageResult,
 } from '@/api/inboxTriage';
 import { formatPortalLocalDateTime } from '@/features/intake/utils/intakePure';
+import {
+    CLAIM_PILOT_STATUS,
+    CLAIM_REQUEST_MORE_COPY,
+} from '@/features/intake/utils/claimPilotCopy';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 const SLICE1_REQUEST_MORE_TYPES: Array<{ value: Slice1RequestItemType; label: string }> = [
-    { value: 'vin', label: 'VIN' },
-    { value: 'policy_or_insurance_card', label: 'Insurance card' },
-    { value: 'photo_evidence', label: 'Photo / document evidence' },
-    { value: 'free_text', label: 'Other confirmation' },
+    { value: 'vin', label: '车辆 VIN' },
+    { value: 'policy_or_insurance_card', label: '保险卡' },
+    { value: 'photo_evidence', label: '照片 / 文件' },
+    { value: 'free_text', label: '其他确认' },
 ];
 
 const SLICE1_REQUEST_MORE_PRESETS: Array<{
@@ -30,30 +34,30 @@ const SLICE1_REQUEST_MORE_PRESETS: Array<{
     item_type: Slice1RequestItemType;
     instructions: string;
 }> = [
-    { key: 'vin', label: 'VIN', item_type: 'vin', instructions: 'Please send or confirm the vehicle VIN.' },
+    { key: 'vin', label: '车辆 VIN', item_type: 'vin', instructions: '请发送或确认车辆 VIN。' },
     {
         key: 'insurance_card',
-        label: 'Insurance card',
+        label: '保险卡',
         item_type: 'policy_or_insurance_card',
-        instructions: 'Please upload a clear photo of the insurance card.',
+        instructions: '请上传清晰的保险卡照片。',
     },
     {
         key: 'damage_photos',
-        label: 'Damage photos',
+        label: '车损照片',
         item_type: 'photo_evidence',
-        instructions: 'Please upload clear photos of the vehicle damage.',
+        instructions: '请上传清晰的车辆受损照片。',
     },
     {
         key: 'police_report',
-        label: 'Police report',
+        label: '报警回执 / 报告',
         item_type: 'photo_evidence',
-        instructions: 'If available, please upload a police report photo or document.',
+        instructions: '如有，请上传报警回执或相关文件照片。',
     },
     {
         key: 'incident_date',
-        label: 'Incident date confirmation',
+        label: '事故时间确认',
         item_type: 'free_text',
-        instructions: 'Please confirm the accident date and approximate time.',
+        instructions: '请确认事故日期与大概时间。',
     },
 ];
 
@@ -106,8 +110,8 @@ function makeRequestMoreCommandIdentity(caseId: string, expectedCaseVersion: num
 function defaultRequestMoreItem(position = 1): RequestMoreDraftItem {
     return {
         item_type: 'vin',
-        label: 'VIN',
-        instructions: 'Please send or confirm the vehicle VIN.',
+        label: '车辆 VIN',
+        instructions: '请发送或确认车辆 VIN。',
         required: true,
         position,
     };
@@ -307,9 +311,9 @@ export function mergeSlice1ProjectionIntoCaseRecord<TCase extends StructuredRequ
                   : caseRecord.workflow_phase,
         display_status:
             projection.workflow_state === 'broker_more_requested'
-                ? 'Claim · Request More'
+                ? CLAIM_PILOT_STATUS.waitingCustomer
                 : projection.workflow_state === 'broker_review_ready'
-                  ? 'Claim · Broker Review'
+                  ? CLAIM_PILOT_STATUS.waitingBroker
                   : caseRecord.display_status,
         updated_at: result.server_timestamp ?? caseRecord.updated_at,
     } as TCase;
@@ -404,7 +408,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
     const openRequestMoreComposer = () => {
         if (!caseRecord.case_id || !canCreate) return;
         setRequestMoreItems((items) => (items.length ? items : [defaultRequestMoreItem()]));
-        setRequestMoreReason((reason) => reason || 'Please provide the requested claim information.');
+        setRequestMoreReason((reason) => reason || '请按以下说明补充理赔所需资料。');
         setRequestMoreError(null);
         setRequestMoreConflict(null);
         setRequestMoreSubmitState('idle');
@@ -420,7 +424,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                 (item) => item.item_type === preset.item_type && item.label.trim().toLowerCase() === preset.label.toLowerCase(),
             );
             if (duplicate) {
-                message.warning('This requested item is already in the list.');
+                message.warning('该项已在列表中。');
                 return items;
             }
             return [
@@ -511,13 +515,17 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
             setRequestMoreSubmitState('success');
             setRequestMoreCommandIdentity(null);
             setRequestMoreOpen(false);
-            message.success(result.outcome === 'replayed' ? 'Request More already saved; refreshed current progress.' : 'Request More sent to customer.');
+            message.success(
+                result.outcome === 'replayed'
+                    ? CLAIM_REQUEST_MORE_COPY.structuredAlreadySaved
+                    : CLAIM_REQUEST_MORE_COPY.structuredSent,
+            );
         } catch (error) {
             if (!mountedRef.current || seq !== requestMoreSubmitSeqRef.current) return;
             if (error instanceof Slice1RequestMoreError) {
                 if (error.kind === 'version_conflict') {
                     setRequestMoreSubmitState('conflict');
-                    setRequestMoreConflict('The case changed while you were editing. We refreshed the latest status. Review and submit again.');
+                    setRequestMoreConflict(CLAIM_REQUEST_MORE_COPY.structuredConflict);
                     if (error.result) {
                         mergeResultIntoCase(error.result);
                     }
@@ -531,7 +539,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                 }
                 if (error.kind === 'timeout') {
                     setRequestMoreSubmitState('retry_ready');
-                    setRequestMoreError('Network outcome is uncertain. Retry will use the same command identity.');
+                    setRequestMoreError(CLAIM_REQUEST_MORE_COPY.structuredTimeout);
                     try {
                         await refreshAuthoritativeCase();
                     } catch {
@@ -541,18 +549,18 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                 }
                 const messageText =
                     error.kind === 'feature_disabled'
-                        ? 'Structured Request More is not enabled for this case.'
+                        ? CLAIM_REQUEST_MORE_COPY.structuredNotEnabled
                         : error.kind === 'authorization'
-                          ? 'You are not authorized to request more on this case.'
+                          ? CLAIM_REQUEST_MORE_COPY.structuredUnauthorized
                           : error.kind === 'validation'
-                            ? 'Please review the requested items and submit again.'
-                            : 'Request More failed. Please retry after refreshing the case.';
+                            ? CLAIM_REQUEST_MORE_COPY.structuredValidation
+                            : CLAIM_REQUEST_MORE_COPY.structuredFailed;
                 setRequestMoreSubmitState('error');
                 setRequestMoreError(messageText);
                 return;
             }
             setRequestMoreSubmitState('error');
-            setRequestMoreError('Request More failed. Please retry after refreshing the case.');
+            setRequestMoreError(CLAIM_REQUEST_MORE_COPY.structuredFailed);
         }
     };
 
@@ -586,7 +594,9 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                     <Tag color={color}>#{item.position} {status || 'pending'}</Tag>
                     <Tag>{item.item_type || 'item'}</Tag>
                     <Text strong style={{ fontSize: 13 }}>{item.label}</Text>
-                    {item.required ? <Tag color="red">required</Tag> : <Tag>optional</Tag>}
+                    {item.required
+                        ? <Tag color="red">{CLAIM_REQUEST_MORE_COPY.required}</Tag>
+                        : <Tag>{CLAIM_REQUEST_MORE_COPY.optional}</Tag>}
                 </Space>
                 {item.instructions ? (
                     <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
@@ -599,24 +609,24 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                             <Alert
                                 type="warning"
                                 showIcon
-                                message="Submitted value missing"
-                                description={response?.message || 'Refresh the case. Do not treat this item as review-ready until the submitted value is visible.'}
+                                message="客户提交内容尚未显示"
+                                description={response?.message || '请刷新案件。在看到客户提交内容前，请勿当作已可核对。'}
                                 style={{ marginBottom: 6 }}
                             />
                         ) : null}
                         {response?.kind === 'fact' && !missingResponse ? (
                             <>
                                 <Text style={{ display: 'block', fontSize: 13 }}>
-                                    Submitted value:{' '}
+                                    {CLAIM_REQUEST_MORE_COPY.submittedValue}：{' '}
                                     <Text code copyable={{ text: String(response.submitted_value ?? '') }}>
                                         {String(response.submitted_value ?? '')}
                                     </Text>
                                 </Text>
                                 {response.canonical_value ? (
                                     <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
-                                        Claim VIN: <Text code>{String(response.canonical_value)}</Text>
+                                        案件 VIN：<Text code>{String(response.canonical_value)}</Text>
                                         {String(response.canonical_value) !== String(response.submitted_value ?? '')
-                                            ? ' (differs from submitted)'
+                                            ? '（与客户提交不一致）'
                                             : null}
                                     </Text>
                                 ) : null}
@@ -624,30 +634,25 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         ) : null}
                         {response?.kind === 'evidence' && !missingResponse ? (
                             <Text style={{ display: 'block', fontSize: 13 }}>
-                                Evidence reference:{' '}
-                                <Text code>{String(response.evidence_ref || response.attachment_id || 'attached')}</Text>
+                                附件：{' '}
+                                <Text code>{String(response.evidence_ref || response.attachment_id || '已上传')}</Text>
                                 {caseRecord.case_id && (response.attachment_id || response.evidence_ref) ? (
                                     <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
-                                        Open from Case Attachments / authorized preview — raw storage IDs are not shown as the primary review surface.
+                                        请在案件附件中查看。
                                     </Text>
                                 ) : null}
                             </Text>
                         ) : null}
                         <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 4 }}>
-                            Submitted {submittedAt ? (formatPortalLocalDateTime(submittedAt) ?? submittedAt) : '—'}
+                            {CLAIM_REQUEST_MORE_COPY.submittedAt}{' '}
+                            {submittedAt ? (formatPortalLocalDateTime(submittedAt) ?? submittedAt) : '—'}
                             {' · '}
-                            Source {formatSlice1ResponseSource(response)}
-                        </Text>
-                        <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>
-                            Review status: {response?.review_status || status || '—'}
-                            {' · '}
-                            Saved to claim:{' '}
-                            {response?.applied_to_canonical_facts ? 'Yes' : 'No'}
+                            {CLAIM_REQUEST_MORE_COPY.source} {formatSlice1ResponseSource(response)}
                         </Text>
                     </div>
                 ) : item.satisfied_at ? (
                     <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
-                        Satisfied {formatPortalLocalDateTime(item.satisfied_at) ?? item.satisfied_at}
+                        已提交 {formatPortalLocalDateTime(item.satisfied_at) ?? item.satisfied_at}
                     </Text>
                 ) : null}
             </div>
@@ -659,14 +664,20 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
             size="small"
             title={
                 <Space wrap>
-                    <span>Structured Request More</span>
-                    <Tag color="blue">Slice 1 enabled</Tag>
+                    <span>{CLAIM_REQUEST_MORE_COPY.structuredPanelTitle}</span>
+                    {reviewReady ? (
+                        <Tag color="success">{CLAIM_PILOT_STATUS.waitingBroker}</Tag>
+                    ) : summary ? (
+                        <Tag color="processing">{CLAIM_PILOT_STATUS.waitingCustomer}</Tag>
+                    ) : (
+                        <Tag color="default">{CLAIM_PILOT_STATUS.needMaterials}</Tag>
+                    )}
                 </Space>
             }
             extra={
                 canCreate ? (
                     <Button size="small" type="primary" onClick={openRequestMoreComposer}>
-                        Request more
+                        {CLAIM_REQUEST_MORE_COPY.structuredCreate}
                     </Button>
                 ) : null
             }
@@ -674,56 +685,61 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
             style={{ borderRadius: 8, borderColor: reviewReady ? '#b7eb8f' : '#91caff', marginBottom: 12 }}
         >
             <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                {projectionLoading ? <Alert type="info" showIcon message="Loading authoritative Slice 1 projection..." /> : null}
+                {projectionLoading ? <Alert type="info" showIcon message={CLAIM_REQUEST_MORE_COPY.loading} /> : null}
                 {projectionLoadError ? (
                     <Alert
                         type="error"
                         showIcon
-                        message="Could not load authoritative Slice 1 projection."
+                        message={CLAIM_REQUEST_MORE_COPY.loadFailed}
                         description={projectionLoadError}
-                        action={refreshCase ? <Button size="small" onClick={() => void refreshAuthoritativeCase()}>Retry</Button> : undefined}
+                        action={refreshCase ? <Button size="small" onClick={() => void refreshAuthoritativeCase()}>{CLAIM_REQUEST_MORE_COPY.retryLoad}</Button> : undefined}
                     />
                 ) : null}
                 {requestMoreConflict ? <Alert type="warning" showIcon message={requestMoreConflict} /> : null}
-                {requestMoreSubmitState === 'success' ? <Alert type="success" showIcon message="Request More saved from server response." /> : null}
+                {requestMoreSubmitState === 'success' ? (
+                    <Alert type="success" showIcon message={CLAIM_REQUEST_MORE_COPY.structuredSent} />
+                ) : null}
                 {!summary ? (
                     <Alert
                         type={canCreate ? 'info' : 'warning'}
                         showIcon
-                        message={canCreate ? 'Ready to create a structured Request More.' : 'No active structured request.'}
-                        description={canCreate ? 'Create one ordered request group for the customer.' : 'Refresh the case before creating a new request.'}
+                        message={canCreate ? CLAIM_REQUEST_MORE_COPY.structuredReady : CLAIM_REQUEST_MORE_COPY.structuredEmpty}
+                        description={canCreate ? CLAIM_REQUEST_MORE_COPY.structuredCreateHint : CLAIM_REQUEST_MORE_COPY.structuredRefreshHint}
                     />
                 ) : (
                     <>
                         <Space wrap size={[6, 4]}>
-                            <Tag color={summary.status === 'completed' ? 'green' : 'blue'}>Request {summary.status}</Tag>
+                            <Tag color={summary.status === 'completed' ? 'green' : 'blue'}>
+                                {summary.status === 'completed'
+                                    ? CLAIM_PILOT_STATUS.completed
+                                    : CLAIM_PILOT_STATUS.waitingCustomer}
+                            </Tag>
                             {progress ? (
                                 <Tag color={progress.remaining === 0 ? 'green' : 'gold'}>
-                                    Progress {progress.satisfied}/{progress.total}
+                                    {CLAIM_REQUEST_MORE_COPY.progressLine(progress.satisfied, progress.total)}
                                 </Tag>
                             ) : null}
-                            {projection?.workflow_state ? <Tag>{projection.workflow_state}</Tag> : null}
                         </Space>
                         {summary.reason ? (
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                                Customer instructions: {summary.reason}
+                                给客户的说明：{summary.reason}
                             </Text>
                         ) : null}
                         {activeItem ? (
                             <div>
-                                <Text strong style={{ display: 'block', marginBottom: 4 }}>Active customer item</Text>
+                                <Text strong style={{ display: 'block', marginBottom: 4 }}>{CLAIM_REQUEST_MORE_COPY.activeItem}</Text>
                                 {renderSlice1RequestItem(activeItem)}
                             </div>
                         ) : null}
                         {queuedItems.length > 0 ? (
                             <div>
-                                <Text strong style={{ display: 'block', marginBottom: 4 }}>Queued items</Text>
+                                <Text strong style={{ display: 'block', marginBottom: 4 }}>{CLAIM_REQUEST_MORE_COPY.queuedItems}</Text>
                                 {queuedItems.map(renderSlice1RequestItem)}
                             </div>
                         ) : null}
                         {satisfiedItems.length > 0 ? (
                             <div>
-                                <Text strong style={{ display: 'block', marginBottom: 4 }}>Satisfied items</Text>
+                                <Text strong style={{ display: 'block', marginBottom: 4 }}>{CLAIM_REQUEST_MORE_COPY.satisfiedItems}</Text>
                                 {satisfiedItems.map(renderSlice1RequestItem)}
                             </div>
                         ) : null}
@@ -731,21 +747,21 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                 )}
                 <div style={{ padding: 10, background: '#fafafa', borderRadius: 6 }}>
                     <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                        Customer next action: {customerAction?.title || customerAction?.action_type || '—'}
+                        {CLAIM_REQUEST_MORE_COPY.customerNext}：{customerAction?.title || customerAction?.action_type || '—'}
                     </Text>
                     <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                        Broker next action:{' '}
+                        {CLAIM_REQUEST_MORE_COPY.brokerNext}：{' '}
                         {brokerAction?.action_type === 'review_customer_response'
-                            ? 'Inspect submitted responses above'
-                            : brokerAction?.action_type || (canCreate ? 'Create request' : '—')}
+                            ? CLAIM_REQUEST_MORE_COPY.brokerNextReview
+                            : brokerAction?.action_type || (canCreate ? CLAIM_REQUEST_MORE_COPY.brokerNextCreate : '—')}
                     </Text>
                     {reviewReady && satisfiedMissingResponse ? (
                         <Alert
                             type="error"
                             showIcon
                             style={{ marginTop: 8 }}
-                            message="Review blocked: submitted value not visible"
-                            description="Progress shows complete, but at least one satisfied item is missing its submitted response. Refresh the case before continuing."
+                            message="暂不能核对：客户提交内容未显示"
+                            description="进度显示已齐，但至少一项已提交内容未显示。请先刷新案件。"
                         />
                     ) : null}
                     {reviewReady && !satisfiedMissingResponse ? (
@@ -753,22 +769,25 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                             type="success"
                             showIcon
                             style={{ marginTop: 8 }}
-                            message="Ready for review"
-                            description="Submitted customer responses are visible above. Cap 3B is read-only — no confirm, reject, correction, or apply-to-canonical-facts actions in this slice."
+                            message={CLAIM_REQUEST_MORE_COPY.reviewReady}
+                            description={CLAIM_REQUEST_MORE_COPY.reviewReadyBody}
                         />
                     ) : null}
                     <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 6 }}>
-                        Last server update: {projection?.server_timestamp ? (formatPortalLocalDateTime(projection.server_timestamp) ?? projection.server_timestamp) : '—'}
+                        {CLAIM_REQUEST_MORE_COPY.lastUpdated}：{' '}
+                        {projection?.server_timestamp
+                            ? (formatPortalLocalDateTime(projection.server_timestamp) ?? projection.server_timestamp)
+                            : '—'}
                     </Text>
                 </div>
             </Space>
             <Modal
-                title="Create Structured Request More"
+                title={CLAIM_REQUEST_MORE_COPY.modalTitle}
                 open={requestMoreOpen}
                 onCancel={() => {
                     if (requestMoreSubmitState !== 'submitting') setRequestMoreOpen(false);
                 }}
-                okText={requestMoreSubmitState === 'retry_ready' ? 'Retry safely' : 'Send request'}
+                okText={requestMoreSubmitState === 'retry_ready' ? CLAIM_REQUEST_MORE_COPY.modalRetry : CLAIM_REQUEST_MORE_COPY.modalOk}
                 okButtonProps={{
                     loading: requestMoreSubmitState === 'submitting',
                     disabled: requestMoreSubmitState === 'submitting',
@@ -782,11 +801,8 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         <Alert type={requestMoreSubmitState === 'retry_ready' ? 'warning' : 'error'} showIcon message={requestMoreError} />
                     ) : null}
                     {requestMoreConflict ? <Alert type="warning" showIcon message={requestMoreConflict} /> : null}
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                        Timeout retry keeps the same command identity.
-                    </Text>
                     <div>
-                        <Text strong style={{ display: 'block', marginBottom: 6 }}>Customer-facing group instructions</Text>
+                        <Text strong style={{ display: 'block', marginBottom: 6 }}>{CLAIM_REQUEST_MORE_COPY.groupInstructions}</Text>
                         <TextArea
                             value={requestMoreReason}
                             onChange={(event) => setRequestMoreReason(event.target.value)}
@@ -796,7 +812,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         />
                     </div>
                     <Select
-                        placeholder="Add preset requested item"
+                        placeholder={CLAIM_REQUEST_MORE_COPY.addPreset}
                         options={SLICE1_REQUEST_MORE_PRESETS.map((preset) => ({ value: preset.key, label: preset.label }))}
                         onSelect={(value) => addRequestMorePreset(String(value))}
                         value={undefined}
@@ -816,25 +832,25 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                                         style={{ width: 190 }}
                                     />
                                     <Button size="small" onClick={() => moveRequestMoreItem(index, -1)} disabled={index === 0 || requestMoreSubmitState === 'submitting'}>
-                                        Up
+                                        上移
                                     </Button>
                                     <Button size="small" onClick={() => moveRequestMoreItem(index, 1)} disabled={index === requestMoreItems.length - 1 || requestMoreSubmitState === 'submitting'}>
-                                        Down
+                                        下移
                                     </Button>
                                     <Button size="small" danger onClick={() => removeRequestMoreItem(index)} disabled={requestMoreItems.length <= 1 || requestMoreSubmitState === 'submitting'}>
-                                        Remove
+                                        移除
                                     </Button>
                                 </Space>
                                 <Input
                                     value={item.label}
-                                    placeholder="Customer-facing label"
+                                    placeholder={CLAIM_REQUEST_MORE_COPY.customerLabelPlaceholder}
                                     maxLength={160}
                                     onChange={(event) => updateRequestMoreItem(index, { label: event.target.value })}
                                     disabled={requestMoreSubmitState === 'submitting'}
                                 />
                                 <TextArea
                                     value={item.instructions}
-                                    placeholder="Concise customer-facing instructions"
+                                    placeholder={CLAIM_REQUEST_MORE_COPY.customerInstructionPlaceholder}
                                     maxLength={1000}
                                     rows={2}
                                     onChange={(event) => updateRequestMoreItem(index, { instructions: event.target.value })}
@@ -847,7 +863,7 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                         onClick={() => setRequestMoreItems((items) => [...items, defaultRequestMoreItem(items.length + 1)])}
                         disabled={requestMoreSubmitState === 'submitting'}
                     >
-                        Add blank item
+                        {CLAIM_REQUEST_MORE_COPY.addBlank}
                     </Button>
                 </Space>
             </Modal>

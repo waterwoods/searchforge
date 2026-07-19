@@ -1,5 +1,5 @@
 /**
- * P19H-3e-1 — Claim Case Brief hero panel for Workbench drawer.
+ * P19H-3e-1 / P27-B2 — Claim conclusion panel for Workbench (one conclusion + one next action).
  */
 import { Card, Tag, Typography } from 'antd';
 import type { ClaimCaseBrief, ClaimTimelineEvent } from '@/api/inboxTriage';
@@ -15,6 +15,8 @@ const { Text, Paragraph } = Typography;
 export type ClaimCaseBriefPanelProps = {
   brief?: ClaimCaseBrief | null;
   timeline?: ClaimTimelineEvent[] | null;
+  /** Optional office next-step override (e.g. broker_next_step). */
+  nextAction?: string | null;
 };
 
 function severityColor(severity: string): string {
@@ -52,18 +54,22 @@ function highlightColor(level: string): string {
   }
 }
 
-export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBriefPanelProps) {
+export function ClaimCaseBriefPanel({
+  brief: briefProp,
+  timeline,
+  nextAction,
+}: ClaimCaseBriefPanelProps) {
   const brief = resolveClaimCaseBrief(briefProp);
   if (!brief) {
     return (
       <Card
         size="small"
-        title="事故摘要"
+        title="理赔结论"
         style={{ marginBottom: 12 }}
         styles={{ body: { padding: '12px 16px' } }}
       >
         <Text type="secondary" style={{ fontSize: 12 }}>
-          事故摘要暂未生成
+          理赔结论暂未生成
         </Text>
       </Card>
     );
@@ -78,20 +84,16 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
   const ownVehicle = String(keyFacts.own_vehicle_info || '').trim() || '暂未提供';
   const otherPartyPlate = String(keyFacts.other_party_plate || '').trim() || '暂未提供';
   const otherPartyInfo = String(keyFacts.other_party_info || '').trim() || '暂未提供';
+  const resolvedNext =
+    String(nextAction || '').trim()
+    || String(brief.next_best_question || '').trim();
 
   return (
     <Card
       size="small"
-      title="事故摘要 · 先看发生了什么"
+      title="理赔结论"
       style={{ marginBottom: 12 }}
       styles={{ body: { padding: '12px 16px' } }}
-      extra={
-        brief.confidence ? (
-          <Tag color={brief.confidence === 'high' ? 'green' : brief.confidence === 'medium' ? 'blue' : 'default'}>
-            事故理解 · {brief.confidence === 'high' ? '较清' : brief.confidence === 'medium' ? '部分' : '待补'}
-          </Tag>
-        ) : null
-      }
     >
       <Paragraph style={{ fontSize: 14, marginBottom: 12 }}>{brief.summary}</Paragraph>
 
@@ -141,7 +143,7 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
       {highlights.length > 0 ? (
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-            重点速览
+            重点
           </Text>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {highlights.map((item, index) => (
@@ -156,7 +158,7 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
       {missing.length > 0 ? (
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-            事故理解缺口
+            仍缺信息
           </Text>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {missing.map((item) => (
@@ -171,20 +173,20 @@ export function ClaimCaseBriefPanel({ brief: briefProp, timeline }: ClaimCaseBri
         </div>
       ) : null}
 
-      {brief.next_best_question ? (
+      {resolvedNext ? (
         <div
           style={{
-            marginBottom: 12,
+            marginBottom: timelinePreview.length > 0 ? 12 : 4,
             padding: '10px 12px',
-            background: '#f6ffed',
-            border: '1px solid #b7eb8f',
+            background: '#f0f5ff',
+            border: '1px solid #adc6ff',
             borderRadius: 6,
           }}
         >
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-            建议问客户
+            下一步
           </Text>
-          <Text style={{ fontSize: 14, fontWeight: 500 }}>{brief.next_best_question}</Text>
+          <Text style={{ fontSize: 14, fontWeight: 600, color: '#10239e' }}>{resolvedNext}</Text>
         </div>
       ) : null}
 

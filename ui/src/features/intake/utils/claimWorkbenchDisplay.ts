@@ -3,6 +3,7 @@
  * P19H-3c-3B — Claim evidence checklist formatting.
  */
 import type { ClaimCaseBrief, ClaimEvidenceSlot, ClaimEvidenceSummary, ClaimTimelineEvent, SavedCase } from '@/api/inboxTriage';
+import { CLAIM_PILOT_STATUS, normalizeClaimPilotStatus } from './claimPilotCopy';
 
 export const SERVICE_LANE_CLAIM = 'claim';
 
@@ -47,11 +48,11 @@ export function isClaimBrokerDone(c: Pick<SavedCase, 'workflow_phase' | 'display
 }
 
 export function claimBrokerDoneNextStep(): string {
-  return '当前收集阶段已结束';
+  return '收集已结束。今日无需再向客户索取材料。';
 }
 
 export function claimLaneLabel(): string {
-  return 'Claim · 记录中';
+  return '理赔 · 处理中';
 }
 
 export function resolveClaimSummary(c: SavedCase): ClaimSummary {
@@ -84,12 +85,16 @@ export function buildClaimListSummary(c: SavedCase): string {
 
 export function claimDisplayStatus(c: SavedCase): string {
   const status = (c.display_status || '').trim();
-  if (status) return status;
-  return 'Claim Step 1 complete · Accident basics received';
+  if (status) {
+    const frozen = normalizeClaimPilotStatus(status);
+    if (frozen) return frozen;
+    return status;
+  }
+  return '事故基本信息已收到';
 }
 
 export const CLAIM_INTAKE_SAFETY_NOTE =
-  'This is intake only. Broker must confirm before any filing.';
+  '当前仅为收件整理。正式报案前须由经纪人确认。';
 
 export function resolveClaimEvidenceSummary(
   c: Pick<SavedCase, 'claim_evidence_summary'>,
@@ -239,7 +244,7 @@ export function formatClaimEvidenceSource(channel: string): string {
     case 'wecom':
       return '微信上传';
     case 'broker_upload':
-      return 'Broker 上传';
+      return '经纪人上传';
     case 'none':
       return '未上传';
     default:

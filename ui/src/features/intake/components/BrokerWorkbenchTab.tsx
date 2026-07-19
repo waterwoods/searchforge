@@ -1664,7 +1664,17 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     {formatQueueCaseIdShort(currentCase.case_id)}
                                 </Text>
                             )}
-                            {currentCase.case_id ? (
+                            {currentCase.service_lane === 'claim' ? (
+                                <ClaimCaseBriefPanel
+                                    brief={currentCase.claim_case_brief}
+                                    timeline={currentCase.claim_timeline}
+                                    nextAction={
+                                        currentCase.office_broker_next_step
+                                        || currentCase.broker_next_step
+                                        || null
+                                    }
+                                />
+                            ) : currentCase.case_id ? (
                                 <BrokerCaseWorkspacePanel
                                     triage={currentCase}
                                     confirmSaving={confirmSaving}
@@ -1697,23 +1707,19 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     return refreshed;
                                 }}
                             />
-                            {currentCase.service_lane === 'claim' ? (
-                                <ClaimCaseBriefPanel
-                                    brief={currentCase.claim_case_brief}
-                                    timeline={currentCase.claim_timeline}
-                                />
-                            ) : null}
                             {currentCase.service_lane === 'claim' && currentCase.case_id ? (
                                 <CaseAttachmentsPanel
                                     caseId={currentCase.case_id}
                                     attachments={(currentCase as SavedCase).case_attachments}
                                 />
                             ) : null}
-                            <OfficeWorkbenchOneGlanceSummary
-                                triage={currentCase}
-                                inputFallback={(input.trim() || currentCase.source_text || '').trim()}
-                                uiCopy={uiCopy}
-                            />
+                            {currentCase.service_lane === 'claim' ? null : (
+                                <OfficeWorkbenchOneGlanceSummary
+                                    triage={currentCase}
+                                    inputFallback={(input.trim() || currentCase.source_text || '').trim()}
+                                    uiCopy={uiCopy}
+                                />
+                            )}
                             {postCopyContinuationHint && currentCase.case_id && (
                                 <Alert
                                     type="info"
@@ -1721,7 +1727,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     closable
                                     onClose={() => setPostCopyContinuationHint(false)}
                                     message="已复制 — 客户若再发消息"
-                                    description="请在下方的「追加客户补充」粘贴新消息，系统会更新下一步与对话记录，无需新建案件。"
+                                    description="请在下方的「追加客户补充」粘贴新消息，以更新下一步与对话记录，无需新建案件。"
                                 />
                             )}
                             {(() => {
@@ -2567,7 +2573,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     style={{ marginBottom: 12, borderColor: '#d9d9d9', borderRadius: 8 }}
                                 >
                                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                                        客户发了新消息？粘贴到这里，系统会更新下一步和 context。
+                                        客户发了新消息？粘贴到这里，更新下一步与案件说明。
                                     </Text>
                                     <Space direction="vertical" style={{ width: '100%' }} size={8}>
                                         <TextArea

@@ -18,23 +18,23 @@
     />
 
     <view class="card" wx:if="{{waitingForBroker}}">
-      <view class="status-pill done">等待审核</view>
+      <view class="status-pill done">等待经纪人</view>
       <view class="card-title">{{nextActionTitle || '资料已提交，等待经纪人审核'}}</view>
       <view class="card-subtitle">{{nextActionInstructions || '陈总会查看你补充的资料。'}}</view>
       <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
-      <view class="meta-line" wx:if="{{lastServerUpdate}}">已同步最新状态</view>
+      <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
     </view>
 
     <!-- P26H-UI: bind showWorkSurface — never nextAction alone (system_default has null nextAction). -->
     <block wx:elif="{{showWorkSurface}}">
       <view class="card">
-        <view class="status-pill">需补充</view>
+        <view class="status-pill">需补充材料</view>
         <view class="card-title">{{nextActionTitle}}</view>
         <view class="card-subtitle">{{nextActionInstructions}}</view>
         <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
         <view class="meta-line" wx:if="{{progress.total}}">进度 {{progress.satisfied}}/{{progress.total}}</view>
         <view class="meta-line" wx:if="{{brokerStatusLabel}}">经纪人状态：{{brokerStatusLabel}}</view>
-        <view class="meta-line" wx:if="{{lastServerUpdate}}">已同步最新状态</view>
+        <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
       </view>
 
       <view class="card" wx:if="{{inputMode === 'text'}}">

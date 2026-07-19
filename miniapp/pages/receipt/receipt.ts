@@ -277,7 +277,7 @@ Page({
       status: view.enabled
         ? view.waitingForBroker
           ? "已提交"
-          : "需补充"
+          : "需补充材料"
         : dash?.status || vm.statusLabel || (submitted ? "已提交" : "进行中"),
       statusTone:
         view.enabled && !view.waitingForBroker

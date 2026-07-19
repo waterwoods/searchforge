@@ -25,7 +25,7 @@ import {
 
 const claimCase = {
   service_lane: 'claim',
-  display_status: 'Claim Step 1 complete · Accident basics received',
+  display_status: '事故基本信息已收到',
   claim_summary: {
     accident_datetime: '今天上午10点',
     accident_location: 'Irvine Blvd 和 Culver 附近',
@@ -37,7 +37,7 @@ assert.equal(isClaimGuidedLane('claim'), true);
 assert.equal(isClaimGuidedLane('claim_lite'), false);
 assert.equal(isClaimGuidedLane('add_car'), false);
 assert.equal(isClaimGuidedCase(claimCase), true);
-assert.equal(claimLaneLabel(), 'Claim · 记录中');
+assert.equal(claimLaneLabel(), '理赔 · 处理中');
 
 const summary = resolveClaimSummary(claimCase);
 assert.equal(summary.accident_datetime, '今天上午10点');
@@ -48,11 +48,16 @@ assert.equal(
   buildClaimListSummary(claimCase),
   '今天上午10点 · Irvine Blvd 和 Culver 附近 · 对方变道刮到我左前门',
 );
-assert.equal(
-  claimDisplayStatus(claimCase),
-  'Claim Step 1 complete · Accident basics received',
-);
+assert.equal(claimDisplayStatus(claimCase), '事故基本信息已收到');
 assert.ok(!claimDisplayStatus(claimCase).toLowerCase().includes('claim filed'));
+assert.equal(
+  claimDisplayStatus({ service_lane: 'claim', display_status: 'Claim · Request More' } as SavedCase),
+  '等待客户',
+);
+assert.equal(
+  claimDisplayStatus({ service_lane: 'claim', display_status: 'Claim · Broker Review' } as SavedCase),
+  '等待经纪人',
+);
 
 const addCar = { service_lane: 'add_car', primary_vehicle_summary: '2024 Tesla Model 3' } as SavedCase;
 assert.equal(isClaimGuidedCase(addCar), false);
@@ -172,6 +177,7 @@ const sampleOutputs = [
   formatClaimEvidenceSource('wecom'),
   formatClaimEvidenceSource('broker_upload'),
 ];
+assert.equal(formatClaimEvidenceSource('broker_upload'), '经纪人上传');
 for (const text of sampleOutputs) {
   assert.ok(claimEvidenceCopyIsBrokerSafe(text), `forbidden phrase in: ${text}`);
 }

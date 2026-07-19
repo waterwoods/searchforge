@@ -91,7 +91,7 @@ export function BrokerCaseWorkspacePanel({
             }}
         >
             <Text strong style={{ fontSize: 14, color: '#10239e', display: 'block', marginBottom: 10 }}>
-                Case Workspace · AI Insurance Service Desk
+                服务记录
             </Text>
 
             <Space wrap size={[6, 6]} style={{ marginBottom: 10 }}>
@@ -113,7 +113,7 @@ export function BrokerCaseWorkspacePanel({
             {summary ? (
                 <div style={{ marginBottom: 10 }}>
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        摘要 Summary
+                        摘要
                     </Text>
                     <Text style={{ fontSize: 13, lineHeight: 1.55, display: 'block' }}>{summary}</Text>
                 </div>
@@ -122,7 +122,7 @@ export function BrokerCaseWorkspacePanel({
             {(Object.keys(knownFacts).length > 0 || knownFromFields.length > 0) && (
                 <div style={{ marginBottom: 10 }}>
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        已知 Known Facts
+                        已知信息
                     </Text>
                     {Object.entries(knownFacts).map(([k, v]) => (
                         <Text key={k} style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}>
@@ -146,7 +146,7 @@ export function BrokerCaseWorkspacePanel({
                     }}
                 >
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        尚缺 Missing Fields
+                        仍缺信息
                     </Text>
                     <Text style={{ fontSize: 12, color: '#ad4e00' }}>{missing.join(' · ')}</Text>
                 </div>
@@ -163,7 +163,7 @@ export function BrokerCaseWorkspacePanel({
                     }}
                 >
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        风险 Risk Flags
+                        需注意
                     </Text>
                     {risks.map((r) => (
                         <Text key={r} style={{ fontSize: 12, color: '#cf1322', display: 'block' }}>
@@ -181,7 +181,7 @@ export function BrokerCaseWorkspacePanel({
             {conflicts.length > 0 ? (
                 <div style={{ marginBottom: 10 }}>
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        冲突 Conflict Flags
+                        信息冲突
                     </Text>
                     <Text style={{ fontSize: 12 }}>{conflicts.join(' · ')}</Text>
                 </div>
@@ -190,7 +190,7 @@ export function BrokerCaseWorkspacePanel({
             {nextAction ? (
                 <div style={{ marginBottom: 10, paddingTop: 4, borderTop: '1px solid #e6ebf5' }}>
                     <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                        经纪人下一步 Broker Next Action
+                        下一步
                     </Text>
                     <Text strong style={{ fontSize: 14, color: '#10239e', lineHeight: 1.5, display: 'block' }}>
                         {nextAction}
@@ -224,7 +224,7 @@ export function BrokerCaseWorkspacePanel({
                         loading={confirmSaving}
                         onClick={onManualPromote}
                     >
-                        人工处理 Manual Handle
+                        转人工处理
                     </Button>
                 ) : null}
                 {triage.broker_confirmed_at ? (
@@ -262,7 +262,7 @@ export function OfficeWorkbenchAddCarSubmissionSnapshot({ triage, uiCopy }: { tr
     const createdLabel = u.office_workbench_record_created_label ?? '记录创建';
     const updatedLabel = u.office_workbench_record_updated_label ?? '最近更新';
     const formalSubmittedLabel = u.office_workbench_formal_submitted_at_label ?? '正式送达办公室（首次）';
-    const lastActivityLabel = u.office_workbench_last_activity_label ?? '最近活动（系统更新时间）';
+    const lastActivityLabel = u.office_workbench_last_activity_label ?? '最近活动';
     const processLabel = u.office_workbench_process_owner_label ?? '流程主要负责方';
     const proxyNote =
         u.office_workbench_submitted_proxy_note ??
@@ -381,10 +381,10 @@ export function OfficeWorkbenchOneGlanceSummary({
             }}
         >
             <Text strong style={{ fontSize: 13, color: '#1d39c4', display: 'block', marginBottom: 4 }}>
-                整理结果（办公室一眼）· 三步扫读
+                办公室一眼 · 三步扫读
             </Text>
             <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 12, lineHeight: 1.45 }}>
-                系统已把客户原文整理为可接手结论；需要核对原文时在下方「完整对话」展开。
+                客户原文已整理为可接手结论；需要核对原文时在下方「完整对话」展开。
             </Text>
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 {g.missingLine ? (

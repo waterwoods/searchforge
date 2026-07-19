@@ -545,29 +545,29 @@ function normalizeSlice1RequestMoreError(error: unknown): Slice1RequestMoreError
                 : 'validation';
         // Prefer server error_code so Send Request / Request More mismatches are not opaque.
         const code = String(result?.error_code || errorCode || '').trim();
-        let message = 'Request More was rejected by validation.';
+        let message = '补充请求未能通过核对。';
         if (code === 'illegal_state') {
-            message = 'This case is not ready for Request More yet. Refresh the case, then try again.';
+            message = '本案件暂时还不能发出补充请求。请刷新后再试。';
         } else if (code === 'unsupported_draft_item_type_for_send') {
-            message = 'One or more selected items are not supported for customer submit yet.';
+            message = '有些补充项暂不支持客户在线提交。';
         } else if (code === 'request_draft_empty') {
-            message = 'Select at least one supported Request More item before sending.';
+            message = '请至少勾选一项可发送的补充项后再发出。';
         } else if (code === 'open_request_exists') {
-            message = 'A customer Request More is already open. Wait for the customer or refresh status.';
+            message = '已有进行中的补充请求。请等待客户完成，或先刷新进度。';
         } else if (code === 'slice1_not_enabled') {
-            message = 'Structured Request More is not enabled for this case.';
+            message = '本案件暂不可发出补充请求。';
         } else if (code) {
-            message = `Request More was rejected (${code}).`;
+            message = `补充请求未能发出（${code}）。`;
         }
         return new Slice1RequestMoreError(message, kind, { status, detail, result });
     }
     if (status && status >= 500) {
-        return new Slice1RequestMoreError('Request More failed on the server.', 'server', { status, detail, result });
+        return new Slice1RequestMoreError('补充请求未能发出，请稍后重试。', 'server', { status, detail, result });
     }
     if (e.code === 'ECONNABORTED' || (!e.response && e.request)) {
-        return new Slice1RequestMoreError('Network outcome is uncertain.', 'timeout', { detail });
+        return new Slice1RequestMoreError('网络结果不确定。', 'timeout', { detail });
     }
-    return new Slice1RequestMoreError(e.message || 'Request More failed.', 'unknown', { status, detail, result });
+    return new Slice1RequestMoreError(e.message || '补充请求未能发出。', 'unknown', { status, detail, result });
 }
 
 export interface TriageResult {

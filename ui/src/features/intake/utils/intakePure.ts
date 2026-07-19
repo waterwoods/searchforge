@@ -1252,7 +1252,7 @@ export function getCaseWorkspaceStatusLabel(
     > & { case_status?: string; broker_confirmed_at?: string | null },
 ): { label: string; color: string } {
     if (caseItem.broker_confirmed_at) {
-        return { label: 'Done / Active', color: 'green' };
+        return { label: '已完成', color: 'green' };
     }
     const tags = (caseItem.workbench_tags ?? []).map((t) => t.toLowerCase());
     const risks = (caseItem.risk_flags ?? []).length;
@@ -1260,19 +1260,19 @@ export function getCaseWorkspaceStatusLabel(
         caseItem.manual_followup_needed
         && (tags.some((t) => t.includes('manual') || t.includes('claim') || t.includes('coverage')) || risks > 0)
     ) {
-        return { label: 'Manual Handle', color: 'volcano' };
+        return { label: '需人工处理', color: 'volcano' };
     }
     if ((caseItem.lifecycle_status ?? '') === 'collecting' || tags.includes('draft')) {
-        return { label: 'Draft', color: 'default' };
+        return { label: '整理中', color: 'default' };
     }
     if ((caseItem.still_needed_fields?.filter(Boolean).length ?? 0) > 0) {
-        return { label: 'Needs Info', color: 'gold' };
+        return { label: '需补充材料', color: 'gold' };
     }
     if (isAddCarReadyForBroker(caseItem)) {
-        return { label: 'Ready for Broker', color: 'blue' };
+        return { label: '等待经纪人', color: 'blue' };
     }
     if (caseItem.quote_ready_status === 'quote_ready' || tags.some((t) => t.includes('ready'))) {
-        return { label: 'Ready for Broker', color: 'blue' };
+        return { label: '等待经纪人', color: 'blue' };
     }
     const st = (caseItem.case_status ?? 'new').replace(/_/g, ' ');
     return { label: st, color: 'default' };
