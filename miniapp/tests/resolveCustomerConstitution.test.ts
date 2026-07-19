@@ -2,11 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildPrototypeViewModel,
-  seedActiveCaseSession,
-} from "../utils/activeClaimPrototypeState";
-import { buildHomePrototypeView } from "../utils/homePrototypeView";
-import {
   resolveCustomerConstitution,
   type ConstitutionProjection,
 } from "../utils/resolveCustomerConstitution";
@@ -34,24 +29,6 @@ function camryBeforeServer(): ConstitutionProjection {
         care_note: "如有需要，我们会联系您",
       },
       current_stage: "customer_action_needed",
-    },
-  };
-}
-
-function camryAfterServer(): ConstitutionProjection {
-  return {
-    projection_version: 1,
-    case_id: "case-chen-camry",
-    current_stage: "waiting_broker",
-    customer: {
-      today: "先不用操作",
-      why: "资料已齐，陈总正在审核。",
-      after: "请等待确认。",
-      trust: {
-        care_line: "下一步由陈总审核",
-        care_note: "我们会联系您（如需要）",
-      },
-      current_stage: "waiting_broker",
     },
   };
 }
@@ -173,41 +150,6 @@ test("trust fields fall back independently", () => {
   assert.equal(resolved.fieldAuthority.careNote, "local");
 });
 
-test("Camry before-upload server response → Active Claim view model exact copy", () => {
-  // Local profile index 1 would normally show 确认驾驶员 — server must win.
-  const session = seedActiveCaseSession("Camry", 1);
-  const view = buildPrototypeViewModel(session, false, {
-    serverConstitution: camryBeforeServer(),
-  });
-  assert.equal(view.todayFocus, "上传保险卡");
-  assert.equal(view.todayFocusWhy, "事故经过和现场照片已经完成。");
-  assert.equal(view.todayFocusAfter, "陈总开始审核。");
-  assert.equal(view.careLine, "陈总已收到资料");
-  assert.equal(view.careNote, "如有需要，我们会联系您");
-  assert.equal(view.currentStage, "customer_action_needed");
-  assert.equal(view.primaryLabel, "上传保险卡");
-});
-
-test("Camry after-upload server response → Home view model exact copy", () => {
-  const session = seedActiveCaseSession("Camry", 0);
-  const view = buildHomePrototypeView(session, false, {
-    serverConstitution: camryAfterServer(),
-  });
-  assert.ok(view.activeCase);
-  assert.equal(view.activeCase!.todayFocus, "先不用操作");
-  assert.equal(view.activeCase!.todayFocusWhy, "资料已齐，陈总正在审核。");
-  assert.equal(view.activeCase!.todayFocusAfter, "请等待确认。");
-  assert.equal(view.activeCase!.careLine, "下一步由陈总审核");
-  assert.equal(view.activeCase!.careNote, "我们会联系您（如需要）");
-  assert.equal(view.activeCase!.currentStage, "waiting_broker");
-  // Waiting acknowledgment CTA stays local; Focus comes from server.
-  assert.equal(view.activeCase!.primaryLabel, "知道了");
-});
-
-test("missing server Constitution keeps Camry local mock on Home", () => {
-  const session = seedActiveCaseSession("追尾", 0);
-  const view = buildHomePrototypeView(session, false, { serverConstitution: null });
-  assert.equal(view.activeCase?.todayFocus, "上传保险卡");
-  assert.equal(view.activeCase?.todayFocusWhy, "事故经过和现场照片已经完成。");
-  assert.equal(view.activeCase?.currentStage, "customer_action_needed");
-});
+// Prototype-coupled Camry Home/Active Claim view assertions live in
+// productionCustomerConstitution.test.ts (production path). Dev prototype
+// helpers are not part of the P27 closeout surface.
