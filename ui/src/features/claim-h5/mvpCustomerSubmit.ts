@@ -1,8 +1,9 @@
 /**
- * P20 Cap 3B MVP — customer-submittable request item types on H5.
+ * P20 Cap 3B MVP — customer-submittable request item types on H5 / Mini Program Slice1.
+ * Keep in sync with backend MVP_SENDABLE_ITEM_TYPES.
  */
 
-export const MVP_CUSTOMER_SUBMITTABLE_TYPES = new Set(['vin']);
+export const MVP_CUSTOMER_SUBMITTABLE_TYPES = new Set(['vin', 'policy_or_insurance_card']);
 
 export function isCustomerSubmittableItemType(itemType: string | null | undefined): boolean {
   return MVP_CUSTOMER_SUBMITTABLE_TYPES.has(String(itemType || '').trim().toLowerCase());
