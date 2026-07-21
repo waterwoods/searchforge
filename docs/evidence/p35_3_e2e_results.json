@@ -1,0 +1,243 @@
+{
+  "generated_at": "2026-07-21T00:39:43Z",
+  "method": "live_bff_http + isolated_testclient + static_checks (browser GUI unreachable from host)",
+  "base": "http://127.0.0.1:8001",
+  "ui_base": "http://127.0.0.1:5173",
+  "results": [
+    {
+      "scenario": "1.open_console_route",
+      "ok": true,
+      "detail": "ui_http=200"
+    },
+    {
+      "scenario": "2.env_banner_enabled",
+      "ok": true,
+      "detail": {
+        "environment": "qa",
+        "enabled": true,
+        "production_safety": "production_like_harness_gated",
+        "authorized": true
+      }
+    },
+    {
+      "scenario": "3.select_wx_identity",
+      "ok": true,
+      "detail": {
+        "masked": "wx_d3b\u2026dd35"
+      }
+    },
+    {
+      "scenario": "4.refresh_state",
+      "ok": true,
+      "detail": {
+        "mutations_allowed": true
+      }
+    },
+    {
+      "scenario": "5.fresh_with_confirm",
+      "ok": true,
+      "detail": {
+        "preset": "fresh",
+        "has_raw_resume": false
+      }
+    },
+    {
+      "scenario": "6.fresh_state_empty",
+      "ok": true,
+      "detail": {
+        "active": false,
+        "resume": false,
+        "rm": null
+      }
+    },
+    {
+      "scenario": "7.active_claim",
+      "ok": true,
+      "detail": {
+        "case_id": "case_e25cf2e7baaa",
+        "resume_masked": "h5t1.eyJ\u2026363468"
+      }
+    },
+    {
+      "scenario": "8.no_duplicate_binding",
+      "ok": true,
+      "detail": {
+        "case1": "case_e25cf2e7baaa",
+        "case2": "case_fa0287ba717a",
+        "note": "re-seed may new case_id but exactly one binding"
+      }
+    },
+    {
+      "scenario": "9.request_more",
+      "ok": true,
+      "detail": {
+        "http": 200,
+        "detail": null,
+        "requested_item_type": "vin",
+        "open_rm": {
+          "request_item_id": "item_p35_vin_4717aa1bfc",
+          "item_type": "vin",
+          "label": "\u8865\u5145\u8f66\u67b6\u53f7\uff08VIN\uff09",
+          "status": "active"
+        },
+        "case": "case_6c1072fc600a"
+      }
+    },
+    {
+      "scenario": "10.request_more_state",
+      "ok": true,
+      "detail": {
+        "open_rm": {
+          "request_item_id": "item_p35_vin_4717aa1bfc",
+          "item_type": "vin",
+          "label": "\u8865\u5145\u8f66\u67b6\u53f7\uff08VIN\uff09",
+          "status": "active"
+        },
+        "next_action": "\u8865\u5145\u8f66\u67b6\u53f7\uff08VIN\uff09",
+        "claim_status": "broker_needs_more_info"
+      }
+    },
+    {
+      "scenario": "11.identity_persists_same_process",
+      "ok": true,
+      "detail": {
+        "session_still": "wx_d3b\u2026dd35"
+      }
+    },
+    {
+      "scenario": "12.change_identity",
+      "ok": true,
+      "detail": {
+        "masked": "wx_17f\u2026fb2c"
+      }
+    },
+    {
+      "scenario": "13.forget_identity",
+      "ok": true,
+      "detail": {
+        "forgotten": true
+      }
+    },
+    {
+      "scenario": "14.mutations_disabled_without_identity",
+      "ok": true,
+      "detail": {
+        "mutations_allowed": false
+      }
+    },
+    {
+      "scenario": "14b.preset_rejected_without_identity",
+      "ok": true,
+      "detail": "selected_identity_required"
+    },
+    {
+      "scenario": "15.invalid_identity",
+      "ok": true,
+      "detail": {
+        "bad": "exact_wx_session_id_required",
+        "wild": "wildcard_identity_forbidden",
+        "short_status": 422,
+        "short": [
+          {
+            "type": "string_too_short",
+            "loc": [
+              "body",
+              "session_id"
+            ],
+            "msg": "String should have at least 12 characters",
+            "input": "wx_short",
+            "ctx": {
+              "min_length": 12
+            },
+            "url": "https://errors.pydantic.dev/2.12/v/string_too_short"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "16.unauthorized_without_intake_key",
+      "ok": true,
+      "detail": {
+        "detail": "intake_api_unauthorized"
+      }
+    },
+    {
+      "scenario": "20a.reject_support_key_header",
+      "ok": true,
+      "detail": "support_key_not_accepted_on_console"
+    },
+    {
+      "scenario": "20b.no_raw_resume_token_in_console_response",
+      "ok": true,
+      "detail": {
+        "has_resume_token_key": false,
+        "has_masked": true
+      }
+    },
+    {
+      "scenario": "20c.no_support_secret_in_status",
+      "ok": true,
+      "detail": "intake/support secrets absent from status JSON"
+    },
+    {
+      "scenario": "audit.list",
+      "ok": true,
+      "detail": {
+        "count": 5
+      }
+    },
+    {
+      "scenario": "17.harness_disabled_rejects_mutation",
+      "ok": true,
+      "detail": {
+        "detail": "founder_qa_harness_disabled"
+      }
+    },
+    {
+      "scenario": "18.production_mutation_rejected",
+      "ok": true,
+      "detail": {
+        "detail": "p35_mp_qa_support_key_required"
+      }
+    },
+    {
+      "scenario": "19a.client_error_mapper",
+      "ok": true,
+      "detail": "founderQaConsole.test.ts: PASS\n"
+    },
+    {
+      "scenario": "19b.wrong_confirm_not_success",
+      "ok": true,
+      "detail": {
+        "detail": "confirm_active_required"
+      }
+    },
+    {
+      "scenario": "21.miniapp_no_console",
+      "ok": true,
+      "detail": "no matches"
+    },
+    {
+      "scenario": "22.cli_status_works",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"enabled\": true,\n  \"demo_name\": \"p35_mp_qa\",\n  \"environment\": \"qa\",\n  \"production_like\": true,\n  \"support_key_configured\": true,\n  \"require_support_key\": true,\n  \"notes\": \"Requires ENABLE_P35_MP_QA_HARNESS=1 and UNIFIED_INTAKE_QA_FIXTURE_SURFACE=1. Production-like runtimes also req"
+    },
+    {
+      "scenario": "20d.console_client_source_no_support_key",
+      "ok": true,
+      "detail": "founderQaConsole.ts clean"
+    },
+    {
+      "scenario": "assess.no_founder_iam_blocks_local_pat",
+      "ok": true,
+      "detail": "Intake key + QA flags sufficient for local/shared-QA Founder PAT; not multi-tenant IAM"
+    },
+    {
+      "scenario": "assess.in_memory_identity_blocks_pat",
+      "ok": true,
+      "detail": "In-memory preference OK for single API process local/shared QA; Founder must re-paste after API restart"
+    }
+  ],
+  "pass_count": 30,
+  "fail_count": 0
+}

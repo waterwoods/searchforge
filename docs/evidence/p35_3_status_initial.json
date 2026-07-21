@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "environment": "qa",
+  "enabled": true,
+  "authorized": true,
+  "production_like": true,
+  "production_safety": "production_like_harness_gated",
+  "support_key_configured": true,
+  "require_support_key": true,
+  "intake_api_configured": true,
+  "actor": "founder",
+  "selected_identity": null,
+  "active_case": null,
+  "resume_binding": null,
+  "open_request_more": null,
+  "latest_qa_preset": null,
+  "latest_qa_audit_event": null,
+  "inspect_error": null,
+  "mutations_allowed": false,
+  "notes": "Requires ENABLE_P35_MP_QA_HARNESS=1 and UNIFIED_INTAKE_QA_FIXTURE_SURFACE=1. Production-like runtimes also require UNIFIED_INTAKE_SUPPORT_API_KEY. Operations are scoped to one exact wx_* session_id / person_link_key."
+}

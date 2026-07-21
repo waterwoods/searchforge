@@ -1,0 +1,99 @@
+{
+  "ok": true,
+  "preset": "request_more",
+  "result": {
+    "ok": true,
+    "preset": "request_more",
+    "identity_masked": "wx_d3b\u2026dd35",
+    "has_active_case": true,
+    "case_id": "case_6c1072fc600a",
+    "resume_token_masked": "h5t1.eyJ\u2026fb87bf",
+    "resume_expires_at": "2026-07-28T00:39:31Z",
+    "archived_harness_case_ids": [
+      "case_fa0287ba717a"
+    ],
+    "request_more_outcome": "accepted",
+    "requested_item_type": "vin",
+    "local_client_hint": "Relaunch Mini Program \u2192 Continue \u2192 Task Home should surface VIN / \u8f66\u67b6\u53f7 request. Broker and customer share One Truth on this case.",
+    "data_effects": {
+      "reset": [
+        "prior binding; soft-archive prior p35_mp_qa case for this identity"
+      ],
+      "retained": [
+        "unrelated identities"
+      ],
+      "recreated": [
+        "one p35_mp_qa claim",
+        "broker request-more for VIN",
+        "resume token + binding"
+      ]
+    },
+    "audit": {
+      "preset": "request_more",
+      "ok": true,
+      "actor": "founder",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "case_id": "case_6c1072fc600a",
+      "requested_item_type": "vin",
+      "at": "2026-07-21T00:39:33Z",
+      "environment": "qa",
+      "demo_name": "p35_mp_qa"
+    }
+  },
+  "status": {
+    "ok": true,
+    "environment": "qa",
+    "enabled": true,
+    "authorized": true,
+    "production_like": true,
+    "production_safety": "production_like_harness_gated",
+    "support_key_configured": true,
+    "require_support_key": true,
+    "intake_api_configured": true,
+    "actor": "founder",
+    "selected_identity": {
+      "label": "E2E Sim A",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "session_id": "wx_d3bb6f610a253d7fffb7dc6f319729c085bedd35",
+      "person_link_key_masked": "wx_d3b\u2026dd35",
+      "selected_at": "2026-07-21T00:39:16Z",
+      "environment": "qa",
+      "active_case_id": "case_6c1072fc600a",
+      "bound_case_id": "case_6c1072fc600a",
+      "last_seen": "2026-07-21T00:39:16Z"
+    },
+    "active_case": {
+      "has_active_case": true,
+      "case_id": "case_6c1072fc600a",
+      "claim_status": "broker_needs_more_info",
+      "current_task": "\u8865\u5145\u8f66\u67b6\u53f7\uff08VIN\uff09",
+      "next_action": "\u8865\u5145\u8f66\u67b6\u53f7\uff08VIN\uff09",
+      "qa_fixture_demo_name": "p35_mp_qa",
+      "last_preset_applied": null,
+      "last_reset_time": null,
+      "bound_case_is_harness": true
+    },
+    "resume_binding": {
+      "bound": true,
+      "resume_token_masked": null
+    },
+    "open_request_more": {
+      "request_item_id": "item_p35_vin_4717aa1bfc",
+      "item_type": "vin",
+      "label": "\u8865\u5145\u8f66\u67b6\u53f7\uff08VIN\uff09",
+      "status": "active"
+    },
+    "latest_qa_preset": "request_more",
+    "latest_qa_audit_event": {
+      "at": "2026-07-21T00:39:33Z",
+      "preset": "request_more",
+      "ok": true,
+      "identity_masked": "wx_d3b\u2026dd35",
+      "case_id": "case_6c1072fc600a",
+      "actor": "founder"
+    },
+    "inspect_error": null,
+    "mutations_allowed": true,
+    "notes": "Requires ENABLE_P35_MP_QA_HARNESS=1 and UNIFIED_INTAKE_QA_FIXTURE_SURFACE=1. Production-like runtimes also require UNIFIED_INTAKE_SUPPORT_API_KEY. Operations are scoped to one exact wx_* session_id / person_link_key."
+  }
+}

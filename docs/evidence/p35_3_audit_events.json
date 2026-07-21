@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "events": [
+    {
+      "preset": "active",
+      "ok": true,
+      "actor": "founder",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "case_id": "case_b3200e580360",
+      "archived_harness_case_ids": [
+        "case_6c1072fc600a"
+      ],
+      "at": "2026-07-21T00:39:39Z",
+      "environment": "qa",
+      "demo_name": "p35_mp_qa"
+    },
+    {
+      "preset": "request_more",
+      "ok": true,
+      "actor": "founder",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "case_id": "case_6c1072fc600a",
+      "requested_item_type": "vin",
+      "at": "2026-07-21T00:39:33Z",
+      "environment": "qa",
+      "demo_name": "p35_mp_qa"
+    },
+    {
+      "preset": "active",
+      "ok": true,
+      "actor": "founder",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "case_id": "case_fa0287ba717a",
+      "archived_harness_case_ids": [
+        "case_e25cf2e7baaa"
+      ],
+      "at": "2026-07-21T00:39:27Z",
+      "environment": "qa",
+      "demo_name": "p35_mp_qa"
+    },
+    {
+      "preset": "active",
+      "ok": true,
+      "actor": "founder",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "case_id": "case_e25cf2e7baaa",
+      "archived_harness_case_ids": [],
+      "at": "2026-07-21T00:39:22Z",
+      "environment": "qa",
+      "demo_name": "p35_mp_qa"
+    },
+    {
+      "preset": "fresh",
+      "ok": true,
+      "actor": "founder",
+      "identity_masked": "wx_d3b\u2026dd35",
+      "archived_harness_case_ids": [],
+      "retained_non_qa_case_ids": [],
+      "at": "2026-07-21T00:39:18Z",
+      "environment": "qa",
+      "demo_name": "p35_mp_qa"
+    }
+  ]
+}
