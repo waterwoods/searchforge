@@ -7,8 +7,16 @@
 
 export const REQUIRED_APP_ID = "wxa610932351416622";
 export const REQUIRED_API_PROFILE = "qa";
-export const REQUIRED_QA_API_BASE_URL = "https://fiqa-api-g7zatxrycq-uw.a.run.app";
-export const REQUIRED_REQUEST_LEGAL_DOMAIN_HOST = "fiqa-api-g7zatxrycq-uw.a.run.app";
+/** Isolated Cloud QA (fiqa-api-qa) — P36 T5. Never Production fiqa-api. */
+export const REQUIRED_QA_API_BASE_URL =
+  "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app";
+export const REQUIRED_REQUEST_LEGAL_DOMAIN_HOST =
+  "fiqa-api-qa-g7zatxrycq-uw.a.run.app";
+/** Production host — Build Gate fails if QA package points here. */
+export const FORBIDDEN_PRODUCTION_API_BASE_URL =
+  "https://fiqa-api-g7zatxrycq-uw.a.run.app";
+export const FORBIDDEN_PRODUCTION_REQUEST_LEGAL_DOMAIN_HOST =
+  "fiqa-api-g7zatxrycq-uw.a.run.app";
 
 /** Pages that must ship in every Preview / Experience package. */
 export const REQUIRED_PREVIEW_PAGES = [
@@ -354,14 +362,22 @@ export function evaluateMiniProgramBuildGate(snapshot: BuildGateSnapshot): Build
     if (/127\.0\.0\.1|localhost|0\.0\.0\.0/i.test(apiBaseUrl)) {
       errors.push(`apiBaseUrl must not be loopback for Preview (got "${apiBaseUrl}")`);
     }
-    if (apiBaseUrl !== REQUIRED_QA_API_BASE_URL) {
+    if (apiBaseUrl === FORBIDDEN_PRODUCTION_API_BASE_URL) {
+      errors.push(
+        `apiBaseUrl must not point at Production ${FORBIDDEN_PRODUCTION_API_BASE_URL}; use Cloud QA ${REQUIRED_QA_API_BASE_URL}`,
+      );
+    } else if (apiBaseUrl !== REQUIRED_QA_API_BASE_URL) {
       errors.push(
         `apiBaseUrl must be QA HTTPS host ${REQUIRED_QA_API_BASE_URL} (got "${apiBaseUrl}")`,
       );
     }
     try {
       const host = new URL(apiBaseUrl).hostname;
-      if (host !== REQUIRED_REQUEST_LEGAL_DOMAIN_HOST) {
+      if (host === FORBIDDEN_PRODUCTION_REQUEST_LEGAL_DOMAIN_HOST) {
+        errors.push(
+          `request legal domain host must not be Production ${FORBIDDEN_PRODUCTION_REQUEST_LEGAL_DOMAIN_HOST}; use ${REQUIRED_REQUEST_LEGAL_DOMAIN_HOST}`,
+        );
+      } else if (host !== REQUIRED_REQUEST_LEGAL_DOMAIN_HOST) {
         errors.push(
           `request legal domain host must be ${REQUIRED_REQUEST_LEGAL_DOMAIN_HOST} (got "${host}")`,
         );

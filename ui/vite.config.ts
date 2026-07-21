@@ -8,30 +8,25 @@ import { defineConfig, loadEnv } from 'vite';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import react from '@vitejs/plugin-react';
 import { goldenQaPreviewPlugin } from './vite.goldenQaPlugin';
+import {
+    assertVercelApiBaseUrl,
+    resolveVercelDeployTarget,
+} from './src/api/cloudBackendUrls';
 
-/** Vercel hosts the UI on HTTPS; API must be an absolute HTTPS origin or browsers block requests (axios "Network Error"). */
+/**
+ * Vercel hosts the UI on HTTPS; API must be an absolute HTTPS origin.
+ * P36 T5: Preview (Founder QA) → fiqa-api-qa only; Production → fiqa-api only.
+ * Missing Preview URL fails closed — never silently falls back to Production.
+ */
 function assertVercelProductionApiBase(mode: string) {
-    if (process.env.VERCEL !== '1' || mode !== 'production') {
-        return;
-    }
-    // On Vercel, `loadEnv()` will also read `.env` files in the repo, which are typically
-    // development-only (often pointing at localhost). For production correctness, require
-    // the Vercel Project Environment Variable to be set explicitly.
-    const raw = (process.env.VITE_API_BASE_URL || '').trim();
-    if (!raw) {
-        throw new Error(
-            'VITE_API_BASE_URL is required for Vercel production builds. Set it to your Cloud Run URL (no trailing slash) in Vercel env for Production and Preview. See docs/runbooks/DEPLOYMENT_PLAYBOOK.md',
-        );
-    }
-    if (raw.startsWith('http://127.0.0.1') || raw.startsWith('http://localhost')) {
-        throw new Error(
-            'VITE_API_BASE_URL must not point to localhost on Vercel (users cannot reach your machine; causes browser Network Error). Use the public HTTPS Cloud Run URL.',
-        );
-    }
-    if (!raw.startsWith('https://')) {
-        throw new Error(
-            'VITE_API_BASE_URL must be an https:// URL on Vercel so the deployed site can call the API without mixed-content blocking.',
-        );
+    const result = assertVercelApiBaseUrl({
+        vercel: process.env.VERCEL === '1',
+        mode,
+        vercelEnv: resolveVercelDeployTarget(process.env),
+        rawBaseUrl: process.env.VITE_API_BASE_URL,
+    });
+    if (!result.ok) {
+        throw new Error(result.error);
     }
 }
 

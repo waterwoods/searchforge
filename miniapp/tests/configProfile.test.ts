@@ -11,6 +11,7 @@ import { config as defaultConfig } from "../config.defaults";
 import { config as qaConfig } from "../config.qa";
 import {
   QA_API_BASE_URL,
+  PRODUCTION_API_BASE_URL,
   isLoopbackApiBase,
   resolveAppConfig,
   type AppConfig,
@@ -18,9 +19,11 @@ import {
 
 const ROOT = join(__dirname, "..");
 
-test("committed config.qa.ts uses exact HTTPS QA host and empty token", () => {
+test("committed config.qa.ts uses exact HTTPS Cloud QA host and empty token", () => {
   assert.equal(qaConfig.apiBaseUrl, QA_API_BASE_URL);
-  assert.equal(qaConfig.apiBaseUrl, "https://fiqa-api-g7zatxrycq-uw.a.run.app");
+  assert.equal(qaConfig.apiBaseUrl, "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app");
+  assert.notEqual(qaConfig.apiBaseUrl, PRODUCTION_API_BASE_URL);
+  assert.equal(PRODUCTION_API_BASE_URL, "https://fiqa-api-g7zatxrycq-uw.a.run.app");
   assert.equal(String(qaConfig.devTaskToken || "").trim(), "");
   assert.ok(!isLoopbackApiBase(qaConfig.apiBaseUrl));
   assert.ok(qaConfig.apiBaseUrl.startsWith("https://"));
@@ -43,6 +46,17 @@ test("Experience qa package ignores leftover localhost apiBaseUrl", () => {
   assert.ok(!isLoopbackApiBase(resolved.apiBaseUrl));
   assert.ok(resolved.apiBaseUrl.startsWith("https://"));
   assert.equal(resolved.devTaskToken, "");
+});
+
+test("Experience qa package ignores leftover Production apiBaseUrl (no silent fallback)", () => {
+  const resolved = resolveAppConfig(defaultConfig as AppConfig, qaConfig, {
+    apiProfile: "qa",
+    apiBaseUrl: PRODUCTION_API_BASE_URL,
+    devTaskToken: "",
+  });
+  assert.equal(resolved.apiProfile, "qa");
+  assert.equal(resolved.apiBaseUrl, QA_API_BASE_URL);
+  assert.notEqual(resolved.apiBaseUrl, PRODUCTION_API_BASE_URL);
 });
 
 test("Experience qa package ignores localhost hostname leftover", () => {

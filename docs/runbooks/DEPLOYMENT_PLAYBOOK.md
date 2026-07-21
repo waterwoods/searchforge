@@ -143,7 +143,7 @@ vercel --prod
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `VITE_API_BASE_URL` | Yes | Cloud Run URL (no trailing slash). Set in Vercel Project Settings → Environment Variables → Production |
+| `VITE_API_BASE_URL` | Yes | Cloud Run URL (no trailing slash). **Production** env → `https://fiqa-api-g7zatxrycq-uw.a.run.app`. **Preview** (Founder QA) → `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app`. See [`CLOUD_QA_RESOURCE_NAMES.md`](./CLOUD_QA_RESOURCE_NAMES.md) § Founder QA client routing. |
 
 ---
 

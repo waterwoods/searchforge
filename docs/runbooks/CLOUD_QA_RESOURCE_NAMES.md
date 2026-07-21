@@ -2,8 +2,9 @@
 
 **Status:** frozen naming SSOT + P36 T4 provisioned foundation  
 **Authority:** single obvious place for Cloud QA vs Production resource names  
-**P36 T4 (2026-07-21):** `caseiq-qa`, secret `fiqa-service-record-database-url-qa`, and Cloud Run `fiqa-api-qa` exist. Evidence: `docs/evidence/p36_t4_cloud_qa_provision_2026_07_21.md`.  
-**Still does not:** rename Production, retarget Mini Program / Vercel, or run Founder PAT
+**P36 T4 (2026-07-21):** `caseiq-qa`, secret `fiqa-service-record-database-url-qa`, and Cloud Run `fiqa-api-qa` exist.  
+**P36 T5 (2026-07-21):** Founder QA clients (Vercel Preview + Mini Program `apiProfile=qa`) retarget to `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app`. Evidence: `docs/evidence/p36_t5_founder_qa_client_retarget_2026_07_21.md`.  
+**Still does not:** rename Production, mutate Production Vercel env from this repo alone, or run Founder PAT
 
 Copy templates:
 
@@ -139,9 +140,58 @@ First revision includes Direct VPC parity with Production: `network=default`, `s
 
 ---
 
+## Founder QA client routing (P36 T5)
+
+Frozen Cloud QA API URL:
+
+```text
+https://fiqa-api-qa-g7zatxrycq-uw.a.run.app
+```
+
+| Client | QA / Preview | Production (unchanged) |
+|--------|--------------|------------------------|
+| **Vercel UI / Founder Console** | Preview env `VITE_API_BASE_URL` = Cloud QA URL | Production env `VITE_API_BASE_URL` = `https://fiqa-api-g7zatxrycq-uw.a.run.app` |
+| **WeChat Mini Program** | `apiProfile=qa` → `miniapp/config.qa.ts` Cloud QA URL | Do not use `apiProfile=qa` for a Production customer release |
+
+### Vercel operator steps (Preview only — never change Production)
+
+```bash
+cd ui
+vercel env add VITE_API_BASE_URL preview
+# paste: https://fiqa-api-qa-g7zatxrycq-uw.a.run.app
+
+vercel env add VITE_UNIFIED_INTAKE_INTAKE_API_KEY preview
+# paste QA intake key from local .env.cloudrun.qa (not Production)
+
+vercel env add VITE_ENABLE_QA_TOOLS preview
+# paste: 1
+
+vercel --yes   # redeploy Preview only — do NOT pass --prod
+```
+
+Template: `ui/env.preview.example`  
+Build guard: `ui/src/api/cloudBackendUrls.ts` (Preview≠Production, Production≠QA, missing Preview URL fails).
+
+### WeChat request合法域名 (operator)
+
+Add Cloud QA host to the Mini Program admin allowlist (QA / Experience builds):
+
+```text
+fiqa-api-qa-g7zatxrycq-uw.a.run.app
+```
+
+Keep Production host on the Production Mini Program allowlist if a Production release exists. Do **not** upload/publish a Mini Program release as part of T5.
+
+### CORS note (Cloud QA backend)
+
+If Vercel Preview origins call `fiqa-api-qa`, ensure `ALLOWED_ORIGINS` on **fiqa-api-qa** includes those Preview origins (QA service only — never patch Production `fiqa-api` for this).
+
+---
+
 ## Related
 
 - Deploy entry map: [`DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md)
 - Production deploy playbook: [`DEPLOYMENT_PLAYBOOK.md`](./DEPLOYMENT_PLAYBOOK.md)
 - Environment strategy (local vs cloud boundaries): [`docs/p18_11_environment_strategy_and_dev_rules.md`](../p18_11_environment_strategy_and_dev_rules.md)
 - P36 T4 provision evidence: [`docs/evidence/p36_t4_cloud_qa_provision_2026_07_21.md`](../evidence/p36_t4_cloud_qa_provision_2026_07_21.md)
+- P36 T5 client retarget evidence: [`docs/evidence/p36_t5_founder_qa_client_retarget_2026_07_21.md`](../evidence/p36_t5_founder_qa_client_retarget_2026_07_21.md)

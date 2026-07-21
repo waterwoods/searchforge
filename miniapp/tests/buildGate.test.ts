@@ -10,6 +10,7 @@ import {
   REQUIRED_PREVIEW_PAGES,
   REQUIRED_QA_API_BASE_URL,
   REQUIRED_REQUEST_LEGAL_DOMAIN_HOST,
+  FORBIDDEN_PRODUCTION_API_BASE_URL,
   evaluateMiniProgramBuildGate,
   type BuildGateSnapshot,
 } from "../utils/miniProgramBuildGate";
@@ -182,6 +183,15 @@ test("Build Gate FAILs on wrong apiProfile / loopback / legal-domain host", () =
   assert.ok(result.errors.some((e) => /loopback|apiBaseUrl/.test(e)));
 });
 
+test("Build Gate FAILs when QA package points at Production backend", () => {
+  const snap = baseSnapshot();
+  snap.apiProfile = "qa";
+  snap.apiBaseUrl = FORBIDDEN_PRODUCTION_API_BASE_URL;
+  const result = evaluateMiniProgramBuildGate(snap);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((e) => /must not point at Production|must not be Production/.test(e)));
+});
+
 test("Build Gate FAILs when CLI scripts are not packOptions-ignored", () => {
   const snap = baseSnapshot();
   snap.projectConfig = {
@@ -218,8 +228,10 @@ test("Build Gate FAILs when runtime code uses import.meta", () => {
 
 test("Build Gate permanent Preview contract constants are locked", () => {
   assert.equal(REQUIRED_APP_ID, "wxa610932351416622");
-  assert.equal(REQUIRED_QA_API_BASE_URL, "https://fiqa-api-g7zatxrycq-uw.a.run.app");
-  assert.equal(REQUIRED_REQUEST_LEGAL_DOMAIN_HOST, "fiqa-api-g7zatxrycq-uw.a.run.app");
+  assert.equal(REQUIRED_QA_API_BASE_URL, "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app");
+  assert.equal(REQUIRED_REQUEST_LEGAL_DOMAIN_HOST, "fiqa-api-qa-g7zatxrycq-uw.a.run.app");
+  assert.equal(FORBIDDEN_PRODUCTION_API_BASE_URL, "https://fiqa-api-g7zatxrycq-uw.a.run.app");
+  assert.notEqual(REQUIRED_QA_API_BASE_URL, FORBIDDEN_PRODUCTION_API_BASE_URL);
   assert.deepEqual([...REQUIRED_PREVIEW_PAGES], [
     "pages/start-claim/start-claim",
     "pages/entry/entry",

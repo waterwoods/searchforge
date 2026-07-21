@@ -73,7 +73,7 @@ test("request diagnostic omits secrets and keeps host/path/status", () => {
   const diag = buildRequestDiagnostic({
     method: "POST",
     path: "/api/h5/customer/start-claim",
-    apiHost: "https://fiqa-api-g7zatxrycq-uw.a.run.app",
+    apiHost: "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
     startedAt: 1000,
     endedAt: 1500,
     httpStatus: 0,

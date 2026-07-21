@@ -48,7 +48,7 @@ Capture for each step: screenshot of customer UI, Workbench panel, and Timeline/
 ## DevTools Three Gates (before customer steps)
 
 1. **Gate 1 — AppID / profile:** Experience/Preview AppID matches office package; `apiProfile: "qa"`; no localhost API base.
-2. **Gate 2 — Legal domain:** request合法域名 includes `fiqa-api-g7zatxrycq-uw.a.run.app` (and upload host if separate).
+2. **Gate 2 — Legal domain:** request合法域名 includes `fiqa-api-qa-g7zatxrycq-uw.a.run.app` for Cloud QA / Experience builds (P36 T5). Production host `fiqa-api-g7zatxrycq-uw.a.run.app` remains for Production Mini Program releases only.
 3. **Gate 3 — Clear cache full compile:** 清缓存 → 全部清除 → 重新编译; then open task token.
 
 ---

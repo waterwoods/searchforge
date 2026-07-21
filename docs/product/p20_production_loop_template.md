@@ -86,7 +86,7 @@ Must PASS before Form Gate, Navigation Gate, and physical Preview:
 - [ ] `ignoreDevUnusedFiles` / `ignoreUploadUnusedFiles` are false
 - [ ] `lazyCodeLoading` omitted (not `requiredComponents`)
 - [ ] Compile condition clean; no baked-in Preview token
-- [ ] AppID correct; `apiProfile=qa`; request合法域名 host = QA API host
+- [ ] AppID correct; `apiProfile=qa`; request合法域名 host = Cloud QA API host (`fiqa-api-qa-g7zatxrycq-uw.a.run.app`)
 - [ ] Preview preflight PASS
 - [ ] After PASS: clear cache → full compile → new Preview → Start Claim renders (no `wx://not-found`)
 

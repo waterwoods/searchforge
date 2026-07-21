@@ -52,9 +52,11 @@ Or: Workbench → **办公室工作台** → QA Tools → **Open Founder QA Cons
 
 ### Shared QA (Cloud Run / Vercel)
 
-1. Confirm the three API flags above are set on the QA API service.
-2. Open the QA Workbench UI with QA Tools enabled.
+1. Confirm Cloud QA API is `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app` (`fiqa-api-qa`) with the three API flags above.
+2. Open the **Vercel Preview** UI (Preview `VITE_API_BASE_URL` must be the Cloud QA URL — never Production).
 3. Go to `/internal/founder-qa`.
+
+See: `docs/runbooks/CLOUD_QA_RESOURCE_NAMES.md` § Founder QA client routing.
 
 ### Get Mini Program session id (once)
 
