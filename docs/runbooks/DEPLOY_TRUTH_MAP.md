@@ -2,7 +2,7 @@
 
 One screen. **Authority:** [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md)
 
-**Cloud QA vs Production resource names (P36):** [`CLOUD_QA_RESOURCE_NAMES.md`](./CLOUD_QA_RESOURCE_NAMES.md) — single SSOT. Production stays `fiqa-api` / `caseiq` / `.env.cloudrun`. Target Cloud QA is `fiqa-api-qa` / `caseiq-qa` / `.env.cloudrun.qa` (not provisioned by naming freeze alone).
+**Cloud QA vs Production resource names (P36):** [`CLOUD_QA_RESOURCE_NAMES.md`](./CLOUD_QA_RESOURCE_NAMES.md) — single SSOT. Production stays `fiqa-api` / `caseiq` / `.env.cloudrun`. Cloud QA is `fiqa-api-qa` / `caseiq-qa` / `.env.cloudrun.qa` (P36 T4 provisioned 2026-07-21; evidence `docs/evidence/p36_t4_cloud_qa_provision_2026_07_21.md`).
 
 ---
 

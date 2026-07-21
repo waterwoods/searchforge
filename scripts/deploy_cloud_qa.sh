@@ -4,8 +4,9 @@
 # Loads .env.cloudrun.qa only. Never touches Production fiqa-api / caseiq.
 # QA Harness flags stay opt-in (set in .env.cloudrun.qa if needed; never default ON).
 #
-# Does NOT create infrastructure. Does NOT provision databases/secrets.
+# Does NOT create databases/secrets (P36 T4 provisioned those separately).
 # Pre-deploy: isolation verifier + deploy safety check (fail-closed).
+# Direct VPC (network/subnet/vpc-egress) applied by deploy_cloud_run_core.sh.
 #
 # Usage:
 #   cp configs/cloud_qa.env.example .env.cloudrun.qa   # fill frozen QA names + secrets
@@ -62,8 +63,8 @@ case "${SKIP_P36_ISOLATION_VERIFIER:-0}" in
   *)
     echo "🔒 P36 isolation verifier (Cloud QA must not share Production mutable data)..."
     if ! PYTHONPATH=. python3 "$SCRIPT_DIR/p36_verify_cloud_qa_isolation.py" \
-      --qa-env-file "$CLOUD_RUN_ENV_FILE" \
-      --prod-env-file "$REPO_ROOT/.env.cloudrun"; then
+      --qa-env "$CLOUD_RUN_ENV_FILE" \
+      --prod-env "$REPO_ROOT/.env.cloudrun"; then
       echo "❌ Isolation verifier FAIL — refusing Cloud QA deploy"
       exit 1
     fi

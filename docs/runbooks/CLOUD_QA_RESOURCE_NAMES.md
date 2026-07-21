@@ -1,8 +1,9 @@
 # Cloud QA Resource Names (P36 T1) — Canonical SSOT
 
-**Status:** frozen naming — documentation and configuration only  
+**Status:** frozen naming SSOT + P36 T4 provisioned foundation  
 **Authority:** single obvious place for Cloud QA vs Production resource names  
-**Does not:** deploy, create infrastructure, create databases, rename Production, or change runtime behavior
+**P36 T4 (2026-07-21):** `caseiq-qa`, secret `fiqa-service-record-database-url-qa`, and Cloud Run `fiqa-api-qa` exist. Evidence: `docs/evidence/p36_t4_cloud_qa_provision_2026_07_21.md`.  
+**Still does not:** rename Production, retarget Mini Program / Vercel, or run Founder PAT
 
 Copy templates:
 
@@ -126,7 +127,15 @@ DEPLOY_SAFETY_CHECK_ONLY=1 bash scripts/deploy_paid_pilot.sh
 DEPLOY_SAFETY_CHECK_ONLY=1 SKIP_P36_ISOLATION_VERIFIER=1 bash scripts/deploy_cloud_qa.sh
 ```
 
-T3 does **not** create Cloud Run services, databases, or secrets — that waits for a later task.
+T3 does **not** create Cloud Run services, databases, or secrets — that is P36 T4 (see evidence doc in the status line above).
+
+Deploy Cloud QA (after `.env.cloudrun.qa` exists):
+
+```bash
+bash scripts/deploy_cloud_qa.sh
+```
+
+First revision includes Direct VPC parity with Production: `network=default`, `subnet=default`, `vpc-egress=all-traffic`.
 
 ---
 
@@ -135,3 +144,4 @@ T3 does **not** create Cloud Run services, databases, or secrets — that waits 
 - Deploy entry map: [`DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md)
 - Production deploy playbook: [`DEPLOYMENT_PLAYBOOK.md`](./DEPLOYMENT_PLAYBOOK.md)
 - Environment strategy (local vs cloud boundaries): [`docs/p18_11_environment_strategy_and_dev_rules.md`](../p18_11_environment_strategy_and_dev_rules.md)
+- P36 T4 provision evidence: [`docs/evidence/p36_t4_cloud_qa_provision_2026_07_21.md`](../evidence/p36_t4_cloud_qa_provision_2026_07_21.md)

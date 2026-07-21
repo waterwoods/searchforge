@@ -192,6 +192,20 @@ CLOUD_RUN_CONCURRENCY="${CLOUD_RUN_CONCURRENCY:-30}"
 CLOUD_RUN_MIN_INSTANCES="${CLOUD_RUN_MIN_INSTANCES:-0}"
 CLOUD_RUN_MAX_INSTANCES="${CLOUD_RUN_MAX_INSTANCES:-2}"
 
+# Direct VPC egress — Production baseline (fiqa-api): network=default, subnet=default,
+# vpc-egress=all-traffic (private Cloud SQL + WeCom NAT parity).
+# Cloud QA MUST set these on the first fiqa-api-qa revision (do not deploy broken then patch).
+# Override: CLOUD_RUN_VPC_NETWORK / CLOUD_RUN_VPC_SUBNET / CLOUD_RUN_VPC_EGRESS
+# Disable only with CLOUD_RUN_DIRECT_VPC=0 (not for real Cloud QA / paid-pilot deploys).
+CLOUD_RUN_VPC_NETWORK="${CLOUD_RUN_VPC_NETWORK:-default}"
+CLOUD_RUN_VPC_SUBNET="${CLOUD_RUN_VPC_SUBNET:-default}"
+CLOUD_RUN_VPC_EGRESS="${CLOUD_RUN_VPC_EGRESS:-all-traffic}"
+_CLOUD_RUN_DIRECT_VPC_DEFAULT=1
+if [ "${DEPLOY_ENTRY:-}" = "demo_smoke" ]; then
+    _CLOUD_RUN_DIRECT_VPC_DEFAULT=0
+fi
+CLOUD_RUN_DIRECT_VPC="${CLOUD_RUN_DIRECT_VPC:-$_CLOUD_RUN_DIRECT_VPC_DEFAULT}"
+
 # ========================================
 # Validation
 # ========================================
@@ -663,6 +677,22 @@ echo "🚀 Deploying to Cloud Run..."
 # Values like ALLOWED_ORIGINS contain commas; gcloud's default --set-env-vars separator is comma.
 # Use ^|^ so each KEY=value pair is joined with | (values may include commas; avoid | inside values).
 ENV_VARS_FOR_GCLOUD="$(IFS='|'; echo "${ENV_VARS[*]}")"
+
+VPC_EXTRA_ARGS=()
+case "${CLOUD_RUN_DIRECT_VPC}" in
+    1|true|TRUE|yes|YES|on|ON)
+        VPC_EXTRA_ARGS=(
+            --network "$CLOUD_RUN_VPC_NETWORK"
+            --subnet "$CLOUD_RUN_VPC_SUBNET"
+            --vpc-egress "$CLOUD_RUN_VPC_EGRESS"
+        )
+        echo "🌐 Direct VPC: network=$CLOUD_RUN_VPC_NETWORK subnet=$CLOUD_RUN_VPC_SUBNET vpc-egress=$CLOUD_RUN_VPC_EGRESS"
+        ;;
+    *)
+        echo "⚠️  CLOUD_RUN_DIRECT_VPC disabled — omitting network/subnet/vpc-egress (not for Cloud QA)"
+        ;;
+esac
+
 gcloud run deploy "$SERVICE_NAME" \
     --image "$IMAGE_NAME" \
     --platform managed \
@@ -678,6 +708,7 @@ gcloud run deploy "$SERVICE_NAME" \
     --concurrency "$CLOUD_RUN_CONCURRENCY" \
     --set-env-vars "^|^${ENV_VARS_FOR_GCLOUD}" \
     "${SECRET_EXTRA_ARGS[@]}" \
+    "${VPC_EXTRA_ARGS[@]}" \
     --quiet
 
 # Post-deploy: confirm Cloud Run accepted the requested runtime (catches typos / API drift)
@@ -693,6 +724,56 @@ elif [ "$ACTUAL_MEM" != "$CLOUD_RUN_MEMORY" ] || [ "$ACTUAL_CC" != "$CLOUD_RUN_C
     exit 1
 fi
 echo "✅ Cloud Run runtime confirmed: memory=$ACTUAL_MEM concurrency=$ACTUAL_CC"
+
+# Post-deploy: Direct VPC parity (required for Cloud QA / paid-pilot private DB path).
+# Annotation keys contain '/' — gcloud --format value(...annotations.KEY) is unreliable; use JSON.
+case "${CLOUD_RUN_DIRECT_VPC}" in
+    1|true|TRUE|yes|YES|on|ON)
+        if ! PYTHONPATH=. python3 - "$SERVICE_NAME" "$REGION" "$PROJECT_ID" \
+            "$CLOUD_RUN_VPC_NETWORK" "$CLOUD_RUN_VPC_SUBNET" "$CLOUD_RUN_VPC_EGRESS" <<'PY'
+import json, subprocess, sys
+
+service, region, project, want_net, want_subnet, want_egress = sys.argv[1:7]
+raw = subprocess.check_output(
+    [
+        "gcloud", "run", "services", "describe", service,
+        "--region", region, "--project", project, "--format=json",
+    ],
+    text=True,
+)
+ann = (
+    json.loads(raw)
+    .get("spec", {})
+    .get("template", {})
+    .get("metadata", {})
+    .get("annotations", {})
+    or {}
+)
+egress = ann.get("run.googleapis.com/vpc-access-egress", "")
+ifaces = ann.get("run.googleapis.com/network-interfaces", "")
+try:
+    parsed = json.loads(ifaces) if ifaces else []
+except json.JSONDecodeError:
+    parsed = []
+net = (parsed[0].get("network") if parsed else "") or ""
+subnet = (parsed[0].get("subnetwork") if parsed else "") or ""
+ok = egress == want_egress and net == want_net and subnet == want_subnet
+print(f"vpc-egress={egress} network={net} subnet={subnet}")
+if not ok:
+    print(
+        f"MISMATCH want egress={want_egress} network={want_net} subnet={want_subnet}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+        then
+            echo "❌ Direct VPC parity check failed after deploy."
+            echo "   Requested: network=$CLOUD_RUN_VPC_NETWORK subnet=$CLOUD_RUN_VPC_SUBNET vpc-egress=$CLOUD_RUN_VPC_EGRESS"
+            exit 1
+        fi
+        echo "✅ Direct VPC confirmed: network=$CLOUD_RUN_VPC_NETWORK subnet=$CLOUD_RUN_VPC_SUBNET vpc-egress=$CLOUD_RUN_VPC_EGRESS"
+        ;;
+esac
 
 # Get service URL
 SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" \
