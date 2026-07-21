@@ -5,6 +5,9 @@ calls P20CaseIntakeCommandService.create_claim(actor="customer").
 
 P26G: after create, issue a signed resume token so the customer can open
 Task Home and continue default intake without a broker Request More / QR.
+
+P29B: when session_id is an opaque WeChat person_link_key (wx_*), bind it to
+the Active Case for Resume Current Task. Never stores or returns OpenID.
 """
 
 from __future__ import annotations
@@ -13,6 +16,12 @@ import os
 import re
 from typing import Any
 
+from services.fiqa_api.inbox_triage.mp_customer_identity import (
+    bind_active_case,
+    issue_resume_for_case,
+    person_link_from_session_id,
+    resolve_active_case_for_person_link,
+)
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
     default_case_intake_service,
 )
@@ -38,10 +47,12 @@ def normalize_customer_actor_identity(session_id: str | None) -> str:
 def _attach_resume_token(result: dict[str, Any]) -> dict[str, Any]:
     """Issue opaque resume token bound to case_id (never expose bare case_id)."""
     outcome = str(result.get("outcome") or "").strip()
-    if outcome not in ("accepted", "replayed"):
+    if outcome not in ("accepted", "replayed", "resumed"):
         return result
     case_id = str(result.get("case_id") or "").strip()
     if not case_id:
+        return result
+    if result.get("resume_token"):
         return result
     try:
         launch = issue_customer_launch_token(case_id=case_id)
@@ -56,7 +67,7 @@ def _attach_resume_token(result: dict[str, Any]) -> dict[str, Any]:
 def customer_start_claim_response(result: dict[str, Any]) -> dict[str, Any]:
     """Customer-safe response — no case_id / versions / command internals."""
     outcome = str(result.get("outcome") or "").strip()
-    if outcome in ("accepted", "replayed"):
+    if outcome in ("accepted", "replayed", "resumed"):
         body: dict[str, Any] = {"ok": True, "outcome": outcome}
         resume = str(result.get("resume_token") or "").strip()
         if resume:
@@ -85,8 +96,37 @@ def start_customer_claim(
     is_test: bool = False,
     office_id: str | None = None,
     tenant_id: str | None = None,
+    force_new: bool = False,
 ) -> dict[str, Any]:
-    """Facade: Cap2 CreateClaim with actor=customer + resume token (P26G)."""
+    """Facade: Cap2 CreateClaim with actor=customer + resume token (P26G/P29B).
+
+    P30 One Active Case: if this person_link already has an Active Case, always
+    resume it. Customer force_new must not create a second Active Case —
+    append/split/merge is broker/office responsibility (Append-first, Split-later).
+    """
+    # force_new remains in the signature for client/API compat but never opens a
+    # second Active Case (P30 / D-013). Broker/office owns split/merge.
+    _ = bool(force_new)
+    person_link = person_link_from_session_id(session_id)
+    if person_link:
+        existing = resolve_active_case_for_person_link(person_link)
+        if existing:
+            case_id = str(existing.get("case_id") or "").strip()
+            if case_id:
+                try:
+                    resume = issue_resume_for_case(case_id)
+                except Exception:
+                    resume = {}
+                return _attach_resume_token(
+                    {
+                        "outcome": "resumed",
+                        "case_id": case_id,
+                        "resume_token": resume.get("resume_token"),
+                        "resume_expires_at": resume.get("resume_expires_at"),
+                        "error_code": None,
+                    }
+                )
+
     actor_identity = normalize_customer_actor_identity(session_id)
     office = (office_id if office_id is not None else resolve_customer_start_claim_office_id())
     tenant = tenant_id if tenant_id is not None else (resolve_server_client_id() or None)
@@ -122,6 +162,16 @@ def start_customer_claim(
             "injury_status": injury or None,
             "known_facts": known_facts,
             "title": "Customer Claim intake" if not is_test else "QA Customer Claim intake",
+            "entry_channel": "mini_program",
+            "identity_binding_state": "linked" if person_link else "unbound",
+            "person_link_key": person_link,
+            "person_link_source": "wechat" if person_link else None,
+            "person_link_confidence": 0.9 if person_link else None,
         },
     )
-    return _attach_resume_token(result)
+    out = _attach_resume_token(result)
+    case_id = str(out.get("case_id") or "").strip()
+    if person_link and case_id and str(out.get("outcome") or "") in ("accepted", "replayed"):
+        # person_link_* already stamped on the case via Cap2 create inputs.
+        bind_active_case(person_link, case_id)
+    return out

@@ -144,6 +144,9 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "person_link_key",
         "person_link_source",
         "person_link_confidence",
+        # P29B — entry source for broker display (never OpenID)
+        "entry_channel",
+        "created_by_actor",
         "office_case_title",
         "office_broker_next_step",
         "p16_broker_packet",
