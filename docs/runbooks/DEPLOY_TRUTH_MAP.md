@@ -11,6 +11,7 @@ One screen. **Authority:** [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_
 | Goal | Script | Sets |
 |------|--------|------|
 | **Paid broker pilot** | `bash scripts/deploy_paid_pilot.sh` | `PRODUCT_ONLY=1`, `INTAKE_CORE_READINESS=1`, PG-primary, no DEMO_MODE; loads `.env.cloudrun` → `fiqa-api` |
+| **Cloud QA (P36)** | `bash scripts/deploy_cloud_qa.sh` | loads `.env.cloudrun.qa` → `fiqa-api-qa`; isolation + deploy safety fail-closed; QA Harness opt-in only |
 | Local founder demo | `bash scripts/run_demo_local.sh` | Port 8001; may use JSON / platform_full |
 | Demo cloud smoke | `bash scripts/deploy_demo_cloud_smoke.sh` | DEMO_MODE; not for paid pilot |
 | Pre-trial gate | `bash scripts/trial_launch_check.sh` | Docs + guardrail + env posture |
@@ -42,7 +43,16 @@ One screen. **Authority:** [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_
 PYTHONPATH=. python3 scripts/p36_verify_cloud_qa_isolation.py
 ```
 
+Deploy entry (also runs isolation + deploy safety inside the wrapper):
+
+```bash
+bash scripts/deploy_cloud_qa.sh
+# Wiring-only (no gcloud): DEPLOY_SAFETY_CHECK_ONLY=1 bash scripts/deploy_cloud_qa.sh
+```
+
 See [`CLOUD_QA_RESOURCE_NAMES.md`](./CLOUD_QA_RESOURCE_NAMES.md). Do not deploy Cloud QA on FAIL.
+
+Production paid-pilot refuses QA Harness flags and `.env.cloudrun.qa` (P36 T3 safety check).
 
 ---
 

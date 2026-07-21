@@ -3,52 +3,85 @@
 #
 # **Operators:** use an entry script — do not invoke this file directly unless you know posture.
 #   Paid broker pilot:  bash scripts/deploy_paid_pilot.sh
+#   Cloud QA (P36):     bash scripts/deploy_cloud_qa.sh   → .env.cloudrun.qa / fiqa-api-qa
 #   Demo cloud smoke:   bash scripts/deploy_demo_cloud_smoke.sh
 #
-# This file loads .env.cloudrun and deploys. Posture (DEMO_MODE vs product_only+PG)
-# follows ENV / PILOT_DEPLOY_STRICT / flags in the environment when invoked.
+# This file loads the env file selected by DEPLOY_ENTRY / CLOUD_RUN_ENV_FILE and deploys.
+# Posture (DEMO_MODE vs product_only+PG) follows ENV / PILOT_DEPLOY_STRICT / flags when invoked.
 #
-# Requires: gcloud CLI, authenticated account, .env.cloudrun file
+# Requires: gcloud CLI, authenticated account, and the selected env file
 #
 # Usage (prefer wrappers above):
 #   cp configs/demo.env.example .env.cloudrun
 #   bash scripts/deploy_paid_pilot.sh
+#
+# Safety-only (no gcloud): DEPLOY_SAFETY_CHECK_ONLY=1 bash scripts/deploy_paid_pilot.sh
 
 set -euo pipefail
 
 # ========================================
-# Load Environment Variables from .env.cloudrun
+# Load Environment Variables (Production vs Cloud QA)
 # ========================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="$REPO_ROOT/.env.cloudrun"
+
+# Env file selection (P36 T3):
+#   CLOUD_RUN_ENV_FILE override wins when set by wrapper
+#   DEPLOY_ENTRY=cloud_qa → .env.cloudrun.qa
+#   default / paid_pilot / demo_smoke → .env.cloudrun
+if [ -n "${CLOUD_RUN_ENV_FILE:-}" ]; then
+    ENV_FILE="$CLOUD_RUN_ENV_FILE"
+elif [ "${DEPLOY_ENTRY:-}" = "cloud_qa" ]; then
+    ENV_FILE="$REPO_ROOT/.env.cloudrun.qa"
+else
+    ENV_FILE="$REPO_ROOT/.env.cloudrun"
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ Error: Missing .env.cloudrun file"
+    echo "❌ Error: Missing env file: $ENV_FILE"
     echo ""
-    echo "   Please create .env.cloudrun from the template:"
-    echo "     cp configs/demo.env.example .env.cloudrun"
+    if [ "${DEPLOY_ENTRY:-}" = "cloud_qa" ] || [[ "$(basename "$ENV_FILE")" == ".env.cloudrun.qa" ]]; then
+        echo "   Cloud QA: create .env.cloudrun.qa from the template:"
+        echo "     cp configs/cloud_qa.env.example .env.cloudrun.qa"
+        echo "   SSOT: docs/runbooks/CLOUD_QA_RESOURCE_NAMES.md"
+    else
+        echo "   Please create .env.cloudrun from the template:"
+        echo "     cp configs/demo.env.example .env.cloudrun"
+        echo ""
+        echo "   Then edit .env.cloudrun and fill in your real secrets (see PILOT ONE PATH in template):"
+        echo "     - SERVICE_RECORD_DATABASE_URL, API keys, OPENAI_API_KEY"
+        echo "     - QDRANT_* optional for intake-only deploy (intake-core readiness)"
+    fi
     echo ""
-    echo "   Then edit .env.cloudrun and fill in your real secrets (see PILOT ONE PATH in template):"
-    echo "     - SERVICE_RECORD_DATABASE_URL, API keys, OPENAI_API_KEY"
-    echo "     - QDRANT_* optional for intake-only deploy (intake-core readiness)"
-    echo ""
-    echo "   Note: .env.cloudrun is git-ignored and will not be committed."
+    echo "   Note: .env.cloudrun / .env.cloudrun.qa are git-ignored and will not be committed."
     exit 1
 fi
 
-echo "📋 Loading environment variables from .env.cloudrun..."
+echo "📋 Loading environment variables from $(basename "$ENV_FILE")..."
 # Use set -a to automatically export all variables
 set -a
 source "$ENV_FILE"
 set +a
 echo "✅ Environment variables loaded"
 
-# Entry wrappers set DEPLOY_ENTRY so posture wins over stale .env.cloudrun keys (see deploy_paid_pilot.sh).
+# Entry wrappers set DEPLOY_ENTRY so posture wins over stale env-file keys (see deploy_paid_pilot.sh).
 _apply_deploy_entry_posture() {
     case "${DEPLOY_ENTRY:-}" in
         paid_pilot)
             export ENV=prod
+            export PILOT_DEPLOY_STRICT=1
+            export UNIFIED_INTAKE_PRODUCT_ONLY=1
+            export UNIFIED_INTAKE_DB_PRIMARY_READS=1
+            export UNIFIED_INTAKE_DB_PRIMARY_WRITES=1
+            export UNIFIED_INTAKE_JSON_CASE_WRITES=0
+            export UNIFIED_INTAKE_JSON_READ_FALLBACK=0
+            export UNIFIED_INTAKE_PG_DUAL_WRITE=0
+            export UNIFIED_INTAKE_INTAKE_CORE_READINESS=1
+            unset DEMO_MODE
+            ;;
+        cloud_qa)
+            # Product-like Cloud QA posture; harness flags remain opt-in from env file only.
+            export ENV="${ENV:-qa}"
             export PILOT_DEPLOY_STRICT=1
             export UNIFIED_INTAKE_PRODUCT_ONLY=1
             export UNIFIED_INTAKE_DB_PRIMARY_READS=1
@@ -68,6 +101,23 @@ _apply_deploy_entry_posture() {
     esac
 }
 _apply_deploy_entry_posture
+
+# P36 T3 — fail-closed deploy safety (env file ↔ service ↔ DB secret ↔ QA harness)
+echo "🔒 P36 deploy safety check..."
+if ! PYTHONPATH=. python3 "$SCRIPT_DIR/p36_deploy_safety_check.py" \
+    --env-file "$ENV_FILE" \
+    --deploy-entry "${DEPLOY_ENTRY:-}"; then
+    echo "❌ Deploy safety check failed. Refusing to continue (no gcloud deploy)."
+    exit 1
+fi
+echo "✅ Deploy safety check passed"
+
+case "${DEPLOY_SAFETY_CHECK_ONLY:-0}" in
+    1|true|TRUE|yes|YES|on|ON)
+        echo "✅ DEPLOY_SAFETY_CHECK_ONLY=1 — stopping before gcloud (no deploy)."
+        exit 0
+        ;;
+esac
 
 # Paid-pilot / production-like deploy posture (see docs/CURRENT_PRODUCT_SHAPE.md)
 _is_paid_pilot_posture() {
@@ -99,26 +149,26 @@ _skip_qdrant_deploy_preflight() {
 }
 
 if _is_paid_pilot_posture; then
-    echo "🔒 Paid-pilot deploy posture — validating .env.cloudrun minimum tuple (required)..."
+    echo "🔒 Paid-pilot / product deploy posture — validating env minimum tuple (required)..."
     if ! PYTHONPATH=. python3 "$SCRIPT_DIR/validate_pilot_deploy_env.py" --env-file "$ENV_FILE"; then
-        echo "❌ Pilot deploy env validation failed. Fix .env.cloudrun (see docs/CURRENT_PRODUCT_SHAPE.md)."
+        echo "❌ Pilot deploy env validation failed. Fix $(basename "$ENV_FILE") (see docs/CURRENT_PRODUCT_SHAPE.md)."
         exit 1
     fi
 fi
 
 # CORS / deploy drift: full deploy uses --set-env-vars with the bundle built below. That replaces the
-# service env for keys we pass; keep ALLOWED_ORIGINS complete in .env.cloudrun or the next deploy can
+# service env for keys we pass; keep ALLOWED_ORIGINS complete in the env file or the next deploy can
 # narrow CORS vs a manually patched Cloud Run value.
 if [ -n "${ALLOWED_ORIGINS:-}" ]; then
     _ORIG_COUNT=$(echo "$ALLOWED_ORIGINS" | awk -F',' '{print NF}')
     echo "ℹ️  ALLOWED_ORIGINS set ($_ORIG_COUNT comma-separated origin(s)) — will be sent to Cloud Run on this deploy."
 else
-    echo "⚠️  ALLOWED_ORIGINS not set in .env.cloudrun — it will be omitted from --set-env-vars; live service may drop prior ALLOWED_ORIGINS and fall back to permissive demo CORS in app_main.py."
+    echo "⚠️  ALLOWED_ORIGINS not set in $(basename "$ENV_FILE") — it will be omitted from --set-env-vars; live service may drop prior ALLOWED_ORIGINS and fall back to permissive demo CORS in app_main.py."
 fi
 
 # Optional: bind sensitive env vars from Secret Manager on Cloud Run (no plaintext for these keys).
-# Set CLOUD_RUN_USE_SECRET_MANAGER=1 in .env.cloudrun after creating secrets + IAM (see configs/demo.env.example).
-# Secret names default to the production pilot names; override with CLOUD_RUN_SECRET_* if needed.
+# Set CLOUD_RUN_USE_SECRET_MANAGER=1 after creating secrets + IAM (see configs/demo.env.example / cloud_qa.env.example).
+# Production defaults to cloudsql-private DB secret; Cloud QA must set CLOUD_RUN_SECRET_SERVICE_RECORD_DB explicitly.
 CLOUD_RUN_USE_SECRET_MANAGER="${CLOUD_RUN_USE_SECRET_MANAGER:-0}"
 
 # ========================================
@@ -126,7 +176,12 @@ CLOUD_RUN_USE_SECRET_MANAGER="${CLOUD_RUN_USE_SECRET_MANAGER:-0}"
 # ========================================
 PROJECT_ID="${PROJECT_ID:-optimal-disk-472305-e2}"
 REGION="${REGION:-us-west1}"
-SERVICE_NAME="${SERVICE_NAME:-fiqa-api}"
+# Never default Cloud QA onto fiqa-api. Production path keeps historic default.
+if [ "${DEPLOY_ENTRY:-}" = "cloud_qa" ]; then
+    SERVICE_NAME="${SERVICE_NAME:-fiqa-api-qa}"
+else
+    SERVICE_NAME="${SERVICE_NAME:-fiqa-api}"
+fi
 DOCKERFILE_PATH="services/fiqa_api/Dockerfile.cloudrun"
 
 # Cloud Run container sizing — keep in sync with live fiqa-api (us-west1).
@@ -435,17 +490,24 @@ if [ -n "${UNIFIED_INTAKE_SUPPORT_API_KEY:-}" ]; then
     ENV_VARS+=("UNIFIED_INTAKE_SUPPORT_API_KEY=$UNIFIED_INTAKE_SUPPORT_API_KEY")
 fi
 
-# P25 — Launch Golden QA (internal Founder tool; off unless explicitly enabled)
+# P25 — Launch Golden QA (internal Founder tool; off unless explicitly enabled — never default ON)
 if [ -n "${ENABLE_GOLDEN_QA_LAUNCH:-}" ]; then
     ENV_VARS+=("ENABLE_GOLDEN_QA_LAUNCH=$ENABLE_GOLDEN_QA_LAUNCH")
 fi
 
-# P26H — QA ephemeral fixture runner (QA-only; dual-flag + support key required)
+# QA Harness / fixture flags — opt-in only (pass through if set in env file; never default ON).
+# Production paid-pilot path refuses truthy harness flags via p36_deploy_safety_check.py.
 if [ -n "${ENABLE_P26H_FIXTURE_RUNNER:-}" ]; then
     ENV_VARS+=("ENABLE_P26H_FIXTURE_RUNNER=$ENABLE_P26H_FIXTURE_RUNNER")
 fi
 if [ -n "${UNIFIED_INTAKE_QA_FIXTURE_SURFACE:-}" ]; then
     ENV_VARS+=("UNIFIED_INTAKE_QA_FIXTURE_SURFACE=$UNIFIED_INTAKE_QA_FIXTURE_SURFACE")
+fi
+if [ -n "${ENABLE_P35_MP_QA_HARNESS:-}" ]; then
+    ENV_VARS+=("ENABLE_P35_MP_QA_HARNESS=$ENABLE_P35_MP_QA_HARNESS")
+fi
+if [ -n "${P20_SLICE1_REQUEST_MORE:-}" ]; then
+    ENV_VARS+=("P20_SLICE1_REQUEST_MORE=$P20_SLICE1_REQUEST_MORE")
 fi
 
 # Optional: default client pack (GET /api/inbox/client-config without ?client= uses this)
@@ -540,7 +602,7 @@ for kv in "${ENV_VARS[@]}"; do
             echo "   ${key}=(set — value not printed)"
             UNIFIED_BUNDLE_PRINTED=1
             ;;
-        UNIFIED_INTAKE_*=*|ENABLE_P26H_FIXTURE_RUNNER=*|ENABLE_GOLDEN_QA_LAUNCH=*)
+        UNIFIED_INTAKE_*=*|ENABLE_P26H_FIXTURE_RUNNER=*|ENABLE_GOLDEN_QA_LAUNCH=*|ENABLE_P35_MP_QA_HARNESS=*|P20_SLICE1_REQUEST_MORE=*)
             echo "   $kv"
             UNIFIED_BUNDLE_PRINTED=1
             ;;
@@ -561,14 +623,30 @@ SECRET_EXTRA_ARGS=()
 if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
     SM_OPENAI="${CLOUD_RUN_SECRET_OPENAI:-fiqa-openai-api-key}"
     SM_QDRANT="${CLOUD_RUN_SECRET_QDRANT:-fiqa-qdrant-api-key}"
-    # QA source of truth is GCP Cloud SQL (caseiq @ private VPC). Do NOT use Neon for QA/demo.
+    # Production DB secret default. Cloud QA must use fiqa-service-record-database-url-qa
+    # (enforced by p36_deploy_safety_check.py — never silently inherit Production).
     # Legacy Neon secret (fiqa-service-record-database-url) DELETED 2026-07-11 — versions disabled.
-    SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url-cloudsql-private}"
+    if [ "${DEPLOY_ENTRY:-}" = "cloud_qa" ]; then
+        SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url-qa}"
+    else
+        SM_DB="${CLOUD_RUN_SECRET_SERVICE_RECORD_DB:-fiqa-service-record-database-url-cloudsql-private}"
+    fi
     SM_H5="${CLOUD_RUN_SECRET_H5_TASK_TOKEN:-fiqa-h5-task-token-secret}"
     if [ "$SM_DB" = "fiqa-service-record-database-url" ]; then
         echo "❌ Error: CLOUD_RUN_SECRET_SERVICE_RECORD_DB points to legacy Neon secret."
-        echo "   QA/demo must use fiqa-service-record-database-url-cloudsql-private (GCP Cloud SQL caseiq)."
-        echo "   Neon is legacy rollback only — do not deploy QA against it."
+        echo "   Production: fiqa-service-record-database-url-cloudsql-private"
+        echo "   Cloud QA:   fiqa-service-record-database-url-qa"
+        echo "   Neon is legacy rollback only — do not deploy against it."
+        exit 1
+    fi
+    if [ "${DEPLOY_ENTRY:-}" = "cloud_qa" ] && [ "$SM_DB" = "fiqa-service-record-database-url-cloudsql-private" ]; then
+        echo "❌ Error: Cloud QA deploy refused — Production DB secret bound."
+        echo "   Set CLOUD_RUN_SECRET_SERVICE_RECORD_DB=fiqa-service-record-database-url-qa"
+        exit 1
+    fi
+    if [ "${DEPLOY_ENTRY:-}" != "cloud_qa" ] && [ "$SM_DB" = "fiqa-service-record-database-url-qa" ]; then
+        echo "❌ Error: Production deploy refused — Cloud QA DB secret bound."
+        echo "   Use fiqa-service-record-database-url-cloudsql-private for Production."
         exit 1
     fi
     SECRET_EXTRA_ARGS=(

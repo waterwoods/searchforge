@@ -107,6 +107,29 @@ Unit tests: `PYTHONPATH=. python3 -m pytest tests/test_p36_verify_cloud_qa_isola
 
 ---
 
+## Deploy wiring (P36 T3) — safety before gcloud
+
+| Entry | Env file | Service |
+|-------|----------|---------|
+| `bash scripts/deploy_paid_pilot.sh` | `.env.cloudrun` | `fiqa-api` |
+| `bash scripts/deploy_cloud_qa.sh` | `.env.cloudrun.qa` | `fiqa-api-qa` |
+
+Fail-closed checks (`scripts/p36_deploy_safety_check.py`, invoked by `deploy_cloud_run_core.sh`):
+
+- Cloud QA cannot load `.env.cloudrun` or target `fiqa-api` / Production DB secret.
+- Production cannot load `.env.cloudrun.qa`, bind QA DB secret, or enable QA Harness flags.
+- QA Harness flags (`ENABLE_P35_MP_QA_HARNESS`, `ENABLE_P26H_FIXTURE_RUNNER`, `UNIFIED_INTAKE_QA_FIXTURE_SURFACE`, `P20_SLICE1_REQUEST_MORE`) never default ON.
+
+```bash
+# Safety-only (no deploy):
+DEPLOY_SAFETY_CHECK_ONLY=1 bash scripts/deploy_paid_pilot.sh
+DEPLOY_SAFETY_CHECK_ONLY=1 SKIP_P36_ISOLATION_VERIFIER=1 bash scripts/deploy_cloud_qa.sh
+```
+
+T3 does **not** create Cloud Run services, databases, or secrets — that waits for a later task.
+
+---
+
 ## Related
 
 - Deploy entry map: [`DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md)

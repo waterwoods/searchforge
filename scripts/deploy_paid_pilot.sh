@@ -3,6 +3,9 @@
 #
 # Forces paid-pilot posture before calling the shared deploy implementation.
 # Never injects DEMO_MODE. Always validates .env.cloudrun.
+# Loads .env.cloudrun only (never .env.cloudrun.qa). QA Harness flags are rejected.
+#
+# For Cloud QA: bash scripts/deploy_cloud_qa.sh
 #
 # Usage:
 #   cp configs/demo.env.example .env.cloudrun   # fill PILOT ONE PATH block

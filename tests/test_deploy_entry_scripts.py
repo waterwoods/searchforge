@@ -1,13 +1,15 @@
-"""Paid-pilot vs demo-cloud deploy entry scripts — posture must not mix."""
+"""Paid-pilot vs demo-cloud vs Cloud QA deploy entry scripts — posture must not mix."""
 
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
 _PAID = _REPO / "scripts" / "deploy_paid_pilot.sh"
 _DEMO = _REPO / "scripts" / "deploy_demo_cloud_smoke.sh"
+_QA = _REPO / "scripts" / "deploy_cloud_qa.sh"
 _CORE = _REPO / "scripts" / "deploy_cloud_run_core.sh"
 _WRAPPER = _REPO / "scripts" / "deploy_rag_demo.sh"
 _SHAPE = _REPO / "docs" / "CURRENT_PRODUCT_SHAPE.md"
+_SAFETY = _REPO / "scripts" / "p36_deploy_safety_check.py"
 
 
 def test_paid_pilot_entry_forces_product_only_and_no_demo_mode():
@@ -19,11 +21,31 @@ def test_paid_pilot_entry_forces_product_only_and_no_demo_mode():
     assert "CURRENT_PRODUCT_SHAPE" in src
 
 
+def test_cloud_qa_entry_loads_qa_env_and_never_defaults_harness():
+    src = _QA.read_text(encoding="utf-8")
+    assert "DEPLOY_ENTRY=cloud_qa" in src
+    assert ".env.cloudrun.qa" in src
+    assert "p36_verify_cloud_qa_isolation.py" in src
+    assert "deploy_cloud_run_core.sh" in src
+    # Wrapper must not force harness ON
+    assert "ENABLE_P35_MP_QA_HARNESS=1" not in src
+    assert "ENABLE_P26H_FIXTURE_RUNNER=1" not in src
+    assert "UNIFIED_INTAKE_QA_FIXTURE_SURFACE=1" not in src
+
+
 def test_core_deploy_reapplies_posture_after_env_file():
     src = _CORE.read_text(encoding="utf-8")
     assert "_apply_deploy_entry_posture" in src
-    assert 'paid_pilot)' in src
-    assert 'demo_smoke)' in src
+    assert "paid_pilot)" in src
+    assert "cloud_qa)" in src
+    assert "demo_smoke)" in src
+    assert "p36_deploy_safety_check.py" in src
+    assert "DEPLOY_SAFETY_CHECK_ONLY" in src
+    assert ".env.cloudrun.qa" in src
+    # Harness flags must remain opt-in (no =1 defaults in core)
+    assert "ENABLE_P35_MP_QA_HARNESS:-1" not in src
+    assert "ENABLE_P26H_FIXTURE_RUNNER:-1" not in src
+    assert "UNIFIED_INTAKE_QA_FIXTURE_SURFACE:-1" not in src
 
 
 def test_demo_cloud_smoke_sets_demo_mode_and_unsets_pilot_strict():
@@ -45,6 +67,11 @@ def test_core_deploy_documents_wrappers_not_operator_default():
     src = _CORE.read_text(encoding="utf-8")
     assert "deploy_paid_pilot.sh" in src
     assert "deploy_demo_cloud_smoke.sh" in src
+    assert "deploy_cloud_qa.sh" in src
+
+
+def test_deploy_safety_check_script_exists():
+    assert _SAFETY.is_file()
 
 
 def test_current_product_shape_documents_deploy_split():
