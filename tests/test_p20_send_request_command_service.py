@@ -188,7 +188,29 @@ def test_ordered_item_mapping_from_multi_item_draft_accepts_mvp_sendable_pair():
     assert store.access_by_case
 
 
-def test_send_request_rejects_vehicle_information_only_draft():
+def test_send_request_accepts_vehicle_information_draft():
+    svc, store = _svc(
+        items=[
+            {
+                "draft_item_id": "di_1",
+                "field_key": "vehicle_information",
+                "item_type": "vehicle_information",
+                "label": "车辆信息",
+                "instructions": "请补充本次事故车辆的基本信息，方便经纪人继续处理。",
+                "required": True,
+                "position": 1,
+                "selected": True,
+            }
+        ]
+    )
+    result = _send(svc)
+    assert result["outcome"] == "accepted"
+    assert store.groups
+    items = result["slice1_projection"]["open_request"]["items"]
+    assert items[0]["item_type"] == "vehicle_information"
+
+
+def test_send_request_coerces_legacy_free_text_vehicle_information_draft():
     svc, store = _svc(
         items=[
             {
@@ -204,9 +226,10 @@ def test_send_request_rejects_vehicle_information_only_draft():
         ]
     )
     result = _send(svc)
-    assert result["outcome"] == "rejected"
-    assert result["error_code"] == "unsupported_draft_item_type_for_send"
-    assert store.groups == {}
+    assert result["outcome"] == "accepted"
+    assert store.groups
+    items = result["slice1_projection"]["open_request"]["items"]
+    assert items[0]["item_type"] == "vehicle_information"
 
 
 def test_send_request_accepts_vin_only_draft():

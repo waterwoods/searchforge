@@ -110,9 +110,13 @@ def test_cap3b_customer_vin_submit_reaches_broker_review_ready():
     response = broker["open_request"]["items"][0]["customer_response"]
     assert response["submitted_value"] == "1HGCM82633A004352"
     assert response["submitted_by_actor"] == "customer"
-    assert response["applied_to_canonical_facts"] is False
+    assert response["applied_to_canonical_facts"] is True
+    assert response["canonical_value"] == "1HGCM82633A004352"
+    assert response["customer_action_label"] == "provided VIN"
     assert store.items["item_vin"].status == ITEM_STATUS_SATISFIED
     assert store.groups["req_cap3b"].status == GROUP_STATUS_COMPLETED
+    assert store.cases["case_cap3b"]["known_facts"]["vehicle_vin"] == "1HGCM82633A004352"
+    assert store.cases["case_cap3b"]["known_facts"]["vin"] == "1HGCM82633A004352"
 
 
 def test_cap3b_timeline_append_only_and_idempotent_retry():

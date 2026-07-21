@@ -145,22 +145,40 @@ def _replay_response(stored: dict[str, Any]) -> dict[str, Any]:
     return prior
 
 
+def _coerce_draft_item_type_for_send(row: dict[str, Any]) -> str:
+    """Normalize draft item_type for send; coerce legacy vehicle_information free_text."""
+    item_type = str(row.get("item_type") or "").strip().lower()
+    field_key = str(row.get("field_key") or "").strip().lower()
+    if field_key == "vehicle_information" and item_type in {"", "free_text"}:
+        return "vehicle_information"
+    return item_type
+
+
+def normalize_draft_items_for_send(draft_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return draft rows with sendable item_type coercion applied (copy)."""
+    out: list[dict[str, Any]] = []
+    for raw in draft_items or []:
+        row = dict(raw) if isinstance(raw, dict) else {}
+        row["item_type"] = _coerce_draft_item_type_for_send(row)
+        out.append(row)
+    return out
+
+
 def draft_items_to_slice1_items(draft_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Map Capability 2 draft items → Slice 1 ordered request items (exact order)."""
     raw: list[dict[str, Any]] = []
-    for idx, item in enumerate(draft_items or [], start=1):
-        row = item if isinstance(item, dict) else {}
-        item_type = str(row.get("item_type") or "").strip().lower()
+    for idx, item in enumerate(normalize_draft_items_for_send(draft_items), start=1):
+        item_type = str(item.get("item_type") or "").strip().lower()
         if item_type not in ALLOWED_ITEM_TYPES:
             raise ValueError("unsupported_draft_item_type_for_send")
         raw.append(
             {
-                "request_item_id": str(row.get("request_item_id") or f"req_item_{uuid4().hex[:12]}"),
+                "request_item_id": str(item.get("request_item_id") or f"req_item_{uuid4().hex[:12]}"),
                 "item_type": item_type,
-                "label": str(row.get("label") or "").strip(),
-                "instructions": str(row.get("instructions") or "").strip(),
-                "required": bool(row.get("required", True)),
-                "position": int(row.get("position") or idx),
+                "label": str(item.get("label") or "").strip(),
+                "instructions": str(item.get("instructions") or "").strip(),
+                "required": bool(item.get("required", True)),
+                "position": int(item.get("position") or idx),
             }
         )
     return _validate_items(raw)
@@ -492,7 +510,8 @@ class P20SendRequestCommandService:
                     error_code="illegal_state",
                 )
 
-            unsupported_labels = list_unsupported_send_item_labels(list(draft.items))
+            sendable_draft_items = normalize_draft_items_for_send(list(draft.items))
+            unsupported_labels = list_unsupported_send_item_labels(sendable_draft_items)
             if unsupported_labels:
                 rejected = _response(
                     outcome="rejected",
@@ -506,7 +525,7 @@ class P20SendRequestCommandService:
                 rejected["unsupported_items"] = unsupported_labels
                 return rejected
 
-            normalized_items = draft_items_to_slice1_items(list(draft.items))
+            normalized_items = draft_items_to_slice1_items(sendable_draft_items)
             now = _utc_now_iso()
             rid = f"req_{uuid4().hex[:12]}"
             group = Slice1Group(

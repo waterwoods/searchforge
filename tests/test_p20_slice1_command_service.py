@@ -192,26 +192,41 @@ def test_broker_projection_includes_exact_submitted_vin_response():
     assert response["submitted_by"] == "h5:demo"
     assert response["submitted_at"]
     assert response["review_status"] == "satisfied"
-    assert response["applied_to_canonical_facts"] is False
-    assert response.get("canonical_value") in (None, "")
+    assert response["applied_to_canonical_facts"] is True
+    assert response["canonical_value"] == "1HGCM82633A004352"
+    assert response["customer_action_label"] == "provided VIN"
 
 
-def test_broker_projection_distinguishes_canonical_vin_when_present():
+def test_broker_confirmed_vin_not_silently_overwritten():
     store = InMemorySlice1Store(
         {
             "case_slice1": {
                 **_case(),
-                "known_facts": {"vin": "CANONICALVIN00001"},
+                "known_facts": {
+                    "vin": "1HGCM82633A004352",
+                    "vehicle_vin": "1HGCM82633A004352",
+                    "vehicle_verification_status": "confirmed",
+                    "claim_vehicle_id": "veh:case_slice1",
+                },
             }
         }
     )
     svc = P20Slice1CommandService(store)
     created = _create(svc)
-    result = _submit(svc, item_id="item_1", expected=created["aggregate_version"])
-    response = result["broker_projection"]["open_request"]["items"][0]["customer_response"]
-    assert response["submitted_value"] == "1HGCM82633A004352"
-    assert response["canonical_value"] == "CANONICALVIN00001"
-    assert response["applied_to_canonical_facts"] is False
+    result = svc.submit_request_item(
+        case_id="case_slice1",
+        customer_id="h5:demo",
+        active_request_item_id="item_1",
+        command_id="cmd-submit-conflict",
+        idempotency_key="idem-submit-conflict",
+        expected_case_version=created["aggregate_version"],
+        fact={"field": "vin", "value": "JH4KA8260MC000000"},
+    )
+    assert result["outcome"] == "accepted"
+    # Request stays open for correction; confirmed VIN preserved.
+    assert store.items["item_1"].status == "active"
+    assert store.cases["case_slice1"]["known_facts"]["vehicle_vin"] == "1HGCM82633A004352"
+    assert store.cases["case_slice1"]["known_facts"]["vehicle_verification_status"] == "needs_correction"
 
 
 def test_fetch_projection_keeps_completed_request_response_visible():
@@ -226,7 +241,7 @@ def test_fetch_projection_keeps_completed_request_response_visible():
     assert projection["open_request"]["status"] == GROUP_STATUS_COMPLETED
     response = projection["open_request"]["items"][0]["customer_response"]
     assert response["submitted_value"] == "1HGCM82633A004352"
-    assert response["applied_to_canonical_facts"] is False
+    assert response["applied_to_canonical_facts"] is True
 
 
 def test_list_redaction_omits_submitted_vin_value():

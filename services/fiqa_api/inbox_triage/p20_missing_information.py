@@ -87,8 +87,8 @@ CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
     {
         "field_key": "vehicle_information",
         "label": "Vehicle information",
-        "customer_label": "Vehicle year / make / model",
-        "item_type": "free_text",
+        "customer_label": "车辆信息",
+        "item_type": "vehicle_information",
         "business_class": BUSINESS_CLASS_REQUEST_MORE,
         "severity": "optional",
     },
@@ -105,8 +105,9 @@ CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
 _FIELD_KEYS = frozenset(item["field_key"] for item in CHECKLIST_FIELDS)
 
 # Production Request More items with complete customer submission support.
-# VIN = fact submit; policy_or_insurance_card = evidence submit (attachment_id).
-MVP_SENDABLE_ITEM_TYPES = frozenset({"vin", "policy_or_insurance_card"})
+# VIN / vehicle_information = fact submit via Claim Vehicle Identity;
+# policy_or_insurance_card = evidence submit (attachment_id).
+MVP_SENDABLE_ITEM_TYPES = frozenset({"vin", "vehicle_information", "policy_or_insurance_card"})
 
 
 def is_mvp_sendable_item_type(item_type: str) -> bool:

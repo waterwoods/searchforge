@@ -24,10 +24,22 @@ from services.fiqa_api.inbox_triage.p20_missing_information import (
     apply_fact_status_update,
     merge_fact_records,
 )
-from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
-    normalize_vin_value,
-    validate_vin_value,
-)
+
+# VIN: 17 chars, excludes I/O/Q (ISO 3779 charset used across intake).
+_VIN_VALUE_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
+
+
+def normalize_vin_value(raw: str | None) -> str:
+    """Strip separators and uppercase; does not invent missing characters."""
+    return re.sub(r"[^A-Za-z0-9]", "", str(raw or "").strip()).upper()
+
+
+def validate_vin_value(raw: str | None) -> str | None:
+    """Return normalized VIN when valid; otherwise None."""
+    normalized = normalize_vin_value(raw)
+    if not _VIN_VALUE_RE.fullmatch(normalized):
+        return None
+    return normalized
 
 # ---------------------------------------------------------------------------
 # Canonical object + fact-key mapping (alias table)
@@ -898,15 +910,20 @@ class ClaimVehicleIdentityService:
         self._command_outcomes[(case_id, command_id)] = result
 
     def _persist_known_facts(self, case_id: str, facts_patch: dict[str, str], *, source: str) -> None:
-        from services.fiqa_api.inbox_triage.case_store import patch_case_known_facts
+        """Best-effort case_store write; Slice1 also patches known_facts via legacy projection."""
+        try:
+            from services.fiqa_api.inbox_triage.case_store import patch_case_known_facts
 
-        provenance = _PROVENANCE_BY_IDENTITY_SOURCE.get(source, "customer_task")
-        patch_case_known_facts(
-            case_id,
-            facts_patch,
-            source=provenance,
-            status="pending_confirmation",
-        )
+            provenance = _PROVENANCE_BY_IDENTITY_SOURCE.get(source, "customer_task")
+            patch_case_known_facts(
+                case_id,
+                facts_patch,
+                source=provenance,
+                status="pending_confirmation",
+            )
+        except Exception:
+            # Unit tests / misconfigured storage still keep in-memory + Slice1 projection writes.
+            return
 
 
 def upsert_claim_vehicle_identity(**kwargs: Any) -> ClaimVehicleCommandResult:

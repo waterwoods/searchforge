@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Final, Protocol
 from uuid import uuid4
 
+from services.fiqa_api.inbox_triage.claim_vehicle_identity import (
+    ClaimVehicleIdentityService,
+    normalize_vin_value,
+    validate_vin_value,
+)
 from services.fiqa_api.inbox_triage.p20_missing_information import MVP_SENDABLE_ITEM_TYPES
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_PHASE_BROKER_DONE,
@@ -41,29 +45,33 @@ ITEM_STATUS_WITHDRAWN = "withdrawn"
 GROUP_STATUS_OPEN = "open"
 GROUP_STATUS_COMPLETED = "completed"
 
-# VIN: 17 chars, excludes I/O/Q (ISO 3779 charset used across intake).
-_VIN_VALUE_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
-
-
-def normalize_vin_value(raw: str | None) -> str:
-    """Strip separators and uppercase; does not invent missing characters."""
-    return re.sub(r"[^A-Za-z0-9]", "", str(raw or "").strip()).upper()
-
-
-def validate_vin_value(raw: str | None) -> str | None:
-    """Return normalized VIN when valid; otherwise None."""
-    normalized = normalize_vin_value(raw)
-    if not _VIN_VALUE_RE.fullmatch(normalized):
-        return None
-    return normalized
-
 ALLOWED_ITEM_TYPES = frozenset(
     {
         "vin",
+        "vehicle_information",
         "policy_or_insurance_card",
         "free_text",
         "photo_evidence",
     }
+)
+
+_CLAIM_VEHICLE_ITEM_TYPES = frozenset({"vin", "vehicle_information"})
+_VEHICLE_FACT_PAYLOAD_KEYS = (
+    "year",
+    "make",
+    "model",
+    "vin",
+    "vin_unavailable",
+    "license_plate",
+    "plate_state",
+    "vehicle_year",
+    "vehicle_make",
+    "vehicle_model",
+    "vehicle_vin",
+    "own_vehicle_vin",
+    "vehicle_vin_unavailable",
+    "vehicle_license_plate",
+    "vehicle_plate_state",
 )
 
 
@@ -200,8 +208,19 @@ def _canonical_fact_value(
     field = str(field_id or "").strip()
     if field:
         candidates.append(field)
-    if str(item_type or "").strip().lower() == "vin":
+    item = str(item_type or "").strip().lower()
+    if item == "vin":
         candidates.extend(["vin", "vehicle_vin", "own_vehicle_vin"])
+    elif item == "vehicle_information":
+        candidates.extend(
+            [
+                "vehicle_information",
+                "own_vehicle_info",
+                "primary_vehicle_summary",
+                "vehicle_vin",
+                "vin",
+            ]
+        )
     seen: set[str] = set()
     for key in candidates:
         if key in seen:
@@ -211,6 +230,70 @@ def _canonical_fact_value(
         if value:
             return value
     return None
+
+
+def _parse_vehicle_summary_value(raw: str) -> dict[str, Any]:
+    """Best-effort parse of legacy free-text vehicle summary → structured fields."""
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    parts = text.split()
+    if len(parts) >= 3 and parts[0].isdigit() and len(parts[0]) == 4:
+        return {
+            "year": parts[0],
+            "make": parts[1],
+            "model": " ".join(parts[2:]),
+            "vin_unavailable": True,
+        }
+    return {}
+
+
+def extract_claim_vehicle_payload(
+    fact_payload: dict[str, Any],
+    *,
+    item_type: str,
+) -> dict[str, Any]:
+    """Normalize Slice1 fact payload into Claim Vehicle Identity input."""
+    fact = fact_payload if isinstance(fact_payload, dict) else {}
+    item = str(item_type or "").strip().lower()
+    nested = fact.get("vehicle") if isinstance(fact.get("vehicle"), dict) else {}
+    out: dict[str, Any] = {}
+
+    if item == "vin":
+        vin_val = fact.get("value")
+        if vin_val is None:
+            vin_val = fact.get("vin")
+        if vin_val is None:
+            vin_val = fact.get("vehicle_vin")
+        if vin_val is not None and str(vin_val).strip():
+            out["vin"] = vin_val
+        return out
+
+    for key in _VEHICLE_FACT_PAYLOAD_KEYS:
+        if key in fact and fact.get(key) is not None:
+            out[key] = fact.get(key)
+        elif key in nested and nested.get(key) is not None:
+            out[key] = nested.get(key)
+
+    # Structured shorthand keys.
+    for key in ("year", "make", "model", "vin", "vin_unavailable", "license_plate", "plate_state"):
+        if key not in out and key in fact and fact.get(key) is not None:
+            out[key] = fact.get(key)
+
+    if not any(
+        str(out.get(k) or "").strip()
+        for k in ("year", "make", "model", "vin", "vehicle_vin", "license_plate")
+    ) and not out.get("vin_unavailable"):
+        parsed = _parse_vehicle_summary_value(str(fact.get("value") or ""))
+        out.update(parsed)
+
+    return out
+
+
+def _claim_vehicle_customer_label(item_type: str) -> str:
+    if str(item_type or "").strip().lower() == "vin":
+        return "provided VIN"
+    return "submitted vehicle information"
 
 
 def _customer_response_for_item(
@@ -262,6 +345,12 @@ def _customer_response_for_item(
             item_type=item.item_type,
             field_id=field_id,
         )
+        applied = False
+        if canonical_value:
+            if str(item.item_type or "").strip().lower() in _CLAIM_VEHICLE_ITEM_TYPES:
+                applied = True
+            elif canonical_value == submitted_value_str:
+                applied = True
         return {
             "kind": "fact",
             "field_id": field_id or None,
@@ -272,8 +361,8 @@ def _customer_response_for_item(
             "submitted_by": actor_identity,
             "receipt_event_id": receipt_event_id,
             "review_status": review_status,
-            # Slice 1 submit marks the item satisfied; it does not write known_facts.
-            "applied_to_canonical_facts": False,
+            "applied_to_canonical_facts": applied,
+            "customer_action_label": evidence.get("customer_action_label"),
         }
 
     attachment_id = str(evidence.get("attachment_id") or "").strip()
@@ -769,8 +858,13 @@ def _validate_items(raw_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 class P20Slice1CommandService:
-    def __init__(self, store: Slice1Store | None = None):
+    def __init__(
+        self,
+        store: Slice1Store | None = None,
+        vehicle_service: ClaimVehicleIdentityService | None = None,
+    ):
         self.store = store or _default_store()
+        self.vehicle_service = vehicle_service or ClaimVehicleIdentityService()
 
     def fetch_projection(self, case_id: str) -> dict[str, Any] | None:
         snapshot = self.store.read_snapshot(case_id)
@@ -1085,22 +1179,18 @@ class P20Slice1CommandService:
                 )
             receipt_payload: dict[str, Any]
             receipt_type = "field_saved"
+            satisfy_item = True
+            known_facts_for_projection = _case_known_facts(snapshot.case)
+            claim_vehicle_result = None
             if fact_payload:
                 field_name = str(fact_payload.get("field") or fact_payload.get("field_id") or "").strip()
                 value = str(fact_payload.get("value") or "").strip()
-                if not field_name or not value:
-                    return _response(
-                        outcome="rejected",
-                        command_id=command_id,
-                        correlation_id=corr,
-                        idempotency_key=idempotency_key,
-                        event_ids=[],
-                        projection=current_projection,
-                        error_code="fact_payload_invalid",
-                    )
-                if str(active.item_type or "").strip().lower() == "vin":
-                    validated_vin = validate_vin_value(value)
-                    if not validated_vin:
+                is_claim_vehicle = active_type in _CLAIM_VEHICLE_ITEM_TYPES
+                if is_claim_vehicle:
+                    if not field_name:
+                        field_name = "vin" if active_type == "vin" else "vehicle_information"
+                    vehicle_payload = extract_claim_vehicle_payload(fact_payload, item_type=active_type)
+                    if not vehicle_payload:
                         return _response(
                             outcome="rejected",
                             command_id=command_id,
@@ -1108,16 +1198,94 @@ class P20Slice1CommandService:
                             idempotency_key=idempotency_key,
                             event_ids=[],
                             projection=current_projection,
-                            error_code="vin_invalid",
+                            error_code="fact_payload_invalid",
                         )
-                    value = validated_vin
-                receipt_payload = {
-                    "request_id": active.request_id,
-                    "request_item_id": active.request_item_id,
-                    "field_id": field_name,
-                    "value": value,
-                    "client_draft_id": client_draft_id,
-                }
+                    # VIN request requires a valid VIN; vehicle_information may partial-save.
+                    force_submit = active_type == "vin" or bool(fact_payload.get("final")) or str(
+                        fact_payload.get("mode") or ""
+                    ).strip().lower() == "submit"
+                    mode = "submit" if force_submit else "draft"
+                    if active_type == "vin":
+                        mode = "submit"
+                    case_obj = snapshot.case if isinstance(snapshot.case, dict) else {}
+                    claim_vehicle_result = self.vehicle_service.upsert(
+                        case_id=case_id,
+                        payload=vehicle_payload,
+                        command_id=command_id,
+                        idempotency_key=idempotency_key,
+                        actor="customer",
+                        actor_identity=customer_id,
+                        source="customer",
+                        mode=mode,
+                        known_facts=_case_known_facts(case_obj),
+                        fact_records=case_obj.get("fact_records")
+                        if isinstance(case_obj.get("fact_records"), dict)
+                        else None,
+                        case=case_obj,
+                        persist=True,
+                        correlation_id=corr,
+                        sequence_base=current_version,
+                    )
+                    if claim_vehicle_result.outcome == "rejected":
+                        return _response(
+                            outcome="rejected",
+                            command_id=command_id,
+                            correlation_id=corr,
+                            idempotency_key=idempotency_key,
+                            event_ids=[],
+                            projection=current_projection,
+                            error_code=claim_vehicle_result.error_code or "vehicle_rejected",
+                        )
+                    merge_meta = claim_vehicle_result.merge if isinstance(claim_vehicle_result.merge, dict) else {}
+                    if merge_meta.get("conflict_fields"):
+                        # Persist needs_correction via vehicle service; keep request open.
+                        satisfy_item = False
+                    elif not claim_vehicle_result.complete:
+                        satisfy_item = False
+                    else:
+                        satisfy_item = True
+                    vehicle = claim_vehicle_result.vehicle if isinstance(claim_vehicle_result.vehicle, dict) else {}
+                    if active_type == "vin":
+                        value = str(vehicle.get("vin") or value).strip()
+                    else:
+                        value = str(vehicle.get("summary") or value).strip()
+                    known_facts_for_projection = (
+                        case_obj.get("known_facts")
+                        if isinstance(case_obj.get("known_facts"), dict)
+                        else claim_vehicle_result.known_facts_patch
+                    )
+                    receipt_payload = {
+                        "request_id": active.request_id,
+                        "request_item_id": active.request_item_id,
+                        "field_id": field_name,
+                        "value": value,
+                        "client_draft_id": client_draft_id,
+                        "customer_action_label": _claim_vehicle_customer_label(active_type),
+                        "claim_vehicle_id": vehicle.get("vehicle_id"),
+                        "complete": bool(claim_vehicle_result.complete),
+                        "verification_status": vehicle.get("verification_status"),
+                        "conflict_fields": list(merge_meta.get("conflict_fields") or []),
+                        "applied_to_canonical_facts": True,
+                        "known_facts_keys": sorted((claim_vehicle_result.known_facts_patch or {}).keys()),
+                    }
+                else:
+                    if not field_name or not value:
+                        return _response(
+                            outcome="rejected",
+                            command_id=command_id,
+                            correlation_id=corr,
+                            idempotency_key=idempotency_key,
+                            event_ids=[],
+                            projection=current_projection,
+                            error_code="fact_payload_invalid",
+                        )
+                    receipt_payload = {
+                        "request_id": active.request_id,
+                        "request_item_id": active.request_item_id,
+                        "field_id": field_name,
+                        "value": value,
+                        "client_draft_id": client_draft_id,
+                    }
             else:
                 attachment_id = str((evidence_payload or {}).get("attachment_id") or "").strip()
                 if not attachment_id:
@@ -1166,6 +1334,7 @@ class P20Slice1CommandService:
                 )
             receipt_state_before = STATE_CUSTOMER_CONTINUING if events else state
             sequence += 1
+            next_state = STATE_CUSTOMER_CONTINUING
             receipt_event = _event(
                 event_type=receipt_type,
                 case_id=case_id,
@@ -1183,70 +1352,81 @@ class P20Slice1CommandService:
                 timestamp=now,
             )
             events.append(receipt_event)
-            active.status = ITEM_STATUS_SATISFIED
-            active.satisfied_at = now
-            sequence += 1
-            remaining = [item for item in items if item.status == ITEM_STATUS_QUEUED]
-            next_state = STATE_CUSTOMER_CONTINUING if remaining else STATE_BROKER_REVIEW_READY
-            satisfaction_event = _event(
-                event_type="customer_request_item_satisfied",
-                case_id=case_id,
-                command_id=command_id,
-                correlation_id=corr,
-                sequence_number=sequence,
-                aggregate_version=sequence,
-                expected_state_version=expected,
-                actor="system",
-                actor_identity="workflow_engine",
-                state_before=STATE_CUSTOMER_CONTINUING,
-                state_after=next_state,
-                idempotency_key=idempotency_key,
-                evidence={
-                    "request_id": active.request_id,
-                    "request_item_id": active.request_item_id,
-                    "satisfied_by_event_id": receipt_event["event_id"],
-                    "next_ordered_item_id": remaining[0].request_item_id if remaining else None,
-                },
-                timestamp=now,
-            )
-            active.satisfied_by_event_id = satisfaction_event["event_id"]
-            events.append(satisfaction_event)
             group = snapshot.group
-            if remaining:
-                remaining[0].status = ITEM_STATUS_ACTIVE
-                group.updated_at = now
-            else:
-                group.status = GROUP_STATUS_COMPLETED
-                group.completed_at = now
-                group.updated_at = now
+            if satisfy_item:
+                active.status = ITEM_STATUS_SATISFIED
+                active.satisfied_at = now
                 sequence += 1
-                events.append(
-                    _event(
-                        event_type="supplement_submitted",
-                        case_id=case_id,
-                        command_id=command_id,
-                        correlation_id=corr,
-                        sequence_number=sequence,
-                        aggregate_version=sequence,
-                        expected_state_version=expected,
-                        actor="customer",
-                        actor_identity=customer_id,
-                        state_before=STATE_CUSTOMER_CONTINUING,
-                        state_after=STATE_BROKER_REVIEW_READY,
-                        idempotency_key=idempotency_key,
-                        evidence={
-                            "request_id": active.request_id,
-                            "final_request_item_id": active.request_item_id,
-                            "accepted_request_item_ids": [
-                                item.request_item_id
-                                for item in items
-                                if item.status == ITEM_STATUS_SATISFIED
-                            ],
-                        },
-                        timestamp=now,
-                    )
+                remaining = [item for item in items if item.status == ITEM_STATUS_QUEUED]
+                next_state = STATE_CUSTOMER_CONTINUING if remaining else STATE_BROKER_REVIEW_READY
+                satisfaction_event = _event(
+                    event_type="customer_request_item_satisfied",
+                    case_id=case_id,
+                    command_id=command_id,
+                    correlation_id=corr,
+                    sequence_number=sequence,
+                    aggregate_version=sequence,
+                    expected_state_version=expected,
+                    actor="system",
+                    actor_identity="workflow_engine",
+                    state_before=STATE_CUSTOMER_CONTINUING,
+                    state_after=next_state,
+                    idempotency_key=idempotency_key,
+                    evidence={
+                        "request_id": active.request_id,
+                        "request_item_id": active.request_item_id,
+                        "satisfied_by_event_id": receipt_event["event_id"],
+                        "next_ordered_item_id": remaining[0].request_item_id if remaining else None,
+                    },
+                    timestamp=now,
                 )
+                active.satisfied_by_event_id = satisfaction_event["event_id"]
+                events.append(satisfaction_event)
+                if remaining:
+                    remaining[0].status = ITEM_STATUS_ACTIVE
+                    group.updated_at = now
+                else:
+                    group.status = GROUP_STATUS_COMPLETED
+                    group.completed_at = now
+                    group.updated_at = now
+                    sequence += 1
+                    events.append(
+                        _event(
+                            event_type="supplement_submitted",
+                            case_id=case_id,
+                            command_id=command_id,
+                            correlation_id=corr,
+                            sequence_number=sequence,
+                            aggregate_version=sequence,
+                            expected_state_version=expected,
+                            actor="customer",
+                            actor_identity=customer_id,
+                            state_before=STATE_CUSTOMER_CONTINUING,
+                            state_after=STATE_BROKER_REVIEW_READY,
+                            idempotency_key=idempotency_key,
+                            evidence={
+                                "request_id": active.request_id,
+                                "final_request_item_id": active.request_item_id,
+                                "accepted_request_item_ids": [
+                                    item.request_item_id
+                                    for item in items
+                                    if item.status == ITEM_STATUS_SATISFIED
+                                ],
+                            },
+                            timestamp=now,
+                        )
+                    )
+            else:
+                # Partial draft / correction required — keep item active, request open.
+                active.status = ITEM_STATUS_ACTIVE
+                group.updated_at = now
+                next_state = STATE_CUSTOMER_CONTINUING
             final_version = sequence
+            # Keep in-memory case facts aligned for projection + store patch.
+            if isinstance(snapshot.case, dict) and isinstance(known_facts_for_projection, dict):
+                snapshot.case["known_facts"] = dict(known_facts_for_projection)
+                if claim_vehicle_result is not None and claim_vehicle_result.fact_records:
+                    snapshot.case["fact_records"] = dict(claim_vehicle_result.fact_records)
             projection = _projection(
                 case_id=case_id,
                 state=next_state,
@@ -1255,7 +1435,9 @@ class P20Slice1CommandService:
                 items=items,
                 latest_events=[*snapshot.latest_events, *events],
                 timestamp=now,
-                known_facts=_case_known_facts(snapshot.case),
+                known_facts=known_facts_for_projection
+                if isinstance(known_facts_for_projection, dict)
+                else _case_known_facts(snapshot.case),
             )
             aggregate_out = Slice1Aggregate(
                 case_id=case_id,
@@ -1269,7 +1451,12 @@ class P20Slice1CommandService:
             tx.update_group(group)
             tx.insert_events(events)
             tx.upsert_aggregate(aggregate_out)
-            tx.update_legacy_projection(case_id, _legacy_projection_patch(projection))
+            legacy_patch = _legacy_projection_patch(projection)
+            if isinstance(known_facts_for_projection, dict):
+                legacy_patch["known_facts"] = dict(known_facts_for_projection)
+            if claim_vehicle_result is not None and claim_vehicle_result.fact_records:
+                legacy_patch["fact_records"] = dict(claim_vehicle_result.fact_records)
+            tx.update_legacy_projection(case_id, legacy_patch)
             return _response(
                 outcome="accepted",
                 command_id=command_id,
