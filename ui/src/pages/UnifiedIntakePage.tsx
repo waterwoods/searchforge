@@ -111,6 +111,12 @@ export default function UnifiedIntakePage() {
         if (supervisedDemoUi && tabParam === 'my_requests') {
             setMyRequestsDrawerOpen(true);
         }
+        // P35.2 — Founder QA Console "Open Broker Case"
+        const caseIdParam = (searchParams.get('caseId') || '').trim();
+        if (caseIdParam) {
+            setBrokerInitialCaseId(caseIdParam);
+            setActiveTab('broker');
+        }
     }, [productOnlyUi, supervisedDemoUi, searchParams]);
 
     useEffect(() => {

@@ -4,11 +4,13 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Space, Typography, message } from 'antd';
+import { Link } from 'react-router-dom';
 import {
     getLaunchGoldenQaStatus,
     launchGoldenQa,
     type LaunchGoldenQaStatus,
 } from '@/api/inboxTriage';
+import { isQaToolsEnabled } from '@/config/productSurface';
 
 const { Text } = Typography;
 
@@ -120,6 +122,11 @@ export function LaunchGoldenQaPanel() {
             extra={<Text type="secondary" style={{ fontSize: 12 }}>Internal · Founder release</Text>}
         >
             <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                {isQaToolsEnabled() ? (
+                    <Link to="/internal/founder-qa">
+                        <Button block>Open Founder QA Console</Button>
+                    </Link>
+                ) : null}
                 <Button type="primary" onClick={() => void onLaunch()} loading={busy} disabled={busy}>
                     Launch Golden QA
                 </Button>

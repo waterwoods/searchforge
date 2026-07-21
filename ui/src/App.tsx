@@ -10,8 +10,9 @@ import H5SingleSlotUploadPage from './pages/H5SingleSlotUploadPage';
 import H5ClaimIntakePage from './pages/H5ClaimIntakePage';
 import { OfficeReviewShell } from './components/layout/OfficeReviewShell';
 import { DemoPage } from './pages/DemoPage';
+import FounderQaConsolePage from './pages/FounderQaConsolePage';
 import { ClientConfigProvider } from './context/ClientConfigContext';
-import { isUnifiedIntakeProductOnlyUi } from './config/productSurface';
+import { isUnifiedIntakeProductOnlyUi, isQaToolsEnabled } from './config/productSurface';
 import * as Lab from './routes/labPages';
 
 const routeFallback = (
@@ -85,6 +86,18 @@ function App() {
                                     </div>
                                 </ConfigProvider>
                             } />
+                            {isQaToolsEnabled() ? (
+                                <Route
+                                    path="internal/founder-qa"
+                                    element={
+                                        <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+                                            <div style={{ minHeight: '100%', background: '#f5f5f5' }}>
+                                                <FounderQaConsolePage />
+                                            </div>
+                                        </ConfigProvider>
+                                    }
+                                />
+                            ) : null}
                         </Route>
 
                         <Route path="/workbench/document-intake" element={
