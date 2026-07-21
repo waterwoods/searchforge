@@ -2,13 +2,15 @@
 
 One screen. **Authority:** [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_SHAPE.md)
 
+**Cloud QA vs Production resource names (P36):** [`CLOUD_QA_RESOURCE_NAMES.md`](./CLOUD_QA_RESOURCE_NAMES.md) — single SSOT. Production stays `fiqa-api` / `caseiq` / `.env.cloudrun`. Target Cloud QA is `fiqa-api-qa` / `caseiq-qa` / `.env.cloudrun.qa` (not provisioned by naming freeze alone).
+
 ---
 
 ## Operator entries (only these)
 
 | Goal | Script | Sets |
 |------|--------|------|
-| **Paid broker pilot** | `bash scripts/deploy_paid_pilot.sh` | `PRODUCT_ONLY=1`, `INTAKE_CORE_READINESS=1`, PG-primary, no DEMO_MODE |
+| **Paid broker pilot** | `bash scripts/deploy_paid_pilot.sh` | `PRODUCT_ONLY=1`, `INTAKE_CORE_READINESS=1`, PG-primary, no DEMO_MODE; loads `.env.cloudrun` → `fiqa-api` |
 | Local founder demo | `bash scripts/run_demo_local.sh` | Port 8001; may use JSON / platform_full |
 | Demo cloud smoke | `bash scripts/deploy_demo_cloud_smoke.sh` | DEMO_MODE; not for paid pilot |
 | Pre-trial gate | `bash scripts/trial_launch_check.sh` | Docs + guardrail + env posture |
@@ -65,10 +67,21 @@ cd ui && npm run build && vercel --prod
 
 ## Topology
 
+**Production / paid pilot (live today):**
+
 ```
-Browser (Vercel) → Cloud Run (fiqa-api) → Postgres (required)
+Browser (Vercel) → Cloud Run (fiqa-api) → Postgres caseiq (required)
                                       ↘ Qdrant (optional)
 ```
+
+**Cloud QA (P36 target names — see CLOUD_QA_RESOURCE_NAMES.md):**
+
+```
+QA clients → Cloud Run (fiqa-api-qa) → Postgres caseiq-qa (required)
+                                    ↘ Qdrant (optional)
+```
+
+Production and Cloud QA must never share a mutable case database.
 
 ---
 
