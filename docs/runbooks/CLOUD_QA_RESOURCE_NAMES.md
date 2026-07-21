@@ -3,8 +3,9 @@
 **Status:** frozen naming SSOT + P36 T4 provisioned foundation  
 **Authority:** single obvious place for Cloud QA vs Production resource names  
 **P36 T4 (2026-07-21):** `caseiq-qa`, secret `fiqa-service-record-database-url-qa`, and Cloud Run `fiqa-api-qa` exist.  
-**P36 T5 (2026-07-21):** Founder QA clients (Vercel Preview + Mini Program `apiProfile=qa`) retarget to `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app`. Evidence: `docs/evidence/p36_t5_founder_qa_client_retarget_2026_07_21.md`.  
-**Still does not:** rename Production, mutate Production Vercel env from this repo alone, or run Founder PAT
+**P36 T5 (2026-07-21):** Founder QA clients (Vercel Preview + Mini Program `apiProfile=qa`) retarget to `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app`.  
+**P36 T6 (2026-07-21):** Founder PAT on isolated Cloud QA — **PASS WITH FOLLOW-UP DEFECTS**. Evidence: `docs/evidence/p36_t6_founder_pat_2026_07_21.md`.  
+**Still does not:** Add Vehicle / Add Driver; Production mutation from QA work.
 
 Copy templates:
 
