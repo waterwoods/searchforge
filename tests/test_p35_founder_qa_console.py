@@ -262,3 +262,37 @@ def test_console_status_normalized_shape():
     assert "open_request_more" in body
     assert "latest_qa_preset" in body
     assert "latest_qa_audit_event" in body
+
+
+def test_cloud_qa_status_production_like_false(monkeypatch):
+    """fiqa-api-qa / ENV=qa must not brand as Production even with PG-primary writes."""
+    monkeypatch.setenv("ENV", "qa")
+    monkeypatch.setenv("SERVICE_NAME", "fiqa-api-qa")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    monkeypatch.setenv("UNIFIED_INTAKE_SUPPORT_API_KEY", "support-key-value-32chars-minimum!!")
+    body = hx.console_status(actor="founder", authorized=True)
+    assert body["environment"] == "qa"
+    assert body["production_like"] is False
+    assert body["require_support_key"] is True  # still gated by is_production_mode
+    assert body["production_safety"] == "qa_reset_enabled"
+
+
+def test_production_env_status_production_like_true(monkeypatch):
+    """ENV=prod preserves Production branding (support key still required for mutations)."""
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.setenv("SERVICE_NAME", "fiqa-api")
+    monkeypatch.setenv("UNIFIED_INTAKE_SUPPORT_API_KEY", "support-key-value-32chars-minimum!!")
+    monkeypatch.setenv("UNIFIED_INTAKE_INTAKE_API_KEY", "intake-key-value-32chars-minimum!!")
+    body = hx.console_status(actor="founder", authorized=True)
+    assert body["production_like"] is True
+    assert body["require_support_key"] is True
+
+
+def test_ambiguous_env_status_not_silently_production(monkeypatch):
+    """Missing/invalid ENV must not silently classify as Production."""
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.delenv("SERVICE_NAME", raising=False)
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    body = hx.console_status(actor="founder", authorized=True)
+    assert body["production_like"] is False
+    assert body["require_support_key"] is True

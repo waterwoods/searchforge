@@ -61,11 +61,17 @@ def harness_enabled() -> bool:
 
 
 def harness_status() -> dict[str, Any]:
-    from services.fiqa_api.db.service_record_settings import is_production_mode
+    from services.fiqa_api.db.service_record_settings import (
+        is_production_deployment,
+        is_production_mode,
+    )
     from services.fiqa_api.security.support_export_gate import support_export_secret_configured
 
     enabled = harness_enabled()
-    prod_like = is_production_mode()
+    # Console branding: Production deployment only (ENV/SERVICE_NAME). Not PG-primary.
+    prod_like = is_production_deployment()
+    # Support-key gate still follows persistence production-like mode (includes Cloud QA PG).
+    require_support_key = is_production_mode()
     return {
         "ok": True,
         "enabled": enabled,
@@ -73,7 +79,7 @@ def harness_status() -> dict[str, Any]:
         "environment": _environment_label(),
         "production_like": prod_like,
         "support_key_configured": support_export_secret_configured(),
-        "require_support_key": prod_like,
+        "require_support_key": require_support_key,
         "notes": (
             "Requires ENABLE_P35_MP_QA_HARNESS=1 and UNIFIED_INTAKE_QA_FIXTURE_SURFACE=1. "
             "Production-like runtimes also require UNIFIED_INTAKE_SUPPORT_API_KEY. "
@@ -514,12 +520,13 @@ def sanitize_preset_result_for_console(result: dict[str, Any]) -> dict[str, Any]
 
 def console_status(*, actor: str = "founder", authorized: bool = True) -> dict[str, Any]:
     """Normalized Founder QA Console status (safe for browser; no support secrets)."""
-    from services.fiqa_api.db.service_record_settings import is_production_mode
     from services.fiqa_api.security.intake_api_gate import intake_api_secret_configured
     from services.fiqa_api.security.support_export_gate import support_export_secret_configured
 
     base = harness_status()
-    prod_like = bool(base.get("production_like")) or is_production_mode()
+    # Trust harness_status branding (is_production_deployment); do not OR with
+    # is_production_mode() — Cloud QA is PG-primary but must report production_like=false.
+    prod_like = bool(base.get("production_like"))
     enabled = bool(base.get("enabled"))
     pref = get_selected_identity(actor=actor)
     identity_block: dict[str, Any] | None = None

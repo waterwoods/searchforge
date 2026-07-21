@@ -71,10 +71,37 @@ def is_production_mode() -> bool:
     True when ENV=prod (deployment) or UNIFIED_INTAKE_DB_PRIMARY_WRITES is on (PG-primary
     writes). Used to gate JSON case file reads/writes and read fallbacks — not a substitute
     for configuring SERVICE_RECORD_DATABASE_URL / DATABASE_URL.
+
+    Note: Cloud QA (ENV=qa, fiqa-api-qa) also enables DB-primary writes, so this returns
+    True there for persistence safety. Operator/console "Production" branding must use
+    :func:`is_production_deployment` instead — never treat PG-primary alone as Production.
     """
     if (os.getenv("ENV") or "").strip().lower() == "prod":
         return True
     return _truthy_env("UNIFIED_INTAKE_DB_PRIMARY_WRITES")
+
+
+def is_production_deployment() -> bool:
+    """
+    True when this process is an explicit Production *deployment* label.
+
+    Used by Founder QA / operator status surfaces (``production_like``) so Cloud QA is
+    never silently branded as Production. Distinct from :func:`is_production_mode`,
+    which is also True when UNIFIED_INTAKE_DB_PRIMARY_WRITES is on (Cloud QA posture).
+
+    Signals (no hostname guessing):
+    - SERVICE_NAME=fiqa-api-qa or ENV=qa → False (Cloud QA)
+    - ENV=prod or SERVICE_NAME=fiqa-api → True (Production)
+    - Missing / ambiguous ENV+SERVICE_NAME → False (fail visible; do not claim Production)
+    """
+    env = (os.getenv("ENV") or "").strip().lower()
+    service = (os.getenv("SERVICE_NAME") or "").strip().lower()
+
+    if service == "fiqa-api-qa" or env == "qa":
+        return False
+    if env == "prod" or service == "fiqa-api":
+        return True
+    return False
 
 
 def db_primary_reads_enabled() -> bool:

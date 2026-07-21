@@ -99,6 +99,29 @@ def test_is_production_mode_env_prod(monkeypatch):
     assert s.is_production_mode() is True
 
 
+def test_is_production_deployment_cloud_qa_false(monkeypatch):
+    monkeypatch.setenv("ENV", "qa")
+    monkeypatch.setenv("SERVICE_NAME", "fiqa-api-qa")
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    assert s.is_production_mode() is True  # PG-primary still production-like for persistence
+    assert s.is_production_deployment() is False
+
+
+def test_is_production_deployment_production_true(monkeypatch):
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.setenv("SERVICE_NAME", "fiqa-api")
+    assert s.is_production_deployment() is True
+    assert s.is_production_mode() is True
+
+
+def test_is_production_deployment_ambiguous_false(monkeypatch):
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.delenv("SERVICE_NAME", raising=False)
+    monkeypatch.setenv("UNIFIED_INTAKE_DB_PRIMARY_WRITES", "1")
+    assert s.is_production_mode() is True
+    assert s.is_production_deployment() is False
+
+
 def test_json_case_writes_disabled_when_env_prod(monkeypatch):
     monkeypatch.setenv("ENV", "prod")
     assert s.json_case_writes_enabled() is False

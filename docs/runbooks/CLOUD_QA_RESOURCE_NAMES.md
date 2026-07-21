@@ -175,13 +175,19 @@ Build guard: `ui/src/api/cloudBackendUrls.ts` (Preview≠Production, Production�
 
 ### WeChat request合法域名 (operator)
 
-Add Cloud QA host to the Mini Program admin allowlist (QA / Experience builds):
+Required request合法域名 host for Cloud QA / Experience / Founder QA builds:
 
 ```text
 fiqa-api-qa-g7zatxrycq-uw.a.run.app
 ```
 
-Keep Production host on the Production Mini Program allowlist if a Production release exists. Do **not** upload/publish a Mini Program release as part of T5.
+Operator checklist (DevTools — cannot be completed from CI/agent alone):
+
+1. Mini Program admin → 开发 → 开发管理 → 开发设置 → request合法域名 includes the host above.
+2. WeChat DevTools: 清缓存 → 编译 → confirm `apiProfile=qa` and outgoing API host is Cloud QA.
+3. Do **not** upload/publish a Production Mini Program release during P36 closeout.
+
+Keep Production host on the Production Mini Program allowlist if a Production release exists.
 
 ### CORS note (Cloud QA backend)
 
