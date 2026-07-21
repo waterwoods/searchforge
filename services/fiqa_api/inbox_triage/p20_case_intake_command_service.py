@@ -413,7 +413,7 @@ def _minimum_create_inputs(body: dict[str, Any]) -> dict[str, Any]:
         known_facts["injury_status"] = known_facts["anyone_injured"]
     if known_facts.get("accident_date") and not known_facts.get("accident_datetime"):
         known_facts["accident_datetime"] = known_facts["accident_date"]
-    return {
+    out: dict[str, Any] = {
         "customer_name": customer_name,
         "customer_phone": customer_phone,
         "contact_note": note,
@@ -421,6 +421,25 @@ def _minimum_create_inputs(body: dict[str, Any]) -> dict[str, Any]:
         "is_test": bool(body.get("is_test") or body.get("workbench_test")),
         "title": str(body.get("title") or "").strip()[:160],
     }
+    # P29B — optional opaque identity stamps (never OpenID).
+    entry_channel = str(body.get("entry_channel") or "").strip()
+    if entry_channel:
+        out["entry_channel"] = entry_channel[:64]
+    identity_binding_state = str(body.get("identity_binding_state") or "").strip()
+    if identity_binding_state:
+        out["identity_binding_state"] = identity_binding_state[:32]
+    person_link_key = str(body.get("person_link_key") or "").strip()
+    if person_link_key:
+        out["person_link_key"] = person_link_key[:80]
+    person_link_source = str(body.get("person_link_source") or "").strip()
+    if person_link_source:
+        out["person_link_source"] = person_link_source[:32]
+    if body.get("person_link_confidence") is not None:
+        try:
+            out["person_link_confidence"] = float(body.get("person_link_confidence"))
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 _ALLOWED_CREATE_ACTORS = frozenset({"broker", "customer"})
@@ -453,7 +472,8 @@ def _build_new_case_record(
     if is_test:
         tags = ["TEST", "QA", "Claim"]
     if actor == "customer":
-        source_text = f"[Customer] Mini Program Start Claim by {broker_id}"
+        # P29B: never embed session / person_link / openid in broker-visible source_text.
+        source_text = "[Customer] WeChat Mini Program Start Claim"
         activity_message = "Customer started Claim case (Capability 2)."
         # P26G: customer-originated claims collect default intake — not broker-gated.
         has_story = bool(str(known_facts.get("accident_description") or "").strip())
@@ -464,6 +484,7 @@ def _build_new_case_record(
         admin_lifecycle = ADMIN_LIFECYCLE_ACTIVE
         broker_next = "Customer is completing default intake; review when ready."
         office_next = "Customer completing default intake; Request More only if exceptional"
+        entry_channel = "mini_program"
     else:
         source_text = f"[Broker] New Claim created by {broker_id}"
         activity_message = "Broker created Claim case (Capability 2)."
@@ -472,7 +493,12 @@ def _build_new_case_record(
         admin_lifecycle = ADMIN_LIFECYCLE_DRAFT
         broker_next = "Review the accident first, then Request More only if needed."
         office_next = "Review accident facts, then decide Request More"
-    return {
+        entry_channel = str(inputs.get("entry_channel") or "workbench").strip() or "workbench"
+    person_link_key = str(inputs.get("person_link_key") or "").strip() or None
+    person_link_source = str(inputs.get("person_link_source") or "").strip() or None
+    identity_binding_state = str(inputs.get("identity_binding_state") or "").strip() or None
+    person_link_confidence = inputs.get("person_link_confidence")
+    case: dict[str, Any] = {
         "case_id": case_id,
         "case_status": "new",
         "created_at": timestamp,
@@ -523,8 +549,18 @@ def _build_new_case_record(
         "client_id": tenant_id or "",
         "created_by_broker": broker_id,
         "created_by_actor": actor,
+        "entry_channel": entry_channel,
         "exclude_from_production_metrics": is_test,
     }
+    if identity_binding_state:
+        case["identity_binding_state"] = identity_binding_state
+    if person_link_key:
+        case["person_link_key"] = person_link_key
+    if person_link_source:
+        case["person_link_source"] = person_link_source
+    if person_link_confidence is not None:
+        case["person_link_confidence"] = person_link_confidence
+    return case
 
 
 class P20CaseIntakeCommandService:

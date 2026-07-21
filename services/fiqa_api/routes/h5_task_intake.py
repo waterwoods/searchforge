@@ -14,6 +14,7 @@ from services.fiqa_api.inbox_triage.h5_task_intake import (
     submit_intake_form,
 )
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
+from services.fiqa_api.inbox_triage.mp_customer_identity import establish_mp_customer_session
 from services.fiqa_api.inbox_triage.p20_customer_start_claim import (
     customer_start_claim_response,
     start_customer_claim,
@@ -62,6 +63,38 @@ class CustomerStartClaimBody(BaseModel):
     accident_location: str | None = Field(default=None, max_length=500)
     injury_status: str | None = Field(default=None, max_length=32)
     is_test: bool = Field(default=False)
+
+
+class CustomerSessionBody(BaseModel):
+    """P29B — Mini Program wx.login code → opaque session + optional resume."""
+
+    code: str = Field(..., min_length=1, max_length=256)
+
+
+@router.post("/customer/session")
+async def post_customer_session(body: CustomerSessionBody) -> dict[str, Any]:
+    """
+    OpenID login flow (technical only).
+
+    Returns opaque session_id + optional resume_token when an Active Case exists.
+    Never returns OpenID.
+    """
+    result = await establish_mp_customer_session(body.code)
+    if not result.get("ok"):
+        code = str(result.get("error_code") or "login_failed")
+        status = 503 if code in ("wechat_mp_not_configured", "token_http_error") else 401
+        raise HTTPException(status_code=status, detail=code)
+    # Strip any accidental identity leakage keys.
+    safe = {
+        "ok": True,
+        "session_id": result.get("session_id"),
+        "has_active_case": bool(result.get("has_active_case")),
+    }
+    if result.get("resume_token"):
+        safe["resume_token"] = result.get("resume_token")
+    if result.get("resume_expires_at"):
+        safe["resume_expires_at"] = result.get("resume_expires_at")
+    return safe
 
 
 @router.post("/customer/start-claim")
