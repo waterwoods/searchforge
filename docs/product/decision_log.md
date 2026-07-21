@@ -175,6 +175,19 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/p20_product_north_star.md` §J2; `services/fiqa_api/inbox_triage/default_intake_plan.py` |
 
+### D-010 — Claim Vehicle Identity V1 is claim-scoped Request More
+
+| Field | Content |
+|-------|---------|
+| **Decision** | V1 vehicle identity is one primary slot owned by `case_id`, entered via Broker Request More (plus in-claim supplement/edit), with optional VIN and completeness via VIN **or** year/make/model when VIN is unavailable; `vin` and `vehicle_information` merge into the same object on the existing claim fact path — no WeCom Add Car reopen, no `intake_entities` dual-write, no Start Claim VIN requirement. |
+| **Context** | Post-P36 Add Vehicle discovery. Risk of reopening `SERVICE_LANE_ADD_CAR`, inventing a second vehicle workflow, or dual-writing entity memory while Slice1 already collects VIN. |
+| **Alternatives Considered** | (1) Reuse WeCom Add Car lane as claim path; (2) Session/`intake_entities` as authoritative vehicle SoT; (3) Multi-vehicle garage under Service Home; (4) Mandatory VIN at Start Claim. |
+| **Why This Decision** | Smallest main-chain extension: broker asks only when needed; one slot prevents duplicate identity; claim facts already power Workbench/customer read-after-write. |
+| **Constitution Principle** | One Truth; Smallest Working Solution; No Unsupported Choices; Main-Chain First |
+| **Date** | 2026-07-21 |
+| **Status** | Active |
+| **SSOT** | `docs/product/CLAIM_VEHICLE_IDENTITY_V1.md` |
+
 ---
 
 ## Index
@@ -190,6 +203,7 @@ Copy for every new decision:
 | D-007 | Golden Production QA only | One Truth / User Done | Active |
 | D-008 | Home → Task Home when active | One Active Case / §J | Active |
 | D-009 | Default intake without broker gate | One Truth / §J2 | Active |
+| D-010 | Claim Vehicle Identity V1 | One Truth / Smallest Working Solution | Active |
 
 ---
 
@@ -201,5 +215,6 @@ Copy for every new decision:
 | v1.1 | 2026-07-17 | D-007 Golden Production QA acceptance standard |
 | v1.2 | 2026-07-18 | D-008 Home routing with active case |
 | v1.3 | 2026-07-18 | D-009 Default intake without broker Request More |
+| v1.4 | 2026-07-21 | D-010 Claim Vehicle Identity V1 freeze |
 
 **Change rule:** New Active entries require Founder acknowledgment. Superseding an entry requires a new ID and an explicit Status update on the old entry.

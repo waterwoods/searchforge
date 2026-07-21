@@ -75,14 +75,14 @@ Rules:
 | Vehicle drivable | Nice to Have | Yes | Yes | No | No | Helps triage severity; not required to understand the accident. |
 | Police involved / report | Nice to Have | Yes | Yes | No | No | Helpful context; not required to open Broker Review. |
 | Other driver (if known) | Nice to Have | Yes | Yes | No | No | Partial other-party info is welcome; unknown is allowed. |
-| VIN | Request More | No | No | Yes | No | Vehicle identity document/fact — collected after broker understands the accident. |
+| VIN | Request More | No | No | Yes | No | Vehicle identity document/fact — collected after broker understands the accident. Structured object + merge rules: `docs/product/CLAIM_VEHICLE_IDENTITY_V1.md`. |
 | Insurance card / policy evidence | Request More | No | No | Yes | No | Document collection; not the broker’s first job. |
 | Better / retake photos | Request More | No | No | Yes | No | Quality follow-up after broker reviews what was already received. |
 | Other insurance | Request More | No | No | Yes | No | Coverage follow-up after accident understanding. |
 | Witness | Request More | No | No | Yes | No | Evidence follow-up when broker needs corroboration. |
 | Other missing evidence | Request More | No | No | Yes | No | Catch-all for broker-specified gaps after review — never pre-loaded as Must Have. |
-| Vehicle year / make / model (full identity pack) | Request More | No | No | Yes | No | Identity detail for quoting/coverage work after accident understanding. |
-| Plate as substitute vehicle ID | Request More | No | No | Yes | No | Same class as VIN: identity follow-up, not minimum intake. |
+| Vehicle year / make / model (full identity pack) | Request More | No | No | Yes | No | Identity detail after accident understanding. Same claim-scoped vehicle slot as VIN — see `CLAIM_VEHICLE_IDENTITY_V1.md`. |
+| Plate as substitute vehicle ID | Request More | No | No | Yes | No | Same class as VIN: identity follow-up, not minimum intake. Optional on the V1 vehicle object. |
 | Full document / policy package before accident understanding | Never Ask | No | No | No | Yes | Contradicts business-first principle; teaches document collection as the first job. |
 | Carrier portal login / payment / unrelated vertical fields | Never Ask | No | No | No | Yes | Out of paid-pilot claim scope; complexity without proven need. |
 | Engineering IDs, Cap labels, workflow codes as customer asks | Never Ask | No | No | No | Yes | Violates North Star “no visible engineering jargon”; not a business field. |

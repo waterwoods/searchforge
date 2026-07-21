@@ -146,6 +146,7 @@ Primary = single source of truth. Supporting = lighter summaries or one-purpose 
 | Deploy / 2am ops | `docs/runbooks/OPERATOR_CHEAT_SHEET.md`, `docs/runbooks/DEPLOY_TRUTH_MAP.md` |
 | Support / prod debug | `docs/runbooks/SUPPORT_TRUTH_MAP.md` |
 | P20 capability / release | `docs/product/p20_product_north_star.md`, `docs/product/p20_production_loop_template.md`, `docs/product/p20_business_contract.md` |
+| Claim Vehicle Identity V1 | `docs/product/CLAIM_VEHICLE_IDENTITY_V1.md` (freeze SSOT; Decision Log D-010) |
 | Broker meeting | `docs/runbooks/BROKER_VALUE_VALIDATION_MEETING_PACK.md` |
 | Ports / runtime | `docs/runbooks/RUNTIME_PATH_STANDARD.md` |
 | Quality bar | `docs/BROKER_DEMO_QUALITY_STANDARD.md` |
