@@ -6,10 +6,15 @@
 **Prerequisite:** P36 closed; Add Vehicle repository discovery complete  
 **Authority:** Founder-confirmed V1 scope for claim-scoped vehicle identity  
 **Decision Log:** D-010  
+**Terminology SSOT:** `docs/product/CLAIM_VEHICLE_VS_ADD_CAR_TERMINOLOGY.md` (D-011) — Claim Vehicle ≠ Add Car  
 **Does not authorize:** product implementation (T2+), Production mutation, WeCom Add Car reopen
 
 This document freezes V1 so implementation cannot reopen a second vehicle lane,
 require VIN at Start Claim, invent multi-vehicle behavior, or dual-write storage.
+
+**Naming:** This freeze is **Claim Vehicle Identity** (claim backend object). It is
+**not** Policy **Add Car** (`保单加车`). Customer-facing claim copy uses
+**车辆信息** / **事故车辆**, never “Vehicle Identity” or “Add Car.”
 
 ---
 

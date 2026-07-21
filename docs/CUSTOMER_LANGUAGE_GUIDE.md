@@ -85,11 +85,26 @@
 |-------------------|-------------------------|
 | payment_lapse_expiration | Payment / cancellation risk |
 | missing_document | Missing document |
-| add_car / new_vehicle | Add car quote |
+| add_car / new_vehicle | Add car on policy (保单加车) — not a claim |
 | premium_review | Premium review |
 | claim_intake | Claim intake |
 | customer_question | Customer question |
 | remove_vehicle | Remove car |
+
+---
+
+## Vehicle language (Policy vs Claim)
+
+**SSOT:** `docs/product/CLAIM_VEHICLE_VS_ADD_CAR_TERMINOLOGY.md`
+
+| Engineer / internal | Broker / customer language |
+|---------------------|----------------------------|
+| Add Car / `SERVICE_LANE_ADD_CAR` / legacy “Add Vehicle” | 保单加车 — add or replace a vehicle on the policy |
+| Claim Vehicle / claim `vehicle_information` | 事故车辆 / 车辆信息 — which car is in this accident claim |
+| Vehicle Identity / Claim Vehicle Identity | (do not say — internal storage object) |
+| VIN on a claim Request More | VIN / 车架号 (claim follow-up, not 保单加车) |
+
+Never tell a broker that collecting claim VIN/year-make-model is “加车.”
 
 ---
 

@@ -188,6 +188,19 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/CLAIM_VEHICLE_IDENTITY_V1.md` |
 
+### D-011 — Claim Vehicle vs Add Car naming
+
+| Field | Content |
+|-------|---------|
+| **Decision** | **Add Car** (`保单加车`) is Policy Management only; **Claim Vehicle** (`事故车辆`) / **Vehicle Information** (`车辆信息`) are Claim only; **Vehicle Identity** is an internal backend object name and must never appear in customer UI; legacy **Add Vehicle** means Add Car, not claim work. |
+| **Context** | Claim Vehicle Identity V1 planning reused “Add Vehicle” while WeCom/docs still say Add Car / Add Vehicle for the policy lane — engineers could not tell Policy vs Claim vs storage. |
+| **Alternatives Considered** | (1) Keep “Add Vehicle” as umbrella for both; (2) Rename all code symbols immediately; (3) Customer-facing “Vehicle Identity.” |
+| **Why This Decision** | Smallest fix is language law: domains stay separate; code renames wait for an explicit cleanup; UI stays non-technical. |
+| **Constitution Principle** | Complexity Stays Inside; One Truth; Smallest Working Solution |
+| **Date** | 2026-07-21 |
+| **Status** | Active |
+| **SSOT** | `docs/product/CLAIM_VEHICLE_VS_ADD_CAR_TERMINOLOGY.md` |
+
 ---
 
 ## Index
@@ -204,6 +217,7 @@ Copy for every new decision:
 | D-008 | Home → Task Home when active | One Active Case / §J | Active |
 | D-009 | Default intake without broker gate | One Truth / §J2 | Active |
 | D-010 | Claim Vehicle Identity V1 | One Truth / Smallest Working Solution | Active |
+| D-011 | Claim Vehicle vs Add Car naming | Complexity Stays Inside / One Truth | Active |
 
 ---
 
@@ -216,5 +230,6 @@ Copy for every new decision:
 | v1.2 | 2026-07-18 | D-008 Home routing with active case |
 | v1.3 | 2026-07-18 | D-009 Default intake without broker Request More |
 | v1.4 | 2026-07-21 | D-010 Claim Vehicle Identity V1 freeze |
+| v1.5 | 2026-07-21 | D-011 Claim Vehicle vs Add Car naming freeze |
 
 **Change rule:** New Active entries require Founder acknowledgment. Superseding an entry requires a new ID and an explicit Status update on the old entry.
