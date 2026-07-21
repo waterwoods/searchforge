@@ -36,6 +36,14 @@ One screen. **Authority:** [`docs/CURRENT_PRODUCT_SHAPE.md`](../CURRENT_PRODUCT_
 3. `bash scripts/check_ui_node_version.sh` (Node 22 for UI)
 4. `bash scripts/guardrail_inbox_triage.sh`
 
+**Before any Cloud QA deploy (P36):** isolation must PASS (fail-closed):
+
+```bash
+PYTHONPATH=. python3 scripts/p36_verify_cloud_qa_isolation.py
+```
+
+See [`CLOUD_QA_RESOURCE_NAMES.md`](./CLOUD_QA_RESOURCE_NAMES.md). Do not deploy Cloud QA on FAIL.
+
 ---
 
 ## Post-deploy checks

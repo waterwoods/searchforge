@@ -85,6 +85,28 @@ Legacy Neon secret `fiqa-service-record-database-url` is **not** used for Cloud 
 
 ---
 
+## Isolation verifier (P36 T2) — run before every Cloud QA deploy
+
+Fail-closed guard. Proves Cloud QA cannot use Production mutable case data.
+If anything cannot be proven safe → **exit 1**. Do not deploy on FAIL.
+
+```bash
+# Default: load .env.cloudrun.qa (+ .env.cloudrun if present); may call gcloud for secrets
+PYTHONPATH=. python3 scripts/p36_verify_cloud_qa_isolation.py
+
+# Offline / CI with plaintext URLs already in env files (no gcloud):
+PYTHONPATH=. python3 scripts/p36_verify_cloud_qa_isolation.py --no-secret-access
+```
+
+| Exit | Meaning |
+|------|---------|
+| `0` | **PASS** — service name, DB secret name, and resolved DB target are isolated |
+| `1` | **FAIL** — do not deploy Cloud QA; fix the reported WHY lines |
+
+Unit tests: `PYTHONPATH=. python3 -m pytest tests/test_p36_verify_cloud_qa_isolation.py -q`
+
+---
+
 ## Related
 
 - Deploy entry map: [`DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md)
