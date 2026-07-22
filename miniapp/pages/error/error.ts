@@ -50,10 +50,11 @@ Page({
   onLoad(options: Record<string, string | undefined>) {
     const code = String(options.code || "unknown").trim() || "unknown";
     qaPathLog("EARLY_EXIT", {
-      page: "error",
+      page: "pages/error/error",
       reason: "landed_on_error_page",
+      why: "navigated_here_with_code_query",
       errorCode: code,
-      note: "no_api_call_on_this_page",
+      queryRawSafe: `code=${code}`,
     });
     const retryable = !NON_RETRYABLE_CODES.has(code);
     this.setData({

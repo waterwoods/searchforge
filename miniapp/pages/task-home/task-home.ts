@@ -1,6 +1,7 @@
 import { taskPage } from "../../behaviors/taskPage";
 import { appConfig } from "../../utils/config";
 import type { TaskViewModel } from "../../types/task";
+import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { contactBrokerModalCopy } from "../../utils/taskMapping";
 import {
   EMPTY_TASK_ERROR,
@@ -161,7 +162,15 @@ Page({
     taskCards: [],
   } as PageData,
 
-  onLoad() {
+  onLoad(options: Record<string, string | undefined>) {
+    const q = summarizeLaunchQuery(options || {});
+    qaPathLog("ENTRY", {
+      page: "pages/task-home/task-home",
+      queryKeys: q.queryKeys,
+      queryRawSafe: q.queryRawSafe,
+      hasToken: q.hasToken,
+      note: "first_js_page_onload_or_navigated",
+    });
     void this.ensureTaskInitialized({ ownerLoad: true }).then((task) => {
       if (task) this.applyConstitutionOverlay(task);
     });

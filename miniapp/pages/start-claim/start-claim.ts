@@ -32,7 +32,7 @@ import {
   redirectStartClaimIfActiveCase,
   resetStartClaimDraftState,
 } from "../../utils/startClaimEntry";
-import { qaPathLog } from "../../utils/qaPathLog";
+import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { saveResumeToken } from "../../utils/storage";
 
 type PageData = {
@@ -71,18 +71,22 @@ Page({
     },
   } as PageData,
 
-  onLoad() {
+  onLoad(options: Record<string, string | undefined>) {
+    const q = summarizeLaunchQuery(options || {});
     qaPathLog("ENTRY", {
-      page: "start-claim",
-      apiProfile: appConfig.apiProfile,
-      host: String(appConfig.apiBaseUrl || "").replace(/^https?:\/\//, "").replace(/\/$/, ""),
+      page: "pages/start-claim/start-claim",
+      queryKeys: q.queryKeys,
+      queryRawSafe: q.queryRawSafe,
+      hasToken: q.hasToken,
+      note: "first_js_page_onload_or_redirect_target",
     });
     try {
       // P26D: capsule Home opens pages[0] (Start Claim). Active case → Task Home.
       if (redirectStartClaimIfActiveCase(wx)) {
         qaPathLog("EARLY_EXIT", {
-          page: "start-claim",
+          page: "pages/start-claim/start-claim",
           reason: "active_case_redirect_entry",
+          why: "resume_token_present_in_storage",
           next: ENTRY_ROUTE,
         });
         this.setData({
@@ -93,9 +97,9 @@ Page({
         return;
       }
       qaPathLog("BOOTSTRAP", {
-        page: "start-claim",
+        page: "pages/start-claim/start-claim",
         phase: "form_init_no_api",
-        note: "start_claim_does_not_call_api_until_submit",
+        why: "no_token_needed_until_submit",
       });
       resetStartClaimDraftState();
       this._submitState = createStartClaimSubmitState();

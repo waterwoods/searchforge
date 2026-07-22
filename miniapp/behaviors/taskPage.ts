@@ -167,6 +167,7 @@ export const taskPage = Behavior({
         qaPathLog("EARLY_EXIT", {
           page: String((this as { route?: string }).route || "taskPage"),
           reason: "requireToken_missing_redirect_entry",
+          why: "app.taskToken_empty_page_opened_without_entry_bootstrap",
           next: "/pages/entry/entry",
         });
         wx.redirectTo({ url: "/pages/entry/entry" });

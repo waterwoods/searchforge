@@ -33,6 +33,7 @@ import {
   EMPTY_TASK_VIEW_MODEL,
   taskShellBindingsFromViewModel,
 } from "../../utils/resolveTaskViewModel";
+import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { contactBrokerModalCopy, mapErrorMessage } from "../../utils/taskMapping";
 import {
   resolveUploadPhase,
@@ -298,7 +299,15 @@ Page({
     },
   } as PageData,
 
-  onLoad() {
+  onLoad(options: Record<string, string | undefined>) {
+    const q = summarizeLaunchQuery(options || {});
+    qaPathLog("ENTRY", {
+      page: "pages/request-item/request-item",
+      queryKeys: q.queryKeys,
+      queryRawSafe: q.queryRawSafe,
+      hasToken: q.hasToken,
+      note: "first_js_page_onload_or_navigated",
+    });
     const internal = ensureInternal(this);
     internal.pageDestroyed = false;
     this.setData({ isDestroyed: false, loading: true });

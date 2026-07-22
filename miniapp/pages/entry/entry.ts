@@ -12,7 +12,7 @@ import { resetApiHealthCache } from "../../utils/apiHealth";
 import { DEFAULT_SAFETY_COPY, EMPTY_TASK_ERROR } from "../../utils/resolveTaskViewModel";
 import { ApiRequestError } from "../../utils/request";
 import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
-import { qaPathLog } from "../../utils/qaPathLog";
+import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { markResumeRestoredHint } from "../../utils/resumeHint";
 import { clearResumeToken } from "../../utils/storage";
 
@@ -82,13 +82,13 @@ Page({
   } as PageData,
 
   onLoad(options: Record<string, string | undefined>) {
-    const keys = Object.keys(options || {}).sort().join(",");
+    const q = summarizeLaunchQuery(options || {});
     qaPathLog("ENTRY", {
-      page: "entry",
-      optionKeys: keys || "(none)",
-      hasTokenQuery: Boolean(String(options?.token || "").trim()),
-      apiProfile: appConfig.apiProfile,
-      host: String(appConfig.apiBaseUrl || "").replace(/^https?:\/\//, "").replace(/\/$/, ""),
+      page: "pages/entry/entry",
+      queryKeys: q.queryKeys,
+      queryRawSafe: q.queryRawSafe,
+      hasToken: q.hasToken,
+      note: "first_js_page_onload",
     });
     void this.bootstrap(options);
   },
@@ -145,19 +145,24 @@ Page({
 
     const resolution = taskLaunchContext.inspectLaunchTokenSources(options);
     qaPathLog("BOOTSTRAP", {
-      page: "entry",
+      page: "pages/entry/entry",
       phase: "token_resolve",
       tokenSource: resolution.source,
-      launchQuery: resolution.launchQuery,
-      devTaskToken: resolution.devTaskToken,
-      resumeToken: resolution.resumeToken,
+      hasLaunchQueryToken: resolution.launchQuery,
+      hasDevTaskToken: resolution.devTaskToken,
+      hasResumeToken: resolution.resumeToken,
     });
 
     const ctx = this.resolveLaunchContext(options);
     if (!ctx) {
+      // First abort on Entry Preview with empty compile query: no API involved.
       qaPathLog("EARLY_EXIT", {
-        page: "entry",
+        page: "pages/entry/entry",
         reason: "token_missing_redirect_start_claim",
+        why: "no_launch_query_token_and_no_devTaskToken_and_no_resume_storage",
+        hasLaunchQueryToken: resolution.launchQuery,
+        hasDevTaskToken: resolution.devTaskToken,
+        hasResumeToken: resolution.resumeToken,
         next: "/pages/start-claim/start-claim",
       });
       this.setBusy("navigating", true);
