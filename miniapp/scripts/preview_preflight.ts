@@ -62,6 +62,7 @@ try {
   for (const required of [
     "pages/start-claim/start-claim",
     "pages/start-claim-success/start-claim-success",
+    "pages/service-home/service-home",
     "pages/task-home/task-home",
     "pages/request-item/request-item",
     "pages/entry/entry",

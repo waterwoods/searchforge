@@ -223,7 +223,7 @@ test("network failure keeps retryable error and clears loading", async () => {
 });
 
 
-test("case_not_found clears resume and relaunches clean Start Claim", async () => {
+test("case_not_found clears resume and relaunches clean Service Home", async () => {
   const page = await loadEntryPage();
   const { saveResumeToken, loadResumeToken, clearResumeToken } = await import(
     "../utils/storage"
@@ -263,7 +263,7 @@ test("case_not_found clears resume and relaunches clean Start Claim", async () =
   assert.equal(loadResumeToken(), "");
   assert.equal(appState.taskToken, "");
   assert.equal(appState.task, undefined);
-  assert.deepEqual(relaunches, ["/pages/start-claim/start-claim"]);
+  assert.deepEqual(relaunches, ["/pages/service-home/service-home"]);
   assert.equal(ctx.data.busy.loading, false);
   clearResumeToken();
 });

@@ -1,0 +1,92 @@
+.service-home-page {
+  padding: 40rpx 32rpx 80rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #f5f6f8;
+}
+
+.sh-header {
+  margin-bottom: 36rpx;
+}
+
+.sh-brand {
+  font-size: 28rpx;
+  color: #6b7280;
+  margin-bottom: 16rpx;
+}
+
+.sh-greeting-lead {
+  font-size: 30rpx;
+  color: #374151;
+}
+
+.sh-question {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.35;
+}
+
+.sh-primary-card {
+  background: #1f4b99;
+  border-radius: 20rpx;
+  padding: 36rpx 32rpx;
+  color: #ffffff;
+}
+
+.sh-card-hover {
+  opacity: 0.92;
+}
+
+.sh-primary-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sh-primary-sub {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.sh-primary-cta {
+  margin-top: 28rpx;
+  display: inline-block;
+  padding: 14rpx 36rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #1f4b99;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.sh-secondary-list {
+  margin-top: 28rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.sh-secondary-row {
+  padding: 28rpx 32rpx;
+  font-size: 30rpx;
+  color: #111827;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.sh-secondary-row:last-child {
+  border-bottom: none;
+}
+
+.sh-secondary-quiet {
+  font-size: 28rpx;
+  color: #6b7280;
+}
+
+.sh-row-hover {
+  background: #f9fafb;
+}

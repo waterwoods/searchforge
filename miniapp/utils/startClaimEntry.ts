@@ -1,19 +1,22 @@
 /**
  * Customer Start Claim entry / Home navigation helpers (pure + thin wx wrappers).
  *
- * P26D Home routing contract:
- * - Active case/token → Home lands on Task Home (via Entry bootstrap)
- * - No active case → Home lands on Start Claim
- * - Explicit「开始新报案」→ clear draft resume, then Start Claim
+ * Home routing contract (P29 Service Home):
+ * - Operational Home → Service Home (product entrance; Home ≠ Task Home)
+ * - Active case/token → Continue on Service Home → Entry → Task Home
+ * - No active case → Start Claim from Service Home (?entry=form)
+ * - Explicit「开始新的报案」with active case → One Active Case policy (never wipe resume)
  * - pages[0] remains Start Claim (Build Gate / WeChat capsule Home entry)
  */
 
 import { loadResumeToken, clearResumeToken, clearSubmitIntentId } from "./storage";
+import { SERVICE_HOME_ROUTE } from "./serviceHome";
 
 export const START_CLAIM_ROUTE = "/pages/start-claim/start-claim";
 export const START_CLAIM_SUCCESS_ROUTE = "/pages/start-claim-success/start-claim-success";
 export const ENTRY_ROUTE = "/pages/entry/entry";
 export const TASK_HOME_ROUTE = "/pages/task-home/task-home";
+export { SERVICE_HOME_ROUTE };
 
 /** Keep Start Claim free of heavy task-view imports (injection / Home path). */
 export const START_CLAIM_SAFETY_COPY =
@@ -21,6 +24,13 @@ export const START_CLAIM_SAFETY_COPY =
 
 export const START_CLAIM_MISSING_HINT =
   "请先填写：事故经过、事故时间、事故地点、是否受伤";
+
+/** P30 One Active Case — never silently create a second case. */
+export const ONE_ACTIVE_CASE_POLICY_TITLE = "您已有一个正在处理的报案";
+export const ONE_ACTIVE_CASE_POLICY_CONTINUE = "继续当前报案";
+export const ONE_ACTIVE_CASE_POLICY_CONTACT = "联系保险顾问";
+export const ONE_ACTIVE_CASE_POLICY_CONTENT =
+  "请先继续当前报案。\n\n如确需新的报案，请联系保险顾问。";
 
 /** Empty form shell — always safe to bind; never depends on network. */
 export type StartClaimShellState = {
@@ -57,8 +67,9 @@ export function createEmptyStartClaimShell(missingHint: string): StartClaimShell
 
 /**
  * Reset only claim-draft resume markers so a prior submitted task cannot strand
- * the customer on Receipt after Start New Claim.
+ * the customer on Receipt after an empty-state Start New Claim.
  * Does not clear anonymous session identity or API config.
+ * Must not be called while an Active Case token should be preserved.
  */
 export function resetStartClaimDraftState(): void {
   clearResumeToken();
@@ -70,17 +81,17 @@ export function hasActiveCustomerCase(): boolean {
   return Boolean(loadResumeToken());
 }
 
-/** Start Claim route — used when no active case, or after explicit Start New Claim. */
+/** Intentional Start Claim form entry from Service Home (empty state). */
 export function resolveHomeStartClaimUrl(): string {
-  return START_CLAIM_ROUTE;
+  return `${START_CLAIM_ROUTE}?entry=form`;
 }
 
 /**
- * Home destination for capsule Home / success return with an active case.
- * Entry bootstrap rehydrates Task Home (or Receipt if already submitted).
+ * Operational Home destination — always Service Home.
+ * Continue on Service Home routes into Entry → Task Home when a token exists.
  */
 export function resolveCustomerHomeUrl(): string {
-  return hasActiveCustomerCase() ? ENTRY_ROUTE : START_CLAIM_ROUTE;
+  return SERVICE_HOME_ROUTE;
 }
 
 type WxNavigate = {
@@ -98,31 +109,56 @@ function launchUrl(wxLike: WxNavigate, url: string): void {
 }
 
 /**
- * Deterministic Home navigation: active token → Entry/Task Home; else Start Claim.
- * Does not clear resume — preserves One Active Case.
+ * Deterministic Home navigation: always Service Home.
+ * Does not clear resume — preserves One Active Case / Golden one-scan.
  */
 export function reLaunchCustomerHome(wxLike: WxNavigate): void {
   launchUrl(wxLike, resolveCustomerHomeUrl());
 }
 
 /**
- * Explicit「开始新报案」: clear draft resume, then open Start Claim form.
- * Prefer reLaunch so restored stacks cannot return to a stale Receipt.
+ * Empty-state Start Claim form only (no active case).
+ * Clears draft markers, then opens the form with entry=form.
  */
-export function reLaunchStartClaimHome(wxLike: WxNavigate): void {
+export function reLaunchEmptyStartClaimForm(wxLike: WxNavigate): void {
   resetStartClaimDraftState();
   launchUrl(wxLike, resolveHomeStartClaimUrl());
 }
 
 /**
- * Capsule Home opens pages[0] (Start Claim). If an active case exists, redirect
- * to Entry before the form clears resume — Task Home becomes operational home.
+ * 「开始新报案」from Receipt / success:
+ * - Active case → Service Home (never wipe Golden/active resume)
+ * - No active case → empty Start Claim form
+ */
+export function reLaunchStartClaimHome(wxLike: WxNavigate): void {
+  if (hasActiveCustomerCase()) {
+    launchUrl(wxLike, SERVICE_HOME_ROUTE);
+    return;
+  }
+  reLaunchEmptyStartClaimForm(wxLike);
+}
+
+/**
+ * Capsule Home opens pages[0] (Start Claim). Operational home is Service Home.
+ * - Active case → Service Home (must not clear resume)
+ * - Cold Home without ?entry=form → Service Home
+ * - Explicit ?entry=form and no active case → stay on form
  * Returns true when a redirect was started (caller must not reset draft).
  */
-export function redirectStartClaimIfActiveCase(wxLike: WxNavigate): boolean {
-  if (!hasActiveCustomerCase()) return false;
-  launchUrl(wxLike, ENTRY_ROUTE);
-  return true;
+export function redirectStartClaimIfActiveCase(
+  wxLike: WxNavigate,
+  options?: Record<string, string | undefined>,
+): boolean {
+  const intentionalForm = String(options?.entry || "").trim() === "form";
+  if (hasActiveCustomerCase()) {
+    launchUrl(wxLike, SERVICE_HOME_ROUTE);
+    return true;
+  }
+  if (!intentionalForm) {
+    launchUrl(wxLike, SERVICE_HOME_ROUTE);
+    return true;
+  }
+  return false;
 }
 
 /** WXML must never be able to hide the entire form shell. */

@@ -1,0 +1,49 @@
+<view class="container service-home-page">
+  <view class="sh-header">
+    <view class="sh-brand">{{brandTitle}}</view>
+    <view class="sh-greeting">
+      <text class="sh-greeting-lead">{{greetingLead}}</text>
+      <text class="sh-question">{{question}}</text>
+    </view>
+  </view>
+
+  <!-- Active case: Continue is the only primary CTA -->
+  <block wx:if="{{hasActiveSession}}">
+    <view class="sh-primary-card" bindtap="onContinueCurrentClaim" hover-class="sh-card-hover">
+      <view class="sh-primary-title">{{continueTitle}}</view>
+      <view class="sh-primary-sub">您有一个进行中的报案，可继续未完成事项</view>
+      <view class="sh-primary-cta">继续</view>
+    </view>
+
+    <view class="sh-secondary-list">
+      <view class="sh-secondary-row" bindtap="onViewProgress" hover-class="sh-row-hover">
+        {{viewProgressLabel}}
+      </view>
+      <view class="sh-secondary-row" bindtap="onContactBroker" hover-class="sh-row-hover">
+        {{contactLabel}}
+      </view>
+      <view
+        class="sh-secondary-row sh-secondary-quiet"
+        bindtap="onStartNewClaim"
+        hover-class="sh-row-hover"
+      >
+        {{startNewClaimLabel}}
+      </view>
+    </view>
+  </block>
+
+  <!-- No active case: Start Claim is primary -->
+  <block wx:else>
+    <view class="sh-primary-card" bindtap="onStartNewClaim" hover-class="sh-card-hover">
+      <view class="sh-primary-title">{{startClaimTitle}}</view>
+      <view class="sh-primary-sub">{{startClaimHint}}</view>
+      <view class="sh-primary-cta">开始</view>
+    </view>
+
+    <view class="sh-secondary-list">
+      <view class="sh-secondary-row" bindtap="onContactBroker" hover-class="sh-row-hover">
+        {{contactLabel}}
+      </view>
+    </view>
+  </block>
+</view>

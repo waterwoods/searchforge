@@ -21,6 +21,7 @@ export const FORBIDDEN_PRODUCTION_REQUEST_LEGAL_DOMAIN_HOST =
 /** Pages that must ship in every Preview / Experience package. */
 export const REQUIRED_PREVIEW_PAGES = [
   "pages/start-claim/start-claim",
+  "pages/service-home/service-home",
   "pages/entry/entry",
   "pages/receipt/receipt",
 ] as const;
@@ -38,6 +39,7 @@ export const REQUIRED_PACK_IGNORE_CLI_GLOBS = [
 export const REQUIRED_REGISTERED_PAGES = [
   "pages/start-claim/start-claim",
   "pages/start-claim-success/start-claim-success",
+  "pages/service-home/service-home",
   "pages/entry/entry",
   "pages/task-home/task-home",
   "pages/request-item/request-item",

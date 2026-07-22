@@ -260,6 +260,10 @@ export type CustomerTask = {
    * Prefer via resolveCustomerConstitution; local mock remains fallback.
    */
   constitution_projection?: ConstitutionProjection | null;
+  /** P0 Home resume — closed History must not keep Continue. */
+  case_status?: string | null;
+  case_history_state?: string | null;
+  case_closed_read_only?: boolean;
 };
 
 export type UploadSlotInfo = {

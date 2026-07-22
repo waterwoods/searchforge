@@ -2,6 +2,7 @@
   "pages": [
     "pages/start-claim/start-claim",
     "pages/start-claim-success/start-claim-success",
+    "pages/service-home/service-home",
     "pages/entry/entry",
     "pages/task-home/task-home",
     "pages/request-item/request-item",

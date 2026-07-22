@@ -234,6 +234,7 @@ test("Build Gate permanent Preview contract constants are locked", () => {
   assert.notEqual(REQUIRED_QA_API_BASE_URL, FORBIDDEN_PRODUCTION_API_BASE_URL);
   assert.deepEqual([...REQUIRED_PREVIEW_PAGES], [
     "pages/start-claim/start-claim",
+    "pages/service-home/service-home",
     "pages/entry/entry",
     "pages/receipt/receipt",
   ]);

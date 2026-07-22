@@ -15,9 +15,7 @@ import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { markResumeRestoredHint } from "../../utils/resumeHint";
 import { clearResumeToken } from "../../utils/storage";
-
-/** Clean recovery surface when the bound case is gone (no Service Home dependency). */
-const CLEAN_HOME_ROUTE = "/pages/start-claim/start-claim";
+import { SERVICE_HOME_ROUTE } from "../../utils/serviceHome";
 
 const ENTRY_RETRY_COOLDOWN_MS = 2000;
 const NON_RETRYABLE_CODES = new Set([
@@ -259,15 +257,15 @@ Page({
           // ignore
         }
       }
-      // Missing/deleted case: recover to a clean Start Claim (no ghost Continue / Receipt).
+      // Missing/deleted case: recover to Service Home (no ghost Continue / Receipt).
       if (code === "case_not_found") {
         this.setBusy("navigating", true);
         this.setBusy("loading", false);
         wx.reLaunch({
-          url: CLEAN_HOME_ROUTE,
+          url: SERVICE_HOME_ROUTE,
           fail: () => {
             wx.redirectTo({
-              url: CLEAN_HOME_ROUTE,
+              url: SERVICE_HOME_ROUTE,
               fail: () => {
                 this.setData({ errorState: entryErrorState(code) });
                 this.setBusy("navigating", false);

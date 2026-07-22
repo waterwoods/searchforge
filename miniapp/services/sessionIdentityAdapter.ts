@@ -4,17 +4,24 @@
  * Production / durable path:
  *   wx.login → POST /api/h5/customer/session → opaque wx_* session_id
  *
+ * Home Continue / Start Claim is server-authoritative:
+ *   session.has_active_case decides UI; mp_prototype_resume_token is cache only.
+ *
  * Prototype anon-* is isolated to non-Production API hosts when durable
  * login cannot be established (local DevTools / QA without MP credentials).
  * It must never be used against the Production API base URL.
+ *
+ * Failure strategy (session unavailable): see
+ * docs/product/p0_home_server_authoritative_resume.md
  */
 
 import { appConfig, PRODUCTION_API_BASE_URL } from "../utils/config";
-import { requestJson } from "../utils/request";
+import { ApiRequestError, requestJson } from "../utils/request";
 import {
   clearCustomerSessionId,
   clearResumeToken,
   loadCustomerSessionId,
+  loadResumeToken,
   saveCustomerSessionId,
   saveResumeToken,
 } from "../utils/storage";
@@ -28,6 +35,8 @@ export type CustomerSessionResult = {
   resumeToken: string;
   resumeExpiresAt: string;
   identitySource: "durable" | "prototype_anon";
+  /** How Active Case authority was decided for this call. */
+  authoritySource: "customer_session" | "resume_reconcile" | "none";
 };
 
 type SessionApiBody = {
@@ -36,6 +45,12 @@ type SessionApiBody = {
   has_active_case?: boolean;
   resume_token?: string;
   resume_expires_at?: string;
+};
+
+type IntakeAuthorityBody = {
+  case_closed_read_only?: boolean;
+  case_status?: string | null;
+  case_history_state?: string | null;
 };
 
 function normalizeApiBase(url: unknown): string {
@@ -114,6 +129,69 @@ async function resolveLoginCode(): Promise<string> {
   return wxLoginCode();
 }
 
+/**
+ * Apply /customer/session Active Case authority to local resume cache.
+ * Server false → clear; server true + token → save. Never leave stale Continue.
+ */
+export function applyServerActiveCaseAuthority(body: {
+  has_active_case?: boolean;
+  resume_token?: string;
+  resume_expires_at?: string;
+}): { hasActiveCase: boolean; resumeToken: string; resumeExpiresAt: string } {
+  const resumeToken = String(body.resume_token || "").trim();
+  const resumeExpiresAt = String(body.resume_expires_at || "").trim();
+  const hasActiveCase = Boolean(body.has_active_case) && Boolean(resumeToken);
+  if (hasActiveCase) {
+    saveResumeToken(resumeToken);
+    return { hasActiveCase: true, resumeToken, resumeExpiresAt };
+  }
+  clearResumeToken();
+  return { hasActiveCase: false, resumeToken: "", resumeExpiresAt: "" };
+}
+
+function intakeSaysClosedHistory(body: IntakeAuthorityBody | null | undefined): boolean {
+  if (!body || typeof body !== "object") return false;
+  if (Boolean(body.case_closed_read_only)) return true;
+  if (String(body.case_history_state || "").trim().toLowerCase() === "history") return true;
+  if (String(body.case_status || "").trim().toLowerCase() === "closed") return true;
+  return false;
+}
+
+/**
+ * When /customer/session cannot run, reconcile local resume against case terminal state.
+ * Returns whether Home should show Continue.
+ */
+export async function reconcileLocalResumeAgainstCaseAuthority(): Promise<boolean> {
+  const token = loadResumeToken();
+  if (!token) return false;
+  try {
+    const body = await requestJson<IntakeAuthorityBody>(
+      "GET",
+      `/api/h5/tasks/${encodeURIComponent(token)}/intake`,
+    );
+    if (intakeSaysClosedHistory(body)) {
+      clearResumeToken();
+      return false;
+    }
+    return Boolean(loadResumeToken());
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      const code = String(err.code || "");
+      if (
+        err.status === 404
+        || code === "case_not_found"
+        || code === "invalid_or_expired_task_link"
+        || code === "unsupported_flow"
+      ) {
+        clearResumeToken();
+        return false;
+      }
+    }
+    // Transient network: keep cache for this show; next successful session wins.
+    return Boolean(loadResumeToken());
+  }
+}
+
 async function exchangeCodeForSession(code: string): Promise<CustomerSessionResult> {
   const body = await requestJson<SessionApiBody>("POST", "/api/h5/customer/session", {
     code,
@@ -122,52 +200,52 @@ async function exchangeCodeForSession(code: string): Promise<CustomerSessionResu
   if (!sessionId.startsWith("wx_")) {
     throw new Error("durable_session_missing");
   }
-  const resumeToken = String(body.resume_token || "").trim();
-  const resumeExpiresAt = String(body.resume_expires_at || "").trim();
-  const hasActiveCase = Boolean(body.has_active_case) && Boolean(resumeToken);
   saveCustomerSessionId(sessionId);
-  if (hasActiveCase && resumeToken) {
-    saveResumeToken(resumeToken);
-  }
+  const applied = applyServerActiveCaseAuthority(body);
   return {
     sessionId: sessionId.slice(0, 80),
-    hasActiveCase,
-    resumeToken,
-    resumeExpiresAt,
+    hasActiveCase: applied.hasActiveCase,
+    resumeToken: applied.resumeToken,
+    resumeExpiresAt: applied.resumeExpiresAt,
     identitySource: "durable",
+    authoritySource: "customer_session",
   };
 }
 
 /**
  * Establish or refresh durable customer session.
- * Syncs server Active Case → local resume token (cleared-storage / new device).
+ * Syncs server Active Case → local resume cache (Home must use returned hasActiveCase).
  */
 export async function ensureCustomerSession(): Promise<CustomerSessionResult> {
   try {
     const code = await resolveLoginCode();
     return await exchangeCodeForSession(code);
-  } catch (err) {
+  } catch {
+    const hasActiveFromCase = await reconcileLocalResumeAgainstCaseAuthority();
     const cached = loadCustomerSessionId();
     if (cached.startsWith("wx_")) {
       return {
         sessionId: cached,
-        hasActiveCase: false,
-        resumeToken: "",
+        hasActiveCase: hasActiveFromCase,
+        resumeToken: hasActiveFromCase ? loadResumeToken() : "",
         resumeExpiresAt: "",
         identitySource: "durable",
+        authoritySource: hasActiveFromCase ? "resume_reconcile" : "none",
       };
     }
     if (!allowPrototypeAnonFallback()) {
-      throw err instanceof Error ? err : new Error("durable_identity_required");
+      clearResumeToken();
+      throw new Error("durable_identity_required");
     }
     const anon = getPrototypeSessionId();
     saveCustomerSessionId(anon);
     return {
       sessionId: anon,
-      hasActiveCase: false,
-      resumeToken: "",
+      hasActiveCase: hasActiveFromCase,
+      resumeToken: hasActiveFromCase ? loadResumeToken() : "",
       resumeExpiresAt: "",
       identitySource: "prototype_anon",
+      authoritySource: hasActiveFromCase ? "resume_reconcile" : "none",
     };
   }
 }

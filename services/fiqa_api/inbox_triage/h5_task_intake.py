@@ -712,6 +712,9 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         alias = str(known.get("own_vehicle_info") or known.get("vehicle_information") or "").strip()
         if alias:
             key_facts["own_vehicle_info"] = alias
+    from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
+
+    closed_history = case_is_closed_history(case)
     result: dict[str, Any] = {
         "lane": claims.lane,
         "flow": claims.flow or FLOW_CLAIM_INTAKE_FORM,
@@ -737,6 +740,10 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "is_test": is_test,
         "slice1_projection_error": False,
         "customer_qa_marker": None,
+        # Home resume authority when /customer/session is unavailable (QA WeChat gap).
+        "case_status": str(case.get("case_status") or "").strip() or None,
+        "case_history_state": str(case.get("case_history_state") or "").strip() or None,
+        "case_closed_read_only": closed_history,
     }
     slice1_projection, slice1_load_failed = _slice1_projection_for_case(case)
     if slice1_load_failed:

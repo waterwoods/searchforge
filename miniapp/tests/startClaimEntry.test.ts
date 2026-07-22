@@ -7,17 +7,24 @@ import { fileURLToPath } from "node:url";
 import { installMiniProgramGlobals } from "./miniprogramMocks";
 import {
   ENTRY_ROUTE,
+  SERVICE_HOME_ROUTE,
   START_CLAIM_ROUTE,
   assertStartClaimWxmlNotBlankable,
   createEmptyStartClaimShell,
   hasActiveCustomerCase,
   redirectStartClaimIfActiveCase,
   reLaunchCustomerHome,
+  reLaunchEmptyStartClaimForm,
   reLaunchStartClaimHome,
   resetStartClaimDraftState,
   resolveCustomerHomeUrl,
   resolveHomeStartClaimUrl,
 } from "../utils/startClaimEntry";
+import {
+  CONTINUE_CLAIM_TITLE,
+  START_NEW_CLAIM_LABEL,
+  buildServiceHomeViewModel,
+} from "../utils/serviceHome";
 import { loadResumeToken, saveResumeToken, saveSubmitIntentId, loadSubmitIntentId, clearResumeToken } from "../utils/storage";
 
 installMiniProgramGlobals();
@@ -25,20 +32,35 @@ installMiniProgramGlobals();
 const here = dirname(fileURLToPath(import.meta.url));
 const miniappRoot = join(here, "..");
 
-test("no active case → Home target is Start Claim", () => {
+test("no active case → Home target is Service Home", () => {
   clearResumeToken();
   assert.equal(hasActiveCustomerCase(), false);
-  assert.equal(resolveHomeStartClaimUrl(), START_CLAIM_ROUTE);
-  assert.equal(resolveCustomerHomeUrl(), START_CLAIM_ROUTE);
-  assert.equal(START_CLAIM_ROUTE, "/pages/start-claim/start-claim");
+  assert.equal(resolveHomeStartClaimUrl(), `${START_CLAIM_ROUTE}?entry=form`);
+  assert.equal(resolveCustomerHomeUrl(), SERVICE_HOME_ROUTE);
+  assert.equal(SERVICE_HOME_ROUTE, "/pages/service-home/service-home");
 });
 
-test("active case/token → Home target is Entry (Task Home bootstrap)", () => {
+test("active case/token → Home target is still Service Home (not Task Home)", () => {
   saveResumeToken("h5t1.active-camry");
   assert.equal(hasActiveCustomerCase(), true);
-  assert.equal(resolveCustomerHomeUrl(), ENTRY_ROUTE);
-  assert.equal(ENTRY_ROUTE, "/pages/entry/entry");
+  assert.equal(resolveCustomerHomeUrl(), SERVICE_HOME_ROUTE);
+  assert.notEqual(resolveCustomerHomeUrl(), ENTRY_ROUTE);
   clearResumeToken();
+});
+
+test("Service Home active VM exposes Continue + demoted Start New", () => {
+  const vm = buildServiceHomeViewModel(true);
+  assert.equal(vm.hasActiveSession, true);
+  assert.equal(vm.continueTitle, CONTINUE_CLAIM_TITLE);
+  assert.equal(vm.startNewClaimLabel, START_NEW_CLAIM_LABEL);
+  assert.match(vm.continueTitle, /继续处理当前报案/);
+  assert.match(vm.startNewClaimLabel, /开始新的报案/);
+});
+
+test("Service Home empty VM exposes Start Claim primary", () => {
+  const vm = buildServiceHomeViewModel(false);
+  assert.equal(vm.hasActiveSession, false);
+  assert.match(vm.startClaimTitle, /开始报案/);
 });
 
 test("empty shell is pageReady with visible missing hint and no network dependency", () => {
@@ -63,7 +85,7 @@ test("Start New Claim resets only claim-draft resume markers", () => {
   );
 });
 
-test("reLaunchCustomerHome preserves active token and opens Entry", () => {
+test("reLaunchCustomerHome preserves active token and opens Service Home", () => {
   saveResumeToken("h5t1.active");
   const launches: string[] = [];
   reLaunchCustomerHome({
@@ -71,24 +93,37 @@ test("reLaunchCustomerHome preserves active token and opens Entry", () => {
       launches.push(url);
     },
   });
-  assert.deepEqual(launches, [ENTRY_ROUTE]);
+  assert.deepEqual(launches, [SERVICE_HOME_ROUTE]);
   assert.equal(loadResumeToken(), "h5t1.active");
   clearResumeToken();
 });
 
-test("reLaunchStartClaimHome clears draft and relaunches Start Claim", () => {
-  saveResumeToken("h5t1.stale");
+test("reLaunchStartClaimHome with active token goes Service Home and keeps resume", () => {
+  saveResumeToken("h5t1.golden");
   const launches: string[] = [];
   reLaunchStartClaimHome({
     reLaunch: ({ url }) => {
       launches.push(url);
     },
   });
-  assert.deepEqual(launches, [START_CLAIM_ROUTE]);
+  assert.deepEqual(launches, [SERVICE_HOME_ROUTE]);
+  assert.equal(loadResumeToken(), "h5t1.golden");
+  clearResumeToken();
+});
+
+test("reLaunchEmptyStartClaimForm clears draft and opens form entry", () => {
+  clearResumeToken();
+  const launches: string[] = [];
+  reLaunchEmptyStartClaimForm({
+    reLaunch: ({ url }) => {
+      launches.push(url);
+    },
+  });
+  assert.deepEqual(launches, [`${START_CLAIM_ROUTE}?entry=form`]);
   assert.equal(loadResumeToken(), "");
 });
 
-test("redirectStartClaimIfActiveCase relaunches Entry without clearing token", () => {
+test("capsule Home with active token → Service Home, resume survives", () => {
   saveResumeToken("h5t1.capsule-home");
   const launches: string[] = [];
   const redirected = redirectStartClaimIfActiveCase({
@@ -97,12 +132,12 @@ test("redirectStartClaimIfActiveCase relaunches Entry without clearing token", (
     },
   });
   assert.equal(redirected, true);
-  assert.deepEqual(launches, [ENTRY_ROUTE]);
+  assert.deepEqual(launches, [SERVICE_HOME_ROUTE]);
   assert.equal(loadResumeToken(), "h5t1.capsule-home");
   clearResumeToken();
 });
 
-test("redirectStartClaimIfActiveCase is a no-op without token", () => {
+test("cold Start Claim without entry=form → Service Home", () => {
   clearResumeToken();
   const launches: string[] = [];
   const redirected = redirectStartClaimIfActiveCase({
@@ -110,8 +145,40 @@ test("redirectStartClaimIfActiveCase is a no-op without token", () => {
       launches.push(url);
     },
   });
+  assert.equal(redirected, true);
+  assert.deepEqual(launches, [SERVICE_HOME_ROUTE]);
+});
+
+test("intentional entry=form without token stays on Start Claim", () => {
+  clearResumeToken();
+  const launches: string[] = [];
+  const redirected = redirectStartClaimIfActiveCase(
+    {
+      reLaunch: ({ url }) => {
+        launches.push(url);
+      },
+    },
+    { entry: "form" },
+  );
   assert.equal(redirected, false);
   assert.deepEqual(launches, []);
+});
+
+test("entry=form with active token still redirects to Service Home (P30)", () => {
+  saveResumeToken("h5t1.block-second");
+  const launches: string[] = [];
+  const redirected = redirectStartClaimIfActiveCase(
+    {
+      reLaunch: ({ url }) => {
+        launches.push(url);
+      },
+    },
+    { entry: "form" },
+  );
+  assert.equal(redirected, true);
+  assert.deepEqual(launches, [SERVICE_HOME_ROUTE]);
+  assert.equal(loadResumeToken(), "h5t1.block-second");
+  clearResumeToken();
 });
 
 test("start-claim wxml has no blankable full-page guard", () => {
@@ -129,12 +196,13 @@ test("start-claim wxml has no blankable full-page guard", () => {
   assert.equal(/wx:if="\{\{pageReady\}\}"/.test(wxml), false);
 });
 
-test("app.json Home page is start-claim and lazyCodeLoading is off", () => {
+test("app.json Home page is start-claim; Service Home is registered", () => {
   const appJson = JSON.parse(readFileSync(join(miniappRoot, "app.json"), "utf8")) as {
     pages?: string[];
     lazyCodeLoading?: string;
   };
   assert.equal(appJson.pages?.[0], "pages/start-claim/start-claim");
+  assert.ok(appJson.pages?.includes("pages/service-home/service-home"));
   assert.equal(appJson.lazyCodeLoading, undefined);
 });
 
@@ -161,16 +229,24 @@ test("Preview package must not filter unused files (wx://not-found regression)",
   }
 });
 
-test("receipt Start New Claim wires clear+Start Claim; start-claim redirects active Home", () => {
+test("receipt Start New Claim preserves active path; start-claim redirects Home", () => {
   const receiptTs = readFileSync(join(miniappRoot, "pages/receipt/receipt.ts"), "utf8");
   const successTs = readFileSync(
     join(miniappRoot, "pages/start-claim-success/start-claim-success.ts"),
     "utf8",
   );
   const startClaimTs = readFileSync(join(miniappRoot, "pages/start-claim/start-claim.ts"), "utf8");
+  const serviceHomeTs = readFileSync(
+    join(miniappRoot, "pages/service-home/service-home.ts"),
+    "utf8",
+  );
   const receiptWxml = readFileSync(join(miniappRoot, "pages/receipt/receipt.wxml"), "utf8");
   const successWxml = readFileSync(
     join(miniappRoot, "pages/start-claim-success/start-claim-success.wxml"),
+    "utf8",
+  );
+  const serviceHomeWxml = readFileSync(
+    join(miniappRoot, "pages/service-home/service-home.wxml"),
     "utf8",
   );
   assert.match(receiptTs, /reLaunchStartClaimHome/);
@@ -178,6 +254,20 @@ test("receipt Start New Claim wires clear+Start Claim; start-claim redirects act
   assert.match(successTs, /reLaunchStartClaimHome/);
   assert.match(successTs, /onBackHome/);
   assert.match(startClaimTs, /redirectStartClaimIfActiveCase/);
+  assert.match(serviceHomeTs, /onContinueCurrentClaim/);
+  assert.match(serviceHomeTs, /ONE_ACTIVE_CASE_POLICY/);
+  assert.match(serviceHomeTs, /ENTRY_ROUTE/);
   assert.match(receiptWxml, /开始新报案/);
   assert.match(successWxml, /开始新报案/);
+  assert.match(serviceHomeWxml, /\{\{continueTitle\}\}/);
+  assert.match(serviceHomeWxml, /\{\{startNewClaimLabel\}\}/);
+  assert.match(serviceHomeWxml, /\{\{viewProgressLabel\}\}/);
+  assert.match(serviceHomeWxml, /\{\{contactLabel\}\}/);
+  assert.match(serviceHomeTs, /buildServiceHomeViewModel/);
+  assert.match(serviceHomeTs, /onContinueCurrentClaim/);
+  const serviceHomeUtil = readFileSync(join(miniappRoot, "utils/serviceHome.ts"), "utf8");
+  assert.match(serviceHomeUtil, /继续处理当前报案/);
+  assert.match(serviceHomeUtil, /开始新的报案/);
+  assert.match(serviceHomeUtil, /查看案件进度/);
+  assert.match(serviceHomeUtil, /联系保险顾问/);
 });
