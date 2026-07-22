@@ -629,6 +629,11 @@ export function mapErrorMessage(code: string): string {
     invalid_or_expired_task_link: "链接已失效，请联系陈总获取新的入口。",
     token_missing: "未找到资料入口，请从微信任务卡片重新打开。",
     navigation_failed: "页面打开失败，请重试。",
+    // Real-device Preview enforces WeChat legal domains; DevTools often bypasses.
+    domain_not_allowed:
+      "当前预览环境无法连接报案服务（域名未授权）。请联系陈总办公室配置后再试。",
+    tls_error: "安全连接配置失败，请联系陈总办公室处理。",
+    dns_error: "无法解析报案服务地址，请稍后重试。如仍失败，请联系陈总办公室。",
     backend_unreachable: "暂时无法连接，请检查网络。",
     network_error: "网络暂时不可用，请稍后再试。",
     timeout: "网络暂时不可用，请稍后再试。",

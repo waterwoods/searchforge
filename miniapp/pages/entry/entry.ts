@@ -2,6 +2,7 @@ import { taskPage } from "../../behaviors/taskPage";
 import { CustomerTaskApi } from "../../services/taskApi";
 import * as taskLaunchContext from "../../services/taskLaunchContext";
 import type { TaskLaunchContext } from "../../types/task";
+import { appConfig, devLog } from "../../utils/config";
 import {
   contactBrokerModalCopy,
   isSubmitted,
@@ -17,6 +18,8 @@ const ENTRY_RETRY_COOLDOWN_MS = 2000;
 const NON_RETRYABLE_CODES = new Set([
   "token_missing",
   "invalid_or_expired_task_link",
+  "domain_not_allowed",
+  "tls_error",
 ]);
 
 type PageData = {
@@ -164,6 +167,21 @@ Page({
     } catch (err) {
       const code =
         err instanceof ApiRequestError ? err.code : "network_error";
+      const status = err instanceof ApiRequestError ? err.status : 0;
+      const detail =
+        err instanceof ApiRequestError && err.detail && typeof err.detail === "object"
+          ? (err.detail as { errMsg?: unknown; errno?: unknown })
+          : null;
+      // QA-safe only: host + code/status — never token / PII.
+      devLog("[entry] task open failed", {
+        apiProfile: appConfig.apiProfile,
+        apiHost: appConfig.apiBaseUrl,
+        path: "/api/h5/tasks/{token}/intake",
+        errorCode: code,
+        httpStatus: status,
+        errMsg: String(detail?.errMsg || "").slice(0, 120),
+        errno: String(detail?.errno || ""),
+      });
       if (code === "invalid_or_expired_task_link") {
         clearResumeToken();
       }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildRequestDiagnostic, classifyWxRequestFail } from "../utils/requestErrors";
 import { mapStartClaimError } from "../utils/startClaimLifecycle";
+import { mapErrorMessage } from "../utils/taskMapping";
 
 test("classifies domain / tls / timeout / generic transport failures", () => {
   assert.equal(
@@ -67,6 +68,19 @@ test("error mapping distinguishes transport kinds and avoids opaque unstable cop
   const network = mapStartClaimError("network_error");
   assert.equal(network.kind, "transport");
   assert.equal(network.message.includes("不会重复创建"), false);
+});
+
+test("mapErrorMessage distinguishes real-device domain failures from opaque fallback", () => {
+  const domain = mapErrorMessage("domain_not_allowed");
+  assert.match(domain, /域名未授权|报案服务/);
+  assert.notEqual(domain, "暂时无法完成操作，请稍后再试。");
+
+  const tls = mapErrorMessage("tls_error");
+  assert.match(tls, /安全连接|陈总办公室/);
+  assert.notEqual(tls, "暂时无法完成操作，请稍后再试。");
+
+  const dns = mapErrorMessage("dns_error");
+  assert.match(dns, /解析|服务地址/);
 });
 
 test("request diagnostic omits secrets and keeps host/path/status", () => {

@@ -221,3 +221,32 @@ test("network failure keeps retryable error and clears loading", async () => {
   assert.equal(ctx.data.errorState.retryable, true);
   assert.equal(ctx.data.busy.loading, false);
 });
+
+test("domain_not_allowed is non-retryable and not the opaque fallback", async () => {
+  const page = await loadEntryPage();
+  const ctx = createPageContext(page, {
+    data: {
+      ...page.data,
+      busy: idleBusy(),
+      launchSource: "",
+      errorState: { code: "", message: "", retryable: false, blocking: false },
+      retryMeta: { attempts: 0, cooldownUntil: 0 },
+    },
+    resolveLaunchContext: () => ({
+      token: "h5t1.valid",
+      source: "launch_query",
+    }),
+    fetchTask: async () => {
+      throw new ApiRequestError("domain_not_allowed", 0, {
+        errMsg: "request:fail url not in domain list",
+      });
+    },
+  });
+
+  await page.bootstrap.call(ctx, {});
+  assert.equal(ctx.data.errorState.code, "domain_not_allowed");
+  assert.equal(ctx.data.errorState.retryable, false);
+  assert.match(String(ctx.data.errorState.message), /域名未授权|报案服务/);
+  assert.notEqual(ctx.data.errorState.message, "暂时无法完成操作，请稍后再试。");
+  assert.equal(ctx.data.busy.loading, false);
+});
