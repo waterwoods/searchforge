@@ -3,7 +3,11 @@
  * Keep in sync with backend MVP_SENDABLE_ITEM_TYPES.
  */
 
-export const MVP_CUSTOMER_SUBMITTABLE_TYPES = new Set(['vin', 'policy_or_insurance_card']);
+export const MVP_CUSTOMER_SUBMITTABLE_TYPES = new Set([
+  'vin',
+  'vehicle_information',
+  'policy_or_insurance_card',
+]);
 
 export function isCustomerSubmittableItemType(itemType: string | null | undefined): boolean {
   return MVP_CUSTOMER_SUBMITTABLE_TYPES.has(String(itemType || '').trim().toLowerCase());

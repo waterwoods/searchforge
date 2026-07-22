@@ -116,6 +116,20 @@ export type ClaimCaseBrief = {
         other_party_info?: string | null;
         other_party_plate?: string | null;
         own_vehicle_info?: string | null;
+        /** Claim Vehicle Identity V1 — structured readback (T5). */
+        claim_vehicle?: {
+            vehicle_id?: string | null;
+            year?: string | null;
+            make?: string | null;
+            model?: string | null;
+            vin?: string | null;
+            vin_unavailable?: boolean;
+            license_plate?: string | null;
+            plate_state?: string | null;
+            summary?: string | null;
+            verification_status?: string | null;
+            complete?: boolean;
+        } | null;
     };
     evidence_received?: {
         photo_count?: number;
@@ -135,7 +149,12 @@ export type ClaimCaseBrief = {
     brief_version?: number;
 };
 
-export type Slice1RequestItemType = 'vin' | 'policy_or_insurance_card' | 'free_text' | 'photo_evidence';
+export type Slice1RequestItemType =
+    | 'vin'
+    | 'vehicle_information'
+    | 'policy_or_insurance_card'
+    | 'free_text'
+    | 'photo_evidence';
 
 export type Slice1RequestItemStatus =
     | 'queued'

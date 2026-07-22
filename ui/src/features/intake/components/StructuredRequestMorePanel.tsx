@@ -22,6 +22,7 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 const SLICE1_REQUEST_MORE_TYPES: Array<{ value: Slice1RequestItemType; label: string }> = [
+    { value: 'vehicle_information', label: '车辆信息' },
     { value: 'vin', label: '车辆 VIN' },
     { value: 'policy_or_insurance_card', label: '保险卡' },
     { value: 'photo_evidence', label: '照片 / 文件' },
@@ -34,6 +35,12 @@ const SLICE1_REQUEST_MORE_PRESETS: Array<{
     item_type: Slice1RequestItemType;
     instructions: string;
 }> = [
+    {
+        key: 'vehicle_information',
+        label: '车辆信息',
+        item_type: 'vehicle_information',
+        instructions: '请补充本次事故车辆的基本信息（年份 / 品牌 / 型号；如有 VIN 也可一并提供）。',
+    },
     { key: 'vin', label: '车辆 VIN', item_type: 'vin', instructions: '请发送或确认车辆 VIN。' },
     {
         key: 'insurance_card',
@@ -109,9 +116,9 @@ function makeRequestMoreCommandIdentity(caseId: string, expectedCaseVersion: num
 
 function defaultRequestMoreItem(position = 1): RequestMoreDraftItem {
     return {
-        item_type: 'vin',
-        label: '车辆 VIN',
-        instructions: '请发送或确认车辆 VIN。',
+        item_type: 'vehicle_information',
+        label: '车辆信息',
+        instructions: '请补充本次事故车辆的基本信息（年份 / 品牌 / 型号；如有 VIN 也可一并提供）。',
         required: true,
         position,
     };
@@ -187,6 +194,26 @@ function canonicalVinFromKnownFacts(knownFacts: Record<string, unknown> | undefi
     return null;
 }
 
+function canonicalVehicleFromKnownFacts(knownFacts: Record<string, unknown> | undefined): string | null {
+    if (!knownFacts || typeof knownFacts !== 'object') return null;
+    for (const key of [
+        'vehicle_information',
+        'own_vehicle_info',
+        'primary_vehicle_summary',
+        'vehicle_vin',
+        'vin',
+        'own_vehicle_vin',
+    ]) {
+        const value = String(knownFacts[key] ?? '').trim();
+        if (value) return value;
+    }
+    return null;
+}
+
+function canonicalFactLabelForItemType(itemType: string | undefined): string {
+    return String(itemType || '').trim().toLowerCase() === 'vin' ? '案件 VIN' : '案件车辆';
+}
+
 /**
  * Resolve the broker-visible customer response for one request item.
  * Prefers authoritative item.customer_response; falls back to latest_events.
@@ -198,12 +225,13 @@ export function resolveSlice1CustomerResponse(
 ): Slice1CustomerResponse | null {
     const embedded = item.customer_response;
     if (embedded && typeof embedded === 'object') {
-        if (
-            embedded.kind === 'fact'
-            && item.item_type === 'vin'
-            && !embedded.canonical_value
-        ) {
-            const canonical = canonicalVinFromKnownFacts(knownFacts);
+        if (embedded.kind === 'fact' && !embedded.canonical_value) {
+            const itemType = String(item.item_type || '').trim().toLowerCase();
+            const canonical = itemType === 'vin'
+                ? canonicalVinFromKnownFacts(knownFacts)
+                : itemType === 'vehicle_information'
+                  ? canonicalVehicleFromKnownFacts(knownFacts)
+                  : null;
             if (canonical) {
                 return { ...embedded, canonical_value: canonical, applied_to_canonical_facts: false };
             }
@@ -252,7 +280,12 @@ export function resolveSlice1CustomerResponse(
 
     if (eventType === 'field_saved') {
         const submittedValue = evidence.value == null ? '' : String(evidence.value);
-        const canonical = item.item_type === 'vin' ? canonicalVinFromKnownFacts(knownFacts) : null;
+        const itemType = String(item.item_type || '').trim().toLowerCase();
+        const canonical = itemType === 'vin'
+            ? canonicalVinFromKnownFacts(knownFacts)
+            : itemType === 'vehicle_information'
+              ? canonicalVehicleFromKnownFacts(knownFacts)
+              : null;
         return {
             kind: 'fact',
             field_id: String(evidence.field_id || '') || null,
@@ -263,7 +296,7 @@ export function resolveSlice1CustomerResponse(
             submitted_by: actorIdentity,
             receipt_event_id: receiptEventId,
             review_status: reviewStatus,
-            applied_to_canonical_facts: false,
+            applied_to_canonical_facts: Boolean(canonical),
         };
     }
 
@@ -624,7 +657,8 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                                 </Text>
                                 {response.canonical_value ? (
                                     <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
-                                        案件 VIN：<Text code>{String(response.canonical_value)}</Text>
+                                        {canonicalFactLabelForItemType(item.item_type)}：
+                                        <Text code>{String(response.canonical_value)}</Text>
                                         {String(response.canonical_value) !== String(response.submitted_value ?? '')
                                             ? '（与客户提交不一致）'
                                             : null}
@@ -827,7 +861,13 @@ export function StructuredRequestMorePanel<TCase extends StructuredRequestMoreCa
                                     <Select
                                         value={item.item_type}
                                         options={SLICE1_REQUEST_MORE_TYPES}
-                                        onChange={(value) => updateRequestMoreItem(index, { item_type: value })}
+                                        onChange={(value) => {
+                                            const meta = SLICE1_REQUEST_MORE_TYPES.find((option) => option.value === value);
+                                            updateRequestMoreItem(index, {
+                                                item_type: value,
+                                                ...(meta ? { label: meta.label } : {}),
+                                            });
+                                        }}
                                         disabled={requestMoreSubmitState === 'submitting'}
                                         style={{ width: 190 }}
                                     />

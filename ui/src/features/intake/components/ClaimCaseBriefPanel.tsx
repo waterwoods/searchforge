@@ -81,7 +81,19 @@ export function ClaimCaseBriefPanel({
   const highlights = (brief.highlights ?? []).slice(0, 5);
   const timelinePreview = formatClaimTimelinePreview(timeline ?? [], 3);
   const photoCount = evidence.photo_count ?? 0;
-  const ownVehicle = String(keyFacts.own_vehicle_info || '').trim() || '暂未提供';
+  const claimVehicle = keyFacts.claim_vehicle;
+  const vehicleSummary =
+    String(claimVehicle?.summary || keyFacts.own_vehicle_info || '').trim() || '暂未提供';
+  const vehicleYear = String(claimVehicle?.year || '').trim();
+  const vehicleMake = String(claimVehicle?.make || '').trim();
+  const vehicleModel = String(claimVehicle?.model || '').trim();
+  const vehicleVin = String(claimVehicle?.vin || '').trim();
+  const vehiclePlate = String(claimVehicle?.license_plate || '').trim();
+  const vehiclePlateState = String(claimVehicle?.plate_state || '').trim();
+  const hasStructuredVehicle = Boolean(
+    claimVehicle
+    && (vehicleYear || vehicleMake || vehicleModel || vehicleVin || vehiclePlate),
+  );
   const otherPartyPlate = String(keyFacts.other_party_plate || '').trim() || '暂未提供';
   const otherPartyInfo = String(keyFacts.other_party_info || '').trim() || '暂未提供';
   const resolvedNext =
@@ -128,7 +140,49 @@ export function ClaimCaseBriefPanel({
         <Text type="secondary" style={{ fontSize: 12 }}>
           我方车辆
         </Text>
-        <Text style={{ fontSize: 13 }}>{ownVehicle}</Text>
+        <Text style={{ fontSize: 13 }}>{vehicleSummary}</Text>
+        {hasStructuredVehicle ? (
+          <>
+            {vehicleYear || vehicleMake || vehicleModel ? (
+              <>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  年款 / 品牌 / 型号
+                </Text>
+                <Text style={{ fontSize: 13 }}>
+                  {[vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ') || '—'}
+                </Text>
+              </>
+            ) : null}
+            {vehicleVin ? (
+              <>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  VIN
+                </Text>
+                <Text style={{ fontSize: 13 }} copyable={{ text: vehicleVin }}>
+                  {vehicleVin}
+                </Text>
+              </>
+            ) : claimVehicle?.vin_unavailable ? (
+              <>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  VIN
+                </Text>
+                <Text style={{ fontSize: 13 }}>暂时无法提供</Text>
+              </>
+            ) : null}
+            {vehiclePlate ? (
+              <>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  车牌
+                </Text>
+                <Text style={{ fontSize: 13 }}>
+                  {vehiclePlateState ? `${vehiclePlateState} ` : ''}
+                  {vehiclePlate}
+                </Text>
+              </>
+            ) : null}
+          </>
+        ) : null}
         <Text type="secondary" style={{ fontSize: 12 }}>
           对方车牌
         </Text>

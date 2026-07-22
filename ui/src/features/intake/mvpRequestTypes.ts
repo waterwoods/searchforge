@@ -1,12 +1,18 @@
 /**
  * P20 MVP contract — broker send + customer submit support.
- * VIN = fact submit; policy_or_insurance_card = evidence submit.
+ * vin / vehicle_information = Claim Vehicle fact submit;
+ * policy_or_insurance_card = evidence submit.
+ * Keep in sync with backend MVP_SENDABLE_ITEM_TYPES.
  * P27-B2 — broker-facing messages use claim-pilot Chinese office copy.
  */
 
 import { claimRequestMoreBlockedMessage } from '@/features/intake/utils/claimPilotCopy';
 
-export const MVP_SENDABLE_ITEM_TYPES = new Set(['vin', 'policy_or_insurance_card']);
+export const MVP_SENDABLE_ITEM_TYPES = new Set([
+  'vin',
+  'vehicle_information',
+  'policy_or_insurance_card',
+]);
 
 export function isMvpSendableItemType(itemType: string | null | undefined): boolean {
   return MVP_SENDABLE_ITEM_TYPES.has(String(itemType || '').trim().toLowerCase());

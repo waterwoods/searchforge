@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from services.fiqa_api.inbox_triage.claim_vehicle_identity import (
+    is_claim_vehicle_complete,
+    read_claim_vehicle_from_facts,
+)
 from services.fiqa_api.inbox_triage.h5_task_token import FLOW_CLAIM_EVIDENCE_PACK
 from services.fiqa_api.wecom.claim_state import (
     CLAIM_ACCIDENT_BASICS_FIELDS,
@@ -853,6 +857,29 @@ def _source_event_ids(case: dict[str, Any]) -> list[str]:
     return list(reversed(ids))
 
 
+def _claim_vehicle_brief_projection(case: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any] | None:
+    """Structured Claim Vehicle readback for Workbench (T5). Server known_facts remain SSOT."""
+    case_id = str(case.get("case_id") or "").strip()
+    if not case_id:
+        return None
+    vehicle = read_claim_vehicle_from_facts(facts, case_id=case_id)
+    if vehicle is None:
+        return None
+    return {
+        "vehicle_id": vehicle.vehicle_id,
+        "year": vehicle.year,
+        "make": vehicle.make,
+        "model": vehicle.model,
+        "vin": vehicle.vin,
+        "vin_unavailable": bool(vehicle.vin_unavailable),
+        "license_plate": vehicle.license_plate,
+        "plate_state": vehicle.plate_state,
+        "summary": vehicle.summary,
+        "verification_status": vehicle.verification_status,
+        "complete": is_claim_vehicle_complete(vehicle),
+    }
+
+
 def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
     """Deterministic Claim Case Brief for Workbench hero panel (P19H-3e-1)."""
     facts = _known_facts(case)
@@ -862,6 +889,10 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
     photo_count, photo_sources = _count_photos(case)
     evidence_summary = build_claim_evidence_summary(case)
     unassigned_count = int((evidence_summary.get("unassigned_wecom_photos") or {}).get("count") or 0)
+    claim_vehicle = _claim_vehicle_brief_projection(case, facts)
+    own_vehicle = _str_or_none(facts.get("own_vehicle_info"))
+    if not own_vehicle and isinstance(claim_vehicle, dict):
+        own_vehicle = _str_or_none(claim_vehicle.get("summary"))
 
     key_facts: dict[str, Any] = {
         "accident_datetime": _str_or_none(facts.get("accident_datetime")),
@@ -873,7 +904,8 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
         "other_party_plate": _format_fact_display(
             case, "other_party_plate", _str_or_none(facts.get("other_party_plate"))
         ),
-        "own_vehicle_info": _str_or_none(facts.get("own_vehicle_info")),
+        "own_vehicle_info": own_vehicle,
+        "claim_vehicle": claim_vehicle,
     }
 
     basics_complete = is_accident_basics_complete(case)
