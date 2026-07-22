@@ -220,11 +220,21 @@ def test_case_isolation_gate_why_does_not_claim_photos_without_evidence():
 # --- New-vs-Resume Gate ---
 
 
-def test_new_vs_resume_gate_start_new_creates_distinct_cases(monkeypatch):
+def test_new_vs_resume_gate_same_identity_resumes_one_active_case(monkeypatch):
+    """P0 One Active Case: same customer identity never forks a second Active Case."""
+    from services.fiqa_api.inbox_triage.mp_customer_identity import (
+        reset_mp_active_case_index_for_tests,
+    )
+
+    reset_mp_active_case_index_for_tests()
     store = InMemoryIntakeStore()
     svc = P20CaseIntakeCommandService(store)
     monkeypatch.setattr(
         "services.fiqa_api.inbox_triage.p20_customer_start_claim.default_case_intake_service",
+        lambda: svc,
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.p20_case_intake_command_service.default_case_intake_service",
         lambda: svc,
     )
     monkeypatch.setattr(
@@ -239,36 +249,42 @@ def test_new_vs_resume_gate_start_new_creates_distinct_cases(monkeypatch):
     first = start_customer_claim(
         command_id="cmd_q1_a",
         idempotency_key="idem_q1_a",
-        session_id="sess_same",
+        session_id="anon-sess-same",
         accident_description="Case A story only",
     )
     second = start_customer_claim(
         command_id="cmd_q1_b",
         idempotency_key="idem_q1_b",
-        session_id="sess_same",
+        session_id="anon-sess-same",
         accident_description="Case B story only",
     )
     assert first["outcome"] == "accepted"
-    assert second["outcome"] == "accepted"
-    assert first["case_id"] != second["case_id"]
+    assert second["outcome"] == "resumed"
+    assert first["case_id"] == second["case_id"]
     assert first.get("resume_token")
     assert second.get("resume_token")
-    assert first["resume_token"] != second["resume_token"]
+    assert len(store.cases) == 1
 
     case_a = store.cases[first["case_id"]]
-    case_b = store.cases[second["case_id"]]
-    facts_a = (case_a.get("known_facts") or {})
-    facts_b = (case_b.get("known_facts") or {})
+    facts_a = case_a.get("known_facts") or {}
     assert "Case A" in str(facts_a.get("accident_description") or "")
-    assert "Case B" in str(facts_b.get("accident_description") or "")
-    assert not (case_b.get("case_attachments") or [])
 
+    # Distinct identities still get independent Active Cases.
+    other = start_customer_claim(
+        command_id="cmd_q1_other",
+        idempotency_key="idem_q1_other",
+        session_id="anon-sess-other",
+        accident_description="Case B story only",
+    )
+    assert other["outcome"] == "accepted"
+    assert other["case_id"] != first["case_id"]
+    case_b = store.cases[other["case_id"]]
     by_b = _by_id(
         build_constitution_projection(ConstitutionInputs(case=case_b))["customer"]["tasks"]
     )
-    # Case B story completed from its own Start Claim facts only.
     assert by_b[TASK_ID_STORY]["state"] == TASK_STATE_COMPLETED
     assert by_b[TASK_ID_PHOTOS]["state"] != TASK_STATE_COMPLETED
+    reset_mp_active_case_index_for_tests()
 
 
 def test_new_vs_resume_gate_idempotent_replay_returns_same_case(monkeypatch):
@@ -286,17 +302,28 @@ def test_new_vs_resume_gate_idempotent_replay_returns_same_case(monkeypatch):
         "services.fiqa_api.inbox_triage.p20_customer_start_claim.resolve_customer_start_claim_office_id",
         lambda: "office_demo",
     )
+    from services.fiqa_api.inbox_triage.mp_customer_identity import (
+        reset_mp_active_case_index_for_tests,
+    )
+
+    reset_mp_active_case_index_for_tests()
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.p20_case_intake_command_service.default_case_intake_service",
+        lambda: svc,
+    )
     first = start_customer_claim(
         command_id="cmd_q1_replay",
         idempotency_key="idem_q1_replay",
-        session_id="sess_replay",
+        session_id="anon-sess-replay",
         accident_description="replay story",
     )
     replay = start_customer_claim(
         command_id="cmd_q1_replay",
         idempotency_key="idem_q1_replay",
-        session_id="sess_replay",
+        session_id="anon-sess-replay",
         accident_description="replay story",
     )
     assert first["case_id"] == replay["case_id"]
-    assert replay["outcome"] in ("accepted", "replayed")
+    # Cap2 replay or One Active Case resume — both keep a single case.
+    assert replay["outcome"] in ("accepted", "replayed", "resumed")
+    reset_mp_active_case_index_for_tests()

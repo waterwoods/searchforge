@@ -1,9 +1,10 @@
 /**
  * Customer Start Claim — thin Mini Program client over Cap2 CreateClaim facade.
+ * Always sends a bindable session_id (durable wx_* preferred).
  */
 
 import { requestJson } from "../utils/request";
-import { getPrototypeSessionId } from "./sessionIdentityAdapter";
+import { resolveStartClaimSessionId } from "./sessionIdentityAdapter";
 import { appConfig } from "../utils/config";
 
 export type CustomerStartClaimCommand = {
@@ -18,7 +19,7 @@ export type CustomerStartClaimCommand = {
 
 export type CustomerStartClaimResult = {
   ok: boolean;
-  outcome: "accepted" | "replayed" | string;
+  outcome: "accepted" | "replayed" | "resumed" | string;
   error_code?: string;
   /** P26G — opaque signed resume token; persist for Task Home / return-later. */
   resume_token?: string;
@@ -39,11 +40,12 @@ export function mintStartClaimCommandIds(): {
 export async function startClaim(
   command: CustomerStartClaimCommand,
 ): Promise<CustomerStartClaimResult> {
+  const sessionId = await resolveStartClaimSessionId();
   return requestJson<CustomerStartClaimResult>("POST", "/api/h5/customer/start-claim", {
     command_id: command.command_id,
     idempotency_key: command.idempotency_key,
     correlation_id: command.correlation_id || command.command_id,
-    session_id: getPrototypeSessionId(),
+    session_id: sessionId,
     accident_description: (command.accident_description || "").trim() || undefined,
     accident_datetime: (command.accident_datetime || "").trim() || undefined,
     accident_location: (command.accident_location || "").trim() || undefined,

@@ -40,6 +40,10 @@ export function installMiniProgramGlobals(): void {
     },
     request: () => undefined,
     uploadFile: () => undefined,
+    login: (opts?: { success?: (res: { code: string }) => void; fail?: () => void }) => {
+      opts?.success?.({ code: "sim:test-openid" });
+      return undefined;
+    },
     getAccountInfoSync: () => ({
       miniProgram: { appId: "wxa610932351416622" },
     }),

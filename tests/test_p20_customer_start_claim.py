@@ -160,7 +160,8 @@ def test_customer_start_claim_api_accept_and_replay(monkeypatch):
     assert second.status_code == 200
     second_body = second.json()
     assert second_body["ok"] is True
-    assert second_body["outcome"] == "replayed"
+    # Cap2 idempotent replay or One Active Case resume — never a second case.
+    assert second_body["outcome"] in ("replayed", "resumed")
     assert second_body.get("resume_token")
     assert len(store.cases) == 1
     case = next(iter(store.cases.values()))

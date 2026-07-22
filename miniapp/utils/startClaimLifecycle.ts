@@ -98,6 +98,13 @@ export function mapStartClaimError(code: string): {
       retryable: false,
     };
   }
+  if (normalized === "durable_identity_required") {
+    return {
+      kind: "auth_config",
+      message: "需要完成微信登录后才能开始报案。请重新打开小程序后再试。",
+      retryable: true,
+    };
+  }
   if (
     lower === "unauthorized"
     || lower === "forbidden"

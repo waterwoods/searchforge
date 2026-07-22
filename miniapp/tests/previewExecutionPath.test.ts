@@ -61,6 +61,8 @@ test("frozen Preview defaults: pages[0] is start-claim with empty token config",
 test("PATH A — default/pages[0] Start Claim: stops before REQUEST_SENT", async () => {
   const { steps, restore } = installPathCapture();
   try {
+    const { clearPrototypeSession } = await import("../utils/storage");
+    clearPrototypeSession();
     // Simulate App LAUNCH for pages[0]
     const { qaPathLog, summarizeLaunchQuery } = await import("../utils/qaPathLog");
     const q = summarizeLaunchQuery({});
@@ -91,12 +93,12 @@ test("PATH A — default/pages[0] Start Claim: stops before REQUEST_SENT", async
     };
     // Bind page methods
     Object.assign(ctx, page);
+    // Cold pages[0] without ?entry=form → Service Home (D-008); no create API.
     page.onLoad.call(ctx, {});
 
     const names = stepNames(steps);
     assert.ok(names.includes("LAUNCH"), `missing LAUNCH: ${names.join(",")}`);
     assert.ok(names.includes("ENTRY"), `missing ENTRY: ${names.join(",")}`);
-    assert.ok(names.includes("BOOTSTRAP"), `missing BOOTSTRAP: ${names.join(",")}`);
     assert.ok(names.includes("EARLY_EXIT"), `missing EARLY_EXIT: ${names.join(",")}`);
     assert.equal(names.includes("REQUEST_START"), false);
     assert.equal(names.includes("REQUEST_SENT"), false);
@@ -106,10 +108,19 @@ test("PATH A — default/pages[0] Start Claim: stops before REQUEST_SENT", async
     assert.equal(entry.detail.hasToken, false);
 
     const abort = first(steps, "EARLY_EXIT")!;
-    assert.equal(abort.detail.reason, "start_claim_no_request_until_submit");
+    assert.equal(abort.detail.reason, "capsule_home_redirect_service_home");
     assert.equal(abort.detail.hasToken, false);
     assert.equal(abort.detail.page, "pages/start-claim/start-claim");
     assert.equal(abort.detail.launchPath, "pages/start-claim/start-claim");
+
+    // Intentional form entry still bootstraps without REQUEST_SENT.
+    steps.length = 0;
+    page.onLoad.call(ctx, { entry: "form" });
+    const formNames = stepNames(steps);
+    assert.ok(formNames.includes("BOOTSTRAP"), `missing BOOTSTRAP: ${formNames.join(",")}`);
+    assert.ok(formNames.includes("EARLY_EXIT"), `missing EARLY_EXIT: ${formNames.join(",")}`);
+    assert.equal(formNames.includes("REQUEST_SENT"), false);
+    assert.equal(first(steps, "EARLY_EXIT")!.detail.reason, "start_claim_no_request_until_submit");
   } finally {
     restore();
   }

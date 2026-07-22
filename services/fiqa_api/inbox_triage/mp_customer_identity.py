@@ -70,6 +70,34 @@ def person_link_from_session_id(session_id: str | None) -> str | None:
     return None
 
 
+def allow_prototype_anon_customer_create() -> bool:
+    """anon-* / fixture session create is local/QA/harness only — never Production."""
+    from services.fiqa_api.db.service_record_settings import is_production_deployment
+
+    return not is_production_deployment()
+
+
+def resolve_customer_identity_key(session_id: str | None) -> str | None:
+    """
+    Identity key used for One Active Case resolve/bind on customer create.
+
+    Production: durable wx_* person_link only.
+    Non-Production: also device/fixture keys (anon-*, p26h-*, p35-*) so local/QA
+    cannot fork Active Cases after storage clear on the same session_id.
+    """
+    durable = person_link_from_session_id(session_id)
+    if durable:
+        return durable
+    if not allow_prototype_anon_customer_create():
+        return None
+    sid = (session_id or "").strip()
+    if not sid or len(sid) < 8:
+        return None
+    if sid.startswith("anon-") or sid.startswith("p26h-") or sid.startswith("p35-"):
+        return sid[:80]
+    return None
+
+
 async def exchange_mp_code_for_openid(code: str) -> tuple[str | None, str | None]:
     """Mini Program jscode2session. Returns (openid, error_code). Never log openid."""
     raw = (code or "").strip()

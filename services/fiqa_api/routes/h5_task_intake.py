@@ -124,7 +124,8 @@ async def post_customer_start_claim(
     if outcome == "accepted":
         http_response.status_code = 201
         return customer_start_claim_response(result)
-    if outcome == "replayed":
+    if outcome in ("replayed", "resumed"):
+        # Idempotent Cap2 replay or One Active Case resume — both are success.
         http_response.status_code = 200
         return customer_start_claim_response(result)
     raise HTTPException(status_code=422, detail=customer_start_claim_response(result))

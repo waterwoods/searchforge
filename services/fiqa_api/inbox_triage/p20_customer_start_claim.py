@@ -6,8 +6,10 @@ calls P20CaseIntakeCommandService.create_claim(actor="customer").
 P26G: after create, issue a signed resume token so the customer can open
 Task Home and continue default intake without a broker Request More / QR.
 
-P29B: when session_id is an opaque WeChat person_link_key (wx_*), bind it to
-the Active Case for Resume Current Task. Never stores or returns OpenID.
+P29B / P0 Identity Foundation: when session_id is a durable WeChat
+person_link_key (wx_*), resolve→resume or create→bind Active Case.
+Customer force_new never opens a second Active Case.
+Production rejects anon-only create (durable identity required).
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from services.fiqa_api.inbox_triage.mp_customer_identity import (
     issue_resume_for_case,
     person_link_from_session_id,
     resolve_active_case_for_person_link,
+    resolve_customer_identity_key,
 )
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
     default_case_intake_service,
@@ -83,6 +86,22 @@ def customer_start_claim_response(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resume_existing(case_id: str) -> dict[str, Any]:
+    try:
+        resume = issue_resume_for_case(case_id)
+    except Exception:
+        resume = {}
+    return _attach_resume_token(
+        {
+            "outcome": "resumed",
+            "case_id": case_id,
+            "resume_token": resume.get("resume_token"),
+            "resume_expires_at": resume.get("resume_expires_at"),
+            "error_code": None,
+        }
+    )
+
+
 def start_customer_claim(
     *,
     command_id: str,
@@ -98,34 +117,34 @@ def start_customer_claim(
     tenant_id: str | None = None,
     force_new: bool = False,
 ) -> dict[str, Any]:
-    """Facade: Cap2 CreateClaim with actor=customer + resume token (P26G/P29B).
+    """Facade: Cap2 CreateClaim with actor=customer + resume token (P26G/P29B/P0).
 
-    P30 One Active Case: if this person_link already has an Active Case, always
-    resume it. Customer force_new must not create a second Active Case —
-    append/split/merge is broker/office responsibility (Append-first, Split-later).
+    One Active Case (server invariant):
+    - Resolve identity → if Active Case exists, always resume (never create second).
+    - Customer force_new is ignored (compat only).
+    - Production deployment requires durable wx_* identity; anon create rejected.
     """
     # force_new remains in the signature for client/API compat but never opens a
-    # second Active Case (P30 / D-013). Broker/office owns split/merge.
+    # second Active Case (P30 / One Active Case Constitution).
     _ = bool(force_new)
-    person_link = person_link_from_session_id(session_id)
-    if person_link:
-        existing = resolve_active_case_for_person_link(person_link)
-        if existing:
-            case_id = str(existing.get("case_id") or "").strip()
-            if case_id:
-                try:
-                    resume = issue_resume_for_case(case_id)
-                except Exception:
-                    resume = {}
-                return _attach_resume_token(
-                    {
-                        "outcome": "resumed",
-                        "case_id": case_id,
-                        "resume_token": resume.get("resume_token"),
-                        "resume_expires_at": resume.get("resume_expires_at"),
-                        "error_code": None,
-                    }
-                )
+
+    durable_link = person_link_from_session_id(session_id)
+    identity_key = resolve_customer_identity_key(session_id)
+
+    # Every customer create must carry a bindable identity (wx_* always;
+    # anon-/p26h-/p35-* only when allow_prototype_anon_customer_create).
+    if not identity_key:
+        return {
+            "outcome": "rejected",
+            "error_code": "durable_identity_required",
+            "case_id": None,
+        }
+
+    existing = resolve_active_case_for_person_link(identity_key)
+    if existing:
+        case_id = str(existing.get("case_id") or "").strip()
+        if case_id:
+            return _resume_existing(case_id)
 
     actor_identity = normalize_customer_actor_identity(session_id)
     office = (office_id if office_id is not None else resolve_customer_start_claim_office_id())
@@ -146,6 +165,8 @@ def start_customer_claim(
     if injury:
         known_facts["injury_status"] = injury
         known_facts["anyone_injured"] = injury
+
+    # Stamp durable WeChat link on the case only; prototype keys bind the index only.
     result = default_case_intake_service().create_claim(
         broker_id=actor_identity,
         office_id=office,
@@ -163,15 +184,14 @@ def start_customer_claim(
             "known_facts": known_facts,
             "title": "Customer Claim intake" if not is_test else "QA Customer Claim intake",
             "entry_channel": "mini_program",
-            "identity_binding_state": "linked" if person_link else "unbound",
-            "person_link_key": person_link,
-            "person_link_source": "wechat" if person_link else None,
-            "person_link_confidence": 0.9 if person_link else None,
+            "identity_binding_state": "linked" if durable_link else "unbound",
+            "person_link_key": durable_link,
+            "person_link_source": "wechat" if durable_link else None,
+            "person_link_confidence": 0.9 if durable_link else None,
         },
     )
     out = _attach_resume_token(result)
     case_id = str(out.get("case_id") or "").strip()
-    if person_link and case_id and str(out.get("outcome") or "") in ("accepted", "replayed"):
-        # person_link_* already stamped on the case via Cap2 create inputs.
-        bind_active_case(person_link, case_id)
+    if case_id and str(out.get("outcome") or "") in ("accepted", "replayed"):
+        bind_active_case(identity_key, case_id)
     return out

@@ -58,13 +58,14 @@ Copy for every new decision:
 
 | Field | Content |
 |-------|---------|
-| **Decision** | A customer has at most one Active Case in progress; reopen continues that case; starting another accident is an explicit secondary choice with confirm. |
-| **Context** | Loop 3.x (esp. 3.8–3.9). Case pickers and “which matter am I in?” destroyed trust after an accident. Continuity is the product. |
-| **Alternatives Considered** | (1) Multi-case home list like a claims portal; (2) Silent second case on return; (3) Always ask “new or existing?” before any continue. |
-| **Why This Decision** | Under stress, one clear matter restores motion. Secondary + confirm keeps a real new accident possible without making case management the default job. |
+| **Decision** | A customer has at most one Active Case in progress. Customer create must resolve→resume that case; never fork a second Active Case. Explicit「开始新的报案」with an Active Case shows policy (continue / contact broker) — customer cannot open a second Active Case. Split/merge is Broker/office only. |
+| **Context** | Loop 3.x (esp. 3.8–3.9). Case pickers and “which matter am I in?” destroyed trust after an accident. Continuity is the product. P0 Identity Foundation made this server-enforced via durable `wx_*` identity. |
+| **Alternatives Considered** | (1) Multi-case home list like a claims portal; (2) Silent second case on return; (3) Always ask “new or existing?” before any continue; (4) Client-only resume-token guard (rejected — not Constitutional). |
+| **Why This Decision** | Under stress, one clear matter restores motion. Server identity binding survives storage clear / new device. |
 | **Constitution Principle** | One Active Case |
-| **Date** | 2026-07-17 |
+| **Date** | 2026-07-17 (updated 2026-07-22) |
 | **Status** | Active |
+| **SSOT** | `docs/product/p0_one_active_case_identity_foundation.md` |
 
 ---
 
@@ -201,6 +202,20 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/CLAIM_VEHICLE_VS_ADD_CAR_TERMINOLOGY.md` |
 
+
+### D-016 — Durable MP identity enforces One Active Case
+
+| Field | Content |
+|-------|---------|
+| **Decision** | Mini Program customer create uses `wx.login` → `/api/h5/customer/session` → opaque `wx_*` person_link → `mp_customer_active_case` resolve/bind. Production rejects anon-only create (`durable_identity_required`). `force_new` is ignored. Prototype `anon-*` create is isolated to non-Production and still index-bound. |
+| **Context** | Audit found Start Claim used `anon-*` so server could not guarantee One Active Case after storage clear / new device. |
+| **Alternatives Considered** | (1) Keep client-only token guard; (2) Full Customer Account product; (3) Phone-mandatory login before claim. |
+| **Why This Decision** | Smallest durable identity that makes Rule 1 a backend invariant without building an account system. |
+| **Constitution Principle** | One Active Case |
+| **Date** | 2026-07-22 |
+| **Status** | Active |
+| **SSOT** | `docs/product/p0_one_active_case_identity_foundation.md` |
+
 ### D-015 — Founder QA Broker Workbench = QA document-intake
 
 | Field | Content |
@@ -220,7 +235,8 @@ Copy for every new decision:
 
 | ID | Decision | Principle | Status |
 |----|----------|-----------|--------|
-| D-001 | One Active Case | One Active Case | Active |
+| D-001 | One Active Case (server-enforced) | One Active Case | Active |
+| D-016 | Durable MP identity → Active Case | One Active Case | Active |
 | D-002 | Append-first, Split-later | Append-first, Split-later | Active |
 | D-003 | Today First | Today First | Active |
 | D-004 | Why (Loop 4.0) | Why | Active |
@@ -246,5 +262,6 @@ Copy for every new decision:
 | v1.4 | 2026-07-21 | D-010 Claim Vehicle Identity V1 freeze |
 | v1.5 | 2026-07-21 | D-011 Claim Vehicle vs Add Car naming freeze |
 | v1.6 | 2026-07-22 | D-015 Founder QA Broker Workbench = QA document-intake |
+| v1.7 | 2026-07-22 | D-016 Durable MP identity / One Active Case server enforcement |
 
 **Change rule:** New Active entries require Founder acknowledgment. Superseding an entry requires a new ID and an explicit Status update on the old entry.

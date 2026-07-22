@@ -1,5 +1,6 @@
 // P19M-1 — Unified Claim Mini Program Prototype
 import { appConfig } from "./utils/config";
+import { ensureCustomerSession } from "./services/sessionIdentityAdapter";
 import { qaPathLog, summarizeLaunchQuery } from "./utils/qaPathLog";
 
 type LaunchLike = {
@@ -51,8 +52,9 @@ App({
     prototypeMode: true,
   },
   onLaunch(options: LaunchLike) {
-    // Prototype: no production wx.login / openid binding
     logPreviewLaunch("app.onLaunch", options);
+    // Warm durable identity (wx.login → session). Never block launch on failure.
+    void ensureCustomerSession().catch(() => undefined);
   },
   onShow(options: LaunchLike) {
     logPreviewLaunch("app.onShow", options);
