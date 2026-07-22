@@ -1,8 +1,11 @@
 """
 Resolve QA Postgres URL for Chen Kui demo seed/reset/check scripts.
 
-QA source of truth (P18.11): GCP Cloud SQL `caseiq` on instance `caseiq-pilot-pg`,
-same secret as Cloud Run: fiqa-service-record-database-url-cloudsql-private.
+Cloud QA SSOT (P36): GCP Cloud SQL database `caseiq-qa` on instance `caseiq-pilot-pg`,
+same secret as Cloud Run `fiqa-api-qa`: fiqa-service-record-database-url-qa.
+
+Production database `caseiq` / secret fiqa-service-record-database-url-cloudsql-private
+must never be used for --qa seed/reset (would 404 on fiqa-api-qa intake).
 
 Laptop seeding uses the instance PRIMARY public IP when the secret host is VPC-private
 (authorized network must include operator IP — see gcloud sql instances describe).
@@ -23,10 +26,10 @@ from urllib.parse import urlparse, urlunparse
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DB_URL_KEYS = frozenset({"SERVICE_RECORD_DATABASE_URL", "DATABASE_URL", "QA_SERVICE_RECORD_DATABASE_URL"})
 
-QA_CLOUD_SQL_SECRET = "fiqa-service-record-database-url-cloudsql-private"
+QA_CLOUD_SQL_SECRET = "fiqa-service-record-database-url-qa"
 QA_CLOUD_SQL_INSTANCE = "caseiq-pilot-pg"
 LEGACY_NEON_SECRET = "fiqa-service-record-database-url"  # DELETED — versions disabled; Neon project removed 2026-07-11
-CLOUD_RUN_SERVICE = "fiqa-api"
+CLOUD_RUN_SERVICE = "fiqa-api-qa"
 CLOUD_RUN_REGION = "us-west1"
 
 Target = Literal["local", "qa", "legacy-neon"]
