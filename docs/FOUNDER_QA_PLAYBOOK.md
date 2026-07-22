@@ -6,6 +6,12 @@
 **Release-gate order:** `docs/product/p20_founder_qa_checklist.md`  
 **Production acceptance:** `docs/product/p24f_golden_production_qa_flow.md`
 
+## Golden Rule
+
+Founder tests the product.
+The system operates the QA infrastructure.
+Never expose engineering concepts to the Founder.
+
 ## 1. Purpose
 
 Founder QA is production infrastructure: a deterministic way to validate the
@@ -16,8 +22,9 @@ It is **not** another product flow. It is a shortcut into one freshly reset,
 already-active Camry case. The product remains the normal customer journey;
 Founder QA prepares that journey at a known state.
 
-**User-facing objective:** a founder can scan one new Preview QR and reach the
-active “上传保险卡” task for the current Golden Case.
+**User-facing objective:** a founder can scan one Preview QR for a Golden
+test run and complete sequential supported Broker Request More tasks in that
+same session without scanning again.
 
 **Out of scope:** production data, production deployment, production Mini
 Program upload, and using a QA token against any non-QA store.
@@ -95,6 +102,19 @@ Stop immediately unless all are true:
 Then: **清缓存 → 全部清除 → 重新编译 → generate a new Preview QR → scan once**.
 The QR must be generated after the token was prepared; do not reuse an old QR.
 
+### One scan vs new Request More (Phase 2)
+
+| Situation | Founder action | New QR? |
+|---|---|---|
+| Explicit **Launch Golden QA** / new test run | Reset → new token → new Preview → scan once | **Yes — exactly once for that run** |
+| Broker sends another supported Request More on the same Camry case | Keep the same Mini Program session; background then foreground/reopen the phone | **No** |
+| Token expired / invalid session | Launch Golden QA again, then one new QR | Yes — new run only |
+| Still on a waiting/receipt screen after Broker Request More | Foreground or return to Task Home / Receipt so page-show rehydrates current task | No |
+
+Do not regenerate Preview or scan again merely because Broker requested the next
+item. The persisted QA session token remains bound; the phone refreshes
+`GET /api/h5/tasks/{stored-token}/intake` on page show / foreground.
+
 ## 4. Three-Minute Debug Checklist
 
 Debug strictly top-to-bottom. Prove the first failed stage; never guess at a
@@ -170,15 +190,29 @@ host and database. See `docs/evidence/p36_t7_closeout_2026_07_21.md`.
 Expected visible sequence:
 
 ```text
-Entry shell → Task Home → “上传保险卡” request item → submit → receipt
+Entry shell → Task Home → “上传保险卡” → submit → receipt/waiting
+  → Broker Request More (车辆信息) on same case
+  → Founder foregrounds Mini Program (no new QR)
+  → same session shows “车辆信息” → submit → receipt
 ```
+
+#### Manual Founder PAT — Phase 2 one-scan sequential Request More
+
+1. `cd miniapp && npm run build:gate` then `bash scripts/launch_golden_qa.sh --qa`.
+2. Clear cache → full compile → generate Preview QR → **scan once**.
+3. Complete task 1: 上传保险卡 → submit → see waiting/receipt (shell must not be blank).
+4. On Broker Workbench, for the **same** Camry case, send supported Request More: 车辆信息 (do **not** Launch Golden QA again).
+5. On the phone: background the Mini Program, then foreground/reopen it (or return to Task Home / Receipt).
+6. Confirm task 2 appears without another QR scan; complete it; confirm Broker read-after-write.
+7. **FAIL** if a second QR was required, token/case IDs appear in UI, or any task surface is blank.
 
 Expected screenshots/evidence:
 
 - Task Home showing the active Camry case and one clear next action.
 - Request item showing “上传保险卡”.
 - Receipt after a real supported submission.
-- Broker authoritative view showing the same accepted outcome
+- After Broker Request More + foreground: second supported task (e.g. 车辆信息) on the same session.
+- Broker authoritative view showing the same accepted outcome for each item
   (read-after-write).
 
 Expected console evidence:
@@ -190,10 +224,14 @@ Expected console evidence:
 [QA_PATH] REQUEST_SUCCESS ... httpStatus: 200
 ```
 
+After foreground for task 2, another `REQUEST_SENT` / `REQUEST_SUCCESS` on the
+same `/api/h5/tasks/{token}/intake` path is expected — still no new QR.
+
 Expected HTTP evidence:
 
 - task bootstrap/intake: HTTP 200;
 - supported submission: HTTP 2xx;
+- second intake after Request More: HTTP 200 with the new current task;
 - no `case_not_found`, token error, domain error, or retry-induced duplicate.
 
 Record the date, masked token, case ID, environment/host, screenshots, safe
@@ -253,6 +291,9 @@ in place.
 3. Add a pipeline row, first-failure debug checks, safe logs, and automated
    reset/verification before giving it to a founder.
 4. Keep the Camry scenario unchanged and run it after the addition.
+
+Any future feature must automatically become testable through Founder QA. No
+feature may introduce additional Founder operations.
 
 Do not turn Golden QA into a scenario picker or a second product surface. New
 scenarios must be justified by a repeated Founder QA need and must not weaken

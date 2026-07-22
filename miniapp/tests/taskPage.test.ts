@@ -193,17 +193,101 @@ test("blocking failure exposes safe error state", async () => {
 
   const originalGetTask = CustomerTaskApi.getTask;
   CustomerTaskApi.getTask = async () => {
-    const err = new Error("invalid_or_expired_task_link") as Error & { code: string };
-    err.code = "invalid_or_expired_task_link";
-    throw err;
+    throw new ApiRequestError("case_not_found", 404);
   };
 
   const ctx = createContext(behavior);
   await behavior.methods.loadTask.call(ctx);
   const errorState = ctx.data.errorState as { code: string; blocking: boolean };
 
-  assert.equal(errorState.code, "network_error");
+  assert.equal(errorState.code, "case_not_found");
   assert.equal(errorState.blocking, true);
+
+  CustomerTaskApi.getTask = originalGetTask;
+});
+
+test("expired session clears resume binding and redirects to restart state", async () => {
+  const module = await import("../behaviors/taskPage");
+  const behavior = module.taskPage as TaskPageBehavior;
+  const { saveResumeToken, loadResumeToken, clearResumeToken } = await import("../utils/storage");
+  clearResumeToken();
+  saveResumeToken("h5t1.expired");
+
+  const redirects: string[] = [];
+  (globalThis as Record<string, any>).wx.redirectTo = ({ url }: { url: string }) => {
+    redirects.push(url);
+  };
+
+  const appState: Record<string, unknown> = {
+    taskToken: "h5t1.expired",
+    task: buildTask(),
+  };
+  installGetApp(appState);
+
+  const originalGetTask = CustomerTaskApi.getTask;
+  CustomerTaskApi.getTask = async () => {
+    throw new ApiRequestError("invalid_or_expired_task_link", 403);
+  };
+
+  const ctx = createContext(behavior);
+  const loaded = await behavior.methods.loadTask.call(ctx);
+
+  assert.equal(loaded, null);
+  assert.equal(loadResumeToken(), "");
+  assert.equal(appState.taskToken, "");
+  assert.equal(appState.task, undefined);
+  assert.equal(
+    (ctx.data.errorState as { code: string }).code,
+    "invalid_or_expired_task_link",
+  );
+  assert.match(
+    String((ctx.data.errorState as { message: string }).message),
+    /链接已失效/,
+  );
+  assert.deepEqual(redirects, ["/pages/error/error?code=invalid_or_expired_task_link"]);
+
+  CustomerTaskApi.getTask = originalGetTask;
+  clearResumeToken();
+});
+
+test("ensureTaskInitialized joins first show then rehydrates later shows", async () => {
+  const module = await import("../behaviors/taskPage");
+  const behavior = module.taskPage as TaskPageBehavior;
+  const appState: Record<string, unknown> = { taskToken: "h5t1.same-session" };
+  installGetApp(appState);
+
+  const tokensSeen: string[] = [];
+  let resolveFirst: ((value: CustomerTask) => void) | null = null;
+  const firstPromise = new Promise<CustomerTask>((resolve) => {
+    resolveFirst = resolve;
+  });
+  const secondTask = buildTask({ case_id: "case_after_request_more", title: "车辆信息" });
+
+  const originalGetTask = CustomerTaskApi.getTask;
+  let callCount = 0;
+  CustomerTaskApi.getTask = async (token: string) => {
+    tokensSeen.push(token);
+    callCount += 1;
+    if (callCount === 1) return firstPromise;
+    return secondTask;
+  };
+
+  const ctx = createContext(behavior);
+  // Simulate onLoad + concurrent first onShow (App+Page show pair).
+  const owner = behavior.methods.ensureTaskInitialized.call(ctx, { ownerLoad: true });
+  const firstShow = behavior.methods.ensureTaskInitialized.call(ctx);
+  resolveFirst?.(buildTask({ case_id: "case_seed", title: "上传保险卡" }));
+  const [ownerTask, showTask] = await Promise.all([owner, firstShow]);
+
+  assert.equal(callCount, 1, "first show must join in-flight owner load");
+  assert.equal(ownerTask?.case_id, "case_seed");
+  assert.equal(showTask?.case_id, "case_seed");
+  assert.deepEqual(tokensSeen, ["h5t1.same-session"]);
+
+  const later = await behavior.methods.ensureTaskInitialized.call(ctx);
+  assert.equal(callCount, 2, "later show must force rehydrate");
+  assert.equal(later?.case_id, "case_after_request_more");
+  assert.deepEqual(tokensSeen, ["h5t1.same-session", "h5t1.same-session"]);
 
   CustomerTaskApi.getTask = originalGetTask;
 });

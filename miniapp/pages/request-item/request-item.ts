@@ -17,6 +17,7 @@ import {
   saveRequestItemDraft,
   type RequestItemDraft,
 } from "../../utils/requestItemDraft";
+import { clearResumeToken } from "../../utils/storage";
 import {
   applySlice1ProjectionToTask,
   EMPTY_SLICE1_PROGRESS,
@@ -1053,6 +1054,14 @@ Page({
     } catch (error) {
       if (error instanceof ApiRequestError && (error.code === "invalid_or_expired_task_link" || error.status === 403)) {
         this.persistDraftSafe();
+        clearResumeToken();
+        try {
+          const app = getApp<IAppOption>();
+          app.taskToken = "";
+          app.task = undefined;
+        } catch {
+          // ignore
+        }
         wx.redirectTo({ url: "/pages/error/error?code=invalid_or_expired_task_link" });
         return;
       }

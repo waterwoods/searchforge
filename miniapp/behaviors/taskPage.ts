@@ -3,6 +3,7 @@ import type { CustomerTask, TaskErrorState, TaskViewModel } from "../types/task"
 import { resetApiHealthCache } from "../utils/apiHealth";
 import { qaPathLog } from "../utils/qaPathLog";
 import { ApiRequestError } from "../utils/request";
+import { clearResumeToken } from "../utils/storage";
 import { mapErrorMessage } from "../utils/taskMapping";
 import {
   resolveTaskViewModel,
@@ -258,6 +259,34 @@ export const taskPage = Behavior({
           }
           const code = error instanceof ApiRequestError ? error.code : "network_error";
           const app = getApp<IAppOption>();
+
+          // Expired/invalid session: clear local binding and show restart state.
+          // Do not invent a new token or QR — Founder must Launch Golden QA again.
+          if (code === "invalid_or_expired_task_link") {
+            clearResumeToken();
+            try {
+              app.taskToken = "";
+              app.task = undefined;
+            } catch {
+              // ignore
+            }
+            const expiredError = normalizeError(code, true);
+            this.safeSetData({
+              task: null,
+              errorState: expiredError,
+              ...taskViewModelDataPatch(
+                resolveTaskViewModel({} as CustomerTask, undefined, {
+                  route: (this as { route?: string }).route,
+                  busy: this.data.busy,
+                }, expiredError),
+              ),
+            });
+            wx.redirectTo({
+              url: "/pages/error/error?code=invalid_or_expired_task_link",
+            });
+            return null;
+          }
+
           const safeError = normalizeError(code);
           const cachedTask = app.task;
 
