@@ -1,9 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRequestDiagnostic, classifyWxRequestFail } from "../utils/requestErrors";
+import {
+  buildQaRuntimeDiagnostic,
+  buildRequestDiagnostic,
+  classifyWxRequestFail,
+} from "../utils/requestErrors";
 import { mapStartClaimError } from "../utils/startClaimLifecycle";
 import { mapErrorMessage } from "../utils/taskMapping";
+import { installMiniProgramGlobals } from "./miniprogramMocks";
+
+installMiniProgramGlobals();
 
 test("classifies domain / tls / timeout / generic transport failures", () => {
   assert.equal(
@@ -81,6 +88,27 @@ test("mapErrorMessage distinguishes real-device domain failures from opaque fall
 
   const dns = mapErrorMessage("dns_error");
   assert.match(dns, /解析|服务地址/);
+});
+
+test("QA runtime diagnostic exposes AppID/host without secrets", () => {
+  const diag = buildQaRuntimeDiagnostic({
+    apiProfile: "qa",
+    apiBaseUrl: "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app/",
+    errorCode: "domain_not_allowed",
+    errMsg: "request:fail url not in domain list",
+    path: "/health/live",
+  });
+  assert.equal(diag.appId, "wxa610932351416622");
+  assert.equal(diag.apiProfile, "qa");
+  assert.equal(diag.hostname, "fiqa-api-qa-g7zatxrycq-uw.a.run.app");
+  assert.equal(diag.protocol, "https");
+  assert.equal(
+    diag.requiredRequestLegalDomain,
+    "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
+  );
+  assert.equal(diag.errorCode, "domain_not_allowed");
+  assert.equal(String(JSON.stringify(diag)).includes("token"), false);
+  assert.equal(String(JSON.stringify(diag)).includes("VIN"), false);
 });
 
 test("request diagnostic omits secrets and keeps host/path/status", () => {

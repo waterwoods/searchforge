@@ -98,3 +98,50 @@ export function buildRequestDiagnostic(input: {
     idempotencyKey: input.idempotencyKey || "",
   };
 }
+
+/**
+ * QA-safe runtime identity for real-device Preview domain debugging.
+ * Never includes tokens, VIN, or PII.
+ */
+export function buildQaRuntimeDiagnostic(input: {
+  apiProfile: string;
+  apiBaseUrl: string;
+  errorCode?: string;
+  httpStatus?: number;
+  errMsg?: string;
+  path?: string;
+}): Record<string, string | number> {
+  const apiBaseUrl = String(input.apiBaseUrl || "").trim().replace(/\/+$/, "");
+  let hostname = "";
+  let protocol = "";
+  try {
+    const parsed = new URL(apiBaseUrl);
+    hostname = parsed.hostname;
+    protocol = parsed.protocol.replace(/:$/, "");
+  } catch {
+    hostname = "";
+    protocol = "";
+  }
+
+  let appId = "";
+  try {
+    const account = wx.getAccountInfoSync?.();
+    appId = String(account?.miniProgram?.appId || "").trim();
+  } catch {
+    appId = "";
+  }
+
+  return {
+    appId,
+    apiProfile: String(input.apiProfile || "").trim(),
+    apiBaseUrl,
+    hostname,
+    protocol,
+    // Exact string WeChat admin/API expects (with https://).
+    requiredRequestLegalDomain: hostname ? `https://${hostname}` : "",
+    errorCode: String(input.errorCode || "").trim(),
+    httpStatus: input.httpStatus ?? 0,
+    errMsg: String(input.errMsg || "").slice(0, 120),
+    path: String(input.path || "").trim(),
+  };
+}

@@ -40,6 +40,9 @@ export function installMiniProgramGlobals(): void {
     },
     request: () => undefined,
     uploadFile: () => undefined,
+    getAccountInfoSync: () => ({
+      miniProgram: { appId: "wxa610932351416622" },
+    }),
     setStorageSync: (key: string, value: unknown) => {
       memory.set(key, value);
     },

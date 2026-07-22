@@ -11,6 +11,7 @@ import {
 import { resetApiHealthCache } from "../../utils/apiHealth";
 import { DEFAULT_SAFETY_COPY, EMPTY_TASK_ERROR } from "../../utils/resolveTaskViewModel";
 import { ApiRequestError } from "../../utils/request";
+import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
 import { markResumeRestoredHint } from "../../utils/resumeHint";
 import { clearResumeToken } from "../../utils/storage";
 
@@ -172,16 +173,18 @@ Page({
         err instanceof ApiRequestError && err.detail && typeof err.detail === "object"
           ? (err.detail as { errMsg?: unknown; errno?: unknown })
           : null;
-      // QA-safe only: host + code/status — never token / PII.
-      devLog("[entry] task open failed", {
-        apiProfile: appConfig.apiProfile,
-        apiHost: appConfig.apiBaseUrl,
-        path: "/api/h5/tasks/{token}/intake",
-        errorCode: code,
-        httpStatus: status,
-        errMsg: String(detail?.errMsg || "").slice(0, 120),
-        errno: String(detail?.errno || ""),
-      });
+      // QA-safe only: AppID/host/code — never token / PII.
+      devLog(
+        "[entry] task open failed",
+        buildQaRuntimeDiagnostic({
+          apiProfile: appConfig.apiProfile,
+          apiBaseUrl: appConfig.apiBaseUrl,
+          path: "/health/live|/api/h5/tasks/{token}/intake",
+          errorCode: code,
+          httpStatus: status,
+          errMsg: String(detail?.errMsg || ""),
+        }),
+      );
       if (code === "invalid_or_expired_task_link") {
         clearResumeToken();
       }
