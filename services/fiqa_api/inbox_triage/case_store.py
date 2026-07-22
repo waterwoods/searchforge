@@ -656,6 +656,10 @@ def delete_case(case_id: str) -> bool:
     """
     Remove a case from JSON and/or Postgres according to persistence flags.
     Returns True if at least one backing store removed the row.
+
+    After a successful hard delete, also clears mp_customer_active_case bindings
+    that pointed at this case_id so Mini Program Continue cannot ghost-resume.
+    Binding cleanup runs only when the case row was removed (no partial success).
     """
     from services.fiqa_api.db.service_record_settings import (
         db_primary_writes_enabled,
@@ -679,6 +683,16 @@ def delete_case(case_id: str) -> bool:
 
         if delete_service_record(cid):
             removed = True
+    if removed:
+        try:
+            from services.fiqa_api.inbox_triage.mp_customer_identity import (
+                clear_active_case_bindings_for_case,
+            )
+
+            clear_active_case_bindings_for_case(cid)
+        except Exception:
+            # Case delete already succeeded — do not flip the API to failure.
+            logger.warning("active_case_binding_cleanup_failed case_id=%s", cid)
     return removed
 
 

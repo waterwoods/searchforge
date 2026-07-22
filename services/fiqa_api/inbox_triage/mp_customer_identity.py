@@ -128,6 +128,22 @@ def clear_active_case_binding(person_link_key: str) -> None:
     _persist_clear(key)
 
 
+def clear_active_case_bindings_for_case(case_id: str) -> int:
+    """Clear all person_link bindings that point at case_id (in-process + DB).
+
+    Used after hard-delete so Workbench delete cannot leave ghost Continue state.
+    Returns number of in-process index entries removed (DB delete is best-effort).
+    """
+    cid = (case_id or "").strip()[:128]
+    if not cid:
+        return 0
+    removed_keys = [key for key, bound in list(_ACTIVE_CASE_INDEX.items()) if bound == cid]
+    for key in removed_keys:
+        _ACTIVE_CASE_INDEX.pop(key, None)
+    _persist_clear_for_case(cid)
+    return len(removed_keys)
+
+
 def lookup_bound_case_id(person_link_key: str) -> str | None:
     key = (person_link_key or "").strip()[:80]
     if not key:
@@ -184,6 +200,29 @@ def _persist_clear(person_link_key: str) -> None:
             conn.commit()
     except Exception as exc:
         logger.warning("mp_customer_active_case persist clear failed: %s", type(exc).__name__)
+
+
+def _persist_clear_for_case(case_id: str) -> None:
+    try:
+        from services.fiqa_api.db.service_record_settings import service_record_database_url
+
+        if not service_record_database_url():
+            return
+        from services.fiqa_api.inbox_triage.session_repository import intake_session_connection
+
+        with intake_session_connection() as conn:
+            with conn.cursor() as cur:
+                _ensure_active_case_table(cur)
+                cur.execute(
+                    "DELETE FROM mp_customer_active_case WHERE case_id = %s",
+                    (case_id,),
+                )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(
+            "mp_customer_active_case persist clear-for-case failed: %s",
+            type(exc).__name__,
+        )
 
 
 def _persist_load(person_link_key: str) -> str | None:
@@ -252,19 +291,21 @@ def case_is_resumable_active(case: dict[str, Any] | None) -> bool:
 
 
 def resolve_active_case_for_person_link(person_link_key: str) -> dict[str, Any] | None:
-    """Return resumable Active Case dict, or None (clears stale bindings)."""
+    """Return resumable Active Case dict, or None (clears stale/missing bindings)."""
     key = (person_link_key or "").strip()
     case_id = lookup_bound_case_id(key)
     if not case_id:
         return None
     case = _load_case(case_id)
-    if case_is_resumable_active(case):
-        return case
-    clear_active_case_binding(key)
-    return None
+    if case is None or not case_is_resumable_active(case):
+        # Missing, hard-deleted, archived, or closed — never fabricate an active case.
+        clear_active_case_binding(key)
+        return None
+    return case
 
 
 def _load_case(case_id: str) -> dict[str, Any] | None:
+    """Load a real case row. Returns None when missing — never invents a fake active case."""
     cid = (case_id or "").strip()
     if not cid:
         return None
@@ -301,8 +342,7 @@ def _load_case(case_id: str) -> dict[str, Any] | None:
                 return row
     except Exception:
         pass
-    # Binding exists but case row not readable yet — keep resume optimistic.
-    return {"case_id": cid, "case_status": "new", "admin_lifecycle": "active"}
+    return None
 
 
 def issue_resume_for_case(case_id: str) -> dict[str, str]:

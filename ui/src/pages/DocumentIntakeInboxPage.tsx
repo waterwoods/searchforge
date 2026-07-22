@@ -2,7 +2,7 @@
  * P16 Document Intake — broker office review queue for wizard-submitted cases.
  * Chen Kui Insurance Office / CKS Insurance Agency
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   Alert,
   Button,
@@ -66,11 +66,76 @@ import {
   logCaseDetailLoaded,
   type WorkbenchPerfSession,
 } from '@/features/intake/utils/workbenchPerfLog';
+import { fullCaseId, shortCaseId } from '@/features/intake/utils/caseIdDisplay';
 import { copyToClipboard } from '@/utils/demoCopy';
 
 const { Title, Text, Paragraph } = Typography;
 
 const OFFICE_NAME = 'Chen Kui Insurance Office';
+
+/** Compact Founder QA Case ID line — short in tables, full + copy in detail. */
+function CaseIdMeta({
+  caseId,
+  mode,
+}: {
+  caseId: string;
+  mode: 'row' | 'detail';
+}) {
+  const full = fullCaseId(caseId);
+  if (!full) return null;
+  const short = shortCaseId(full);
+  const onCopy = async (e?: MouseEvent) => {
+    e?.stopPropagation?.();
+    const ok = await copyToClipboard(full);
+    message.success(ok ? 'Case ID copied' : 'Copy failed');
+  };
+  if (mode === 'row') {
+    return (
+      <Space size={2}>
+        <Text
+          type="secondary"
+          style={{ fontSize: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+          title={full}
+        >
+          {short}
+        </Text>
+        <Button
+          type="text"
+          size="small"
+          icon={<CopyOutlined />}
+          onClick={(e) => void onCopy(e)}
+          title={`Copy ${full}`}
+          aria-label={`Copy Case ID ${full}`}
+          style={{ width: 22, height: 22, padding: 0 }}
+        />
+      </Space>
+    );
+  }
+  return (
+    <Space size={6} style={{ marginBottom: 12 }} wrap>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        Case ID
+      </Text>
+      <Text
+        code
+        copyable={false}
+        style={{ fontSize: 12 }}
+        title={full}
+      >
+        {full}
+      </Text>
+      <Button
+        type="link"
+        size="small"
+        icon={<CopyOutlined />}
+        onClick={() => void onCopy()}
+        style={{ padding: 0, height: 'auto' }}
+      >
+        Copy
+      </Button>
+    </Space>
+  );
+}
 
 export type P16BrokerPacket = {
   request_type?: string;
@@ -480,6 +545,7 @@ function BrokerCaseDetail({
   if (!hasFullPacket) {
     return (
       <div>
+        <CaseIdMeta caseId={caseItem.case_id} mode="detail" />
         {!isP20Intake ? (
           <>
             <Space style={{ marginBottom: 12 }} wrap>
@@ -605,6 +671,7 @@ function BrokerCaseDetail({
 
   return (
     <div>
+      <CaseIdMeta caseId={caseItem.case_id} mode="detail" />
       {!isP20Intake ? (
         <>
           <Space style={{ marginBottom: 12 }} wrap>
@@ -978,6 +1045,13 @@ export default function DocumentIntakeInboxPage() {
           ) : null}
         </Space>
       ),
+    },
+    {
+      title: 'Case ID',
+      dataIndex: 'case_id',
+      key: 'case_id',
+      width: 110,
+      render: (id: string) => <CaseIdMeta caseId={id} mode="row" />,
     },
     {
       title: 'Lane',

@@ -11,10 +11,12 @@ from services.fiqa_api.inbox_triage.mp_customer_identity import (
     bind_active_case,
     broker_entry_source_for_case,
     case_is_resumable_active,
+    clear_active_case_bindings_for_case,
     establish_mp_customer_session,
     lookup_bound_case_id,
     person_link_from_session_id,
     reset_mp_active_case_index_for_tests,
+    resolve_active_case_for_person_link,
     session_id_for_person_link,
 )
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
@@ -169,3 +171,79 @@ def test_session_with_active_case_returns_resume(monkeypatch):
 def test_closed_case_not_resumable():
     assert case_is_resumable_active({"case_id": "x", "case_status": "closed"}) is False
     assert case_is_resumable_active({"case_id": "x", "case_status": "new", "admin_lifecycle": "active"}) is True
+
+
+def test_missing_bound_case_self_heals_and_clears_binding(monkeypatch):
+    link = opaque_person_link_key("ghost-openid")
+    bind_active_case(link, "case_deleted_ghost_01")
+    assert lookup_bound_case_id(link) == "case_deleted_ghost_01"
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.mp_customer_identity._load_case",
+        lambda case_id: None,
+    )
+    assert resolve_active_case_for_person_link(link) is None
+    assert lookup_bound_case_id(link) is None
+
+
+def test_customer_session_missing_bound_case_has_no_resume(monkeypatch):
+    monkeypatch.setenv("WECHAT_MP_ALLOW_SIMULATE", "1")
+    link = opaque_person_link_key("session-ghost-openid")
+    bind_active_case(link, "case_missing_for_session")
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.mp_customer_identity._load_case",
+        lambda case_id: None,
+    )
+    import asyncio
+
+    body = asyncio.run(establish_mp_customer_session("sim:session-ghost-openid"))
+    assert body["ok"] is True
+    assert body["has_active_case"] is False
+    assert "resume_token" not in body
+    assert lookup_bound_case_id(link) is None
+
+
+def test_clear_bindings_for_case_removes_index_entry():
+    a = opaque_person_link_key("clear-a")
+    b = opaque_person_link_key("clear-b")
+    bind_active_case(a, "case_shared_delete")
+    bind_active_case(b, "case_other_keep")
+    cleared = clear_active_case_bindings_for_case("case_shared_delete")
+    assert cleared == 1
+    assert lookup_bound_case_id(a) is None
+    assert lookup_bound_case_id(b) == "case_other_keep"
+
+
+def test_delete_case_clears_active_case_binding(monkeypatch):
+    from services.fiqa_api.db import service_record_settings as settings
+    from services.fiqa_api.inbox_triage import case_store as cs
+
+    link = opaque_person_link_key("delete-bind-openid")
+    cid = "case_delete_clears_bind"
+    bind_active_case(link, cid)
+    assert lookup_bound_case_id(link) == cid
+
+    monkeypatch.setattr(settings, "json_case_writes_enabled", lambda: True)
+    monkeypatch.setattr(settings, "db_primary_writes_enabled", lambda: False)
+    monkeypatch.setattr(cs, "_read_payload", lambda: {"cases": [{"case_id": cid}]})
+    writes: list[dict] = []
+    monkeypatch.setattr(cs, "_write_payload", lambda payload: writes.append(payload))
+
+    assert cs.delete_case(cid) is True
+    assert writes and writes[0]["cases"] == []
+    assert lookup_bound_case_id(link) is None
+
+
+def test_delete_case_failure_does_not_clear_binding(monkeypatch):
+    from services.fiqa_api.db import service_record_settings as settings
+    from services.fiqa_api.inbox_triage import case_store as cs
+
+    link = opaque_person_link_key("delete-fail-openid")
+    cid = "case_delete_fail_keep"
+    bind_active_case(link, cid)
+    monkeypatch.setattr(settings, "json_case_writes_enabled", lambda: True)
+    monkeypatch.setattr(settings, "db_primary_writes_enabled", lambda: False)
+    monkeypatch.setattr(cs, "_read_payload", lambda: {"cases": [{"case_id": "other"}]})
+    monkeypatch.setattr(cs, "_write_payload", lambda payload: None)
+
+    assert cs.delete_case(cid) is False
+    assert lookup_bound_case_id(link) == cid

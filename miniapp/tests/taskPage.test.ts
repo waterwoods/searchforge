@@ -141,7 +141,8 @@ test("blocking error then retry keeps shell bindings as strings", async () => {
   CustomerTaskApi.getTask = async () => {
     calls += 1;
     if (calls === 1) {
-      throw new ApiRequestError("case_not_found", "任务不存在");
+      // Non-recoverable-but-stay-on-page code (case_not_found now relaunches clean home).
+      throw new ApiRequestError("lane_mismatch", "任务不存在");
     }
     return task;
   };
@@ -185,10 +186,22 @@ test("retryable failure uses cached task fallback", async () => {
   CustomerTaskApi.getTask = originalGetTask;
 });
 
-test("blocking failure exposes safe error state", async () => {
+test("case_not_found clears resume and relaunches clean Start Claim", async () => {
   const module = await import("../behaviors/taskPage");
   const behavior = module.taskPage as TaskPageBehavior;
-  const appState: Record<string, unknown> = { taskToken: "h5t1.valid" };
+  const { saveResumeToken, loadResumeToken, clearResumeToken } = await import("../utils/storage");
+  clearResumeToken();
+  saveResumeToken("h5t1.missing-case");
+
+  const relaunches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    relaunches.push(url);
+  };
+
+  const appState: Record<string, unknown> = {
+    taskToken: "h5t1.missing-case",
+    task: buildTask({ submitted: true }),
+  };
   installGetApp(appState);
 
   const originalGetTask = CustomerTaskApi.getTask;
@@ -197,13 +210,17 @@ test("blocking failure exposes safe error state", async () => {
   };
 
   const ctx = createContext(behavior);
-  await behavior.methods.loadTask.call(ctx);
-  const errorState = ctx.data.errorState as { code: string; blocking: boolean };
+  const loaded = await behavior.methods.loadTask.call(ctx);
 
-  assert.equal(errorState.code, "case_not_found");
-  assert.equal(errorState.blocking, true);
+  assert.equal(loaded, null);
+  assert.equal(loadResumeToken(), "");
+  assert.equal(appState.taskToken, "");
+  assert.equal(appState.task, undefined);
+  assert.equal(ctx.data.task, null);
+  assert.deepEqual(relaunches, ["/pages/start-claim/start-claim"]);
 
   CustomerTaskApi.getTask = originalGetTask;
+  clearResumeToken();
 });
 
 test("expired session clears resume binding and redirects to restart state", async () => {

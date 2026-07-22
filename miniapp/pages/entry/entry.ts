@@ -16,10 +16,14 @@ import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { markResumeRestoredHint } from "../../utils/resumeHint";
 import { clearResumeToken } from "../../utils/storage";
 
+/** Clean recovery surface when the bound case is gone (no Service Home dependency). */
+const CLEAN_HOME_ROUTE = "/pages/start-claim/start-claim";
+
 const ENTRY_RETRY_COOLDOWN_MS = 2000;
 const NON_RETRYABLE_CODES = new Set([
   "token_missing",
   "invalid_or_expired_task_link",
+  "case_not_found",
   "domain_not_allowed",
   "tls_error",
 ]);
@@ -245,8 +249,33 @@ Page({
           errMsg: String(detail?.errMsg || ""),
         }),
       );
-      if (code === "invalid_or_expired_task_link") {
+      if (code === "invalid_or_expired_task_link" || code === "case_not_found") {
         clearResumeToken();
+        try {
+          const app = getApp<IAppOption>();
+          app.taskToken = "";
+          app.task = undefined;
+        } catch {
+          // ignore
+        }
+      }
+      // Missing/deleted case: recover to a clean Start Claim (no ghost Continue / Receipt).
+      if (code === "case_not_found") {
+        this.setBusy("navigating", true);
+        this.setBusy("loading", false);
+        wx.reLaunch({
+          url: CLEAN_HOME_ROUTE,
+          fail: () => {
+            wx.redirectTo({
+              url: CLEAN_HOME_ROUTE,
+              fail: () => {
+                this.setData({ errorState: entryErrorState(code) });
+                this.setBusy("navigating", false);
+              },
+            });
+          },
+        });
+        return;
       }
       this.setData({
         errorState: entryErrorState(code),

@@ -222,6 +222,52 @@ test("network failure keeps retryable error and clears loading", async () => {
   assert.equal(ctx.data.busy.loading, false);
 });
 
+
+test("case_not_found clears resume and relaunches clean Start Claim", async () => {
+  const page = await loadEntryPage();
+  const { saveResumeToken, loadResumeToken, clearResumeToken } = await import(
+    "../utils/storage"
+  );
+  clearResumeToken();
+  saveResumeToken("h5t1.ghost-submitted");
+
+  const relaunches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    relaunches.push(url);
+  };
+  const appState: Record<string, unknown> = {
+    taskToken: "h5t1.ghost-submitted",
+    task: buildTask({ submitted: true }),
+  };
+  (globalThis as Record<string, unknown>).getApp = () => appState;
+
+  const ctx = createPageContext(page, {
+    data: {
+      ...page.data,
+      busy: idleBusy(),
+      launchSource: "",
+      errorState: { code: "", message: "", retryable: false, blocking: false },
+      retryMeta: { attempts: 0, cooldownUntil: 0 },
+    },
+    resolveLaunchContext: () => ({
+      token: "h5t1.ghost-submitted",
+      source: "resume_storage",
+    }),
+    persistLaunch: () => undefined,
+    fetchTask: async () => {
+      throw new ApiRequestError("case_not_found", 404);
+    },
+  });
+
+  await page.bootstrap.call(ctx, {});
+  assert.equal(loadResumeToken(), "");
+  assert.equal(appState.taskToken, "");
+  assert.equal(appState.task, undefined);
+  assert.deepEqual(relaunches, ["/pages/start-claim/start-claim"]);
+  assert.equal(ctx.data.busy.loading, false);
+  clearResumeToken();
+});
+
 test("domain_not_allowed is non-retryable and not the opaque fallback", async () => {
   const page = await loadEntryPage();
   const ctx = createPageContext(page, {

@@ -4,6 +4,8 @@ import { resetApiHealthCache } from "../utils/apiHealth";
 import { qaPathLog } from "../utils/qaPathLog";
 import { ApiRequestError } from "../utils/request";
 import { clearResumeToken } from "../utils/storage";
+
+const CLEAN_HOME_ROUTE = "/pages/start-claim/start-claim";
 import { mapErrorMessage } from "../utils/taskMapping";
 import {
   resolveTaskViewModel,
@@ -283,6 +285,29 @@ export const taskPage = Behavior({
             });
             wx.redirectTo({
               url: "/pages/error/error?code=invalid_or_expired_task_link",
+            });
+            return null;
+          }
+
+          // Hard-deleted / missing case: clear resume and recover to clean Start Claim.
+          if (code === "case_not_found") {
+            clearResumeToken();
+            try {
+              app.taskToken = "";
+              app.task = undefined;
+            } catch {
+              // ignore
+            }
+            this.safeSetData({
+              task: null,
+              errorState: EMPTY_TASK_ERROR,
+              ...taskViewModelDataPatch(EMPTY_TASK_VIEW_MODEL),
+            });
+            wx.reLaunch({
+              url: CLEAN_HOME_ROUTE,
+              fail: () => {
+                wx.redirectTo({ url: CLEAN_HOME_ROUTE });
+              },
             });
             return null;
           }
