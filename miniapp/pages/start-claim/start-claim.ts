@@ -84,10 +84,12 @@ Page({
       // P26D: capsule Home opens pages[0] (Start Claim). Active case → Task Home.
       if (redirectStartClaimIfActiveCase(wx)) {
         qaPathLog("EARLY_EXIT", {
-          page: "pages/start-claim/start-claim",
           reason: "active_case_redirect_entry",
           why: "resume_token_present_in_storage",
-          next: ENTRY_ROUTE,
+          page: "pages/start-claim/start-claim",
+          launchPath: "pages/start-claim/start-claim",
+          hasToken: q.hasToken,
+          queryKeys: q.queryKeys,
         });
         this.setData({
           ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
@@ -99,7 +101,6 @@ Page({
       qaPathLog("BOOTSTRAP", {
         page: "pages/start-claim/start-claim",
         phase: "form_init_no_api",
-        why: "no_token_needed_until_submit",
       });
       resetStartClaimDraftState();
       this._submitState = createStartClaimSubmitState();
@@ -117,11 +118,23 @@ Page({
         errorMessage: "",
         errorRetryable: false,
       });
+      // Path verification: Start Claim open never reaches REQUEST_SENT.
+      qaPathLog("EARLY_EXIT", {
+        reason: "start_claim_no_request_until_submit",
+        why: "pages0_or_compile_mode_opens_form_only_no_backend_call",
+        page: "pages/start-claim/start-claim",
+        launchPath: "pages/start-claim/start-claim",
+        hasToken: q.hasToken,
+        queryKeys: q.queryKeys,
+      });
     } catch {
       qaPathLog("EARLY_EXIT", {
-        page: "start-claim",
         reason: "onload_throw_before_any_request",
-        errorCode: "init_failed",
+        why: "bootstrap_exception",
+        page: "pages/start-claim/start-claim",
+        launchPath: "pages/start-claim/start-claim",
+        hasToken: false,
+        queryKeys: "(none)",
       });
       this.setData({
         pageReady: true,

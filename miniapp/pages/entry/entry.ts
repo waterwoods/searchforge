@@ -155,15 +155,15 @@ Page({
 
     const ctx = this.resolveLaunchContext(options);
     if (!ctx) {
+      const q = summarizeLaunchQuery(options || {});
       // First abort on Entry Preview with empty compile query: no API involved.
       qaPathLog("EARLY_EXIT", {
-        page: "pages/entry/entry",
         reason: "token_missing_redirect_start_claim",
         why: "no_launch_query_token_and_no_devTaskToken_and_no_resume_storage",
-        hasLaunchQueryToken: resolution.launchQuery,
-        hasDevTaskToken: resolution.devTaskToken,
-        hasResumeToken: resolution.resumeToken,
-        next: "/pages/start-claim/start-claim",
+        page: "pages/entry/entry",
+        launchPath: "pages/entry/entry",
+        hasToken: q.hasToken,
+        queryKeys: q.queryKeys,
       });
       this.setBusy("navigating", true);
       wx.redirectTo({
