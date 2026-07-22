@@ -12,6 +12,7 @@ import { resetApiHealthCache } from "../../utils/apiHealth";
 import { DEFAULT_SAFETY_COPY, EMPTY_TASK_ERROR } from "../../utils/resolveTaskViewModel";
 import { ApiRequestError } from "../../utils/request";
 import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
+import { qaPathLog } from "../../utils/qaPathLog";
 import { markResumeRestoredHint } from "../../utils/resumeHint";
 import { clearResumeToken } from "../../utils/storage";
 
@@ -81,6 +82,14 @@ Page({
   } as PageData,
 
   onLoad(options: Record<string, string | undefined>) {
+    const keys = Object.keys(options || {}).sort().join(",");
+    qaPathLog("ENTRY", {
+      page: "entry",
+      optionKeys: keys || "(none)",
+      hasTokenQuery: Boolean(String(options?.token || "").trim()),
+      apiProfile: appConfig.apiProfile,
+      host: String(appConfig.apiBaseUrl || "").replace(/^https?:\/\//, "").replace(/\/$/, ""),
+    });
     void this.bootstrap(options);
   },
 
@@ -97,13 +106,30 @@ Page({
   },
 
   async bootstrap(options: Record<string, string | undefined>) {
+    qaPathLog("BOOTSTRAP", {
+      page: "entry",
+      busyLoading: this.isBusy("loading"),
+      launchSource: String(this.data.launchSource || ""),
+      hasErrorMessage: Boolean(this.data.errorState?.message),
+    });
+
     if (this.isBusy("loading") && this.data.launchSource) {
       // Ignore overlapping bootstrap while already opening.
+      qaPathLog("EARLY_EXIT", {
+        page: "entry",
+        reason: "overlapping_bootstrap",
+        launchSource: String(this.data.launchSource || ""),
+      });
       return;
     }
 
     const now = Date.now();
     if (now < this.data.retryMeta.cooldownUntil && this.data.errorState.message) {
+      qaPathLog("EARLY_EXIT", {
+        page: "entry",
+        reason: "retry_cooldown",
+        errorCode: String(this.data.errorState?.code || ""),
+      });
       wx.showToast({ title: "请稍候再试", icon: "none" });
       return;
     }
@@ -117,12 +143,32 @@ Page({
       },
     });
 
+    const resolution = taskLaunchContext.inspectLaunchTokenSources(options);
+    qaPathLog("BOOTSTRAP", {
+      page: "entry",
+      phase: "token_resolve",
+      tokenSource: resolution.source,
+      launchQuery: resolution.launchQuery,
+      devTaskToken: resolution.devTaskToken,
+      resumeToken: resolution.resumeToken,
+    });
+
     const ctx = this.resolveLaunchContext(options);
     if (!ctx) {
+      qaPathLog("EARLY_EXIT", {
+        page: "entry",
+        reason: "token_missing_redirect_start_claim",
+        next: "/pages/start-claim/start-claim",
+      });
       this.setBusy("navigating", true);
       wx.redirectTo({
         url: "/pages/start-claim/start-claim",
         fail: () => {
+          qaPathLog("EARLY_EXIT", {
+            page: "entry",
+            reason: "token_missing_and_redirect_failed",
+            errorCode: "token_missing",
+          });
           this.setData({
             launchSource: "",
             loadingMessage: "正在打开您的资料…",
@@ -141,6 +187,11 @@ Page({
     });
 
     try {
+      qaPathLog("BOOTSTRAP", {
+        page: "entry",
+        phase: "fetch_task",
+        tokenSource: ctx.source,
+      });
       const task = await this.fetchTask(ctx.token);
       this.persistLaunch(ctx);
       const app = getApp<IAppOption>();

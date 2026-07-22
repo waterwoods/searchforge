@@ -1,6 +1,7 @@
 import { CustomerTaskApi } from "../services/taskApi";
 import type { CustomerTask, TaskErrorState, TaskViewModel } from "../types/task";
 import { resetApiHealthCache } from "../utils/apiHealth";
+import { qaPathLog } from "../utils/qaPathLog";
 import { ApiRequestError } from "../utils/request";
 import { mapErrorMessage } from "../utils/taskMapping";
 import {
@@ -163,6 +164,11 @@ export const taskPage = Behavior({
       const app = getApp<IAppOption>();
       const token = String(app.taskToken || "").trim();
       if (!token) {
+        qaPathLog("EARLY_EXIT", {
+          page: String((this as { route?: string }).route || "taskPage"),
+          reason: "requireToken_missing_redirect_entry",
+          next: "/pages/entry/entry",
+        });
         wx.redirectTo({ url: "/pages/entry/entry" });
         return null;
       }

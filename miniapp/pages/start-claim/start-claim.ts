@@ -32,6 +32,7 @@ import {
   redirectStartClaimIfActiveCase,
   resetStartClaimDraftState,
 } from "../../utils/startClaimEntry";
+import { qaPathLog } from "../../utils/qaPathLog";
 import { saveResumeToken } from "../../utils/storage";
 
 type PageData = {
@@ -71,9 +72,19 @@ Page({
   } as PageData,
 
   onLoad() {
+    qaPathLog("ENTRY", {
+      page: "start-claim",
+      apiProfile: appConfig.apiProfile,
+      host: String(appConfig.apiBaseUrl || "").replace(/^https?:\/\//, "").replace(/\/$/, ""),
+    });
     try {
       // P26D: capsule Home opens pages[0] (Start Claim). Active case → Task Home.
       if (redirectStartClaimIfActiveCase(wx)) {
+        qaPathLog("EARLY_EXIT", {
+          page: "start-claim",
+          reason: "active_case_redirect_entry",
+          next: ENTRY_ROUTE,
+        });
         this.setData({
           ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
           pageReady: true,
@@ -81,6 +92,11 @@ Page({
         });
         return;
       }
+      qaPathLog("BOOTSTRAP", {
+        page: "start-claim",
+        phase: "form_init_no_api",
+        note: "start_claim_does_not_call_api_until_submit",
+      });
       resetStartClaimDraftState();
       this._submitState = createStartClaimSubmitState();
       this._form = createEmptyCanonicalForm();
@@ -98,6 +114,11 @@ Page({
         errorRetryable: false,
       });
     } catch {
+      qaPathLog("EARLY_EXIT", {
+        page: "start-claim",
+        reason: "onload_throw_before_any_request",
+        errorCode: "init_failed",
+      });
       this.setData({
         pageReady: true,
         initErrorMessage: "页面初始化失败，请重试或联系陈总。",

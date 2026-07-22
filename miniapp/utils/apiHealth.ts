@@ -1,4 +1,5 @@
 import { appConfig } from "./config";
+import { qaPathLog } from "./qaPathLog";
 import { ClassifiedTransportError, classifyWxRequestFail } from "./requestErrors";
 
 type HealthCache = {
@@ -36,30 +37,69 @@ export function ensureApiReachable(): Promise<void> {
   if (cache) {
     const ttl = cache.ok ? OK_TTL_MS : FAIL_TTL_MS;
     if (now - cache.checkedAt < ttl) {
-      return cache.ok
-        ? Promise.resolve()
-        : Promise.reject(new BackendUnreachableError());
+      if (cache.ok) {
+        qaPathLog("REQUEST_START", {
+          kind: "health_cache_hit_ok",
+          path: "/health/live",
+        });
+        return Promise.resolve();
+      }
+      qaPathLog("EARLY_EXIT", {
+        reason: "health_cache_hit_fail",
+        path: "/health/live",
+        errorCode: "backend_unreachable",
+      });
+      return Promise.reject(new BackendUnreachableError());
     }
   }
 
+  const url = `${baseUrl()}/health/live`;
+  qaPathLog("REQUEST_START", {
+    kind: "health_probe",
+    path: "/health/live",
+    host: baseUrl(),
+  });
+
   return new Promise((resolve, reject) => {
+    qaPathLog("REQUEST_SENT", {
+      kind: "health_probe",
+      path: "/health/live",
+      method: "GET",
+    });
     wx.request({
-      url: `${baseUrl()}/health/live`,
+      url,
       method: "GET",
       timeout: 5000,
       success(res) {
         const status = res.statusCode || 0;
         if (status >= 200 && status < 300) {
           cache = { ok: true, checkedAt: Date.now() };
+          qaPathLog("REQUEST_SUCCESS", {
+            kind: "health_probe",
+            path: "/health/live",
+            httpStatus: status,
+          });
           resolve();
           return;
         }
         cache = { ok: false, checkedAt: Date.now() };
+        qaPathLog("REQUEST_FAIL", {
+          kind: "health_probe",
+          path: "/health/live",
+          httpStatus: status,
+          errorCode: "backend_unreachable",
+        });
         reject(new BackendUnreachableError());
       },
       fail(err) {
         cache = { ok: false, checkedAt: Date.now() };
         const classified = classifyWxRequestFail(err);
+        qaPathLog("REQUEST_FAIL", {
+          kind: "health_probe",
+          path: "/health/live",
+          errorCode: classified.code,
+          errMsg: classified.errMsg.slice(0, 120),
+        });
         if (
           classified.code === "domain_not_allowed"
           || classified.code === "tls_error"

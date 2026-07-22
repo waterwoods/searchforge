@@ -1,5 +1,6 @@
 import { appConfig } from "./config";
 import { BackendUnreachableError, ensureApiReachable } from "./apiHealth";
+import { qaPathLog } from "./qaPathLog";
 import { ClassifiedTransportError, classifyWxRequestFail } from "./requestErrors";
 
 export type RequestErrorCode =
@@ -97,10 +98,23 @@ export function requestJson<T>(
   body?: unknown,
   extraHeaders?: Record<string, string>,
 ): Promise<T> {
+  // Redact token segments in logged path only.
+  const safePath = path.replace(/\/tasks\/[^/]+/g, "/tasks/{token}");
+  qaPathLog("REQUEST_START", {
+    kind: "json",
+    method,
+    path: safePath,
+    host: baseUrl(),
+  });
   return ensureApiReachable()
     .then(
       () =>
         new Promise<T>((resolve, reject) => {
+          qaPathLog("REQUEST_SENT", {
+            kind: "json",
+            method,
+            path: safePath,
+          });
           wx.request({
             url: `${baseUrl()}${path}`,
             method,
@@ -113,13 +127,33 @@ export function requestJson<T>(
             success(res) {
               const status = res.statusCode || 0;
               if (status >= 200 && status < 300) {
+                qaPathLog("REQUEST_SUCCESS", {
+                  kind: "json",
+                  method,
+                  path: safePath,
+                  httpStatus: status,
+                });
                 resolve(res.data as T);
                 return;
               }
+              qaPathLog("REQUEST_FAIL", {
+                kind: "json",
+                method,
+                path: safePath,
+                httpStatus: status,
+                errorCode: parseDetail(res.data, status),
+              });
               reject(new ApiRequestError(parseDetail(res.data, status), status, extractDetail(res.data)));
             },
             fail(err) {
               const classified = classifyWxRequestFail(err);
+              qaPathLog("REQUEST_FAIL", {
+                kind: "json",
+                method,
+                path: safePath,
+                errorCode: classified.code,
+                errMsg: classified.errMsg.slice(0, 120),
+              });
               reject(
                 new ApiRequestError(classified.code, 0, {
                   errMsg: classified.errMsg,
@@ -131,6 +165,22 @@ export function requestJson<T>(
         }),
     )
     .catch((err) => {
+      const code =
+        err instanceof ClassifiedTransportError
+          ? err.code
+          : err instanceof BackendUnreachableError
+            ? "backend_unreachable"
+            : err instanceof ApiRequestError
+              ? err.code
+              : "network_error";
+      if (code) {
+        qaPathLog("REQUEST_FAIL", {
+          kind: "json_preflight_or_wrap",
+          method,
+          path: safePath,
+          errorCode: String(code),
+        });
+      }
       return new Promise<T>((_, reject) => rejectRequestError(reject, err));
     });
 }

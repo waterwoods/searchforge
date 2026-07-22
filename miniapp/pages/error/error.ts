@@ -3,6 +3,7 @@ import {
   contactBrokerModalCopy,
   mapErrorMessage,
 } from "../../utils/taskMapping";
+import { qaPathLog } from "../../utils/qaPathLog";
 import { DEFAULT_SAFETY_COPY, EMPTY_TASK_ERROR } from "../../utils/resolveTaskViewModel";
 
 const NON_RETRYABLE_CODES = new Set([
@@ -48,6 +49,12 @@ Page({
 
   onLoad(options: Record<string, string | undefined>) {
     const code = String(options.code || "unknown").trim() || "unknown";
+    qaPathLog("EARLY_EXIT", {
+      page: "error",
+      reason: "landed_on_error_page",
+      errorCode: code,
+      note: "no_api_call_on_this_page",
+    });
     const retryable = !NON_RETRYABLE_CODES.has(code);
     this.setData({
       title: "暂时无法继续",
