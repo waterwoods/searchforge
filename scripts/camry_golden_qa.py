@@ -212,10 +212,37 @@ def _brief_and_evidence() -> tuple[dict[str, Any], dict[str, Any]]:
         "brief_version": 1,
     }
     evidence = {
-        "received_slots": ["scene_photo"],
+        "received_slots": ["scene_photo", "customer_damage_photo"],
         "missing_required_slots": [],
     }
     return brief, evidence
+
+
+def _golden_photo_slots() -> dict[str, Any]:
+    """Durable photo completion for DB-primary + workbench enrich rebuild.
+
+    claim_evidence_summary alone is not enough on QA: Cloud SQL previously dropped
+    it from the extra bag, and case-detail enrich rebuilds evidence from slots.
+    Explicit received slots (already in PG extra) keep customer.why on the Camry
+    oracle copy after enrich.
+    """
+    ts = _utc_now_iso()
+    return {
+        "scene_photo": {
+            "status": "received",
+            "source_channel": "h5_task",
+            "attachment_ids": ["att_golden_scene"],
+            "latest_attachment_id": "att_golden_scene",
+            "updated_at": ts,
+        },
+        "customer_damage_photo": {
+            "status": "received",
+            "source_channel": "h5_task",
+            "attachment_ids": ["att_golden_damage"],
+            "latest_attachment_id": "att_golden_damage",
+            "updated_at": ts,
+        },
+    }
 
 
 def _finalize_case_flags(case_id: str) -> dict[str, Any]:
@@ -241,6 +268,7 @@ def _finalize_case_flags(case_id: str) -> dict[str, Any]:
     case["p20_slice1_capability_version"] = SLICE1_CAPABILITY_VERSION
     case["claim_case_brief"] = brief
     case["claim_evidence_summary"] = evidence
+    case["claim_attachment_slots"] = _golden_photo_slots()
     case["updated_at"] = _utc_now_iso()
     if not _persist_case_after_update(case_id, case):
         raise RuntimeError(f"failed_to_persist_golden_flags:{case_id}")

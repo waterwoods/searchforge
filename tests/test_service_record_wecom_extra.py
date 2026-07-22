@@ -76,6 +76,39 @@ def test_hydrate_extra_restores_claim_attachment_slots():
     assert case["claim_attachment_slots"]["other_party_vehicle_photo"]["status"] == "skipped"
 
 
+def test_build_extra_includes_claim_brief_and_evidence_summary():
+    case = {
+        "claim_case_brief": {
+            "summary": "客户已提交事故经过和现场照片。",
+            "missing_info": ["保险卡"],
+            "brief_version": 1,
+        },
+        "claim_evidence_summary": {
+            "received_slots": ["scene_photo"],
+            "missing_required_slots": [],
+        },
+    }
+    extra = _build_extra(case)
+    assert extra["claim_case_brief"]["summary"].startswith("客户已提交")
+    assert extra["claim_evidence_summary"]["received_slots"] == ["scene_photo"]
+
+
+def test_hydrate_extra_restores_claim_brief_and_evidence_summary():
+    case: dict = {}
+    _hydrate_extra_pilot_fields(
+        case,
+        {
+            "claim_case_brief": {"summary": "seeded brief", "brief_version": 1},
+            "claim_evidence_summary": {
+                "received_slots": ["scene_photo"],
+                "missing_required_slots": [],
+            },
+        },
+    )
+    assert case["claim_case_brief"]["summary"] == "seeded brief"
+    assert case["claim_evidence_summary"]["received_slots"] == ["scene_photo"]
+
+
 def test_hydrate_extra_restores_wecom_open_kf_id_and_h5_state():
     case: dict = {}
     _hydrate_extra_pilot_fields(

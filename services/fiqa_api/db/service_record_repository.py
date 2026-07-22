@@ -194,6 +194,13 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["h5_photo_flow_state"] = dict(extra.get("h5_photo_flow_state") or {})
     if isinstance(extra.get("claim_attachment_slots"), dict):
         case["claim_attachment_slots"] = dict(extra.get("claim_attachment_slots") or {})
+    # Camry Golden / Constitution seed: brief + evidence summary must round-trip on
+    # DB-primary QA. Without these, photos look incomplete and customer.why drifts to
+    # the story-only copy ("事故经过已收到…") instead of "事故经过和现场照片已经完成。"
+    if isinstance(extra.get("claim_case_brief"), dict):
+        case["claim_case_brief"] = dict(extra.get("claim_case_brief") or {})
+    if isinstance(extra.get("claim_evidence_summary"), dict):
+        case["claim_evidence_summary"] = dict(extra.get("claim_evidence_summary") or {})
     if extra.get("guided_workflow_state"):
         case["guided_workflow_state"] = str(extra.get("guided_workflow_state")).strip()
     if extra.get("add_vehicle_phase"):
@@ -262,6 +269,8 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "wecom_open_kf_id",
         "h5_photo_flow_state",
         "claim_attachment_slots",
+        "claim_case_brief",
+        "claim_evidence_summary",
         "guided_workflow_state",
         "add_vehicle_phase",
         "demo_name",

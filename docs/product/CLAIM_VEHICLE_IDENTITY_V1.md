@@ -341,7 +341,7 @@ Stop after each task. Do not auto-start the next.
 | **T2** | Backend vehicle object normalization, completeness, merge, idempotency, claim fact persistence, tests | T1 frozen | Unit/integration tests prove single-slot merge, completeness A/B, no partial VIN persist, no `intake_entities` write |
 | **T3** | Slice1 `vehicle_information` send/submit integration; request satisfaction; event tests | T2 green | Broker can send `vehicle_information`; customer submit satisfies item; one `command_id` → one event; merges with VIN path |
 | **T4** | Mini Program structured request-item UX; partial save/resume; Build Gates | T3 green | `cd miniapp && npm run build:gate` PASS; Path B UX works; Founder Form / Nav gates respected |
-| **T5** | Workbench structured vehicle projection / readback | T4 green | Broker detail shows same structured vehicle as customer submit (read-after-write) |
+| **T5** | Workbench structured vehicle projection / readback | T4 green | **DONE** — broker detail shows same structured vehicle as customer submit (read-after-write). Evidence: `docs/evidence/claim_vehicle_t5_closeout_2026_07_21.md`. Physical Founder QA UX deferred to separate P0 (not a T5 blocker). |
 | **T6** | Founder QA fixture and inspection support | T5 green | Deterministic QA fixture can seed/inspect one vehicle slot without Production touch |
 | **T7** | Cloud QA Founder PAT + Production non-mutation proof | T6 green | Full §11 acceptance on Cloud QA; Production untouched |
 
