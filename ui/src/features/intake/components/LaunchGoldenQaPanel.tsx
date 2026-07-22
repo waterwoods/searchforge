@@ -1,9 +1,12 @@
 /**
- * P25 — Launch Golden QA (internal release tool).
- * Visible only when QA Tools are enabled. Never shows raw tokens.
+ * P0 Founder QA UX — Phase 1 Founder surface.
+ *
+ * Sole Founder entry for Camry Golden QA / Test Claim Vehicle.
+ * Reuses launch-golden-qa APIs; never shows raw tokens or engineering diagnostics.
+ * Engineering diagnostics remain on /internal/founder-qa.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Space, Typography, message } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Card, Space, Spin, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import {
     getLaunchGoldenQaStatus,
@@ -11,8 +14,14 @@ import {
     type LaunchGoldenQaStatus,
 } from '@/api/inboxTriage';
 import { isQaToolsEnabled } from '@/config/productSurface';
+import {
+    FOUNDER_GOLDEN_QA_SUBTITLE,
+    FOUNDER_GOLDEN_QA_TITLE,
+    resolveFounderGoldenQaView,
+    type FounderGoldenQaSessionProgress,
+} from './founderGoldenQaViewModel';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 async function applyLocalPreview(query: string): Promise<boolean> {
     try {
@@ -29,26 +38,11 @@ async function applyLocalPreview(query: string): Promise<boolean> {
     }
 }
 
-function statusLabel(status: string | undefined): string {
-    switch (status) {
-        case 'running_reset':
-            return 'Running Reset…';
-        case 'preparing_preview':
-            return 'Preparing Preview…';
-        case 'ready_to_scan':
-            return 'Ready to Scan';
-        case 'failed':
-            return 'Failed';
-        case 'idle':
-        default:
-            return 'Idle';
-    }
-}
-
 export function LaunchGoldenQaPanel() {
     const [busy, setBusy] = useState(false);
     const [state, setState] = useState<LaunchGoldenQaStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [sessionProgress, setSessionProgress] = useState<FounderGoldenQaSessionProgress>(null);
 
     const refresh = useCallback(async () => {
         try {
@@ -65,13 +59,25 @@ export function LaunchGoldenQaPanel() {
         void refresh();
     }, [refresh]);
 
+    const view = useMemo(
+        () =>
+            resolveFounderGoldenQaView({
+                api: state,
+                busy,
+                sessionProgress,
+                hasError: Boolean(error),
+            }),
+        [state, busy, sessionProgress, error],
+    );
+
     const onLaunch = async () => {
         if (busy) return;
         setBusy(true);
         setError(null);
+        setSessionProgress(null);
         setState((prev) =>
             prev
-                ? { ...prev, status: 'running_reset', failure_reason: null }
+                ? { ...prev, status: 'running_reset', failure_reason: null, ok: undefined }
                 : { status: 'running_reset', ok: true, enabled: true },
         );
         try {
@@ -85,19 +91,22 @@ export function LaunchGoldenQaPanel() {
                 );
                 previewPrepared = await applyLocalPreview(result.devtools_launch_query);
             }
+            const prepared = previewPrepared || Boolean(result.preview_prepared);
+            // Fail closed: never present Ready without a current Preview.
             setState({
                 ...result,
-                preview_prepared: previewPrepared || Boolean(result.preview_prepared),
+                preview_prepared: prepared,
                 status: result.ok ? 'ready_to_scan' : result.status || 'failed',
+                ok: result.ok,
+                failure_reason:
+                    result.ok && !prepared
+                        ? result.failure_reason || 'preview_not_prepared'
+                        : result.failure_reason,
             });
-            if (result.ok) {
-                message.success(
-                    previewPrepared || result.preview_prepared
-                        ? 'Golden QA ready — open DevTools Preview and scan once'
-                        : 'Golden reset ready — Preview inject needs local DevTools host',
-                );
-            } else {
+            if (!result.ok) {
                 setError(result.failure_reason || 'launch_failed');
+            } else if (!prepared) {
+                setError('preview_not_prepared');
             }
         } catch (e) {
             const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -108,6 +117,7 @@ export function LaunchGoldenQaPanel() {
                 ok: false,
                 status: 'failed',
                 failure_reason: reason,
+                preview_prepared: false,
             }));
         } finally {
             setBusy(false);
@@ -115,85 +125,93 @@ export function LaunchGoldenQaPanel() {
         }
     };
 
+    const onPrimary = () => {
+        if (!view.primaryAction) return;
+        if (view.primaryAction === 'launch') {
+            void onLaunch();
+            return;
+        }
+        if (view.primaryAction === 'acknowledge_testing') {
+            setSessionProgress('testing');
+            return;
+        }
+        if (view.primaryAction === 'acknowledge_verified') {
+            setSessionProgress('verified');
+        }
+    };
+
     return (
         <Card
             size="small"
-            title="QA Tools"
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>Internal · Founder release</Text>}
+            title={FOUNDER_GOLDEN_QA_TITLE}
+            extra={
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                    Founder test
+                </Text>
+            }
+            data-testid="founder-golden-qa-panel"
         >
-            <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                {isQaToolsEnabled() ? (
-                    <Link to="/internal/founder-qa">
-                        <Button block>Open Founder QA Console</Button>
-                    </Link>
-                ) : null}
-                <Button type="primary" onClick={() => void onLaunch()} loading={busy} disabled={busy}>
-                    Launch Golden QA
-                </Button>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <div>
-                    <Text type="secondary">Status: </Text>
-                    <Text strong>{statusLabel(state?.status)}</Text>
+                    <Title level={5} style={{ margin: 0 }}>
+                        {FOUNDER_GOLDEN_QA_SUBTITLE}
+                    </Title>
+                    <Text type="secondary">Current task: {view.currentTask}</Text>
                 </div>
-                {state?.case_id ? (
-                    <div>
-                        <Text type="secondary">Latest Case ID: </Text>
-                        <Text code>{state.case_id}</Text>
+
+                <div data-testid="founder-golden-qa-status" data-state={view.state}>
+                    <Text type="secondary">Status: </Text>
+                    <Text strong>{view.statusLabel}</Text>
+                    <div style={{ marginTop: 4 }}>
+                        <Text>{view.statusDetail}</Text>
+                    </div>
+                </div>
+
+                {view.showQrPlaceholder ? (
+                    <div
+                        data-testid="founder-golden-qa-qr"
+                        style={{
+                            border: '1px dashed #bfbfbf',
+                            borderRadius: 8,
+                            padding: '28px 16px',
+                            textAlign: 'center',
+                            background: '#fafafa',
+                        }}
+                    >
+                        <Text strong>QR code</Text>
+                        <div>
+                            <Text type="secondary">
+                                Scan with WeChat, then complete the task on your phone.
+                            </Text>
+                        </div>
                     </div>
                 ) : null}
-                {state?.expires_at ? (
-                    <div>
-                        <Text type="secondary">Token expiration: </Text>
-                        <Text>{state.expires_at}</Text>
+
+                {view.state === 'blocked' ? (
+                    <Alert type="error" showIcon message={view.statusDetail} />
+                ) : null}
+
+                {view.state === 'preparing' ? (
+                    <div data-testid="founder-golden-qa-preparing" style={{ textAlign: 'center', padding: 8 }}>
+                        <Spin />
                     </div>
                 ) : null}
-                {state?.last_run_utc ? (
-                    <div>
-                        <Text type="secondary">Last run: </Text>
-                        <Text>{state.last_run_utc}</Text>
-                    </div>
+
+                {view.primaryCta ? (
+                    <Button
+                        type="primary"
+                        block
+                        onClick={onPrimary}
+                        data-testid="founder-golden-qa-primary-cta"
+                    >
+                        {view.primaryCta}
+                    </Button>
                 ) : null}
-                {state?.preview_prepared ? (
-                    <Alert
-                        type="success"
-                        showIcon
-                        message="Preview prepared"
-                        description={
-                            state.devtools_hint ||
-                            'DevTools → compile mode「pages/entry/entry (Golden QA session)」→ 清缓存 → Preview → scan once'
-                        }
-                    />
-                ) : state?.status === 'ready_to_scan' ? (
-                    <Alert
-                        type="warning"
-                        showIcon
-                        message="Reset ready — inject Preview on your laptop"
-                        description={
-                            state.devtools_hint ||
-                            'Cloud Run cannot update WeChat DevTools. Run on this machine: bash scripts/launch_golden_qa.sh --qa — then 清缓存 → Preview. Stale compile tokens return case_not_found (404).'
-                        }
-                    />
-                ) : null}
-                {state?.report_relpath ? (
-                    <div>
-                        <Text type="secondary">Latest QA report: </Text>
-                        <Text code style={{ fontSize: 12 }}>
-                            {state.report_relpath}
-                        </Text>
-                    </div>
-                ) : null}
-                {(error || state?.failure_reason) && state?.status === 'failed' ? (
-                    <Alert type="error" showIcon message="Launch failed" description={error || state?.failure_reason} />
-                ) : null}
-                {state?.failure_reason && state?.status === 'ready_to_scan' && !state.preview_prepared ? (
-                    <Alert type="warning" showIcon message="Preview note" description={state.failure_reason} />
-                ) : null}
-                {state?.enabled === false ? (
-                    <Alert
-                        type="warning"
-                        showIcon
-                        message="Launch disabled on this API"
-                        description="Set ENABLE_GOLDEN_QA_LAUNCH=1 on the backend for QA."
-                    />
+
+                {isQaToolsEnabled() ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                        <Link to="/internal/founder-qa">Engineering QA Console</Link>
+                    </Text>
                 ) : null}
             </Space>
         </Card>

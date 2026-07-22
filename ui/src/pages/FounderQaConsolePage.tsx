@@ -1,5 +1,6 @@
 /**
- * P35.2 — Founder QA Console (internal testing surface).
+ * P35.2 — Engineering QA Console (internal diagnostics / identity harness).
+ * Not the Founder workflow. Founder entry is Camry Golden QA on Workbench.
  * Not customer-facing. Never stores support API keys.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -263,7 +264,7 @@ export default function FounderQaConsolePage() {
                 <Alert
                     type="error"
                     showIcon
-                    message="Founder QA Console 未对当前构建开放"
+                    message="Engineering QA Console 未对当前构建开放"
                     description="仅内部 QA 构建可见（Vite DEV 或 VITE_ENABLE_QA_TOOLS=1）。"
                 />
             </div>
@@ -279,9 +280,11 @@ export default function FounderQaConsolePage() {
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
                 <div>
                     <Title level={3} style={{ marginBottom: 4 }}>
-                        Founder QA Console
+                        Engineering QA Console
                     </Title>
-                    <Text type="secondary">内部测试台 · 选择场景并验证 · 不改动客户产品导航</Text>
+                    <Text type="secondary">
+                        工程诊断台 · 身份 / 预设 / 审计 · Founder 入口为 Workbench「Camry Golden QA」
+                    </Text>
                 </div>
 
                 {/* SECTION 1 — Environment safety */}
