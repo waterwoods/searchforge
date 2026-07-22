@@ -1,10 +1,12 @@
 /**
- * P20 Capability 2 — New Claim (incomplete) entry for Broker Workbench.
+ * QA-only Manual Intake seed — Create Test Case.
+ * Must not imply a bound customer can open a second Active Case.
  */
 import { useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Form, Input, Modal, Space, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { createClaimCase, getSavedCase, type SavedCase } from '@/api/inboxTriage';
+import { isQaToolsEnabled } from '@/config/productSurface';
 
 type FormValues = {
   is_test: boolean;
@@ -87,26 +89,30 @@ export function NewClaimEntryButton({
       } else {
         setError('Could not create claim. Retry — duplicate clicks reuse the same draft key.');
       }
-      message.error('Create Claim failed');
+      message.error('Create Test Case failed');
     } finally {
       setSaving(false);
       inFlight.current = false;
     }
   };
 
+  if (!isQaToolsEnabled()) {
+    return null;
+  }
+
   return (
     <>
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-        New Claim
+      <Button type="default" icon={<PlusOutlined />} onClick={() => setOpen(true)} data-testid="create-test-case-button">
+        Create Test Case
       </Button>
       <Modal
-        title="New Claim"
+        title="Create Test Case"
         open={open}
         onCancel={() => {
           if (!saving) setOpen(false);
         }}
         onOk={() => void handleSubmit()}
-        okText="Create Claim"
+        okText="Create Test Case"
         confirmLoading={saving}
         destroyOnClose
       >
@@ -114,7 +120,7 @@ export function NewClaimEntryButton({
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message="先记录事故理解（经过 / 时间 / 地点 / 受伤）。VIN 属于请客户补充，不是开案必填。"
+          message="QA Manual Intake only. Does not create a second Active Case for a customer-bound identity. Seed accident basics; VIN is optional."
         />
         {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} /> : null}
         <Form

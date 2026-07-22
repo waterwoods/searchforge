@@ -121,6 +121,15 @@ def _load_claim_case(case_id: str) -> dict[str, Any]:
     return case
 
 
+def _load_writable_claim_case(case_id: str) -> dict[str, Any]:
+    """Load claim case and reject customer mutations when History."""
+    from services.fiqa_api.inbox_triage.case_close import assert_customer_case_writable
+
+    case = _load_claim_case(case_id)
+    assert_customer_case_writable(case)
+    return case
+
+
 def _facts(case: dict[str, Any]) -> dict[str, Any]:
     raw = case.get("known_facts") or {}
     return raw if isinstance(raw, dict) else {}
@@ -811,7 +820,7 @@ def patch_intake_fields(
     if step_norm not in _STEP_FIELD_MAP:
         raise ValueError("unsupported_step")
 
-    case = _load_claim_case(claims.case_id)
+    case = _load_writable_claim_case(claims.case_id)
     submitted = _is_submitted(case)
     if submitted:
         _validate_post_submit_patch_fields(step_norm, fields)
@@ -883,7 +892,7 @@ def submit_intake_form(
     if not intent:
         raise ValueError("submit_intent_id_required")
 
-    case = _load_claim_case(claims.case_id)
+    case = _load_writable_claim_case(claims.case_id)
     state = _h5_intake_state(case)
     prior_intents = [str(x) for x in (state.get("submit_intent_ids") or []) if str(x).strip()]
     already_submitted = _is_submitted(case)

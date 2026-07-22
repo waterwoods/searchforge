@@ -600,6 +600,12 @@ def mutate_h5_claim_evidence(
     """Customer-safe evidence lifecycle API; never deletes submitted GCS media."""
     if not _is_claim_evidence_flow(claims):
         raise ValueError("unsupported_flow")
+    case = get_case_for_read(claims.case_id)
+    if case is None:
+        raise ValueError("case_not_found")
+    from services.fiqa_api.inbox_triage.case_close import assert_customer_case_writable
+
+    assert_customer_case_writable(case)
     updated = mutate_claim_evidence_gallery(
         claims.case_id,
         attachment_id=attachment_id,
@@ -712,6 +718,9 @@ def skip_h5_flow_slot(
     case = get_case_for_read(claims.case_id)
     if case is None:
         raise ValueError("case_not_found")
+    from services.fiqa_api.inbox_triage.case_close import assert_customer_case_writable
+
+    assert_customer_case_writable(case)
     _assert_case_eligible(case, claims)
     _assert_flow_slot_allowed(claims, case, slot_norm)
 
@@ -781,6 +790,9 @@ def ingest_h5_slot_upload(
     case = get_case_for_read(claims.case_id)
     if case is None:
         raise ValueError("case_not_found")
+    from services.fiqa_api.inbox_triage.case_close import assert_customer_case_writable
+
+    assert_customer_case_writable(case)
     _assert_case_eligible(case, claims)
 
     evidence_category: str | None = None

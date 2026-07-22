@@ -102,6 +102,8 @@ async def upload_h5_task_attachment(
         code = str(exc)
         if code in ("case_not_found",):
             raise HTTPException(status_code=404, detail=code) from exc
+        if code == "case_closed_read_only":
+            raise HTTPException(status_code=409, detail=code) from exc
         if code in (
             "invalid_or_expired_task_link",
             "case_mismatch",
@@ -126,6 +128,8 @@ async def skip_h5_task_slot(
         code = str(exc)
         if code in ("case_not_found",):
             raise HTTPException(status_code=404, detail=code) from exc
+        if code == "case_closed_read_only":
+            raise HTTPException(status_code=409, detail=code) from exc
         if code in (
             "invalid_or_expired_task_link",
             "case_mismatch",
@@ -155,6 +159,8 @@ async def h5_claim_evidence_action(
         code = str(exc)
         if code == "case_not_found":
             raise HTTPException(status_code=404, detail=code) from exc
+        if code == "case_closed_read_only":
+            raise HTTPException(status_code=409, detail=code) from exc
         if code in ("case_mismatch", "lane_mismatch", "user_ref_mismatch"):
             raise HTTPException(status_code=403, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc

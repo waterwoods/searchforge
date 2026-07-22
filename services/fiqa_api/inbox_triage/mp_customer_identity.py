@@ -304,16 +304,23 @@ def _ensure_active_case_table(cur: Any) -> None:
 
 
 def case_is_resumable_active(case: dict[str, Any] | None) -> bool:
-    """True when the bound case should still surface Continue Current Task."""
+    """True when the bound case should still surface Continue Current Task.
+
+    Soft archive (workbench_archived) is a queue filter only — it must NOT
+    release Active Case. Broker Close / History does.
+    """
     if not isinstance(case, dict):
         return False
-    if bool(case.get("workbench_archived")):
-        return False
+    try:
+        from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
+
+        if case_is_closed_history(case):
+            return False
+    except Exception:
+        if str(case.get("case_status") or "").strip().lower() == "closed":
+            return False
     status = str(case.get("case_status") or "new").strip().lower()
-    if status in ("closed", "done", "cancelled"):
-        return False
-    lifecycle = str(case.get("admin_lifecycle") or case.get("lifecycle_status") or "").strip().lower()
-    if lifecycle in ("closed", "archived"):
+    if status in ("done", "cancelled"):
         return False
     return True
 

@@ -747,10 +747,22 @@ class CaseFollowUpRequest(BaseModel):
 
 
 class CaseWorkbenchRequest(BaseModel):
-    """Lightweight workbench flags (test label, soft archive). JSON-first; no hard delete."""
+    """Lightweight workbench flags (test label, soft archive). JSON-first; no hard delete.
+
+    Soft archive is a queue visibility filter only — Soft Archive ≠ Broker Close.
+    """
 
     is_test: bool | None = Field(default=None, description="Mark case as test data for filtering")
-    archived: bool | None = Field(default=None, description="Soft-hide / archive for cleanup views")
+    archived: bool | None = Field(
+        default=None,
+        description="Queue hide filter only (Soft Archive ≠ Broker Close; does not release Active Case)",
+    )
+
+
+class CaseCloseRequest(BaseModel):
+    """Broker Close → History (read-only). Clears Active Case binding."""
+
+    reason: str | None = Field(default=None, max_length=500, description="Optional close reason")
 
 
 class RequestMoreItemBody(BaseModel):
@@ -2259,11 +2271,26 @@ async def get_session(session_id: str) -> dict[str, Any]:
 async def patch_case_status(
     case_id: str, request: CaseStatusRequest, http_request: Request
 ) -> dict[str, Any]:
-    """Update the lightweight broker workflow status for a saved case."""
+    """Update the lightweight broker workflow status for a saved case.
+
+    Status ``closed`` is routed through canonical Broker Close (binding cleanup).
+    Prefer POST /cases/{case_id}/close for explicit Close → History.
+    """
     row = get_case_for_read(case_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     assert_case_office_access_allowed(http_request, row)
+    if str(request.status or "").strip().lower() == "closed":
+        from services.fiqa_api.inbox_triage.case_close import close_case
+
+        broker_identity = _broker_actor_identity(http_request)
+        result = close_case(case_id, actor=broker_identity)
+        if not result.get("ok") or result.get("case") is None:
+            code = str(result.get("error_code") or result.get("outcome") or "close_failed")
+            if code == "case_not_found":
+                raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+            raise HTTPException(status_code=400, detail=code)
+        return result["case"]
     try:
         updated = update_case_status(case_id=case_id, status=request.status)
     except ValueError as exc:
@@ -2271,6 +2298,46 @@ async def patch_case_status(
     if updated is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     return updated
+
+
+@router.post("/cases/{case_id}/close")
+async def post_case_close(
+    case_id: str,
+    http_request: Request,
+    body: CaseCloseRequest | None = None,
+) -> dict[str, Any]:
+    """Broker-only Close: Active Case → immutable History; clears Active Case binding."""
+    from services.fiqa_api.inbox_triage.case_close import close_case
+
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    broker_identity = _broker_actor_identity(http_request)
+    reason = body.reason if body is not None else None
+    result = close_case(case_id, actor=broker_identity, reason=reason)
+    if not result.get("ok") or result.get("case") is None:
+        code = str(result.get("error_code") or result.get("outcome") or "close_failed")
+        if code == "case_not_found":
+            raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+        raise HTTPException(status_code=400, detail=code)
+    case = result["case"]
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench([case])
+        case = enriched[0] if enriched else case
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "outcome": result.get("outcome") or "closed",
+        "case_id": case_id,
+        "case": case,
+        "closed_at": result.get("closed_at") or case.get("closed_at"),
+        "closed_by": result.get("closed_by") or case.get("closed_by"),
+        "bindings_cleared": result.get("bindings_cleared"),
+    }
 
 
 @router.post("/cases/{case_id}/notes")

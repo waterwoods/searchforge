@@ -916,10 +916,33 @@ class P20Slice1CommandService:
         corr = (correlation_id or command_id).strip()[:128] or command_id
 
         def _handle(tx: Slice1Tx, snapshot: Slice1Snapshot) -> dict[str, Any]:
+            from services.fiqa_api.inbox_triage.case_close import (
+                ERROR_CASE_CLOSED_READ_ONLY,
+                case_is_closed_history,
+            )
+
             replay = getattr(snapshot, "stored_outcome", None)
             if isinstance(replay, dict):
                 return _replay_response(replay)
             case = snapshot.case
+            if case_is_closed_history(case):
+                return _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    projection=_projection(
+                        case_id=case_id,
+                        state=_legacy_claim_state(case),
+                        aggregate_version=0,
+                        group=snapshot.group,
+                        items=snapshot.items,
+                        latest_events=snapshot.latest_events,
+                        known_facts=_case_known_facts(case),
+                    ),
+                    error_code=ERROR_CASE_CLOSED_READ_ONLY,
+                )
             aggregate = snapshot.aggregate
             current_state = aggregate.workflow_state if aggregate else _legacy_claim_state(case)
             current_version = aggregate.aggregate_version if aggregate else 0
@@ -1109,9 +1132,16 @@ class P20Slice1CommandService:
             raise ValueError("exactly_one_fact_or_evidence_required")
 
         def _handle(tx: Slice1Tx, snapshot: Slice1Snapshot) -> dict[str, Any]:
+            from services.fiqa_api.inbox_triage.case_close import (
+                ERROR_CASE_CLOSED_READ_ONLY,
+                case_is_closed_history,
+            )
+
             replay = getattr(snapshot, "stored_outcome", None)
             if isinstance(replay, dict):
                 return _replay_response(replay)
+            if case_is_closed_history(snapshot.case):
+                raise ValueError(ERROR_CASE_CLOSED_READ_ONLY)
             aggregate = snapshot.aggregate
             state = aggregate.workflow_state if aggregate else _legacy_claim_state(snapshot.case)
             current_version = aggregate.aggregate_version if aggregate else 0

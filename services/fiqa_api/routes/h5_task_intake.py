@@ -163,6 +163,8 @@ async def patch_h5_intake_fields(
             raise HTTPException(status_code=403, detail=code) from exc
         if code == "already_submitted":
             raise HTTPException(status_code=409, detail=code) from exc
+        if code == "case_closed_read_only":
+            raise HTTPException(status_code=409, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc
 
 
@@ -184,6 +186,8 @@ async def submit_h5_intake(
         if code in ("lane_mismatch", "unsupported_flow"):
             raise HTTPException(status_code=403, detail=code) from exc
         if code in ("already_submitted",):
+            raise HTTPException(status_code=409, detail=code) from exc
+        if code == "case_closed_read_only":
             raise HTTPException(status_code=409, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc
 
@@ -213,6 +217,8 @@ async def submit_h5_request_item(
         code = str(exc)
         if code == "case_not_found":
             raise HTTPException(status_code=404, detail=code) from exc
+        if code == "case_closed_read_only":
+            raise HTTPException(status_code=409, detail=code) from exc
         raise HTTPException(status_code=422, detail={"error": code}) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -221,5 +227,8 @@ async def submit_h5_request_item(
     if outcome == "conflict":
         raise HTTPException(status_code=409, detail=result)
     if outcome == "rejected":
+        err = str(result.get("error_code") or "")
+        if err == "case_closed_read_only":
+            raise HTTPException(status_code=409, detail=err)
         raise HTTPException(status_code=422, detail=result)
     return result

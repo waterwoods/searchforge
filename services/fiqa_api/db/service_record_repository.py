@@ -180,6 +180,16 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["workbench_test"] = bool(extra.get("workbench_test"))
     if "workbench_archived" in extra:
         case["workbench_archived"] = bool(extra.get("workbench_archived"))
+    if extra.get("admin_lifecycle"):
+        case["admin_lifecycle"] = str(extra.get("admin_lifecycle") or "").strip()
+    if extra.get("case_history_state"):
+        case["case_history_state"] = str(extra.get("case_history_state") or "").strip()
+    if extra.get("closed_at"):
+        case["closed_at"] = str(extra.get("closed_at") or "").strip()
+    if extra.get("closed_by"):
+        case["closed_by"] = str(extra.get("closed_by") or "").strip()
+    if extra.get("close_reason"):
+        case["close_reason"] = str(extra.get("close_reason") or "").strip()
     if isinstance(extra.get("evidence_events"), list):
         case["evidence_events"] = extra["evidence_events"]
     if "merge_review_required" in extra:
@@ -261,6 +271,11 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "formal_submitted_at",
         "workbench_test",
         "workbench_archived",
+        "admin_lifecycle",
+        "case_history_state",
+        "closed_at",
+        "closed_by",
+        "close_reason",
         "asserted_org_id",
         "evidence_events",
         "merge_review_required",
@@ -503,6 +518,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         policy_number = %(policy_number)s,
                         contact_note = %(contact_note)s,
                         updated_at = %(updated_at)s,
+                        closed_at = COALESCE(%(closed_at)s, closed_at),
                         office_owner_org_id = COALESCE(
                             NULLIF(TRIM(%(office_owner_patch)s), ''),
                             office_owner_org_id
@@ -530,6 +546,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         "policy_number": _str(case.get("policy_number")),
                         "contact_note": _str(case.get("contact_note")),
                         "updated_at": now_updated,
+                        "closed_at": _str(case.get("closed_at")) or None,
                         "office_owner_patch": oid_incoming,
                         "extra": Json(extra),
                     },

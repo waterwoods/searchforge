@@ -146,7 +146,12 @@ export function isStructuredRequestMoreSupportedCase(caseRecord: StructuredReque
 
 export function isStructuredRequestMoreTerminal(caseRecord: StructuredRequestMoreCaseRecord | null): boolean {
     if (!caseRecord) return true;
-    if (caseRecord.workbench_archived) return true;
+    // Soft archive is queue filter only — Request More stays available until Broker Close.
+    const historyState = String((caseRecord as { case_history_state?: string }).case_history_state || '')
+        .trim()
+        .toLowerCase();
+    if (historyState === 'history') return true;
+    if (String((caseRecord as { closed_at?: string }).closed_at || '').trim()) return true;
     if (
         caseRecord.broker_done_at
         || caseRecord.claim_broker_done_at
@@ -159,11 +164,12 @@ export function isStructuredRequestMoreTerminal(caseRecord: StructuredRequestMor
         caseRecord.workflow_phase,
         (caseRecord as { claim_phase?: string }).claim_phase,
         caseRecord.display_status,
+        (caseRecord as { admin_lifecycle?: string }).admin_lifecycle,
     ]
         .map((value) => String(value ?? '').trim().toLowerCase())
         .filter(Boolean);
     return rawStates.some((state) =>
-        ['done', 'case_complete', 'complete', 'completed', 'cancelled', 'canceled', 'rejected', 'archived'].includes(state),
+        ['done', 'case_complete', 'complete', 'completed', 'cancelled', 'canceled', 'rejected', 'closed', 'history'].includes(state),
     );
 }
 

@@ -342,12 +342,31 @@ class P20SendRequestCommandService:
         corr = (correlation_id or command_id).strip()[:128] or command_id
 
         def _handle(tx: SendRequestTx, snapshot: SendRequestSnapshot) -> dict[str, Any]:
+            from services.fiqa_api.inbox_triage.case_close import (
+                ERROR_CASE_CLOSED_READ_ONLY,
+                case_is_closed_history,
+            )
+
             if isinstance(getattr(snapshot, "stored_outcome", None), dict):
                 return _replay_response(snapshot.stored_outcome)
 
             case = snapshot.case
             intake = snapshot.intake_aggregate
             draft = snapshot.draft
+            if case_is_closed_history(case):
+                return _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    intake_projection={
+                        "case_id": case_id,
+                        "aggregate_version": intake.aggregate_version if intake else 0,
+                        "customer_projection": {"customer_next_action": None},
+                    },
+                    error_code=ERROR_CASE_CLOSED_READ_ONLY,
+                )
 
             # Build a minimal intake projection for conflict/reject paths.
             def _intake_proj(

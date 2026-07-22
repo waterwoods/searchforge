@@ -42,6 +42,8 @@ import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEviden
 import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
 import { MissingInformationChecklistPanel } from '@/features/intake/components/MissingInformationChecklistPanel';
 import { NewClaimEntryButton } from '@/features/intake/components/NewClaimEntryButton';
+import { CloseCaseButton, ClosedHistoryBadge } from '@/features/intake/components/CloseCaseButton';
+import { isCaseClosedHistory } from '@/features/intake/utils/caseLifecycle';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
 import {
   CLAIM_INTAKE_SAFETY_NOTE,
@@ -535,9 +537,13 @@ function BrokerCaseDetail({
   const readiness = readinessFromCase(caseItem);
   const missingFields = caseItem.still_needed_fields ?? [];
   const knownFacts = caseItem.known_facts ?? {};
-  const showConfirm = isAddCarReadyForBroker(caseItem) && !caseItem.broker_confirmed_at;
+  const closedHistory = isCaseClosedHistory(caseItem);
+  const showConfirm = !closedHistory && isAddCarReadyForBroker(caseItem) && !caseItem.broker_confirmed_at;
   const showClaimBrokerDone =
-    isClaimGuidedCase(caseItem) && !isClaimBrokerDone(caseItem) && Boolean(onClaimBrokerDone);
+    !closedHistory
+    && isClaimGuidedCase(caseItem)
+    && !isClaimBrokerDone(caseItem)
+    && Boolean(onClaimBrokerDone);
   const isWeComMedia = isWeComMediaIntakeLane(caseItem.service_lane);
   const attachments = caseItem.case_attachments ?? [];
   const isP20Intake = Boolean(caseItem.p20_case_intake_projection || caseItem.case_intake_projection);
@@ -546,13 +552,17 @@ function BrokerCaseDetail({
     return (
       <div>
         <CaseIdMeta caseId={caseItem.case_id} mode="detail" />
+        <Space style={{ marginBottom: 12 }} wrap>
+          <ClosedHistoryBadge caseRecord={caseItem} />
+        </Space>
+        <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
         {!isP20Intake ? (
           <>
             <Space style={{ marginBottom: 12 }} wrap>
               {statusTag(readiness)}
               <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
             </Space>
-            <TopActionBanner caseItem={caseItem} blob={blob} />
+            {!isCaseClosedHistory(caseItem) ? <TopActionBanner caseItem={caseItem} blob={blob} /> : null}
           </>
         ) : null}
         {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
@@ -672,13 +682,17 @@ function BrokerCaseDetail({
   return (
     <div>
       <CaseIdMeta caseId={caseItem.case_id} mode="detail" />
+      <Space style={{ marginBottom: 12 }} wrap>
+        <ClosedHistoryBadge caseRecord={caseItem} />
+      </Space>
+      <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
       {!isP20Intake ? (
         <>
           <Space style={{ marginBottom: 12 }} wrap>
             {statusTag(blob!.readiness_status || readiness)}
             <Tag color={laneTagColor(laneLabel(caseItem))}>{laneLabel(caseItem)}</Tag>
           </Space>
-          <TopActionBanner caseItem={caseItem} blob={blob} />
+          {!isCaseClosedHistory(caseItem) ? <TopActionBanner caseItem={caseItem} blob={blob} /> : null}
         </>
       ) : null}
       {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (

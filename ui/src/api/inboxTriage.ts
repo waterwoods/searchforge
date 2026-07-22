@@ -782,7 +782,7 @@ export interface TriageResult {
     wecom_external_userid?: string | null;
 }
 
-export type CaseStatus = 'new' | 'reviewing' | 'waiting_client' | 'done';
+export type CaseStatus = 'new' | 'reviewing' | 'waiting_client' | 'done' | 'closed';
 export type WaitingOn = 'none' | 'client' | 'broker' | 'carrier' | 'underwriting';
 
 /** ADD_CAR_ATTACHMENT_READY_LITE + P19B WeCom attachment metadata */
@@ -849,8 +849,13 @@ export interface SavedCase extends TriageResult {
     case_intake_projection?: CaseIntakeProjection;
     /** Capability 3A: customer QR/link access card after Send Request */
     customer_access?: CustomerAccessCard | null;
-    /** Workbench: soft-archive (hidden in default “正式” views) */
+    /** Workbench: soft-archive queue filter only (Soft Archive ≠ Broker Close) */
     workbench_archived?: boolean;
+    /** Broker Close → History marker */
+    case_history_state?: string | null;
+    closed_at?: string | null;
+    closed_by?: string | null;
+    close_reason?: string | null;
     /** explicit add_car lane vs heuristic legacy vs other */
     workbench_lane_kind?: WorkbenchLaneKind;
     /** Postgres mirror glance when DB configured */
@@ -1272,12 +1277,35 @@ export async function deleteTestCase(caseId: string): Promise<void> {
     await request.delete(`/api/inbox/cases/${encodeURIComponent(caseId)}`);
 }
 
-/** Mark test / archive flags on a case (JSON-first; soft-hide only). */
+/** Mark test / archive flags on a case (JSON-first; soft-hide only). Soft Archive ≠ Broker Close. */
 export async function patchCaseWorkbench(
     caseId: string,
     updates: { is_test?: boolean; archived?: boolean },
 ): Promise<SavedCase> {
     const response = await request.patch<SavedCase>(`/api/inbox/cases/${caseId}/workbench`, updates);
+    return response.data;
+}
+
+/** Broker Close → History (read-only). Clears Active Case binding. */
+export async function closeCase(
+    caseId: string,
+    reason?: string,
+): Promise<{
+    ok: boolean;
+    outcome: string;
+    case_id: string;
+    case: SavedCase;
+    closed_at?: string;
+    closed_by?: string;
+}> {
+    const response = await request.post<{
+        ok: boolean;
+        outcome: string;
+        case_id: string;
+        case: SavedCase;
+        closed_at?: string;
+        closed_by?: string;
+    }>(`/api/inbox/cases/${encodeURIComponent(caseId)}/close`, reason ? { reason } : {});
     return response.data;
 }
 

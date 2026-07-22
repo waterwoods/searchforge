@@ -129,6 +129,8 @@ import {
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
 import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
+import { CloseCaseButton, ClosedHistoryBadge } from '@/features/intake/components/CloseCaseButton';
+import { isCaseClosedHistory } from '@/features/intake/utils/caseLifecycle';
 import { addCarNextOwnerLine } from '@/components/intake/AddCarRecordSummaryRail';
 
 const { TextArea } = Input;
@@ -1031,7 +1033,8 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 工作台
                             </Text>
                             {savedCase.workbench_test ? <Tag color="orange">测试</Tag> : null}
-                            {savedCase.workbench_archived ? <Tag>已归档</Tag> : null}
+                            {savedCase.workbench_archived ? <Tag>队列隐藏</Tag> : null}
+                            {isCaseClosedHistory(savedCase) ? <Tag>Closed / History</Tag> : null}
                             {savedCase.workbench_lane_kind ? (
                                 <Tag style={{ fontSize: 10 }}>{workbenchLaneLabel(savedCase.workbench_lane_kind)}</Tag>
                             ) : null}
@@ -1091,7 +1094,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     },
                                     {
                                         key: 'arch',
-                                        label: savedCase.workbench_archived ? '取消归档' : '归档隐藏',
+                                        label: savedCase.workbench_archived ? '取消队列隐藏' : '队列隐藏（≠ Close）',
                                         onClick: () => {
                                             void handlePatchWorkbench(savedCase.case_id, {
                                                 archived: !savedCase.workbench_archived,
@@ -1583,6 +1586,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 <span>{caseView === 'reopened' ? '已打开的服务记录' : '当前服务记录'}</span>
                                 <UrgencyTag urgency={currentCase.urgency} />
                                 {currentCase.case_id && <CaseStatusTag status={currentCase.case_status} />}
+                                <ClosedHistoryBadge caseRecord={currentCase} />
                                 {currentDueTag && (
                                     <Tag color={currentDueTag.color}>
                                         {currentDueTag.label}
@@ -1592,7 +1596,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         }
                         extra={
                             <Space wrap>
-                                {currentCase.case_id && !productOnlyUi && (
+                                {currentCase.case_id && !productOnlyUi && !isCaseClosedHistory(currentCase) && (
                                     <Radio.Group
                                         size="small"
                                         optionType="button"
@@ -1603,7 +1607,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                         onChange={(event) => void handleStatusChange(event.target.value as CaseStatus)}
                                     />
                                 )}
-                                {currentCase.case_id && productOnlyUi && (
+                                {currentCase.case_id && productOnlyUi && !isCaseClosedHistory(currentCase) && (
                                     <Dropdown
                                         menu={{
                                             items: CASE_STATUS_OPTIONS.map((opt) => ({
@@ -1619,6 +1623,18 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                         </Button>
                                     </Dropdown>
                                 )}
+                                <CloseCaseButton
+                                    caseRecord={currentCase}
+                                    onClosed={(updated) => {
+                                        setCurrentCase(updated);
+                                        setRecentCases((cases) =>
+                                            orderCasesForWorkbench([
+                                                updated,
+                                                ...cases.filter((item) => item.case_id !== updated.case_id),
+                                            ]),
+                                        );
+                                    }}
+                                />
                                 {!productOnlyUi && (
                                 <Button
                                     icon={<CopyOutlined />}
@@ -1824,7 +1840,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                                             </Tag>
                                                         ) : null}
                                                         {currentCase.workbench_test ? <Tag color="orange">测试</Tag> : null}
-                                                        {currentCase.workbench_archived ? <Tag>归档</Tag> : null}
+                                                        {currentCase.workbench_archived ? <Tag>队列隐藏</Tag> : null}
                                                         <Dropdown
                                                             menu={{
                                                                 items: [
@@ -1839,7 +1855,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                                                     },
                                                                     {
                                                                         key: 'arch',
-                                                                        label: currentCase.workbench_archived ? '取消归档' : '归档隐藏',
+                                                                        label: currentCase.workbench_archived ? '取消队列隐藏' : '队列隐藏（≠ Close）',
                                                                         onClick: () => {
                                                                             void handlePatchWorkbench(currentCase.case_id!, {
                                                                                 archived: !currentCase.workbench_archived,

@@ -216,6 +216,20 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/p0_one_active_case_identity_foundation.md` |
 
+
+### D-017 — Broker Close → History (read-only)
+
+| Field | Content |
+|-------|---------|
+| **Decision** | Broker-only `close_case` stamps terminal History fields, clears Active Case bindings, and rejects all customer mutations with `case_closed_read_only`. Soft archive remains a queue filter only (≠ Close). After Close, same identity may create exactly one new Active Case. Workbench exposes minimal Close Case control; QA seed renamed Create Test Case. |
+| **Context** | Workbench status/archive was not true Close; resume tokens could still mutate closed/archived cases; Active binding could linger. |
+| **Alternatives Considered** | (1) Treat soft archive as Close; (2) Token revocation registry; (3) Full History product UI. |
+| **Why This Decision** | Server-authoritative terminal state + binding cleanup is the smallest Constitution-complete Close without Reopen or History browsing. |
+| **Constitution Principle** | One Active Case; Server is final authority |
+| **Date** | 2026-07-22 |
+| **Status** | Active |
+| **SSOT** | `docs/product/p0_broker_close_history_lifecycle.md` |
+
 ### D-015 — Founder QA Broker Workbench = QA document-intake
 
 | Field | Content |
@@ -237,6 +251,7 @@ Copy for every new decision:
 |----|----------|-----------|--------|
 | D-001 | One Active Case (server-enforced) | One Active Case | Active |
 | D-016 | Durable MP identity → Active Case | One Active Case | Active |
+| D-017 | Broker Close → History (read-only) | One Active Case | Active |
 | D-002 | Append-first, Split-later | Append-first, Split-later | Active |
 | D-003 | Today First | Today First | Active |
 | D-004 | Why (Loop 4.0) | Why | Active |
@@ -263,5 +278,6 @@ Copy for every new decision:
 | v1.5 | 2026-07-21 | D-011 Claim Vehicle vs Add Car naming freeze |
 | v1.6 | 2026-07-22 | D-015 Founder QA Broker Workbench = QA document-intake |
 | v1.7 | 2026-07-22 | D-016 Durable MP identity / One Active Case server enforcement |
+| v1.8 | 2026-07-22 | D-017 Broker Close → History (read-only) |
 
 **Change rule:** New Active entries require Founder acknowledgment. Superseding an entry requires a new ID and an explicit Status update on the old entry.
