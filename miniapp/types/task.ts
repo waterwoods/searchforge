@@ -38,10 +38,26 @@ export type MissingInfoItem = {
 
 export type Slice1RequestItemType =
   | "vin"
+  | "vehicle_information"
   | "policy_or_insurance_card"
   | "photo_evidence"
   | "free_text"
   | string;
+
+/** Slice1 fact payload — free text / VIN value, or structured Claim Vehicle fields. */
+export type Slice1FactPayload = {
+  field: string;
+  value?: string;
+  year?: string;
+  make?: string;
+  model?: string;
+  vin?: string;
+  vin_unavailable?: boolean;
+  license_plate?: string;
+  plate_state?: string;
+  final?: boolean;
+  mode?: "draft" | "submit" | string;
+};
 
 export type Slice1ItemStatus =
   | "queued"
@@ -162,7 +178,7 @@ export type Slice1SubmissionCommand = {
   idempotency_key: string;
   expected_case_version: number;
   client_draft_id?: string;
-  fact?: { field: string; value: string };
+  fact?: Slice1FactPayload;
   evidence?: { attachment_id: string };
 };
 

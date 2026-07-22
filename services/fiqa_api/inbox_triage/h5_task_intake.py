@@ -676,6 +676,33 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         upload_url = None
     dashboard = _build_dashboard_summary(case)
     is_test = _case_is_test(case)
+    # Claim Vehicle T4 — customer form hydration (H5 only; not Workbench brief).
+    key_facts = dict(brief.get("key_facts") or {})
+    known = case.get("known_facts") if isinstance(case.get("known_facts"), dict) else {}
+    for fact_key in (
+        "vehicle_year",
+        "vehicle_make",
+        "vehicle_model",
+        "vehicle_vin",
+        "vin",
+        "own_vehicle_vin",
+        "vehicle_vin_unavailable",
+        "vehicle_license_plate",
+        "vehicle_plate_state",
+        "vehicle_information",
+        "vehicle_verification_status",
+        "primary_vehicle_summary",
+    ):
+        value = known.get(fact_key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and fact_key not in key_facts:
+            key_facts[fact_key] = text
+    if not str(key_facts.get("own_vehicle_info") or "").strip():
+        alias = str(known.get("own_vehicle_info") or known.get("vehicle_information") or "").strip()
+        if alias:
+            key_facts["own_vehicle_info"] = alias
     result: dict[str, Any] = {
         "lane": claims.lane,
         "flow": claims.flow or FLOW_CLAIM_INTAKE_FORM,
@@ -688,7 +715,7 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         "step_total": len(CLAIM_INTAKE_STEPS) - 2,
         "submitted": submitted,
         "phase": derive_claim_phase(case),
-        "key_facts": brief.get("key_facts") or {},
+        "key_facts": key_facts,
         "missing_info": get_claim_missing_items(case),
         "injury_alert": is_injury_yes(_injury_value(case)),
         "upload_url": upload_url,

@@ -259,9 +259,11 @@ test("item type helpers and validators", () => {
   assert.equal(isEvidenceItemType("photo_evidence"), true);
   assert.equal(isTextItemType("vin"), true);
   assert.equal(factFieldForItemType("vin"), "vin");
+  assert.equal(factFieldForItemType("vehicle_information"), "vehicle_information");
   assert.equal(normalizeVin("1hg cm82633a004352"), "1HGCM82633A004352");
   assert.equal(validateVin("1HGCM82633A004352").ok, true);
   assert.equal(validateVin("SHORT").ok, false);
+  assert.equal(validateVin("SHORT").message, "请输入有效的 17 位 VIN");
   assert.equal(validateFreeText("").ok, false);
   assert.equal(validateFreeText("事故发生在周一上午").ok, true);
 });
@@ -325,6 +327,9 @@ test("request-item page first-render defaults are defined", async () => {
     "submissionState",
     "uploadItems",
     "draftValue",
+    "vehicleForm",
+    "fieldErrors",
+    "needsCorrection",
     "retryAvailable",
     "lastServerUpdate",
     "isDestroyed",

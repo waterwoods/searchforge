@@ -646,6 +646,10 @@ export function mapErrorMessage(code: string): string {
     invalid_upload_url: "暂时无法上传，请稍后重试或联系陈总。",
     upload_missing_attachment_id: "上传未完成确认，请重试。",
     validation_rejected: "提交未通过校验，请修改后重试。",
+    vin_invalid: "请输入有效的 17 位 VIN",
+    invalid_vin: "请输入有效的 17 位 VIN",
+    vehicle_incomplete: "暂时无法提供 VIN 时，请填写年份、品牌和型号",
+    vehicle_rejected: "这些信息需要修改，请检查后重新提交",
   };
   return messages[code] || "暂时无法完成操作，请稍后再试。";
 }

@@ -70,6 +70,7 @@ export const EMPTY_SLICE1_VIEW: Slice1CustomerView = {
 
 const EVIDENCE_TYPES = new Set(["photo_evidence", "policy_or_insurance_card"]);
 const TEXT_TYPES = new Set(["vin", "free_text"]);
+const VEHICLE_INFO_TYPES = new Set(["vehicle_information"]);
 
 export function extractSlice1Projection(task?: CustomerTask | null): Slice1Projection | null {
   if (!task) return null;
@@ -105,6 +106,10 @@ export function isTextItemType(itemType?: string | null): boolean {
   return TEXT_TYPES.has(String(itemType || "").trim().toLowerCase());
 }
 
+export function isVehicleInformationItemType(itemType?: string | null): boolean {
+  return VEHICLE_INFO_TYPES.has(String(itemType || "").trim().toLowerCase());
+}
+
 export function normalizeVin(value: string): string {
   return String(value || "")
     .trim()
@@ -115,13 +120,13 @@ export function normalizeVin(value: string): string {
 export function validateVin(value: string): { ok: boolean; message: string; normalized: string } {
   const normalized = normalizeVin(value);
   if (!normalized) {
-    return { ok: false, message: "请填写车辆 VIN", normalized };
+    return { ok: false, message: "请输入有效的 17 位 VIN", normalized };
   }
   if (normalized.length !== 17) {
-    return { ok: false, message: "VIN 应为 17 位（不含 I/O/Q）", normalized };
+    return { ok: false, message: "请输入有效的 17 位 VIN", normalized };
   }
   if (/[IOQ]/.test(normalized)) {
-    return { ok: false, message: "VIN 不能包含字母 I、O、Q", normalized };
+    return { ok: false, message: "请输入有效的 17 位 VIN", normalized };
   }
   return { ok: true, message: "", normalized };
 }
@@ -140,6 +145,7 @@ export function validateFreeText(value: string): { ok: boolean; message: string;
 export function factFieldForItemType(itemType: Slice1RequestItemType): string {
   const key = String(itemType || "").trim().toLowerCase();
   if (key === "vin") return "vin";
+  if (key === "vehicle_information") return "vehicle_information";
   return "free_text";
 }
 
@@ -307,6 +313,7 @@ export const slice1Customer = {
   isSlice1CustomerFlow,
   isEvidenceItemType,
   isTextItemType,
+  isVehicleInformationItemType,
   normalizeVin,
   validateVin,
   validateFreeText,

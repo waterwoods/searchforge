@@ -8,6 +8,16 @@
  */
 const DRAFT_PREFIX = "mp_slice1_request_item_draft_v1:";
 
+export type RequestItemVehicleDraft = {
+  year?: string;
+  make?: string;
+  model?: string;
+  vin?: string;
+  vinUnavailable?: boolean;
+  licensePlate?: string;
+  plateState?: string;
+};
+
 export type RequestItemDraft = {
   version: 1;
   case_id: string;
@@ -15,6 +25,8 @@ export type RequestItemDraft = {
   request_item_id: string;
   item_type: string;
   draft_value: string;
+  /** Structured Claim Vehicle draft (vehicle_information); optional. */
+  vehicle_draft?: RequestItemVehicleDraft;
   client_draft_id: string;
   command_id?: string;
   idempotency_key?: string;
@@ -71,6 +83,10 @@ export function loadRequestItemDraft(
     ) {
       return null;
     }
+    const vehicleRaw =
+      draft.vehicle_draft && typeof draft.vehicle_draft === "object"
+        ? (draft.vehicle_draft as RequestItemVehicleDraft)
+        : undefined;
     return {
       version: 1,
       case_id: caseId,
@@ -78,6 +94,17 @@ export function loadRequestItemDraft(
       request_item_id: requestItemId,
       item_type: String(draft.item_type || ""),
       draft_value: String(draft.draft_value || ""),
+      vehicle_draft: vehicleRaw
+        ? {
+            year: String(vehicleRaw.year || ""),
+            make: String(vehicleRaw.make || ""),
+            model: String(vehicleRaw.model || ""),
+            vin: String(vehicleRaw.vin || ""),
+            vinUnavailable: Boolean(vehicleRaw.vinUnavailable),
+            licensePlate: String(vehicleRaw.licensePlate || ""),
+            plateState: String(vehicleRaw.plateState || ""),
+          }
+        : undefined,
       client_draft_id: String(draft.client_draft_id || newClientDraftId()),
       command_id: draft.command_id ? String(draft.command_id) : undefined,
       idempotency_key: draft.idempotency_key ? String(draft.idempotency_key) : undefined,

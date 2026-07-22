@@ -24,9 +24,9 @@ import {
   factFieldForItemType,
   isEvidenceItemType,
   isSlice1CustomerFlow,
+  isVehicleInformationItemType,
   mapSlice1CustomerView,
   validateFreeText,
-  validateVin,
 } from "../../utils/slice1Customer";
 import {
   EMPTY_TASK_ERROR,
@@ -41,6 +41,21 @@ import {
   type UploadPhase,
 } from "../../utils/uploadStateMachine";
 import { resolveRequestItemWorkSurface } from "../../utils/requestItemWorkSurface";
+import {
+  buildVehicleInformationFactPayload,
+  buildVinFactPayload,
+  CLAIM_VEHICLE_COPY,
+  claimVehicleFormHasAnyValue,
+  EMPTY_CLAIM_VEHICLE_FORM,
+  hydrateClaimVehicleForm,
+  isNeedsCorrection,
+  mapVehicleServerError,
+  switchVinUnavailableMode,
+  validateVehicleInformationSubmit,
+  validateVinRequestSubmit,
+  type ClaimVehicleFormFields,
+} from "../../utils/claimVehicleForm";
+import type { Slice1FactPayload } from "../../types/task";
 
 /** P26G — Constitution system_default insurance without a Slice1 request row. */
 function resolveSystemDefaultInsurance(task: CustomerTask | null | undefined): {
@@ -114,13 +129,16 @@ type PageData = {
   uploadPhase: UploadPhase;
   uploadPhaseLabel: string;
   draftValue: string;
+  vehicleForm: ClaimVehicleFormFields;
+  fieldErrors: Partial<Record<keyof ClaimVehicleFormFields, string>>;
+  needsCorrection: boolean;
   validationMessage: string;
   retryAvailable: boolean;
   lastServerUpdate: string;
   isDestroyed: boolean;
   requestGeneration: number;
   waitingForBroker: boolean;
-  inputMode: "text" | "evidence" | "none";
+  inputMode: "text" | "evidence" | "vehicle" | "none";
   itemType: string;
   inputLabel: string;
   inputPlaceholder: string;
@@ -197,9 +215,30 @@ function brokerStatusLabel(status: string): string {
 
 function inputCopy(itemType: string): { label: string; placeholder: string } {
   if (itemType === "vin") {
-    return { label: "车辆 VIN", placeholder: "请输入 17 位 VIN" };
+    return {
+      label: CLAIM_VEHICLE_COPY.vinOnlyLabel,
+      placeholder: CLAIM_VEHICLE_COPY.vinOnlyPlaceholder,
+    };
+  }
+  if (itemType === "vehicle_information") {
+    return {
+      label: CLAIM_VEHICLE_COPY.pageTitle,
+      placeholder: CLAIM_VEHICLE_COPY.explanation,
+    };
   }
   return { label: "补充说明", placeholder: "请按陈总要求填写" };
+}
+
+function syncNavTitle(itemType: string, waitingForBroker: boolean) {
+  if (waitingForBroker) {
+    wx.setNavigationBarTitle({ title: "补充资料" });
+    return;
+  }
+  if (itemType === "vin" || itemType === "vehicle_information") {
+    wx.setNavigationBarTitle({ title: CLAIM_VEHICLE_COPY.pageTitle });
+    return;
+  }
+  wx.setNavigationBarTitle({ title: "补充资料" });
 }
 
 Page({
@@ -223,6 +262,9 @@ Page({
     uploadPhase: "idle",
     uploadPhaseLabel: "",
     draftValue: "",
+    vehicleForm: { ...EMPTY_CLAIM_VEHICLE_FORM },
+    fieldErrors: {},
+    needsCorrection: false,
     validationMessage: "",
     retryAvailable: false,
     lastServerUpdate: "",
@@ -383,9 +425,11 @@ Page({
       useSystemDefaultInsurance ||
       isEvidenceItemType(itemType) ||
       String(nextAction?.action_type || "") === "provide_evidence";
+    const vehicleInfo = !waitingForBroker && !evidence && isVehicleInformationItemType(itemType);
     const text =
       !waitingForBroker &&
       !evidence &&
+      !vehicleInfo &&
       (itemType === "vin" || itemType === "free_text" || String(nextAction?.action_type || "") === "provide_fact");
     const copy = inputCopy(itemType);
     const internal = ensureInternal(this);
@@ -411,11 +455,16 @@ Page({
     }
 
     let draftValue = "";
+    let vehicleForm: ClaimVehicleFormFields = { ...EMPTY_CLAIM_VEHICLE_FORM };
     let uploadItem = { ...EMPTY_UPLOAD_ITEM };
+    let localVehicleDraft: Partial<ClaimVehicleFormFields> | null = null;
     if (options?.restoreDraft && caseId && requestId && nextItemId) {
       const draft = loadRequestItemDraft(caseId, requestId, nextItemId);
       if (draft) {
         draftValue = draft.draft_value || "";
+        if (draft.vehicle_draft) {
+          localVehicleDraft = draft.vehicle_draft;
+        }
         internal.clientDraftId = draft.client_draft_id || internal.clientDraftId;
         if (draft.command_id && draft.idempotency_key) {
           internal.commandId = draft.command_id;
@@ -440,8 +489,33 @@ Page({
       }
     }
 
+    const keyFacts = (task.key_facts || {}) as Record<string, unknown>;
+    if (vehicleInfo || itemType === "vin") {
+      vehicleForm = hydrateClaimVehicleForm({
+        keyFacts,
+        draft:
+          localVehicleDraft ||
+          (itemType === "vin" && draftValue
+            ? { vin: draftValue, vinUnavailable: false }
+            : null),
+        itemType,
+      });
+      if (itemType === "vin" && vehicleForm.vin) {
+        draftValue = vehicleForm.vin;
+      }
+    }
+
+    const needsCorrection = isNeedsCorrection(keyFacts);
     const submitDisabled = waitingForBroker || !nextItemId;
-    const inputMode = waitingForBroker ? "none" : evidence ? "evidence" : text ? "text" : "none";
+    const inputMode = waitingForBroker
+      ? "none"
+      : evidence
+        ? "evidence"
+        : vehicleInfo
+          ? "vehicle"
+          : text
+            ? "text"
+            : "none";
     const nextActionForUi = useSystemDefaultInsurance ? null : nextAction;
     const workSurface = resolveRequestItemWorkSurface({
       loading: false,
@@ -450,6 +524,17 @@ Page({
       nextAction: nextActionForUi,
       pageError: EMPTY_TASK_ERROR,
     });
+    syncNavTitle(itemType, waitingForBroker);
+
+    const titleDefault =
+      itemType === "vehicle_information"
+        ? CLAIM_VEHICLE_COPY.pageTitle
+        : waitingForBroker
+          ? "资料已提交，等待经纪人审核"
+          : "";
+    const instructionsDefault =
+      itemType === "vehicle_information" ? CLAIM_VEHICLE_COPY.explanation : "";
+
     // Titles/instructions already overlay Constitution via mapSlice1CustomerView.
     this.safePageSetData({
       task,
@@ -458,13 +543,13 @@ Page({
         view.constitutionToday ||
           systemDefaultInsurance.title ||
           nextAction?.title ||
-          (waitingForBroker ? "资料已提交，等待经纪人审核" : ""),
+          titleDefault,
       ),
       nextActionInstructions: String(
         view.constitutionWhy ||
           systemDefaultInsurance.why ||
           nextAction?.instructions ||
-          "",
+          instructionsDefault,
       ),
       queuedItems: view.queuedItems,
       satisfiedItems: view.satisfiedItems,
@@ -478,6 +563,9 @@ Page({
       inputLabel: copy.label,
       inputPlaceholder: copy.placeholder,
       draftValue,
+      vehicleForm,
+      fieldErrors: {},
+      needsCorrection,
       uploadItems: [uploadItem],
       ...this.uploadPhasePatch(
         uploadItem,
@@ -533,13 +621,30 @@ Page({
     if (!internal.caseId || !internal.requestId || !internal.activeRequestItemId) return;
     if (this.data.waitingForBroker) return;
     const upload = (this.data.uploadItems || [])[0] || EMPTY_UPLOAD_ITEM;
+    const itemType = String(this.data.itemType || "");
+    const vehicleForm = (this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM) as ClaimVehicleFormFields;
     const draft: RequestItemDraft = {
       version: 1,
       case_id: internal.caseId,
       request_id: internal.requestId,
       request_item_id: internal.activeRequestItemId,
-      item_type: String(this.data.itemType || ""),
-      draft_value: String(this.data.draftValue || ""),
+      item_type: itemType,
+      draft_value:
+        itemType === "vin"
+          ? String(this.data.draftValue || vehicleForm.vin || "")
+          : String(this.data.draftValue || ""),
+      vehicle_draft:
+        itemType === "vehicle_information" || itemType === "vin"
+          ? {
+              year: vehicleForm.year || "",
+              make: vehicleForm.make || "",
+              model: vehicleForm.model || "",
+              vin: itemType === "vin" ? String(this.data.draftValue || vehicleForm.vin || "") : vehicleForm.vin || "",
+              vinUnavailable: Boolean(vehicleForm.vinUnavailable),
+              licensePlate: vehicleForm.licensePlate || "",
+              plateState: vehicleForm.plateState || "",
+            }
+          : undefined,
       client_draft_id: internal.clientDraftId,
       command_id: internal.commandId || undefined,
       idempotency_key: internal.idempotencyKey || undefined,
@@ -557,12 +662,66 @@ Page({
       internal.commandId = "";
       internal.idempotencyKey = "";
     }
+    const value = e.detail.value || "";
+    const patch: Record<string, unknown> = {
+      draftValue: value,
+      validationMessage: "",
+      fieldErrors: {},
+      retryAvailable: false,
+      submissionState: "idle",
+    };
+    if (String(this.data.itemType || "") === "vin") {
+      patch.vehicleForm = {
+        ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
+        vin: value,
+        vinUnavailable: false,
+      };
+    }
+    this.safePageSetData(patch);
+  },
+
+  onVehicleFieldInput(e: WechatMiniprogram.Input) {
+    const internal = ensureInternal(this);
+    if (this.data.submissionState !== "uncertain") {
+      internal.commandId = "";
+      internal.idempotencyKey = "";
+    }
+    const field = String((e.currentTarget as { dataset?: { field?: string } })?.dataset?.field || "");
+    if (!field) return;
+    const next = {
+      ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
+      [field]: e.detail.value || "",
+    } as ClaimVehicleFormFields;
+    const fieldErrors = { ...(this.data.fieldErrors || {}) };
+    delete fieldErrors[field as keyof ClaimVehicleFormFields];
     this.safePageSetData({
-      draftValue: e.detail.value || "",
+      vehicleForm: next,
+      fieldErrors,
       validationMessage: "",
       retryAvailable: false,
       submissionState: "idle",
     });
+  },
+
+  onVinUnavailableChange(e: { detail?: { value?: boolean } }) {
+    const internal = ensureInternal(this);
+    if (this.data.submissionState !== "uncertain") {
+      internal.commandId = "";
+      internal.idempotencyKey = "";
+    }
+    const checked = Boolean(e?.detail?.value);
+    const next = switchVinUnavailableMode(
+      (this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM) as ClaimVehicleFormFields,
+      checked,
+    );
+    this.safePageSetData({
+      vehicleForm: next,
+      fieldErrors: {},
+      validationMessage: "",
+      retryAvailable: false,
+      submissionState: "idle",
+    });
+    this.persistDraftSafe();
   },
 
   async onChoosePhoto() {
@@ -701,7 +860,7 @@ Page({
     await this.runSubmit({ reuseIdentity: true });
   },
 
-  async runSubmit(options: { reuseIdentity: boolean }) {
+  async runSubmit(options: { reuseIdentity: boolean; partialVehicleSave?: boolean }) {
     const internal = ensureInternal(this);
     if (internal.submitInFlight || this.data.busy.submitting || this.data.waitingForBroker) return;
     if (!internal.activeRequestItemId) return;
@@ -711,12 +870,15 @@ Page({
 
     const itemType = String(this.data.itemType || "");
     const evidenceMode = this.data.inputMode === "evidence";
-    let fact: { field: string; value: string } | undefined;
+    const vehicleMode = this.data.inputMode === "vehicle";
+    const partialVehicleSave = Boolean(options.partialVehicleSave);
+    let fact: Slice1FactPayload | undefined;
     let evidence: { attachment_id: string } | undefined;
 
     this.safePageSetData({
       submissionState: "validating",
       validationMessage: "",
+      fieldErrors: {},
       pageError: EMPTY_TASK_ERROR,
     });
 
@@ -780,17 +942,55 @@ Page({
 
     if (!evidenceMode) {
       if (itemType === "vin") {
-        const result = validateVin(String(this.data.draftValue || ""));
+        const result = validateVinRequestSubmit(String(this.data.draftValue || ""));
         if (!result.ok) {
           this.safePageSetData({
             validationMessage: result.message,
+            fieldErrors: result.fieldErrors,
             submissionState: "failed",
-            draftValue: result.normalized || this.data.draftValue,
+            draftValue: result.normalized.vin || this.data.draftValue,
+            vehicleForm: {
+              ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
+              vin: result.normalized.vin,
+              vinUnavailable: false,
+            },
           });
           return;
         }
-        this.safePageSetData({ draftValue: result.normalized });
-        fact = { field: factFieldForItemType("vin"), value: result.normalized };
+        this.safePageSetData({
+          draftValue: result.normalized.vin,
+          vehicleForm: {
+            ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
+            vin: result.normalized.vin,
+            vinUnavailable: false,
+          },
+        });
+        fact = buildVinFactPayload(result.normalized.vin);
+      } else if (vehicleMode || itemType === "vehicle_information") {
+        const form = (this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM) as ClaimVehicleFormFields;
+        if (partialVehicleSave) {
+          if (!claimVehicleFormHasAnyValue(form)) {
+            this.safePageSetData({
+              validationMessage: "",
+              submissionState: "idle",
+            });
+            return;
+          }
+          fact = buildVehicleInformationFactPayload(form, { final: false });
+        } else {
+          const result = validateVehicleInformationSubmit(form);
+          if (!result.ok) {
+            this.safePageSetData({
+              validationMessage: result.message,
+              fieldErrors: result.fieldErrors,
+              vehicleForm: result.normalized,
+              submissionState: "failed",
+            });
+            return;
+          }
+          this.safePageSetData({ vehicleForm: result.normalized, fieldErrors: {} });
+          fact = buildVehicleInformationFactPayload(result.normalized, { final: true });
+        }
       } else {
         const result = validateFreeText(String(this.data.draftValue || ""));
         if (!result.ok) {
@@ -840,7 +1040,7 @@ Page({
         fact,
         evidence,
       });
-      await this.handleSubmitResult(result);
+      await this.handleSubmitResult(result, { partialVehicleSave });
     } catch (error) {
       if (error instanceof ApiRequestError && (error.code === "invalid_or_expired_task_link" || error.status === 403)) {
         this.persistDraftSafe();
@@ -884,7 +1084,10 @@ Page({
     }
   },
 
-  async handleSubmitResult(result: Slice1CommandResult) {
+  async handleSubmitResult(
+    result: Slice1CommandResult,
+    options?: { partialVehicleSave?: boolean },
+  ) {
     const internal = ensureInternal(this);
     const outcome = String(result.outcome || "");
     if (outcome === "accepted" || outcome === "replayed") {
@@ -892,6 +1095,63 @@ Page({
       const previousItemId = internal.activeRequestItemId;
       const previousRequestId = internal.requestId;
       const caseId = internal.caseId;
+      const itemType = String(this.data.itemType || "");
+      const preservedVehicleForm = {
+        ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
+      } as ClaimVehicleFormFields;
+      const preservedDraftValue = String(this.data.draftValue || "");
+
+      let nextTask = this.data.task as CustomerTask;
+      if (projection) {
+        nextTask = applySlice1ProjectionToTask(nextTask || ({} as CustomerTask), projection);
+        // Merge server key_facts when present on refreshed task payloads later.
+        const app = getApp<IAppOption>();
+        app.task = nextTask;
+      } else {
+        const refreshed = await this.rehydrateAuthoritativeTask({ silent: true });
+        if (refreshed) nextTask = refreshed;
+      }
+
+      const view = mapSlice1CustomerView(nextTask);
+      const stillSameItem =
+        Boolean(previousItemId) &&
+        String(view.nextAction?.request_item_id || "") === previousItemId;
+      const partialKeepOpen =
+        Boolean(options?.partialVehicleSave) ||
+        (stillSameItem &&
+          !view.waitingForBroker &&
+          (itemType === "vehicle_information" || itemType === "vin"));
+
+      if (partialKeepOpen) {
+        internal.commandId = "";
+        internal.idempotencyKey = "";
+        internal.clientDraftId = newClientDraftId();
+        internal.expectedCaseVersion = view.aggregateVersion;
+        // Keep local fields; server authoritative facts hydrate on next full bootstrap.
+        this.applyAuthoritativeTask(nextTask, { restoreDraft: false });
+        const correction = isNeedsCorrection(
+          ((nextTask.key_facts || {}) as Record<string, unknown>) || null,
+        );
+        this.safePageSetData({
+          vehicleForm: preservedVehicleForm,
+          draftValue: itemType === "vin" ? preservedDraftValue || preservedVehicleForm.vin : preservedDraftValue,
+          submissionState: "idle",
+          retryAvailable: false,
+          submitDisabled: false,
+          submitDisabledReason: "",
+          validationMessage: correction ? CLAIM_VEHICLE_COPY.correction : "",
+          fieldErrors: {},
+          needsCorrection: correction,
+        });
+        this.persistDraftSafe();
+        wx.showToast({
+          title: correction ? CLAIM_VEHICLE_COPY.correction : CLAIM_VEHICLE_COPY.draftSaved,
+          icon: "none",
+        });
+        console.info("[slice1_submit]", { outcome, partial: true, itemType, correction });
+        return;
+      }
+
       if (caseId && previousRequestId && previousItemId) {
         clearRequestItemDraft(caseId, previousRequestId, previousItemId);
       }
@@ -899,15 +1159,6 @@ Page({
       internal.idempotencyKey = "";
       internal.clientDraftId = newClientDraftId();
 
-      let nextTask = this.data.task as CustomerTask;
-      if (projection) {
-        nextTask = applySlice1ProjectionToTask(nextTask || ({} as CustomerTask), projection);
-        const app = getApp<IAppOption>();
-        app.task = nextTask;
-      } else {
-        const refreshed = await this.rehydrateAuthoritativeTask({ silent: true });
-        if (refreshed) nextTask = refreshed;
-      }
       this.applyAuthoritativeTask(nextTask, { restoreDraft: true });
       this.safePageSetData({
         submissionState: "confirmed",
@@ -919,8 +1170,15 @@ Page({
         outcome,
         waitingForBroker: mapSlice1CustomerView(nextTask).waitingForBroker,
       });
+      const waiting = mapSlice1CustomerView(nextTask).waitingForBroker;
+      const successTitle =
+        itemType === "vin" || itemType === "vehicle_information"
+          ? CLAIM_VEHICLE_COPY.submitSuccess
+          : waiting
+            ? "已提交，等待经纪人"
+            : "已提交下一项";
       wx.showToast({
-        title: mapSlice1CustomerView(nextTask).waitingForBroker ? "已提交，等待经纪人" : "已提交下一项",
+        title: successTitle,
         icon: "none",
       });
       return;
@@ -960,15 +1218,23 @@ Page({
 
     // rejected / validation
     const code = String(result.error_code || "validation_rejected");
+    const vehicleMsg = mapVehicleServerError(code);
+    const message = vehicleMsg || mapErrorMessage(code);
     this.safePageSetData({
       submissionState: "failed",
       retryAvailable: false,
       submitDisabled: false,
       submitDisabledReason: "",
-      validationMessage: mapErrorMessage(code),
+      validationMessage: message,
+      fieldErrors:
+        code === "vin_invalid" || code === "invalid_vin"
+          ? { vin: CLAIM_VEHICLE_COPY.invalidVin }
+          : code === "vehicle_incomplete"
+            ? { year: message, make: message, model: message }
+            : {},
       pageError: {
         code,
-        message: mapErrorMessage(code),
+        message,
         retryable: false,
         blocking: false,
       },
@@ -980,8 +1246,22 @@ Page({
     void this.bootstrapPage({ ownerLoad: false, force: true });
   },
 
-  onLater() {
-    this.persistDraftSafe();
+  async onLater() {
+    const itemType = String(this.data.itemType || "");
+    const form = (this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM) as ClaimVehicleFormFields;
+    // vehicle_information: server partial save when any fields present, then leave.
+    if (
+      itemType === "vehicle_information" &&
+      claimVehicleFormHasAnyValue(form) &&
+      !this.data.waitingForBroker
+    ) {
+      await this.runSubmit({ reuseIdentity: false, partialVehicleSave: true });
+      if (this.data.submissionState === "uncertain" || this.data.submissionState === "failed") {
+        return;
+      }
+    } else {
+      this.persistDraftSafe();
+    }
     wx.navigateBack({ fail: () => wx.redirectTo({ url: "/pages/task-home/task-home" }) });
   },
 

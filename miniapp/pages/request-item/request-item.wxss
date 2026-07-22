@@ -6,6 +6,72 @@
   border-radius: 12rpx;
   background: #fff;
   box-sizing: border-box;
+  font-size: 30rpx;
+}
+
+.request-item-page .text-field-secondary {
+  background: #fafbfc;
+  border-color: #e5e7eb;
+}
+
+.request-item-page .field-invalid {
+  border-color: #b91c1c;
+  background: #fef2f2;
+}
+
+.request-item-page .field-error {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #b91c1c;
+  line-height: 1.4;
+}
+
+.request-item-page .section-gap {
+  margin-top: 28rpx;
+}
+
+.request-item-page .vin-unavailable-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  min-height: 72rpx;
+}
+
+.request-item-page .vin-unavailable-label {
+  font-size: 28rpx;
+  color: #111827;
+  line-height: 1.4;
+}
+
+.request-item-page .ymm-block.ymm-secondary {
+  opacity: 0.92;
+}
+
+.request-item-page .ymm-block.ymm-required .section-label {
+  font-weight: 600;
+}
+
+.request-item-page .optional-block {
+  margin-top: 32rpx;
+  padding-top: 8rpx;
+  border-top: 1rpx solid #eef1f5;
+}
+
+.request-item-page .optional-label {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.request-item-page .correction-card {
+  background: #fff7ed;
+  border: 1rpx solid #fed7aa;
+}
+
+.request-item-page .correction-text {
+  font-size: 28rpx;
+  color: #9a3412;
+  line-height: 1.45;
 }
 
 .request-item-page .preview-wrap {

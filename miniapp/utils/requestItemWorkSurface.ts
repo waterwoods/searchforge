@@ -41,7 +41,8 @@ export function resolveRequestItemWorkSurface(
     Boolean(data.pageError?.blocking) &&
     (message.includes("无需此步骤") || nonEmpty(data.pageError?.code) === "slice1_not_enabled");
   const inputMode = nonEmpty(data.inputMode);
-  const hasWorkMode = inputMode === "evidence" || inputMode === "text";
+  const hasWorkMode =
+    inputMode === "evidence" || inputMode === "text" || inputMode === "vehicle";
   const showWorkSurface =
     Boolean(data.waitingForBroker) || hasWorkMode || Boolean(data.nextAction);
   const showFooterCta =

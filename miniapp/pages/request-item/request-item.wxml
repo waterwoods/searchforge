@@ -37,6 +37,10 @@
         <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
       </view>
 
+      <view class="card correction-card" wx:if="{{needsCorrection}}">
+        <view class="correction-text">这些信息需要修改，请检查后重新提交</view>
+      </view>
+
       <view class="card" wx:if="{{inputMode === 'text'}}">
         <view class="section-label">{{inputLabel}}</view>
         <textarea
@@ -54,13 +58,109 @@
           wx:else
           class="text-field"
           type="text"
-          maxlength="32"
+          maxlength="17"
           placeholder="{{inputPlaceholder}}"
           value="{{draftValue}}"
           bindinput="onDraftInput"
           disabled="{{busy.submitting}}"
         />
-        <view class="char-count" wx:if="{{validationMessage}}">{{validationMessage}}</view>
+        <view class="field-error" wx:if="{{validationMessage}}">{{validationMessage}}</view>
+      </view>
+
+      <!-- Claim Vehicle / 事故车辆 — structured vehicle_information form -->
+      <view class="card" wx:if="{{inputMode === 'vehicle'}}">
+        <view class="section-label">车辆识别码（VIN）</view>
+        <input
+          class="text-field {{fieldErrors.vin ? 'field-invalid' : ''}}"
+          type="text"
+          maxlength="17"
+          placeholder="请输入 17 位 VIN"
+          value="{{vehicleForm.vin}}"
+          data-field="vin"
+          bindinput="onVehicleFieldInput"
+          disabled="{{busy.submitting || vehicleForm.vinUnavailable}}"
+        />
+        <view class="field-error" wx:if="{{fieldErrors.vin}}">{{fieldErrors.vin}}</view>
+
+        <label class="vin-unavailable-row">
+          <switch
+            checked="{{vehicleForm.vinUnavailable}}"
+            bindchange="onVinUnavailableChange"
+            disabled="{{busy.submitting}}"
+            color="#1d4ed8"
+          />
+          <text class="vin-unavailable-label">暂时无法提供 VIN</text>
+        </label>
+
+        <!-- Year/make/model always visible for resume; required only when VIN unavailable. -->
+        <view class="ymm-block {{vehicleForm.vinUnavailable ? 'ymm-required' : 'ymm-secondary'}}">
+          <view class="section-label section-gap">年份</view>
+          <input
+            class="text-field {{fieldErrors.year ? 'field-invalid' : ''}}"
+            type="number"
+            maxlength="4"
+            placeholder="例如 2020"
+            value="{{vehicleForm.year}}"
+            data-field="year"
+            bindinput="onVehicleFieldInput"
+            disabled="{{busy.submitting}}"
+          />
+          <view class="field-error" wx:if="{{fieldErrors.year}}">{{fieldErrors.year}}</view>
+
+          <view class="section-label section-gap">品牌</view>
+          <input
+            class="text-field {{fieldErrors.make ? 'field-invalid' : ''}}"
+            type="text"
+            maxlength="40"
+            placeholder="例如 Toyota"
+            value="{{vehicleForm.make}}"
+            data-field="make"
+            bindinput="onVehicleFieldInput"
+            disabled="{{busy.submitting}}"
+          />
+          <view class="field-error" wx:if="{{fieldErrors.make}}">{{fieldErrors.make}}</view>
+
+          <view class="section-label section-gap">型号</view>
+          <input
+            class="text-field {{fieldErrors.model ? 'field-invalid' : ''}}"
+            type="text"
+            maxlength="40"
+            placeholder="例如 Camry"
+            value="{{vehicleForm.model}}"
+            data-field="model"
+            bindinput="onVehicleFieldInput"
+            disabled="{{busy.submitting}}"
+          />
+          <view class="field-error" wx:if="{{fieldErrors.model}}">{{fieldErrors.model}}</view>
+        </view>
+
+        <view class="optional-block">
+          <view class="section-label section-gap optional-label">车牌号（选填）</view>
+          <input
+            class="text-field text-field-secondary"
+            type="text"
+            maxlength="12"
+            placeholder="选填"
+            value="{{vehicleForm.licensePlate}}"
+            data-field="licensePlate"
+            bindinput="onVehicleFieldInput"
+            disabled="{{busy.submitting}}"
+          />
+
+          <view class="section-label section-gap optional-label">车牌州（选填）</view>
+          <input
+            class="text-field text-field-secondary"
+            type="text"
+            maxlength="2"
+            placeholder="例如 CA"
+            value="{{vehicleForm.plateState}}"
+            data-field="plateState"
+            bindinput="onVehicleFieldInput"
+            disabled="{{busy.submitting}}"
+          />
+        </view>
+
+        <view class="field-error" wx:if="{{validationMessage && !fieldErrors.vin && !fieldErrors.year}}">{{validationMessage}}</view>
       </view>
 
       <view class="card" wx:if="{{inputMode === 'evidence'}}">
@@ -89,7 +189,7 @@
           bindtap="onChoosePhoto"
           disabled="{{busy.submitting || uploadItems[0].uploading}}"
         >{{uploadItems[0].localPath ? '重新选择照片' : '选择照片'}}</button>
-        <view class="char-count" wx:if="{{validationMessage}}">{{validationMessage}}</view>
+        <view class="field-error" wx:if="{{validationMessage}}">{{validationMessage}}</view>
       </view>
 
       <view class="card" wx:if="{{queuedItems.length}}">
