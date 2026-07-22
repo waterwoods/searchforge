@@ -2,6 +2,8 @@
  * Temporary QA path tracer for real-device Preview (Remote Debug Console).
  * Focus: prove launch page + query + EARLY_EXIT reason.
  * Never logs tokens, VIN, or PII — only booleans / codes / hosts / keys.
+ *
+ * Avoid URL / URLSearchParams — not relied on for page registration safety.
  */
 
 export type QaPathStep =
@@ -18,17 +20,42 @@ export function qaPathLog(
   step: QaPathStep,
   detail?: Record<string, string | number | boolean | undefined | null>,
 ): void {
-  const safe: Record<string, string | number | boolean> = {};
-  if (detail) {
-    for (const [key, value] of Object.entries(detail)) {
-      if (value == null) continue;
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        safe[key] = value;
+  try {
+    const safe: Record<string, string | number | boolean> = {};
+    if (detail) {
+      for (const key of Object.keys(detail)) {
+        const value = detail[key];
+        if (value == null) continue;
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          safe[key] = value;
+        }
       }
     }
+    console.info(`[QA_PATH] ${step}`, safe);
+  } catch (_err) {
+    // ignore
   }
-  // Loud single-line prefix for Remote Debug filter: QA_PATH
-  console.info(`[QA_PATH] ${step}`, safe);
+}
+
+function parseQueryString(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const s = raw.charAt(0) === "?" ? raw.slice(1) : raw;
+  if (!s) return out;
+  const parts = s.split("&");
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    const key = eq >= 0 ? part.slice(0, eq) : part;
+    const value = eq >= 0 ? part.slice(eq + 1) : "";
+    if (!key) continue;
+    try {
+      out[decodeURIComponent(key)] = decodeURIComponent(value || "");
+    } catch (_err) {
+      out[key] = value || "";
+    }
+  }
+  return out;
 }
 
 /** Summarize launch/page query without exposing token values. */
@@ -43,32 +70,18 @@ export function summarizeLaunchQuery(
     return { queryKeys: "(none)", queryRawSafe: "(empty)", hasToken: false };
   }
 
+  let obj: Record<string, unknown>;
   if (typeof query === "string") {
-    const params = new URLSearchParams(query.startsWith("?") ? query.slice(1) : query);
-    const keys = Array.from(params.keys()).sort();
-    const hasToken = Boolean(String(params.get("token") || "").trim());
-    const parts: string[] = [];
-    params.forEach((value, key) => {
-      if (key === "token") {
-        parts.push("token=(redacted)");
-        return;
-      }
-      // Keep non-secret short values for compile-mode debugging.
-      const v = String(value || "");
-      parts.push(`${key}=${v.length > 40 ? `${v.slice(0, 40)}…` : v}`);
-    });
-    return {
-      queryKeys: keys.length ? keys.join(",") : "(none)",
-      queryRawSafe: parts.length ? parts.join("&") : "(empty)",
-      hasToken,
-    };
+    obj = parseQueryString(query);
+  } else {
+    obj = query;
   }
 
-  const keys = Object.keys(query).sort();
-  const hasToken = Boolean(String(query.token || "").trim());
+  const keys = Object.keys(obj).sort();
+  const hasToken = Boolean(String(obj.token || "").trim());
   const parts = keys.map((key) => {
     if (key === "token") return "token=(redacted)";
-    const v = String(query[key] ?? "");
+    const v = String(obj[key] ?? "");
     return `${key}=${v.length > 40 ? `${v.slice(0, 40)}…` : v}`;
   });
   return {

@@ -2,49 +2,59 @@
 import { appConfig } from "./utils/config";
 import { qaPathLog, summarizeLaunchQuery } from "./utils/qaPathLog";
 
-function logPreviewLaunch(source: string, options?: WechatMiniprogram.LaunchShowOption | Record<string, unknown>): void {
-  let path = "";
-  let scene = 0;
-  let query: Record<string, unknown> | string = {};
+type LaunchLike = {
+  path?: string;
+  scene?: number;
+  query?: Record<string, unknown>;
+};
 
+function logPreviewLaunch(source: string, options?: LaunchLike): void {
   try {
-    const sync =
-      typeof wx !== "undefined" && typeof wx.getLaunchOptionsSync === "function"
-        ? wx.getLaunchOptionsSync()
-        : null;
-    path = String((options as { path?: string })?.path || sync?.path || "");
-    scene = Number((options as { scene?: number })?.scene ?? sync?.scene ?? 0) || 0;
-    query =
-      ((options as { query?: Record<string, unknown> })?.query as Record<string, unknown>) ||
-      (sync?.query as Record<string, unknown>) ||
-      {};
-  } catch {
-    path = String((options as { path?: string })?.path || "");
-  }
+    let path = "";
+    let scene = 0;
+    let query: Record<string, unknown> = {};
 
-  const q = summarizeLaunchQuery(query);
-  qaPathLog("LAUNCH", {
-    source,
-    path: path || "(unknown)",
-    scene,
-    queryKeys: q.queryKeys,
-    queryRawSafe: q.queryRawSafe,
-    hasToken: q.hasToken,
-    apiProfile: appConfig.apiProfile,
-    // Prove which compile/default root WeChat opened — not an API call.
-    appPages0: "pages/start-claim/start-claim",
-  });
+    try {
+      const sync =
+        typeof wx !== "undefined" && typeof wx.getLaunchOptionsSync === "function"
+          ? wx.getLaunchOptionsSync()
+          : null;
+      path = String((options && options.path) || (sync && sync.path) || "");
+      scene = Number((options && options.scene) ?? (sync && sync.scene) ?? 0) || 0;
+      query =
+        (options && options.query) ||
+        ((sync && sync.query) as Record<string, unknown>) ||
+        {};
+    } catch (_err) {
+      path = String((options && options.path) || "");
+    }
+
+    const q = summarizeLaunchQuery(query);
+    qaPathLog("LAUNCH", {
+      source,
+      path: path || "(unknown)",
+      scene,
+      queryKeys: q.queryKeys,
+      queryRawSafe: q.queryRawSafe,
+      hasToken: q.hasToken,
+      apiProfile: appConfig.apiProfile,
+      appPages0: "pages/start-claim/start-claim",
+    });
+  } catch (_err) {
+    // Never block App / page registration on QA logging.
+    console.info("[QA_PATH] LAUNCH", { source, path: "(log_failed)" });
+  }
 }
 
 App({
   globalData: {
     prototypeMode: true,
   },
-  onLaunch(options: WechatMiniprogram.App.LaunchShowOption) {
+  onLaunch(options: LaunchLike) {
     // Prototype: no production wx.login / openid binding
     logPreviewLaunch("app.onLaunch", options);
   },
-  onShow(options: WechatMiniprogram.App.LaunchShowOption) {
+  onShow(options: LaunchLike) {
     logPreviewLaunch("app.onShow", options);
   },
 });

@@ -114,20 +114,22 @@ export function buildQaRuntimeDiagnostic(input: {
   const apiBaseUrl = String(input.apiBaseUrl || "").trim().replace(/\/+$/, "");
   let hostname = "";
   let protocol = "";
-  try {
-    const parsed = new URL(apiBaseUrl);
-    hostname = parsed.hostname;
-    protocol = parsed.protocol.replace(/:$/, "");
-  } catch {
-    hostname = "";
-    protocol = "";
+  // Manual parse — do not depend on URL constructor for Mini Program init safety.
+  const m = apiBaseUrl.match(/^(https?):\/\/([^/?#]+)/i);
+  if (m) {
+    protocol = String(m[1] || "").toLowerCase();
+    hostname = String(m[2] || "");
   }
 
   let appId = "";
   try {
-    const account = wx.getAccountInfoSync?.();
-    appId = String(account?.miniProgram?.appId || "").trim();
-  } catch {
+    if (typeof wx !== "undefined" && typeof wx.getAccountInfoSync === "function") {
+      const account = wx.getAccountInfoSync();
+      appId = String(
+        (account && account.miniProgram && account.miniProgram.appId) || "",
+      ).trim();
+    }
+  } catch (_err) {
     appId = "";
   }
 

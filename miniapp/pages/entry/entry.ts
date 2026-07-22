@@ -82,14 +82,18 @@ Page({
   } as PageData,
 
   onLoad(options: Record<string, string | undefined>) {
-    const q = summarizeLaunchQuery(options || {});
-    qaPathLog("ENTRY", {
-      page: "pages/entry/entry",
-      queryKeys: q.queryKeys,
-      queryRawSafe: q.queryRawSafe,
-      hasToken: q.hasToken,
-      note: "first_js_page_onload",
-    });
+    try {
+      const q = summarizeLaunchQuery(options || {});
+      qaPathLog("ENTRY", {
+        page: "pages/entry/entry",
+        queryKeys: q.queryKeys,
+        queryRawSafe: q.queryRawSafe,
+        hasToken: q.hasToken,
+        note: "first_js_page_onload",
+      });
+    } catch (_err) {
+      // Never block Page lifecycle / registration on QA logging.
+    }
     void this.bootstrap(options);
   },
 
