@@ -28,8 +28,14 @@ Copy templates:
 | **Env template** | `configs/cloud_qa.env.example` | `configs/demo.env.example` |
 | **GCP project** | `optimal-disk-472305-e2` | `optimal-disk-472305-e2` |
 | **Region** | `us-west1` | `us-west1` |
+| **Broker Workbench host (Vercel)** | `ui-waterwoods-andys-projects-1f411b73.vercel.app` (Preview, baked to Cloud QA) | `ui-smoky-beta.vercel.app` (Production alias) |
+| **Founder QA Workbench URL** | `https://ui-waterwoods-andys-projects-1f411b73.vercel.app/workbench/document-intake` | — (do not use Production for Golden) |
+| **Production Workbench URL** | — | `https://ui-smoky-beta.vercel.app/workbench/document-intake` |
+| **API base (Workbench + Mini Program)** | `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app` | `https://fiqa-api-g7zatxrycq-uw.a.run.app` (or current Production Cloud Run host) |
 
 Same Cloud SQL **instance** is allowed; Cloud QA and Production must use **different database names** and **different DB secrets**. They must never share a mutable case store.
+
+**Founder QA bookmark rule:** one Workbench — QA Preview + `/workbench/document-intake`. Never bookmark `ui-smoky-beta` for Golden / Cloud QA cases. Code SSOT: `ui/src/config/workbenchEnv.ts`.
 
 ---
 

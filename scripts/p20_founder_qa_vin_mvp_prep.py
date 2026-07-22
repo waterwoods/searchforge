@@ -26,7 +26,10 @@ sys.path.insert(0, str(REPO))
 
 from scripts.demo_db_resolve import apply_qa_postgres_env, load_cloudrun_env_skip_db
 
-WORKBENCH_URL = "https://ui-smoky-beta.vercel.app/workbench/document-intake"
+# Cloud QA document-intake (same host as Golden WORKBENCH_QA_URL). Not Production smoky-beta.
+WORKBENCH_URL = (
+    "https://ui-waterwoods-andys-projects-1f411b73.vercel.app/workbench/document-intake"
+)
 API_BASE = os.environ.get("CHEN_KUI_CLOUD_API_URL", "https://fiqa-api-g7zatxrycq-uw.a.run.app")
 
 

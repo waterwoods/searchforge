@@ -31,8 +31,15 @@ DEMO_NAME: Final[str] = "camry_golden_qa"
 CUSTOMER_NAME: Final[str] = "陈明"
 VEHICLE: Final[str] = "2020 Toyota Camry"
 EXTERNAL_USER_PREFIX: Final[str] = "wm_camry_golden_"
-WORKBENCH_QA_URL: Final[str] = "https://ui-smoky-beta.vercel.app/workbench/unified-intake"
-API_QA_BASE: Final[str] = "https://fiqa-api-g7zatxrycq-uw.a.run.app"
+# `ui-smoky-beta` is a Production alias (Production API). Founder QA must use the
+# Vercel Preview QA alias + document-intake so Phone + Workbench share Cloud QA.
+# SSOT: docs/runbooks/CLOUD_QA_RESOURCE_NAMES.md · ui/src/config/workbenchEnv.ts
+WORKBENCH_QA_URL: Final[str] = (
+    "https://ui-waterwoods-andys-projects-1f411b73.vercel.app/workbench/document-intake"
+)
+# Cloud QA, not Production. Keep this aligned with CLOUD_QA_RESOURCE_NAMES.md
+# and the Preview/Mini Program QA clients.
+API_QA_BASE: Final[str] = "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app"
 ARTIFACT_DIR: Final[Path] = ROOT / "docs" / "evidence" / "golden_qa" / "last_reset"
 
 # Constitution oracle (do not redesign — match constitution_projection + Camry fixtures).
@@ -861,7 +868,7 @@ def reset_golden_qa(
         "devtools_launch_query": token_info["devtools_launch_query"],
         "mini_program_path": token_info["mini_program_path"],
         "launch_url": token_info["launch_url"],
-        "workbench_url": WORKBENCH_QA_URL if prefer_live else "http://localhost:5173/workbench/unified-intake",
+        "workbench_url": WORKBENCH_QA_URL if prefer_live else "http://localhost:5173/workbench/document-intake",
         "api_intake_url": f"{API_QA_BASE if prefer_live else 'http://127.0.0.1:8001'}/api/h5/tasks/{token_info['token']}/intake",
         "verification": {
             "ok": True,

@@ -102,6 +102,21 @@ Stop immediately unless all are true:
 Then: **清缓存 → 全部清除 → 重新编译 → generate a new Preview QR → scan once**.
 The QR must be generated after the token was prepared; do not reuse an old QR.
 
+### Broker Workbench (canonical — one bookmark)
+
+Founder QA Broker Workbench is **document-intake on the QA Preview alias** — same Cloud QA API as the phone. Do **not** open Production smoky-beta for Golden cases.
+
+| Role | URL |
+|------|-----|
+| **Founder QA (only bookmark)** | `https://ui-waterwoods-andys-projects-1f411b73.vercel.app/workbench/document-intake` |
+| Production (paid pilot — not Golden) | `https://ui-smoky-beta.vercel.app/workbench/document-intake` |
+| API (phone + QA Workbench) | `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app` |
+
+- Launch output prints this Workbench URL (`scripts/camry_golden_qa.py` `WORKBENCH_QA_URL`).
+- Unified Intake (`/workbench/unified-intake`) remains the overall web portal — **not** the Founder QA daily Workbench.
+- QA builds show **QA · TEST · API profile** in the Workbench header; Production stays clean.
+- SSOT: `ui/src/config/workbenchEnv.ts` · `docs/runbooks/CLOUD_QA_RESOURCE_NAMES.md` · D-015.
+
 ### One scan vs new Request More (Phase 2)
 
 | Situation | Founder action | New QR? |
@@ -201,7 +216,7 @@ Entry shell → Task Home → “上传保险卡” → submit → receipt/waiti
 1. `cd miniapp && npm run build:gate` then `bash scripts/launch_golden_qa.sh --qa`.
 2. Clear cache → full compile → generate Preview QR → **scan once**.
 3. Complete task 1: 上传保险卡 → submit → see waiting/receipt (shell must not be blank).
-4. On Broker Workbench, for the **same** Camry case, send supported Request More: 车辆信息 (do **not** Launch Golden QA again).
+4. On **QA document-intake** (bookmark above — not smoky-beta), for the **same** Camry `case_id`, send supported Request More: 车辆信息 (do **not** Launch Golden QA again).
 5. On the phone: background the Mini Program, then foreground/reopen it (or return to Task Home / Receipt).
 6. Confirm task 2 appears without another QR scan; complete it; confirm Broker read-after-write.
 7. **FAIL** if a second QR was required, token/case IDs appear in UI, or any task surface is blank.

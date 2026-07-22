@@ -201,6 +201,19 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/CLAIM_VEHICLE_VS_ADD_CAR_TERMINOLOGY.md` |
 
+### D-015 — Founder QA Broker Workbench = QA document-intake
+
+| Field | Content |
+|-------|---------|
+| **Decision** | Canonical Founder QA Broker Workbench is **document-intake** on the **QA Preview** host (`ui-waterwoods-…`), baked to Cloud QA. Production keeps document-intake on `ui-smoky-beta`. Unified Intake stays the overall web portal — not the Founder QA bookmark. Do not redirect document-intake → unified-intake for this alignment. |
+| **Context** | ENVIRONMENT MISMATCH: Golden/phone wrote Cloud QA; Founder opened smoky-beta document-intake (Production API) and could not see today’s QA case. |
+| **Alternatives Considered** | (1) Make unified-intake the sole primary and redirect document-intake (prior freeze); (2) Keep dual equal bookmarks; (3) Align document-intake host/API only. |
+| **Why This Decision** | Smallest fix: one Founder habit (document-intake) + correct QA host. No UI redesign, no customer change, no T6. |
+| **Constitution Principle** | One Truth; Complexity Stays Inside; Capability Done Means User Done |
+| **Date** | 2026-07-22 |
+| **Status** | Active (QA alignment Commit 1) |
+| **SSOT** | `ui/src/config/workbenchEnv.ts`; `scripts/camry_golden_qa.py` `WORKBENCH_QA_URL`; `docs/FOUNDER_QA_PLAYBOOK.md`; `docs/runbooks/CLOUD_QA_RESOURCE_NAMES.md` |
+
 ---
 
 ## Index
@@ -218,6 +231,7 @@ Copy for every new decision:
 | D-009 | Default intake without broker gate | One Truth / §J2 | Active |
 | D-010 | Claim Vehicle Identity V1 | One Truth / Smallest Working Solution | Active |
 | D-011 | Claim Vehicle vs Add Car naming | Complexity Stays Inside / One Truth | Active |
+| D-015 | Founder QA Workbench = QA document-intake | One Truth / User Done | Active |
 
 ---
 
@@ -231,5 +245,6 @@ Copy for every new decision:
 | v1.3 | 2026-07-18 | D-009 Default intake without broker Request More |
 | v1.4 | 2026-07-21 | D-010 Claim Vehicle Identity V1 freeze |
 | v1.5 | 2026-07-21 | D-011 Claim Vehicle vs Add Car naming freeze |
+| v1.6 | 2026-07-22 | D-015 Founder QA Broker Workbench = QA document-intake |
 
 **Change rule:** New Active entries require Founder acknowledgment. Superseding an entry requires a new ID and an explicit Status update on the old entry.
