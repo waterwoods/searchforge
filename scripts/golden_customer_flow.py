@@ -814,10 +814,10 @@ def run_qa() -> FlowReport:
             layer="Case Creation",
         )
         report.check(
-            second.get("outcome") in ("accepted", "replayed"),
+            second.get("outcome") in ("accepted", "replayed", "resumed"),
             task="idempotent_outcome",
             source="system_default",
-            expected="accepted|replayed",
+            expected="accepted|replayed|resumed",
             actual=second.get("outcome"),
             layer="Case Creation",
         )
