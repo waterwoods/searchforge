@@ -17,9 +17,14 @@
       bind:contactBroker="onContactBroker"
     />
 
-    <view class="card" wx:if="{{waitingForBroker}}">
+    <view class="card submit-receipt" wx:if="{{submitReceiptVisible}}">
       <view class="status-pill done">已收到</view>
-      <view class="card-title">{{nextActionTitle || '补充资料已收到'}}</view>
+      <view class="card-title">{{submitReceiptText}}</view>
+    </view>
+
+    <view class="card" wx:if="{{waitingForBroker && !submitReceiptVisible}}">
+      <view class="status-pill done">已收到</view>
+      <view class="card-title">{{nextActionTitle || '资料已收到，等待陈总审核'}}</view>
       <view class="card-subtitle">{{nextActionInstructions || '陈总已收到您的补充资料，正在审核。'}}</view>
       <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
       <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
@@ -215,7 +220,7 @@
   <view class="footer-cta" wx:if="{{showFooterCta && !waitingForBroker}}">
     <task-cta
       label="{{submitLabel}}"
-      disabled="{{submitDisabled}}"
+      disabled="{{submitDisabled || busy.submitting}}"
       loading="{{busy.submitting || uploadItems[0].uploading}}"
       disabledReason="{{submitDisabledReason}}"
       bindtap="onSubmit"
@@ -227,12 +232,17 @@
       bindtap="onRetrySubmit"
       disabled="{{busy.submitting}}"
     >重试提交</button>
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater">稍后再填</button>
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onLater"
+      disabled="{{busy.submitting}}"
+    >稍后再填</button>
   </view>
 
   <view class="footer-cta" wx:if="{{!loading && waitingForBroker}}">
     <task-cta
-      label="返回我的资料"
+      label="查看案件状态"
       disabled="{{busy.navigating}}"
       loading="{{busy.navigating}}"
       bindtap="onBackHome"

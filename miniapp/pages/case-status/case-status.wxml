@@ -63,11 +63,11 @@
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <button
       wx:if="{{showVoluntarySupplement}}"
-      class="btn-secondary"
-      hover-class="btn-secondary-hover"
+      class="btn-primary-append"
+      hover-class="btn-primary-append-hover"
       bindtap="onVoluntarySupplement"
       disabled="{{busy.navigating}}"
-    >补充资料</button>
+    >{{voluntarySupplementLabel}}</button>
     <button
       class="btn-secondary"
       hover-class="btn-secondary-hover"

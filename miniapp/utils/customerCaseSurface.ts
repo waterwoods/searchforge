@@ -17,12 +17,19 @@ export const RECEIPT_ROUTE = "/pages/receipt/receipt";
 /** Retired as primary Waiting copy — Case Status never surfaces this as the title. */
 export const LEGACY_WAIT_TODAY = "先不用操作";
 
-export const CASE_STATUS_TITLE = "陈总正在审核您的资料";
+/** Demo Polish Sprint 2 — Waiting Broker Case Status title (durable confirmation). */
+export const CASE_STATUS_TITLE = "资料已收到，等待陈总审核";
+
+/** In-page Request More submit receipt (not toast-only). */
+export const SUBMIT_RECEIPT_COPY = "补充资料已收到，陈总会继续审核。";
+
+/** Secondary Waiting action — append-only; never reopens satisfied Request More items. */
+export const VOLUNTARY_SUPPLEMENT_LABEL = "继续补充资料";
 
 export const CASE_STATUS_BODY_LINES = [
-  "您的资料已收到。",
-  "陈总正在审核。",
-  "如需补充，我们会再联系您。",
+  "资料已收到，等待陈总审核。",
+  "您这边暂时没有需要完成的事项。",
+  "如需继续补充，可添加照片或说明（不会覆盖已提交的必填资料）。",
 ] as const;
 
 export type CustomerCaseSurface = "receipt" | "task_home" | "case_status";

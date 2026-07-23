@@ -19,6 +19,10 @@ import {
 } from "../../utils/requestItemDraft";
 import { clearResumeToken } from "../../utils/storage";
 import {
+  CASE_STATUS_ROUTE,
+  SUBMIT_RECEIPT_COPY,
+} from "../../utils/customerCaseSurface";
+import {
   applySlice1ProjectionToTask,
   EMPTY_SLICE1_PROGRESS,
   extractSlice1Projection,
@@ -148,6 +152,9 @@ type PageData = {
   submitLabel: string;
   submitDisabled: boolean;
   submitDisabledReason: string;
+  /** Demo Polish Sprint 2 — durable in-page submit receipt (not toast-only). */
+  submitReceiptVisible: boolean;
+  submitReceiptText: string;
   shellSafetyCopy: string;
   /** P26H-UI — Empty Page Gate; WXML must bind these, not nextAction alone. */
   showWorkSurface: boolean;
@@ -286,6 +293,8 @@ Page({
     submitLabel: "提交补充资料",
     submitDisabled: false,
     submitDisabledReason: "",
+    submitReceiptVisible: false,
+    submitReceiptText: "",
     shellSafetyCopy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
     showWorkSurface: false,
     showFooterCta: false,
@@ -887,6 +896,60 @@ Page({
     await this.runSubmit({ reuseIdentity: true });
   },
 
+  /** Restore CTA after local validation / upload failure — never leave a stuck busy button. */
+  restoreSubmitAfterFailure(patch?: Record<string, unknown>) {
+    const internal = ensureInternal(this);
+    internal.submitInFlight = false;
+    this.setBusy("submitting", false);
+    this.safePageSetData({
+      submitDisabled: false,
+      submitDisabledReason: "",
+      submitReceiptVisible: false,
+      submissionState: "failed",
+      retryAvailable: false,
+      ...(patch || {}),
+    });
+  },
+
+  showSubmitReceipt() {
+    this.safePageSetData({
+      submitReceiptVisible: true,
+      submitReceiptText: SUBMIT_RECEIPT_COPY,
+      submissionState: "confirmed",
+    });
+  },
+
+  /** Final Request More item → Case Status (Waiting Broker). Soft-freeze preserved. */
+  goCaseStatusAfterSuccess() {
+    if (this.isBusy("navigating")) return;
+    this.setBusy("navigating", true);
+    wx.redirectTo({
+      url: CASE_STATUS_ROUTE,
+      complete: () => this.setBusy("navigating", false),
+      fail: () => {
+        wx.reLaunch({
+          url: CASE_STATUS_ROUTE,
+          complete: () => this.setBusy("navigating", false),
+        });
+      },
+    });
+  },
+
+  finishSubmitSuccess(args: { waitingForBroker: boolean; nextTask: CustomerTask }) {
+    this.showSubmitReceipt();
+    if (args.waitingForBroker) {
+      try {
+        const app = getApp<IAppOption>();
+        app.task = args.nextTask;
+      } catch {
+        // ignore
+      }
+      // Brief in-page receipt, then land on Case Status (Loop 2).
+      setTimeout(() => this.goCaseStatusAfterSuccess(), 450);
+      return;
+    }
+  },
+
   async runSubmit(options: { reuseIdentity: boolean; partialVehicleSave?: boolean }) {
     const internal = ensureInternal(this);
     if (internal.submitInFlight || this.data.busy.submitting || this.data.waitingForBroker) return;
@@ -902,261 +965,267 @@ Page({
     let fact: Slice1FactPayload | undefined;
     let evidence: { attachment_id: string } | undefined;
 
+    // Loop 1 — immediate busy on tap (before validation / upload / network).
+    internal.submitInFlight = true;
+    this.setBusy("submitting", true);
     this.safePageSetData({
       submissionState: "validating",
+      submitDisabled: true,
+      submitDisabledReason: "正在提交…",
       validationMessage: "",
       fieldErrors: {},
       pageError: EMPTY_TASK_ERROR,
+      submitReceiptVisible: false,
+      submitReceiptText: "",
+      retryAvailable: false,
     });
 
-    if (evidenceMode) {
-      try {
-        const attachmentId = await this.uploadEvidenceIfNeeded();
-        evidence = { attachment_id: attachmentId };
-      } catch {
-        return;
-      }
-    }
-
-    // P26G — system_default insurance: upload records the slot; no Slice1 submit.
-    if (internal.activeRequestItemId === "system_default_insurance_card") {
-      if (!evidence?.attachment_id) {
-        this.safePageSetData({
-          validationMessage: mapErrorMessage("evidence_required"),
-          submissionState: "failed",
-        });
-        return;
-      }
-      internal.submitInFlight = true;
-      this.setBusy("submitting", true);
-      this.safePageSetData({
-        submissionState: "submitting",
-        submitDisabled: true,
-        submitDisabledReason: "正在确认…",
-      });
-      try {
-        const refreshed = await CustomerTaskApi.getTask(token);
-        const app = getApp<IAppOption>();
-        app.task = refreshed;
-        clearRequestItemDraft(internal.caseId, internal.requestId, internal.activeRequestItemId);
-        this.applyAuthoritativeTask(refreshed, { restoreDraft: false });
-        const stillOpen = resolveSystemDefaultInsurance(refreshed).enabled;
-        this.safePageSetData({
-          submissionState: stillOpen ? "uncertain" : "confirmed",
-          submitDisabled: false,
-          submitDisabledReason: "",
-          retryAvailable: stillOpen,
-        });
-        if (!stillOpen) {
-          wx.showToast({ title: "保险卡已收到", icon: "success" });
-          setTimeout(() => this.goTaskHome(), 400);
-        } else {
-          wx.showToast({ title: "已上传，请确认状态", icon: "none" });
+    try {
+      if (evidenceMode) {
+        try {
+          const attachmentId = await this.uploadEvidenceIfNeeded();
+          evidence = { attachment_id: attachmentId };
+        } catch {
+          this.restoreSubmitAfterFailure({
+            validationMessage: this.data.validationMessage || mapErrorMessage("network_error"),
+          });
+          return;
         }
-      } catch {
-        this.safePageSetData({
-          submissionState: "uncertain",
-          retryAvailable: true,
-          submitDisabled: false,
-          submitDisabledReason: "",
-        });
-      } finally {
-        internal.submitInFlight = false;
-        this.setBusy("submitting", false);
       }
-      return;
-    }
 
-    if (!evidenceMode) {
-      if (itemType === "vin") {
-        const result = validateVinRequestSubmit(String(this.data.draftValue || ""));
-        if (!result.ok) {
+      // P26G — system_default insurance: upload records the slot; no Slice1 submit.
+      if (internal.activeRequestItemId === "system_default_insurance_card") {
+        if (!evidence?.attachment_id) {
+          this.restoreSubmitAfterFailure({
+            validationMessage: mapErrorMessage("evidence_required"),
+          });
+          return;
+        }
+        this.safePageSetData({
+          submissionState: "submitting",
+          submitDisabledReason: "正在确认…",
+        });
+        try {
+          const refreshed = await CustomerTaskApi.getTask(token);
+          const app = getApp<IAppOption>();
+          app.task = refreshed;
+          clearRequestItemDraft(internal.caseId, internal.requestId, internal.activeRequestItemId);
+          this.applyAuthoritativeTask(refreshed, { restoreDraft: false });
+          const stillOpen = resolveSystemDefaultInsurance(refreshed).enabled;
+          if (!stillOpen) {
+            this.finishSubmitSuccess({ waitingForBroker: true, nextTask: refreshed });
+          } else {
+            this.safePageSetData({
+              submissionState: "uncertain",
+              submitDisabled: false,
+              submitDisabledReason: "",
+              retryAvailable: true,
+              validationMessage: "已上传，请确认状态后重试",
+            });
+          }
+        } catch {
           this.safePageSetData({
-            validationMessage: result.message,
-            fieldErrors: result.fieldErrors,
-            submissionState: "failed",
-            draftValue: result.normalized.vin || this.data.draftValue,
+            submissionState: "uncertain",
+            retryAvailable: true,
+            submitDisabled: false,
+            submitDisabledReason: "",
+            pageError: {
+              code: "timeout",
+              message: "提交结果未确认，请重试。不会重复提交。",
+              retryable: true,
+              blocking: false,
+            },
+          });
+        }
+        return;
+      }
+
+      if (!evidenceMode) {
+        if (itemType === "vin") {
+          const result = validateVinRequestSubmit(String(this.data.draftValue || ""));
+          if (!result.ok) {
+            this.restoreSubmitAfterFailure({
+              validationMessage: result.message,
+              fieldErrors: result.fieldErrors,
+              draftValue: result.normalized.vin || this.data.draftValue,
+              vehicleForm: {
+                ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
+                vin: result.normalized.vin,
+                vinUnavailable: false,
+              },
+            });
+            return;
+          }
+          this.safePageSetData({
+            draftValue: result.normalized.vin,
             vehicleForm: {
               ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
               vin: result.normalized.vin,
               vinUnavailable: false,
             },
           });
-          return;
-        }
-        this.safePageSetData({
-          draftValue: result.normalized.vin,
-          vehicleForm: {
-            ...(this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM),
-            vin: result.normalized.vin,
-            vinUnavailable: false,
-          },
-        });
-        fact = buildVinFactPayload(result.normalized.vin);
-      } else if (vehicleMode || itemType === "vehicle_information") {
-        const form = (this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM) as ClaimVehicleFormFields;
-        if (partialVehicleSave) {
-          if (!claimVehicleFormHasAnyValue(form)) {
-            this.safePageSetData({
-              validationMessage: "",
-              submissionState: "idle",
-            });
-            return;
+          fact = buildVinFactPayload(result.normalized.vin);
+        } else if (vehicleMode || itemType === "vehicle_information") {
+          const form = (this.data.vehicleForm || EMPTY_CLAIM_VEHICLE_FORM) as ClaimVehicleFormFields;
+          if (partialVehicleSave) {
+            if (!claimVehicleFormHasAnyValue(form)) {
+              this.restoreSubmitAfterFailure({
+                validationMessage: "",
+                submissionState: "idle",
+              });
+              return;
+            }
+            fact = buildVehicleInformationFactPayload(form, { final: false });
+          } else {
+            const result = validateVehicleInformationSubmit(form);
+            if (!result.ok) {
+              this.restoreSubmitAfterFailure({
+                validationMessage: result.message,
+                fieldErrors: result.fieldErrors,
+                vehicleForm: result.normalized,
+              });
+              return;
+            }
+            this.safePageSetData({ vehicleForm: result.normalized, fieldErrors: {} });
+            fact = buildVehicleInformationFactPayload(result.normalized, { final: true });
           }
-          fact = buildVehicleInformationFactPayload(form, { final: false });
         } else {
-          const result = validateVehicleInformationSubmit(form);
+          const result = validateFreeText(String(this.data.draftValue || ""));
           if (!result.ok) {
-            this.safePageSetData({
+            this.restoreSubmitAfterFailure({
               validationMessage: result.message,
-              fieldErrors: result.fieldErrors,
-              vehicleForm: result.normalized,
-              submissionState: "failed",
             });
             return;
           }
-          this.safePageSetData({ vehicleForm: result.normalized, fieldErrors: {} });
-          fact = buildVehicleInformationFactPayload(result.normalized, { final: true });
+          fact = { field: factFieldForItemType(itemType || "free_text"), value: result.normalized };
+        }
+      }
+
+      if (!options.reuseIdentity && this.data.submissionState !== "uncertain") {
+        // Fresh attempt: mint identity once when absent. Uncertain retry reuses the same IDs.
+        if (!internal.commandId || !internal.idempotencyKey) {
+          const ids = newCommandIdentity("cmd_request_item");
+          internal.commandId = ids.command_id;
+          internal.idempotencyKey = ids.idempotency_key;
         }
       } else {
-        const result = validateFreeText(String(this.data.draftValue || ""));
-        if (!result.ok) {
-          this.safePageSetData({
-            validationMessage: result.message,
-            submissionState: "failed",
-          });
+        this.ensureCommandIdentity();
+      }
+
+      const identity = {
+        command_id: internal.commandId,
+        idempotency_key: internal.idempotencyKey,
+        expected_case_version: internal.expectedCaseVersion,
+        client_draft_id: internal.clientDraftId,
+      };
+      this.safePageSetData({
+        submissionState: "submitting",
+        submitDisabled: true,
+        submitDisabledReason: "正在提交…",
+        retryAvailable: false,
+      });
+      this.persistDraftSafe();
+
+      try {
+        const result = await CustomerTaskApi.submitRequestItem(token, internal.activeRequestItemId, {
+          command_id: identity.command_id,
+          idempotency_key: identity.idempotency_key,
+          expected_case_version: identity.expected_case_version,
+          client_draft_id: identity.client_draft_id,
+          fact,
+          evidence,
+        });
+        await this.handleSubmitResult(result, { partialVehicleSave });
+      } catch (error) {
+        if (error instanceof ApiRequestError && (error.code === "invalid_or_expired_task_link" || error.status === 403)) {
+          this.persistDraftSafe();
+          clearResumeToken();
+          try {
+            const app = getApp<IAppOption>();
+            app.taskToken = "";
+            app.task = undefined;
+          } catch {
+            // ignore
+          }
+          wx.redirectTo({ url: "/pages/error/error?code=invalid_or_expired_task_link" });
           return;
         }
-        fact = { field: factFieldForItemType(itemType || "free_text"), value: result.normalized };
-      }
-    }
-
-    if (!options.reuseIdentity && this.data.submissionState !== "uncertain") {
-      // Fresh attempt: mint identity once when absent. Uncertain retry reuses the same IDs.
-      if (!internal.commandId || !internal.idempotencyKey) {
-        const ids = newCommandIdentity("cmd_request_item");
-        internal.commandId = ids.command_id;
-        internal.idempotencyKey = ids.idempotency_key;
-      }
-    } else {
-      this.ensureCommandIdentity();
-    }
-
-    const identity = {
-      command_id: internal.commandId,
-      idempotency_key: internal.idempotencyKey,
-      expected_case_version: internal.expectedCaseVersion,
-      client_draft_id: internal.clientDraftId,
-    };
-    internal.submitInFlight = true;
-    this.setBusy("submitting", true);
-    this.safePageSetData({
-      submissionState: "submitting",
-      submitDisabled: true,
-      submitDisabledReason: "正在提交…",
-      retryAvailable: false,
-    });
-    this.persistDraftSafe();
-
-    try {
-      const result = await CustomerTaskApi.submitRequestItem(token, internal.activeRequestItemId, {
-        command_id: identity.command_id,
-        idempotency_key: identity.idempotency_key,
-        expected_case_version: identity.expected_case_version,
-        client_draft_id: identity.client_draft_id,
-        fact,
-        evidence,
-      });
-      await this.handleSubmitResult(result, { partialVehicleSave });
-    } catch (error) {
-      if (error instanceof ApiRequestError && (error.code === "invalid_or_expired_task_link" || error.status === 403)) {
-        this.persistDraftSafe();
-        clearResumeToken();
-        try {
-          const app = getApp<IAppOption>();
-          app.taskToken = "";
-          app.task = undefined;
-        } catch {
-          // ignore
+        if (error instanceof ApiRequestError && error.code === "case_closed_read_only") {
+          this.safePageSetData({
+            submissionState: "failed",
+            retryAvailable: false,
+            submitDisabled: true,
+            submitDisabledReason: mapErrorMessage("case_closed_read_only"),
+            waitingForBroker: false,
+            submitReceiptVisible: false,
+            pageError: {
+              code: "case_closed_read_only",
+              message: mapErrorMessage("case_closed_read_only"),
+              retryable: false,
+              blocking: true,
+            },
+          });
+          this.persistDraftSafe();
+          return;
         }
-        wx.redirectTo({ url: "/pages/error/error?code=invalid_or_expired_task_link" });
-        return;
-      }
-      if (error instanceof ApiRequestError && error.code === "case_closed_read_only") {
         this.safePageSetData({
-          submissionState: "failed",
-          retryAvailable: false,
-          submitDisabled: true,
-          submitDisabledReason: mapErrorMessage("case_closed_read_only"),
-          waitingForBroker: false,
+          submissionState: "uncertain",
+          retryAvailable: true,
+          submitDisabled: false,
+          submitDisabledReason: "",
+          submitReceiptVisible: false,
           pageError: {
-            code: "case_closed_read_only",
-            message: mapErrorMessage("case_closed_read_only"),
-            retryable: false,
-            blocking: true,
+            code: "timeout",
+            message: "提交结果未确认，请重试。不会重复提交。",
+            retryable: true,
+            blocking: false,
           },
         });
+        console.info("[slice1_submit_retry]", { reason: "uncertain_outcome" });
         this.persistDraftSafe();
-        return;
-      }
-      this.safePageSetData({
-        submissionState: "uncertain",
-        retryAvailable: true,
-        submitDisabled: false,
-        submitDisabledReason: "",
-        pageError: {
-          code: "timeout",
-          message: "提交结果未确认，请重试。不会重复提交。",
-          retryable: true,
-          blocking: false,
-        },
-      });
-      console.info("[slice1_submit_retry]", { reason: "uncertain_outcome" });
-      this.persistDraftSafe();
-      // Reconcile: if server already persisted, treat as success (idempotent retry path).
-      try {
-        const submittedItemId = internal.activeRequestItemId;
-        const refreshed = await this.rehydrateAuthoritativeTask({ silent: true });
-        if (refreshed && isSlice1CustomerFlow(refreshed)) {
-          const view = mapSlice1CustomerView(refreshed);
-          if (
-            isRequestItemSubmitResolvedOnServer({
-              submittedItemId,
-              view,
-            })
-          ) {
-            clearRequestItemDraft(internal.caseId, internal.requestId, submittedItemId);
-            internal.commandId = "";
-            internal.idempotencyKey = "";
-            // Clear uncertain before apply so next item does not inherit stuck retry UI.
-            this.safePageSetData({
-              submissionState: "idle",
-              retryAvailable: false,
-              pageError: EMPTY_TASK_ERROR,
-              submitDisabled: false,
-              submitDisabledReason: "",
-            });
-            this.applyAuthoritativeTask(refreshed, { restoreDraft: true });
-            const after = mapSlice1CustomerView(refreshed);
-            this.safePageSetData({
-              submissionState: after.waitingForBroker ? "confirmed" : "idle",
-              retryAvailable: false,
-              pageError: EMPTY_TASK_ERROR,
-              submitDisabled: after.waitingForBroker || !String(after.nextAction?.request_item_id || "").trim(),
-              submitDisabledReason: "",
-            });
-            wx.showToast({
-              title: after.waitingForBroker ? "补充资料已收到" : "进度已更新",
-              icon: "none",
-            });
+        // Reconcile: if server already persisted, treat as success (idempotent retry path).
+        try {
+          const submittedItemId = internal.activeRequestItemId;
+          const refreshed = await this.rehydrateAuthoritativeTask({ silent: true });
+          if (refreshed && isSlice1CustomerFlow(refreshed)) {
+            const view = mapSlice1CustomerView(refreshed);
+            if (
+              isRequestItemSubmitResolvedOnServer({
+                submittedItemId,
+                view,
+              })
+            ) {
+              clearRequestItemDraft(internal.caseId, internal.requestId, submittedItemId);
+              internal.commandId = "";
+              internal.idempotencyKey = "";
+              this.applyAuthoritativeTask(refreshed, { restoreDraft: true });
+              const after = mapSlice1CustomerView(refreshed);
+              if (after.waitingForBroker) {
+                this.finishSubmitSuccess({ waitingForBroker: true, nextTask: refreshed });
+              } else {
+                this.safePageSetData({
+                  submissionState: "idle",
+                  retryAvailable: false,
+                  pageError: EMPTY_TASK_ERROR,
+                  submitDisabled: !String(after.nextAction?.request_item_id || "").trim(),
+                  submitDisabledReason: "",
+                });
+                this.showSubmitReceipt();
+              }
+            }
           }
+        } catch {
+          // keep uncertain UI — retry reuses the same idempotency key
         }
-      } catch {
-        // keep uncertain UI — retry reuses the same idempotency key
       }
     } finally {
-      internal.submitInFlight = false;
-      this.setBusy("submitting", false);
+      // Keep lock only while navigating away after final success.
+      if (!this.isBusy("navigating")) {
+        internal.submitInFlight = false;
+        this.setBusy("submitting", false);
+      } else {
+        internal.submitInFlight = false;
+      }
     }
   },
 
@@ -1222,12 +1291,10 @@ Page({
           validationMessage: correction ? CLAIM_VEHICLE_COPY.correction : "",
           fieldErrors: {},
           needsCorrection: correction,
+          submitReceiptVisible: !correction,
+          submitReceiptText: correction ? "" : SUBMIT_RECEIPT_COPY,
         });
         this.persistDraftSafe();
-        wx.showToast({
-          title: correction ? CLAIM_VEHICLE_COPY.correction : CLAIM_VEHICLE_COPY.draftSaved,
-          icon: "none",
-        });
         console.info("[slice1_submit]", { outcome, partial: true, itemType, correction });
         return;
       }
@@ -1239,28 +1306,23 @@ Page({
       internal.idempotencyKey = "";
       internal.clientDraftId = newClientDraftId();
 
+      const waiting = mapSlice1CustomerView(nextTask).waitingForBroker;
+      console.info("[slice1_submit]", { outcome, waitingForBroker: waiting });
+
+      if (waiting) {
+        this.applyAuthoritativeTask(nextTask, { restoreDraft: false });
+        this.finishSubmitSuccess({ waitingForBroker: true, nextTask });
+        return;
+      }
+
       this.applyAuthoritativeTask(nextTask, { restoreDraft: true });
       this.safePageSetData({
-        submissionState: "confirmed",
+        submissionState: "idle",
         retryAvailable: false,
-        submitDisabled: false,
+        submitDisabled: !String(mapSlice1CustomerView(nextTask).nextAction?.request_item_id || "").trim(),
         submitDisabledReason: "",
       });
-      console.info("[slice1_submit]", {
-        outcome,
-        waitingForBroker: mapSlice1CustomerView(nextTask).waitingForBroker,
-      });
-      const waiting = mapSlice1CustomerView(nextTask).waitingForBroker;
-      const successTitle =
-        itemType === "vin" || itemType === "vehicle_information"
-          ? CLAIM_VEHICLE_COPY.submitSuccess
-          : waiting
-            ? "补充资料已收到"
-            : "补充资料已收到，请继续下一项";
-      wx.showToast({
-        title: successTitle,
-        icon: "none",
-      });
+      this.showSubmitReceipt();
       return;
     }
 
@@ -1301,12 +1363,11 @@ Page({
     const vehicleMsg = mapVehicleServerError(code);
     const message = vehicleMsg || mapErrorMessage(code);
     const closed = code === "case_closed_read_only";
-    this.safePageSetData({
-      submissionState: "failed",
-      retryAvailable: false,
-      submitDisabled: closed ? true : false,
+    this.restoreSubmitAfterFailure({
+      retryAvailable: !closed,
+      submitDisabled: closed,
       submitDisabledReason: closed ? message : "",
-      validationMessage: closed ? "" : message,
+      validationMessage: closed ? "" : message || "提交未成功，请重试。",
       fieldErrors:
         code === "vin_invalid" || code === "invalid_vin"
           ? { vin: CLAIM_VEHICLE_COPY.invalidVin }
@@ -1315,8 +1376,8 @@ Page({
             : {},
       pageError: {
         code,
-        message,
-        retryable: false,
+        message: message || "提交未成功，请重试。",
+        retryable: !closed,
         blocking: closed,
       },
     });
@@ -1347,12 +1408,8 @@ Page({
   },
 
   onBackHome() {
-    if (this.isBusy("navigating")) return;
-    this.setBusy("navigating", true);
-    wx.redirectTo({
-      url: "/pages/task-home/task-home",
-      complete: () => this.setBusy("navigating", false),
-    });
+    // Waiting Broker lands on Case Status (not Task Home).
+    this.goCaseStatusAfterSuccess();
   },
 
   onContactBroker() {

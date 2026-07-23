@@ -63,6 +63,18 @@
   font-weight: 400;
 }
 
+.request-item-page .submit-receipt {
+  background: #ecfdf5;
+  border: 1rpx solid #a7f3d0;
+}
+
+.request-item-page .submit-receipt .card-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #065f46;
+  line-height: 1.45;
+}
+
 .request-item-page .correction-card {
   background: #fff7ed;
   border: 1rpx solid #fed7aa;

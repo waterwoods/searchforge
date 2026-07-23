@@ -16,6 +16,7 @@ import {
   CASE_STATUS_BODY_LINES,
   CASE_STATUS_TITLE,
   TASK_HOME_ROUTE,
+  VOLUNTARY_SUPPLEMENT_LABEL,
   buildCaseStatusViewModel,
   canVoluntarySupplement,
   customerOwesWork,
@@ -36,6 +37,7 @@ type PageData = CaseStatusViewModel & {
   };
   shellSafetyCopy: string;
   showVoluntarySupplement: boolean;
+  voluntarySupplementLabel: string;
 };
 
 function emptyStatus(): CaseStatusViewModel {
@@ -67,6 +69,7 @@ Page({
     },
     shellSafetyCopy: DEFAULT_SAFETY_COPY,
     showVoluntarySupplement: false,
+    voluntarySupplementLabel: VOLUNTARY_SUPPLEMENT_LABEL,
     ...emptyStatus(),
   } as PageData,
 
@@ -127,6 +130,7 @@ Page({
       // Never show retired wait-today copy as the page title.
       title: CASE_STATUS_TITLE,
       showVoluntarySupplement: canVoluntarySupplement(task),
+      voluntarySupplementLabel: VOLUNTARY_SUPPLEMENT_LABEL,
     });
   },
 

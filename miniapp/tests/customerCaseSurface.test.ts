@@ -8,8 +8,10 @@ import {
   CASE_STATUS_ROUTE,
   CASE_STATUS_TITLE,
   LEGACY_WAIT_TODAY,
+  SUBMIT_RECEIPT_COPY,
   TASK_HOME_ROUTE,
   RECEIPT_ROUTE,
+  VOLUNTARY_SUPPLEMENT_LABEL,
   buildCaseStatusViewModel,
   canVoluntarySupplement,
   customerOwesWork,
@@ -190,12 +192,15 @@ test("Case Status VM replaces 先不用操作 with production title", () => {
   };
   const vm = buildCaseStatusViewModel(task);
   assert.equal(vm.title, CASE_STATUS_TITLE);
+  assert.equal(CASE_STATUS_TITLE, "资料已收到，等待陈总审核");
   assert.equal(vm.title.includes(LEGACY_WAIT_TODAY), false);
   assert.ok(vm.bodyLines.length >= 3);
   assert.match(vm.bodyLines.join(""), /已收到/);
   assert.match(vm.bodyLines.join(""), /审核/);
   assert.ok(vm.lastSubmittedLines.length + vm.completedLines.length > 0);
   assert.match(vm.completedLines.join("、") || vm.lastSubmittedLines.join("、"), /保险卡/);
+  assert.equal(VOLUNTARY_SUPPLEMENT_LABEL, "继续补充资料");
+  assert.equal(SUBMIT_RECEIPT_COPY, "补充资料已收到，陈总会继续审核。");
 });
 
 test("Continue decision preserves Golden resume token", () => {
@@ -229,13 +234,17 @@ test("Case Status page registered and titled", () => {
   assert.match(wxml, /\{\{title\}\}/);
   assert.match(wxml, /联系保险顾问/);
   assert.match(wxml, /查看已提交资料/);
-  assert.match(wxml, /补充资料/);
+  assert.match(wxml, /voluntarySupplementLabel/);
   assert.match(wxml, /showVoluntarySupplement/);
+  assert.match(wxml, /btn-primary-append/);
   const ts = readFileSync(join(miniappRoot, "pages/case-status/case-status.ts"), "utf8");
   assert.match(ts, /customerOwesWork/);
   assert.match(ts, /TASK_HOME_ROUTE/);
   assert.match(ts, /onVoluntarySupplement/);
   assert.match(ts, /canVoluntarySupplement/);
+  assert.match(ts, /VOLUNTARY_SUPPLEMENT_LABEL/);
+  assert.match(ts, /pages\/photos\/photos/);
+  assert.match(ts, /pages\/story\/story/);
 });
 
 test("Waiting Broker allows voluntary supplement; closed does not", () => {

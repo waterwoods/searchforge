@@ -25,6 +25,7 @@ import {
   saveRequestItemDraft,
 } from "../utils/requestItemDraft";
 import { resolveTaskViewModel } from "../utils/resolveTaskViewModel";
+import { SUBMIT_RECEIPT_COPY } from "../utils/customerCaseSurface";
 import type { CustomerTask, Slice1Projection } from "../types/task";
 import { installMiniProgramGlobals, getLatestPage, resetMiniProgramCaptures } from "./miniprogramMocks";
 
@@ -249,17 +250,34 @@ test("waiting-for-Broker state has no submission action", () => {
   assert.equal(view.primaryRoute, "");
 });
 
-test("Request More submit uses 提交补充资料 and success copy hides active submit", () => {
+test("Request More submit uses 提交补充资料 and durable in-page receipt", () => {
   const here = dirname(__filename);
   const ts = readFileSync(join(here, "../pages/request-item/request-item.ts"), "utf8");
   const wxml = readFileSync(join(here, "../pages/request-item/request-item.wxml"), "utf8");
   assert.match(ts, /提交补充资料/);
-  assert.match(ts, /补充资料已收到/);
+  assert.match(ts, /SUBMIT_RECEIPT_COPY/);
+  assert.equal(SUBMIT_RECEIPT_COPY, "补充资料已收到，陈总会继续审核。");
+  assert.match(ts, /setBusy\("submitting", true\)/);
+  assert.match(ts, /goCaseStatusAfterSuccess/);
+  assert.match(ts, /CASE_STATUS_ROUTE/);
   assert.equal(ts.includes('submitLabel: waitingForBroker ? "返回我的资料" : "提交给陈总"'), false);
   assert.match(wxml, /waitingForBroker/);
-  assert.match(wxml, /返回我的资料/);
+  assert.match(wxml, /submitReceiptVisible/);
+  assert.match(wxml, /查看案件状态/);
   // Active submit CTA is hidden once waitingForBroker (success state).
   assert.match(wxml, /showFooterCta && !waitingForBroker/);
+  // Immediate busy + double-tap guard on CTA.
+  assert.match(wxml, /submitDisabled \|\| busy\.submitting/);
+});
+
+test("Final Request More success navigates to Case Status", () => {
+  const here = dirname(__filename);
+  const ts = readFileSync(join(here, "../pages/request-item/request-item.ts"), "utf8");
+  assert.match(ts, /finishSubmitSuccess/);
+  assert.match(ts, /waitingForBroker: true/);
+  assert.match(ts, /redirectTo/);
+  assert.match(ts, /CASE_STATUS_ROUTE/);
+  assert.equal(ts.includes("goTaskHome()"), false);
 });
 
 test("legacy case maps to legacy behavior", () => {
