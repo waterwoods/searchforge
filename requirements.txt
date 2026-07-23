@@ -44,6 +44,8 @@ langgraph>=1.0.0 ; python_version >= "3.11" and python_version < "4.0"
 langchain-core>=1.0.0 ; python_version >= "3.11" and python_version < "4.0"
 # P19A: WeCom media objects in private GCS bucket (caseiq-wecom-media-qa)
 google-cloud-storage>=2.14.0 ; python_version >= "3.11" and python_version < "4.0"
+# P28 Voice Story: Google Speech-to-Text Chirp (SpeechProvider adapter only)
+google-cloud-speech>=2.27.0 ; python_version >= "3.11" and python_version < "4.0"
 # Stage-1 Postgres dual-write mirror (Neon / pilot); required on Cloud Run when SERVICE_RECORD_DATABASE_URL is set
 psycopg[binary]>=3.1.0 ; python_version >= "3.11" and python_version < "4.0"
 # P16 HEIC: iPhone photo conversion to JPEG before sending to OpenAI/Gemini
