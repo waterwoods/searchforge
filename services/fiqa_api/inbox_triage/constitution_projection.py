@@ -729,17 +729,218 @@ def _insurance_task_state(
     return TASK_STATE_PENDING, open_path
 
 
+def _open_request_is_open(slice1: Mapping[str, Any] | None) -> bool:
+    open_request = _mapping((slice1 or {}).get("open_request")) if slice1 else None
+    if not open_request:
+        return False
+    return str(open_request.get("status") or "").strip().lower() == "open"
+
+
+def _broker_item_task_meta(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Map one Slice1 requested item to a Task Home card identity."""
+    item_type = str(item.get("item_type") or "").strip().lower()
+    label = str(item.get("label") or item.get("title") or "").strip()
+    request_item_id = str(item.get("request_item_id") or "").strip() or None
+    if item_type in _INSURANCE_CARD_INPUTS or label in {_TODAY_INSURANCE_CARD, "保险卡"}:
+        return {
+            "task_id": TASK_ID_INSURANCE,
+            "title": label or "保险卡",
+            "route": _ROUTE_REQUEST_ITEM,
+            "primary_action": "上传保险卡",
+            "request_item_id": request_item_id,
+        }
+    if item_type == "photo_evidence" or label in {"补充车辆照片", "上传现场照片", "补充照片", "事故照片"}:
+        return {
+            "task_id": TASK_ID_PHOTOS,
+            "title": label or "事故照片",
+            "route": _ROUTE_PHOTOS,
+            "primary_action": "补充照片",
+            "request_item_id": request_item_id,
+        }
+    if item_type in {"vin", "own_vehicle_vin", "vehicle_vin"}:
+        return {
+            "task_id": "vehicle_vin",
+            "title": label or "车辆 VIN",
+            "route": _ROUTE_REQUEST_ITEM,
+            "primary_action": label or "填写车辆 VIN",
+            "request_item_id": request_item_id,
+        }
+    if item_type == "vehicle_information":
+        return {
+            "task_id": "vehicle_information",
+            "title": label or "车辆信息",
+            "route": _ROUTE_REQUEST_ITEM,
+            "primary_action": label or "补充车辆信息",
+            "request_item_id": request_item_id,
+        }
+    if _item_looks_driver_license(item):
+        return {
+            "task_id": TASK_ID_DRIVER_LICENSE,
+            "title": label or "驾驶证",
+            "route": None,
+            "primary_action": None,
+            "request_item_id": request_item_id,
+        }
+    task_id = request_item_id or f"request_item_{item_type or 'free_text'}"
+    return {
+        "task_id": task_id,
+        "title": label or "补充资料",
+        "route": _ROUTE_REQUEST_ITEM,
+        "primary_action": label or "补充资料",
+        "request_item_id": request_item_id,
+    }
+
+
+def _customer_tasks_from_open_request(
+    deps: _ResolvedDeps, customer: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """When Broker Request More is open, Task Home cards follow that request only.
+
+    Incomplete system_default cards are hidden so Today/VIN cannot drift from the
+    broker-selected items. Completed defaults may remain as read-only context.
+    """
+    today = str(customer.get("today") or "").strip()
+    stage = str(customer.get("current_stage") or "").strip()
+    tasks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for item in _open_request_items(deps.slice1):
+        status = str(item.get("status") or "").strip().lower()
+        if status in {"withdrawn", "superseded"}:
+            continue
+        meta = _broker_item_task_meta(item)
+        task_id = str(meta["task_id"])
+        if task_id in seen:
+            continue
+        seen.add(task_id)
+        satisfied = status == "satisfied"
+        is_active = status in {"", "active"}
+        is_queued = status == "queued"
+        if satisfied:
+            state = TASK_STATE_COMPLETED
+            actionable = False
+            is_today = False
+            route = None
+        elif is_active:
+            state = TASK_STATE_IN_PROGRESS
+            actionable = meta["route"] is not None
+            is_today = True
+            route = meta["route"]
+        elif is_queued:
+            state = TASK_STATE_BLOCKED if any(t.get("is_today") for t in tasks) else TASK_STATE_PENDING
+            actionable = False
+            is_today = False
+            route = None
+        else:
+            state = TASK_STATE_PENDING
+            actionable = meta["route"] is not None
+            is_today = False
+            route = meta["route"] if actionable else None
+        reason = str(item.get("instructions") or "").strip() or None
+        tasks.append(
+            _task_card(
+                task_id=task_id,
+                title=str(meta["title"]),
+                state=state,
+                completed=1 if satisfied else 0,
+                total=1,
+                is_today=is_today,
+                route=route,
+                actionable=actionable,
+                primary_action=str(meta["primary_action"]) if actionable and meta["primary_action"] else None,
+                task_source=TASK_SOURCE_BROKER_REQUESTED,
+                reason=reason,
+                request_item_id=meta.get("request_item_id"),
+            )
+        )
+
+    # Completed default-intake context only — never invent open defaults beside Request More.
+    if _has_accident_story(deps) and TASK_ID_STORY not in seen:
+        tasks.append(
+            _task_card(
+                task_id=TASK_ID_STORY,
+                title="事故经过",
+                state=TASK_STATE_COMPLETED,
+                completed=1,
+                total=1,
+                is_today=False,
+                route=None,
+                actionable=False,
+                primary_action=None,
+                task_source=TASK_SOURCE_SYSTEM_DEFAULT,
+            )
+        )
+        seen.add(TASK_ID_STORY)
+    photo_completed, photo_total, any_photo = _photo_progress(deps)
+    if any_photo and photo_completed >= photo_total and TASK_ID_PHOTOS not in seen:
+        tasks.append(
+            _task_card(
+                task_id=TASK_ID_PHOTOS,
+                title="事故照片",
+                state=TASK_STATE_COMPLETED,
+                completed=photo_completed,
+                total=photo_total,
+                is_today=False,
+                route=None,
+                actionable=False,
+                primary_action=None,
+                task_source=TASK_SOURCE_SYSTEM_DEFAULT,
+            )
+        )
+        seen.add(TASK_ID_PHOTOS)
+    if _insurance_satisfied(deps) and TASK_ID_INSURANCE not in seen:
+        tasks.append(
+            _task_card(
+                task_id=TASK_ID_INSURANCE,
+                title="保险卡",
+                state=(
+                    TASK_STATE_WAITING_BROKER
+                    if stage == STAGE_WAITING_BROKER or _is_waiting_broker(
+                        deps, _slice1_customer_action(deps.slice1)
+                    )
+                    else TASK_STATE_COMPLETED
+                ),
+                completed=1,
+                total=1,
+                is_today=False,
+                route=None,
+                actionable=False,
+                primary_action=None,
+                task_source=TASK_SOURCE_SYSTEM_DEFAULT,
+            )
+        )
+
+    if stage == STAGE_CUSTOMER_ACTION_NEEDED and not any(t.get("is_today") for t in tasks):
+        for task in tasks:
+            if task.get("actionable") and task.get("state") == TASK_STATE_IN_PROGRESS:
+                task["is_today"] = True
+                break
+    # Keep a single Today mark.
+    seen_today = False
+    for task in tasks:
+        if task.get("is_today"):
+            if seen_today:
+                task["is_today"] = False
+            seen_today = True
+    _ = today  # Today text remains Slice1/Constitution SSOT above cards.
+    return tasks
+
+
 def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Derive visible Task Cards from Case + Slice1 + Evidence (Constitution read-model).
 
     Hard rules:
     - No hard-coded page list on the client — this list is the authority.
+    - Open Broker Request More → cards derive from broker-selected items only.
     - system_default insurance → route=insurance (upload engine, no request_item_id).
     - broker_requested insurance → route=request_item (Slice1 follow-up).
     - Photos use existing upload slots only; never fake-completed without evidence.
     - Story completed only when this case has accident_description.
     - Driver License appears only while its production path is unfinished.
     """
+    if _open_request_is_open(deps.slice1) and _open_request_items(deps.slice1):
+        return _customer_tasks_from_open_request(deps, customer)
+
     today = str(customer.get("today") or "").strip()
     stage = str(customer.get("current_stage") or "").strip()
     action = _slice1_customer_action(deps.slice1)

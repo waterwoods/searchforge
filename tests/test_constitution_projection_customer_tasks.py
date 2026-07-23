@@ -165,7 +165,7 @@ def test_camry_after_upload_insurance_waiting_broker_and_dl_omitted():
 
 
 def test_insurance_today_one_truth_even_when_photo_slots_empty():
-    """Today First: empty photos must not fake-complete; Why must not invent photo done."""
+    """Open Request More: incomplete defaults stay hidden; Why must not invent photo done."""
     case = _camry_before_upload_case()
     case["claim_evidence_summary"] = {
         "received_slots": [],
@@ -178,12 +178,135 @@ def test_insurance_today_one_truth_even_when_photo_slots_empty():
     assert "事故经过已收到" in why or "请上传清晰的保险卡" in why
     by_id = _by_id(customer["tasks"])
     assert by_id[TASK_ID_INSURANCE]["is_today"] is True
-    assert by_id[TASK_ID_PHOTOS]["state"] == TASK_STATE_BLOCKED
-    assert by_id[TASK_ID_PHOTOS]["actionable"] is False
-    assert by_id[TASK_ID_PHOTOS]["progress"]["completed"] == 0
+    # Incomplete system_default photos are not projected beside an open broker request.
+    assert TASK_ID_PHOTOS not in by_id
     # Story completed only from this case's accident_description.
     assert by_id[TASK_ID_STORY]["state"] == TASK_STATE_COMPLETED
     assert by_id[TASK_ID_STORY]["actionable"] is False
+
+
+def test_open_request_tasks_exact_broker_items_no_vin_fallback():
+    """Broker-selected items are the only open Task Home cards (no Vehicle VIN invent)."""
+    case = {
+        "case_id": "case-request-exact",
+        "service_lane": SERVICE_LANE_CLAIM,
+        "claim_phase": "broker_needs_more_info",
+        "known_facts": {"accident_description": "倒车碰撞"},
+        "p20_slice1_projection": {
+            "case_id": "case-request-exact",
+            "workflow_state": "broker_more_requested",
+            "customer_next_action": {
+                "action_type": "provide_evidence",
+                "title": "保险卡",
+                "required_input": "policy_or_insurance_card",
+                "status": "active",
+                "request_item_id": "item_insurance",
+            },
+            "broker_next_action": {
+                "action_type": "wait_for_customer_item",
+                "status": "waiting_for_customer",
+            },
+            "open_request": {
+                "status": "open",
+                "active_item": {
+                    "request_item_id": "item_insurance",
+                    "item_type": "policy_or_insurance_card",
+                    "label": "保险卡",
+                    "status": "active",
+                    "position": 1,
+                },
+                "queued_items": [
+                    {
+                        "request_item_id": "item_photos",
+                        "item_type": "photo_evidence",
+                        "label": "事故照片",
+                        "status": "queued",
+                        "position": 2,
+                    }
+                ],
+                "items": [
+                    {
+                        "request_item_id": "item_insurance",
+                        "item_type": "policy_or_insurance_card",
+                        "label": "保险卡",
+                        "status": "active",
+                        "position": 1,
+                    },
+                    {
+                        "request_item_id": "item_photos",
+                        "item_type": "photo_evidence",
+                        "label": "事故照片",
+                        "status": "queued",
+                        "position": 2,
+                    },
+                ],
+            },
+        },
+        "claim_evidence_summary": {"received_slots": [], "missing_required_slots": []},
+    }
+    projection = build_constitution_projection(ConstitutionInputs(case=case))
+    customer = projection["customer"]
+    assert customer["today"] == "保险卡"
+    by_id = _by_id(customer["tasks"])
+    assert set(by_id) == {TASK_ID_INSURANCE, TASK_ID_PHOTOS, TASK_ID_STORY}
+    assert "vehicle_vin" not in by_id
+    assert by_id[TASK_ID_INSURANCE]["task_source"] == "broker_requested"
+    assert by_id[TASK_ID_INSURANCE]["is_today"] is True
+    assert by_id[TASK_ID_PHOTOS]["task_source"] == "broker_requested"
+    assert by_id[TASK_ID_PHOTOS]["state"] == TASK_STATE_BLOCKED
+    assert by_id[TASK_ID_STORY]["state"] == TASK_STATE_COMPLETED
+
+
+def test_vin_only_appears_when_broker_requests_vin():
+    case = {
+        "case_id": "case-vin-only",
+        "service_lane": SERVICE_LANE_CLAIM,
+        "claim_phase": "broker_needs_more_info",
+        "known_facts": {"accident_description": "碰撞"},
+        "p20_slice1_projection": {
+            "case_id": "case-vin-only",
+            "workflow_state": "broker_more_requested",
+            "customer_next_action": {
+                "action_type": "provide_fact",
+                "title": "Vehicle VIN",
+                "required_input": "vin",
+                "status": "active",
+                "request_item_id": "item_vin",
+            },
+            "broker_next_action": {
+                "action_type": "wait_for_customer_item",
+                "status": "waiting_for_customer",
+            },
+            "open_request": {
+                "status": "open",
+                "items": [
+                    {
+                        "request_item_id": "item_vin",
+                        "item_type": "vin",
+                        "label": "Vehicle VIN",
+                        "status": "active",
+                        "position": 1,
+                    }
+                ],
+                "active_item": {
+                    "request_item_id": "item_vin",
+                    "item_type": "vin",
+                    "label": "Vehicle VIN",
+                    "status": "active",
+                },
+                "queued_items": [],
+            },
+        },
+        "claim_evidence_summary": {"received_slots": [], "missing_required_slots": []},
+    }
+    projection = build_constitution_projection(ConstitutionInputs(case=case))
+    customer = projection["customer"]
+    assert customer["today"] == "Vehicle VIN"
+    by_id = _by_id(customer["tasks"])
+    assert "vehicle_vin" in by_id
+    assert TASK_ID_INSURANCE not in by_id
+    assert by_id["vehicle_vin"]["title"] == "Vehicle VIN"
+    assert by_id["vehicle_vin"]["task_source"] == "broker_requested"
 
 
 def test_photo_uploads_as_gallery_categories_complete_accident_photos_task():

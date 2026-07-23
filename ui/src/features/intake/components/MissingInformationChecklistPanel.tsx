@@ -37,7 +37,10 @@ import {
   RequestDraftAutosaveController,
   type AutosavePhase,
 } from '@/features/intake/components/requestDraftAutosave';
-import { resolveSlice1CustomerResponse } from '@/features/intake/components/StructuredRequestMorePanel';
+import {
+  isStructuredRequestMoreTerminal,
+  resolveSlice1CustomerResponse,
+} from '@/features/intake/components/StructuredRequestMorePanel';
 import {
   CLAIM_PILOT_STATUS,
   CLAIM_REQUEST_MORE_COPY,
@@ -84,6 +87,42 @@ export function resolveCustomerAccessCard(caseRecord: SavedCase | null): Custome
   const fromProj = resolveCaseIntakeProjection(caseRecord)?.customer_access;
   if (fromProj && typeof fromProj === 'object') return fromProj;
   return null;
+}
+
+/**
+ * Bound Mini Program customer: Request More attaches to Active Case via resume/session.
+ * Primary Workbench flow should not require a new QR scan.
+ */
+export function isBoundMiniProgramCustomer(caseRecord: SavedCase | null): boolean {
+  if (!caseRecord) return false;
+  const binding = String(caseRecord.identity_binding_state || '').trim().toLowerCase();
+  const source = String(caseRecord.person_link_source || '').trim().toLowerCase();
+  const channel = String(
+    (caseRecord as SavedCase & { entry_channel?: string; source_channel?: string }).entry_channel
+      || (caseRecord as SavedCase & { source_channel?: string }).source_channel
+      || '',
+  )
+    .trim()
+    .toLowerCase();
+  const actor = String(
+    (caseRecord as SavedCase & { created_by_actor?: string }).created_by_actor || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (binding === 'linked' && (source === 'wechat' || Boolean(caseRecord.person_link_key))) {
+    return true;
+  }
+  if (
+    channel === 'mini_program'
+    || channel === 'wechat_mp'
+    || channel === 'wechat_mini_program'
+  ) {
+    return true;
+  }
+  if (actor === 'customer' && source === 'wechat') {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -290,6 +329,7 @@ function CustomerAccessReadyCard({
   showEdit,
   onRefreshStatus,
   refreshing,
+  boundMiniProgram,
 }: {
   access: CustomerAccessCard;
   draftItems: CaseIntakeRequestDraftItem[];
@@ -298,6 +338,7 @@ function CustomerAccessReadyCard({
   showEdit?: boolean;
   onRefreshStatus?: () => Promise<void>;
   refreshing?: boolean;
+  boundMiniProgram?: boolean;
 }) {
   const link = access.copy_link || access.launch_url || '';
   const qrValue = access.qr_payload || link;
@@ -305,6 +346,8 @@ function CustomerAccessReadyCard({
   const review = resolveAccessReviewState(access, slice1Projection);
   const itemSummary =
     (openRequest?.items || draftItems || []).map((item) => String(item.label || item.item_type || '')).filter(Boolean);
+  const showPrimaryQr = Boolean(qrValue) && !review.reviewReady && !boundMiniProgram;
+  const showFallbackQr = Boolean(qrValue || link) && !review.reviewReady && Boolean(boundMiniProgram);
 
   return (
     <div
@@ -325,13 +368,20 @@ function CustomerAccessReadyCard({
         <Title level={4} style={{ margin: 0 }}>
           {review.reviewReady
             ? CLAIM_REQUEST_MORE_COPY.waitingBrokerTitle
-            : CLAIM_REQUEST_MORE_COPY.waitingCustomerTitle}
+            : boundMiniProgram
+              ? CLAIM_REQUEST_MORE_COPY.sentToMiniProgram
+              : CLAIM_REQUEST_MORE_COPY.waitingCustomerTitle}
         </Title>
         <Text type="secondary">
           {review.reviewReady
             ? CLAIM_REQUEST_MORE_COPY.waitingBrokerBody
-            : CLAIM_REQUEST_MORE_COPY.waitingCustomerBody}
+            : boundMiniProgram
+              ? CLAIM_REQUEST_MORE_COPY.waitingCustomerBodyBound
+              : CLAIM_REQUEST_MORE_COPY.waitingCustomerBody}
         </Text>
+        {itemSummary.length > 0 && !review.reviewReady ? (
+          <Text>{CLAIM_REQUEST_MORE_COPY.requestedLine(itemSummary.join('、'))}</Text>
+        ) : null}
         {review.submittedVin ? (
           <div style={{ padding: 12, background: '#fff', border: '1px solid #b7eb8f', borderRadius: 6 }}>
             <Text strong style={{ display: 'block', marginBottom: 4 }}>
@@ -342,12 +392,12 @@ function CustomerAccessReadyCard({
             </Text>
           </div>
         ) : null}
-        {qrValue && !review.reviewReady ? (
+        {showPrimaryQr ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
             <QRCode value={qrValue} size={168} />
           </div>
         ) : null}
-        {!qrValue && !review.reviewReady ? (
+        {!qrValue && !review.reviewReady && !boundMiniProgram ? (
           <Alert
             type="warning"
             showIcon
@@ -355,7 +405,7 @@ function CustomerAccessReadyCard({
           />
         ) : null}
         <Space wrap>
-          {link && !review.reviewReady ? (
+          {link && !review.reviewReady && !boundMiniProgram ? (
             <Button
               type="primary"
               onClick={async () => {
@@ -371,6 +421,42 @@ function CustomerAccessReadyCard({
             </Button>
           ) : null}
         </Space>
+        {showFallbackQr ? (
+          <Collapse
+            ghost
+            size="small"
+            items={[
+              {
+                key: 'optional-qr-fallback',
+                label: CLAIM_REQUEST_MORE_COPY.optionalQrFallback,
+                children: (
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    {qrValue ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
+                        <QRCode value={qrValue} size={140} />
+                      </div>
+                    ) : null}
+                    {link ? (
+                      <Button
+                        size="small"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(link);
+                            message.success(CLAIM_REQUEST_MORE_COPY.linkCopied);
+                          } catch {
+                            message.error(CLAIM_REQUEST_MORE_COPY.copyFailed);
+                          }
+                        }}
+                      >
+                        {CLAIM_REQUEST_MORE_COPY.copyLink}
+                      </Button>
+                    ) : null}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        ) : null}
         <Collapse
           ghost
           size="small"
@@ -388,7 +474,9 @@ function CustomerAccessReadyCard({
                   ) : null}
                   {!review.reviewReady ? (
                     <Paragraph style={{ marginBottom: 0 }}>
-                      {access.instruction_zh || CLAIM_REQUEST_MORE_COPY.instructionDefault}
+                      {boundMiniProgram
+                        ? CLAIM_REQUEST_MORE_COPY.instructionBoundDefault
+                        : access.instruction_zh || CLAIM_REQUEST_MORE_COPY.instructionDefault}
                     </Paragraph>
                   ) : null}
                   {onRefreshStatus ? (
@@ -844,8 +932,11 @@ export function MissingInformationChecklistPanel({
           : saveStatus === 'unsaved'
             ? CLAIM_REQUEST_MORE_COPY.unsaved
             : '';
+  const caseClosedReadOnly = isStructuredRequestMoreTerminal(caseRecord);
+  const boundMiniProgram = isBoundMiniProgramCustomer(caseRecord);
   const canSend =
-    selectedSendableCount > 0
+    !caseClosedReadOnly
+    && selectedSendableCount > 0
     && unsupportedInSavedDraft.length === 0
     && saveStatus !== 'saving'
     && saveStatus !== 'failed';
@@ -859,12 +950,22 @@ export function MissingInformationChecklistPanel({
           slice1Projection={caseRecord.slice1_projection || caseRecord.p20_slice1_projection}
           onRefreshStatus={refreshCase ? refreshCustomerStatus : undefined}
           refreshing={statusRefreshing}
+          boundMiniProgram={boundMiniProgram}
         />
       ) : null}
 
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 8 }} /> : null}
 
-      {showDraftEditor ? (
+      {caseClosedReadOnly && !showAccessCard ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 8 }}
+          message="案件已关闭 / 历史案件不可再发出补充请求。"
+        />
+      ) : null}
+
+      {showDraftEditor && !caseClosedReadOnly ? (
         <>
           <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>
             {CLAIM_REQUEST_MORE_COPY.panelTitle}

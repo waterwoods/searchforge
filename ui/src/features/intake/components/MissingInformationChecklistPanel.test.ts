@@ -5,13 +5,19 @@
 import assert from 'node:assert/strict';
 import {
   classifySendRequestError,
+  isBoundMiniProgramCustomer,
   resolveAccessReviewState,
   resolveCaseIntakeProjection,
   resolveCustomerAccessCard,
   resolveSendExpectedVersion,
 } from './MissingInformationChecklistPanel';
+import { isStructuredRequestMoreTerminal } from './StructuredRequestMorePanel';
 import { isMvpSendableItemType } from '@/features/intake/mvpRequestTypes';
+import { CLAIM_REQUEST_MORE_COPY } from '@/features/intake/utils/claimPilotCopy';
 import { Slice1RequestMoreError, type CustomerAccessCard, type SavedCase, type Slice1Projection } from '@/api/inboxTriage';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function baseCase(overrides: Partial<SavedCase> = {}): SavedCase {
   return {
@@ -281,6 +287,89 @@ const accessCard: CustomerAccessCard = {
   assert.equal(ready.satisfied, 1);
   assert.equal(ready.total, 1);
   assert.equal(ready.simpleStatus, '等待经纪人');
+}
+
+{
+  // Bound Mini Program customer → primary QR path is not required.
+  assert.equal(
+    isBoundMiniProgramCustomer(
+      baseCase({
+        identity_binding_state: 'linked',
+        person_link_source: 'wechat',
+        person_link_key: 'plk_demo',
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    isBoundMiniProgramCustomer(
+      baseCase({
+        identity_binding_state: 'unbound',
+        person_link_source: null,
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    isBoundMiniProgramCustomer(
+      baseCase({
+        ...( { entry_channel: 'mini_program' } as Partial<SavedCase>),
+      }),
+    ),
+    true,
+  );
+}
+
+{
+  // Closed / history cases must disable Request More composer.
+  assert.equal(
+    isStructuredRequestMoreTerminal(
+      baseCase({
+        case_history_state: 'history',
+        closed_at: '2026-07-22T12:00:00Z',
+      } as Partial<SavedCase>),
+    ),
+    true,
+  );
+}
+
+{
+  // Source contract: bound customers hide primary QR; unbound keep fallback QR.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const panel = readFileSync(join(here, 'MissingInformationChecklistPanel.tsx'), 'utf8');
+  assert.match(panel, /boundMiniProgram/);
+  assert.match(panel, /sentToMiniProgram|已发送到客户小程序/);
+  assert.match(panel, /optionalQrFallback|未绑定客户可用链接/);
+  assert.match(panel, /showPrimaryQr/);
+  assert.equal(CLAIM_REQUEST_MORE_COPY.sentToMiniProgram.includes('小程序'), true);
+  assert.ok(accessCard.qr_payload);
+  // Exact requested-item summary still available for waiting state.
+  const waiting = resolveAccessReviewState(accessCard, {
+    case_id: 'case_test_intake',
+    workflow_state: 'broker_more_requested',
+    aggregate_version: 2,
+    open_request: {
+      request_id: 'rg_1',
+      status: 'open',
+      progress: { satisfied: 0, total: 1 },
+      items: [
+        {
+          request_item_id: 'ri_card',
+          item_type: 'policy_or_insurance_card',
+          label: '保险卡',
+          status: 'active',
+          required: true,
+          position: 1,
+        },
+      ],
+    },
+  } as Slice1Projection);
+  assert.equal(waiting.reviewReady, false);
+  assert.equal(waiting.total, 1);
+  assert.equal(
+    CLAIM_REQUEST_MORE_COPY.requestedLine('保险卡'),
+    '已请求：保险卡',
+  );
 }
 
 console.log('MissingInformationChecklistPanel.test: PASS');

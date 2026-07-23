@@ -188,3 +188,50 @@ test("mapConstitutionTaskCard normalizes shared state model", () => {
   assert.equal(card!.route, "/pages/photos/photos");
   assert.equal(card!.completionMark, "○");
 });
+
+test("P1 Request More — exact broker tasks; no unrelated Vehicle VIN card", () => {
+  const task = {
+    ...baseTask(),
+    constitution_projection: {
+      projection_version: 1,
+      case_id: "case-request-exact",
+      current_stage: "customer_action_needed",
+      customer: {
+        today: "保险卡",
+        why: "请上传清晰的保险卡照片",
+        after: "完成后我们会继续处理。",
+        current_stage: "customer_action_needed",
+        tasks: [
+          {
+            task_id: "insurance_card",
+            title: "保险卡",
+            state: "in_progress",
+            progress: { completed: 0, total: 1 },
+            is_today: true,
+            route: "request_item",
+            actionable: true,
+            primary_action: "上传保险卡",
+            task_source: "broker_requested",
+          },
+          {
+            task_id: "accident_photos",
+            title: "事故照片",
+            state: "blocked",
+            progress: { completed: 0, total: 1 },
+            is_today: false,
+            route: null,
+            actionable: false,
+            task_source: "broker_requested",
+          },
+        ],
+      },
+    } as ConstitutionProjection,
+  };
+  const cards = resolveCustomerTaskCardsFromTask(task);
+  assert.deepEqual(
+    cards.map((c) => c.taskId),
+    ["insurance_card", "accident_photos"],
+  );
+  assert.equal(cards.some((c) => /VIN|vin/i.test(c.title) || c.taskId === "vehicle_vin"), false);
+  assert.equal(cards[0].isToday, true);
+});
