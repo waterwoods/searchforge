@@ -655,6 +655,7 @@ export function mapErrorMessage(code: string): string {
     invalid_vin: "请输入有效的 17 位 VIN",
     vehicle_incomplete: "暂时无法提供 VIN 时，请填写年份、品牌和型号",
     vehicle_rejected: "这些信息需要修改，请检查后重新提交",
+    case_closed_read_only: "案件已关闭，当前只能查看，不能再提交。",
   };
   return messages[code] || "暂时无法完成操作，请稍后再试。";
 }

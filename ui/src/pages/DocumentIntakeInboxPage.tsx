@@ -69,6 +69,7 @@ import {
   type WorkbenchPerfSession,
 } from '@/features/intake/utils/workbenchPerfLog';
 import { fullCaseId, shortCaseId } from '@/features/intake/utils/caseIdDisplay';
+import { resolveDrawerRefreshPresentation } from '@/features/intake/utils/workbenchDrawerRefresh';
 import { copyToClipboard } from '@/utils/demoCopy';
 
 const { Title, Text, Paragraph } = Typography;
@@ -852,6 +853,7 @@ export default function DocumentIntakeInboxPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SavedCase | null>(null);
+  /** First open hydrate only — never set by background Waiting Customer poll. */
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
   const [drawerPerfSession, setDrawerPerfSession] = useState<WorkbenchPerfSession | null>(null);
@@ -1021,23 +1023,35 @@ export default function DocumentIntakeInboxPage() {
     );
   }, []);
 
+  // Background poll (MissingInformationChecklistPanel): update fields in place.
+  // Do not flip detailLoading — that remounts/flashes "Refreshing case details…"
+  // and StructuredRequestMore projectionLoading every CUSTOMER_STATUS_POLL_MS.
   const refreshDrawerCase = useCallback(async () => {
-    if (!detail?.case_id) return null;
-    setDetailLoading(true);
+    const caseId = openId || detail?.case_id || '';
+    if (!caseId) return null;
     setDetailLoadError(null);
     try {
-      const refreshed = await getSavedCase(detail.case_id);
+      const refreshed = await getSavedCase(caseId);
       syncDrawerCase(refreshed);
       return refreshed;
     } catch {
+      // Keep prior detail mounted; surface a non-destructive error only.
       const msg = resolveCaseOpenErrorMessage(detail);
       setDetailLoadError(msg);
       messageApi.error(msg);
       return null;
-    } finally {
-      setDetailLoading(false);
     }
-  }, [detail, messageApi, syncDrawerCase]);
+  }, [openId, detail, messageApi, syncDrawerCase]);
+
+  const drawerLoadPresentation = useMemo(
+    () =>
+      resolveDrawerRefreshPresentation({
+        hasDetail: Boolean(detail),
+        initialLoading: detailLoading,
+        backgroundRefreshing: false,
+      }),
+    [detail, detailLoading],
+  );
 
   const detailBlob = useMemo((): P16BrokerPacket | null => {
     if (!detail) return null;
@@ -1205,12 +1219,13 @@ export default function DocumentIntakeInboxPage() {
       >
         {detail ? (
           <>
-            {detailLoading ? (
+            {drawerLoadPresentation.showRefreshingBanner ? (
               <div style={{ marginBottom: 12 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>Refreshing case details…</Text>
               </div>
             ) : null}
             <BrokerCaseDetail
+              key={`broker-detail-${detail.case_id}`}
               caseItem={detail}
               blob={detailBlob}
               perfSession={drawerPerfSession}
@@ -1231,13 +1246,13 @@ export default function DocumentIntakeInboxPage() {
             onClaimBrokerDone={() => void handleClaimBrokerDone()}
               onCaseChange={syncDrawerCase}
               onRefreshCase={refreshDrawerCase}
-              projectionLoading={detailLoading}
+              projectionLoading={drawerLoadPresentation.projectionLoading}
               projectionLoadError={detailLoadError}
             confirmSaving={confirmSaving}
             claimBrokerDoneSaving={claimBrokerDoneSaving}
           />
           </>
-        ) : detailLoading ? (
+        ) : drawerLoadPresentation.showSkeleton ? (
           <Skeleton active paragraph={{ rows: 6 }} />
         ) : null}
         {deleting && (

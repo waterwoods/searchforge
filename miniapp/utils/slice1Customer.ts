@@ -308,6 +308,24 @@ export function applySlice1ProjectionToTask(
   };
 }
 
+/**
+ * After an uncertain submit (timeout / lost response), decide whether the server
+ * already accepted the item so the client can advance without a duplicate write.
+ */
+export function isRequestItemSubmitResolvedOnServer(args: {
+  submittedItemId: string;
+  view: Pick<Slice1CustomerView, "waitingForBroker" | "satisfiedItems" | "nextAction">;
+}): boolean {
+  const submitted = String(args.submittedItemId || "").trim();
+  if (!submitted) return false;
+  if (args.view.waitingForBroker) return true;
+  if (args.view.satisfiedItems.some((item) => String(item.request_item_id || "") === submitted)) {
+    return true;
+  }
+  const nextId = String(args.view.nextAction?.request_item_id || "").trim();
+  return Boolean(nextId && nextId !== submitted);
+}
+
 export const slice1Customer = {
   extractSlice1Projection,
   isSlice1CustomerFlow,
@@ -320,5 +338,6 @@ export const slice1Customer = {
   factFieldForItemType,
   mapSlice1CustomerView,
   applySlice1ProjectionToTask,
+  isRequestItemSubmitResolvedOnServer,
   REQUEST_ITEM_ROUTE,
 };

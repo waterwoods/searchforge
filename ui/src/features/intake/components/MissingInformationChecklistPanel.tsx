@@ -558,22 +558,27 @@ export function MissingInformationChecklistPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
   }, []);
 
+  // Stable poll callback — parent refreshCase identity often changes after each
+  // setState; do not restart the interval (avoids timer churn / drawer jitter).
+  const refreshCaseRef = useRef(refreshCase);
+  refreshCaseRef.current = refreshCase;
+
   // While waiting for customer, gently refresh authoritative detail (no aggressive churn).
+  // Parent must preserve prior detail during refetch (no initial-loading flash).
   useEffect(() => {
-    if (!requestSent || !refreshCase || editing) return;
+    if (!requestSent || !refreshCaseRef.current || editing) return;
     const review = resolveAccessReviewState(
       accessCard,
       caseRecord.slice1_projection || caseRecord.p20_slice1_projection,
     );
     if (review.reviewReady) return;
     const timer = setInterval(() => {
-      void refreshCase();
+      void refreshCaseRef.current?.();
     }, CUSTOMER_STATUS_POLL_MS);
     return () => clearInterval(timer);
   }, [
     requestSent,
     editing,
-    refreshCase,
     accessCard?.simple_status,
     accessCard?.progress?.satisfied_count,
     caseRecord.slice1_projection?.workflow_state,

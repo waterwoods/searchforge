@@ -6,6 +6,7 @@ import {
   extractSlice1Projection,
   factFieldForItemType,
   isEvidenceItemType,
+  isRequestItemSubmitResolvedOnServer,
   isSlice1CustomerFlow,
   isTextItemType,
   mapSlice1CustomerView,
@@ -294,6 +295,97 @@ test("command identity is stable for retry reuse", () => {
   assert.ok(first.command_id.startsWith("cmd_request_item_"));
   assert.ok(first.idempotency_key.startsWith("idem_"));
   assert.notEqual(first.command_id, first.idempotency_key);
+});
+
+test("uncertain reconcile treats advanced / satisfied VIN as resolved", () => {
+  const stillOpen = mapSlice1CustomerView(buildTask(buildProjection()));
+  assert.equal(
+    isRequestItemSubmitResolvedOnServer({
+      submittedItemId: "item_1",
+      view: stillOpen,
+    }),
+    false,
+  );
+
+  const afterVin = mapSlice1CustomerView(
+    buildTask(
+      buildProjection({
+        open_request: {
+          request_id: "req_1",
+          status: "open",
+          items: [
+            {
+              request_item_id: "item_1",
+              request_id: "req_1",
+              item_type: "vin",
+              label: "VIN",
+              instructions: "",
+              required: true,
+              position: 1,
+              status: "satisfied",
+              actionable: false,
+            },
+            {
+              request_item_id: "item_2",
+              request_id: "req_1",
+              item_type: "policy_or_insurance_card",
+              label: "Insurance card",
+              instructions: "",
+              required: true,
+              position: 2,
+              status: "active",
+              actionable: true,
+            },
+          ],
+          queued_items: [],
+          progress: { satisfied: 1, total: 2, remaining: 1 },
+        },
+        customer_next_action: {
+          action_type: "provide_evidence",
+          request_id: "req_1",
+          request_item_id: "item_2",
+          title: "保险卡",
+          instructions: "请上传",
+          required_input: "policy_or_insurance_card",
+        },
+        request_progress: { satisfied: 1, total: 2, remaining: 1 },
+        queued_request_items: [],
+      }),
+    ),
+  );
+  assert.equal(afterVin.progress.satisfied, 1);
+  assert.equal(afterVin.progress.total, 2);
+  assert.equal(
+    isRequestItemSubmitResolvedOnServer({
+      submittedItemId: "item_1",
+      view: afterVin,
+    }),
+    true,
+  );
+
+  const waiting = mapSlice1CustomerView(
+    buildTask(
+      buildProjection({
+        workflow_state: "broker_review_ready",
+        customer_next_action: {
+          action_type: "wait_for_broker_review",
+          request_id: "req_1",
+          request_item_id: null,
+          title: "等待审核",
+          instructions: "",
+          required_input: null,
+        },
+        request_progress: { satisfied: 2, total: 2, remaining: 0 },
+      }),
+    ),
+  );
+  assert.equal(
+    isRequestItemSubmitResolvedOnServer({
+      submittedItemId: "item_1",
+      view: waiting,
+    }),
+    true,
+  );
 });
 
 test("resolveTaskViewModel prefers Slice 1 server action", () => {

@@ -136,8 +136,22 @@ export async function submitRequestItem(
   } catch (err) {
     if (err instanceof ApiRequestError) {
       const detail = err.detail;
-      if (detail && typeof detail === "object" && "outcome" in (detail as object)) {
-        return detail as Slice1CommandResult;
+      if (detail && typeof detail === "object") {
+        const obj = detail as Record<string, unknown>;
+        if ("outcome" in obj) {
+          return detail as Slice1CommandResult;
+        }
+        // ValueError paths return { error } without outcome — treat as rejected,
+        // not transport-uncertain (avoids stuck "提交结果未确认" on validation).
+        const errorCode = String(obj.error_code || obj.error || "").trim();
+        if (errorCode) {
+          return {
+            outcome: "rejected",
+            command_id: command.command_id,
+            idempotency_key: command.idempotency_key,
+            error_code: errorCode,
+          } as Slice1CommandResult;
+        }
       }
       throw err;
     }

@@ -24,6 +24,7 @@ import {
   extractSlice1Projection,
   factFieldForItemType,
   isEvidenceItemType,
+  isRequestItemSubmitResolvedOnServer,
   isSlice1CustomerFlow,
   isVehicleInformationItemType,
   mapSlice1CustomerView,
@@ -232,15 +233,20 @@ function inputCopy(itemType: string): { label: string; placeholder: string } {
 }
 
 function syncNavTitle(itemType: string, waitingForBroker: boolean) {
-  if (waitingForBroker) {
+  // Never throw into submit handlers — a nav-title failure must not become "uncertain".
+  try {
+    if (waitingForBroker) {
+      wx.setNavigationBarTitle({ title: "补充资料" });
+      return;
+    }
+    if (itemType === "vin" || itemType === "vehicle_information") {
+      wx.setNavigationBarTitle({ title: CLAIM_VEHICLE_COPY.pageTitle });
+      return;
+    }
     wx.setNavigationBarTitle({ title: "补充资料" });
-    return;
+  } catch {
+    // ignore
   }
-  if (itemType === "vin" || itemType === "vehicle_information") {
-    wx.setNavigationBarTitle({ title: CLAIM_VEHICLE_COPY.pageTitle });
-    return;
-  }
-  wx.setNavigationBarTitle({ title: "补充资料" });
 }
 
 Page({
@@ -457,7 +463,8 @@ Page({
     internal.activeRequestItemId = nextItemId;
     internal.expectedCaseVersion = view.aggregateVersion;
 
-    if (previousItemId && nextItemId && previousItemId !== nextItemId) {
+    const itemChanged = Boolean(previousItemId && nextItemId && previousItemId !== nextItemId);
+    if (itemChanged) {
       clearRequestItemDraft(caseId, requestId, previousItemId);
       internal.commandId = "";
       internal.idempotencyKey = "";
@@ -579,12 +586,22 @@ Page({
       uploadItems: [uploadItem],
       ...this.uploadPhasePatch(
         uploadItem,
-        waitingForBroker ? "confirmed" : this.data.submissionState === "uncertain" ? "uncertain" : "idle",
+        waitingForBroker
+          ? "confirmed"
+          : !itemChanged && this.data.submissionState === "uncertain"
+            ? "uncertain"
+            : "idle",
         waitingForBroker,
       ),
       validationMessage: "",
-      submissionState: waitingForBroker ? "confirmed" : this.data.submissionState === "uncertain" ? "uncertain" : "idle",
-      retryAvailable: this.data.submissionState === "uncertain",
+      // Preserve uncertain only while the same request item is still active.
+      // Advancing to the next item (or broker wait) must clear stuck retry UI.
+      submissionState: waitingForBroker
+        ? "confirmed"
+        : !itemChanged && this.data.submissionState === "uncertain"
+          ? "uncertain"
+          : "idle",
+      retryAvailable: !waitingForBroker && !itemChanged && this.data.submissionState === "uncertain",
       submitLabel: waitingForBroker ? "返回我的资料" : "提交给陈总",
       submitDisabled,
       submitDisabledReason: waitingForBroker ? "" : "",
@@ -1065,6 +1082,23 @@ Page({
         wx.redirectTo({ url: "/pages/error/error?code=invalid_or_expired_task_link" });
         return;
       }
+      if (error instanceof ApiRequestError && error.code === "case_closed_read_only") {
+        this.safePageSetData({
+          submissionState: "failed",
+          retryAvailable: false,
+          submitDisabled: true,
+          submitDisabledReason: mapErrorMessage("case_closed_read_only"),
+          waitingForBroker: false,
+          pageError: {
+            code: "case_closed_read_only",
+            message: mapErrorMessage("case_closed_read_only"),
+            retryable: false,
+            blocking: true,
+          },
+        });
+        this.persistDraftSafe();
+        return;
+      }
       this.safePageSetData({
         submissionState: "uncertain",
         retryAvailable: true,
@@ -1079,22 +1113,46 @@ Page({
       });
       console.info("[slice1_submit_retry]", { reason: "uncertain_outcome" });
       this.persistDraftSafe();
-      // Reconcile with authoritative state when uncertain.
+      // Reconcile: if server already persisted, treat as success (idempotent retry path).
       try {
+        const submittedItemId = internal.activeRequestItemId;
         const refreshed = await this.rehydrateAuthoritativeTask({ silent: true });
         if (refreshed && isSlice1CustomerFlow(refreshed)) {
           const view = mapSlice1CustomerView(refreshed);
-          const stillActive = view.nextAction?.request_item_id === internal.activeRequestItemId;
-          if (!stillActive) {
-            clearRequestItemDraft(internal.caseId, internal.requestId, internal.activeRequestItemId);
+          if (
+            isRequestItemSubmitResolvedOnServer({
+              submittedItemId,
+              view,
+            })
+          ) {
+            clearRequestItemDraft(internal.caseId, internal.requestId, submittedItemId);
             internal.commandId = "";
             internal.idempotencyKey = "";
+            // Clear uncertain before apply so next item does not inherit stuck retry UI.
+            this.safePageSetData({
+              submissionState: "idle",
+              retryAvailable: false,
+              pageError: EMPTY_TASK_ERROR,
+              submitDisabled: false,
+              submitDisabledReason: "",
+            });
             this.applyAuthoritativeTask(refreshed, { restoreDraft: true });
-            wx.showToast({ title: "进度已更新", icon: "none" });
+            const after = mapSlice1CustomerView(refreshed);
+            this.safePageSetData({
+              submissionState: after.waitingForBroker ? "confirmed" : "idle",
+              retryAvailable: false,
+              pageError: EMPTY_TASK_ERROR,
+              submitDisabled: after.waitingForBroker || !String(after.nextAction?.request_item_id || "").trim(),
+              submitDisabledReason: "",
+            });
+            wx.showToast({
+              title: after.waitingForBroker ? "已提交，等待经纪人" : "进度已更新",
+              icon: "none",
+            });
           }
         }
       } catch {
-        // keep uncertain UI
+        // keep uncertain UI — retry reuses the same idempotency key
       }
     } finally {
       internal.submitInFlight = false;
@@ -1123,8 +1181,12 @@ Page({
       if (projection) {
         nextTask = applySlice1ProjectionToTask(nextTask || ({} as CustomerTask), projection);
         // Merge server key_facts when present on refreshed task payloads later.
-        const app = getApp<IAppOption>();
-        app.task = nextTask;
+        try {
+          const app = getApp<IAppOption>();
+          app.task = nextTask;
+        } catch {
+          // ignore — projection apply must still advance the page
+        }
       } else {
         const refreshed = await this.rehydrateAuthoritativeTask({ silent: true });
         if (refreshed) nextTask = refreshed;
@@ -1238,12 +1300,13 @@ Page({
     const code = String(result.error_code || "validation_rejected");
     const vehicleMsg = mapVehicleServerError(code);
     const message = vehicleMsg || mapErrorMessage(code);
+    const closed = code === "case_closed_read_only";
     this.safePageSetData({
       submissionState: "failed",
       retryAvailable: false,
-      submitDisabled: false,
-      submitDisabledReason: "",
-      validationMessage: message,
+      submitDisabled: closed ? true : false,
+      submitDisabledReason: closed ? message : "",
+      validationMessage: closed ? "" : message,
       fieldErrors:
         code === "vin_invalid" || code === "invalid_vin"
           ? { vin: CLAIM_VEHICLE_COPY.invalidVin }
@@ -1254,7 +1317,7 @@ Page({
         code,
         message,
         retryable: false,
-        blocking: false,
+        blocking: closed,
       },
     });
     this.persistDraftSafe();

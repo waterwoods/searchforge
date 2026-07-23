@@ -34,6 +34,7 @@ export function installMiniProgramGlobals(): void {
     navigateTo: () => undefined,
     showToast: () => undefined,
     showModal: () => undefined,
+    setNavigationBarTitle: () => undefined,
     navigateBack: (opts?: { success?: () => void }) => {
       opts?.success?.();
       return undefined;

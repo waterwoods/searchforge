@@ -63,3 +63,40 @@ test("submitRequestItem returns structured conflict detail as command result", a
 
   (globalThis as { wx: { request: Function } }).wx.request = originalRequest;
 });
+
+test("submitRequestItem maps validation error detail without outcome to rejected", async () => {
+  const originalRequest = (globalThis as { wx: { request: Function } }).wx.request;
+  (globalThis as { wx: { request: Function } }).wx.request = (opts: {
+    success: (res: { statusCode: number; data: unknown }) => void;
+  }) => {
+    opts.success({
+      statusCode: 422,
+      data: {
+        detail: { error: "exactly_one_fact_or_evidence_required" },
+      },
+    });
+  };
+
+  const result = await CustomerTaskApi.submitRequestItem("token", "item_vin", {
+    command_id: "cmd_vin",
+    idempotency_key: "idem_vin",
+    expected_case_version: 2,
+    fact: { field: "vin", value: "1HGCM82633A004352" },
+  }).catch((err: unknown) => err);
+
+  if (result instanceof ApiRequestError) {
+    assert.ok(
+      result.code === "backend_unreachable" ||
+        result.code === "network_error" ||
+        result.code === "exactly_one_fact_or_evidence_required",
+    );
+  } else {
+    assert.equal((result as { outcome: string }).outcome, "rejected");
+    assert.equal(
+      (result as { error_code: string }).error_code,
+      "exactly_one_fact_or_evidence_required",
+    );
+  }
+
+  (globalThis as { wx: { request: Function } }).wx.request = originalRequest;
+});

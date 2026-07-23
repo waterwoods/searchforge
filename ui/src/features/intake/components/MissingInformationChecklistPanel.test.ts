@@ -341,6 +341,7 @@ const accessCard: CustomerAccessCard = {
   assert.match(panel, /sentToMiniProgram|已发送到客户小程序/);
   assert.match(panel, /optionalQrFallback|未绑定客户可用链接/);
   assert.match(panel, /showPrimaryQr/);
+  assert.match(panel, /refreshCaseRef/);
   assert.equal(CLAIM_REQUEST_MORE_COPY.sentToMiniProgram.includes('小程序'), true);
   assert.ok(accessCard.qr_payload);
   // Exact requested-item summary still available for waiting state.
