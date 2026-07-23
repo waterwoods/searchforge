@@ -396,17 +396,32 @@ def run_local() -> FlowReport:
     )
     followup_case["p20_slice1_projection"] = broker.get("customer_projection")
     followup_tasks = _task_map(_projection(followup_case))
-    report.check(
-        set(("accident_story", "accident_photos", "insurance_card")).issubset(followup_tasks),
-        task="default_tasks",
-        source="system_default",
-        expected="defaults retained",
-        actual=sorted(followup_tasks),
-        layer="Constitution",
-    )
     broker_task = next(
         (task for task in followup_tasks.values() if task.get("task_source") == TASK_SOURCE_BROKER_REQUESTED),
         {},
+    )
+    report.check(
+        bool(broker_task),
+        task="broker_requested_task",
+        source="broker_requested",
+        expected="one broker_requested task",
+        actual=bool(broker_task),
+        layer="Broker Follow-Up",
+    )
+    # One-Task hide: incomplete system_default cards stay hidden while Request More is open.
+    incomplete_defaults = sorted(
+        tid
+        for tid, task in followup_tasks.items()
+        if task.get("task_source") == TASK_SOURCE_SYSTEM_DEFAULT
+        and task.get("state") not in {"completed", "waiting_broker"}
+    )
+    report.check(
+        not incomplete_defaults,
+        task="default_tasks",
+        source="system_default",
+        expected="incomplete defaults hidden during open Request More",
+        actual=incomplete_defaults or "hidden",
+        layer="Constitution",
     )
     _assert_task_contract(report, broker_task)
     report.check(
@@ -699,15 +714,6 @@ def run_qa() -> FlowReport:
         )
         inspect_f = client.inspect(harness_run_id, case_f)
         tasks_f = _task_map_from_inspect(inspect_f)
-        report.check(
-            set(("accident_story", "accident_photos", "insurance_card")).issubset(tasks_f),
-            task="default_tasks",
-            source="system_default",
-            expected="defaults retained",
-            actual=sorted(tasks_f),
-            layer="Constitution",
-            case_id=case_f,
-        )
         broker_task = next(
             (t for t in tasks_f.values() if t.get("task_source") == TASK_SOURCE_BROKER_REQUESTED),
             {},
@@ -721,19 +727,49 @@ def run_qa() -> FlowReport:
             layer="Broker Follow-Up",
             case_id=case_f,
         )
+        incomplete_defaults = sorted(
+            tid
+            for tid, task in tasks_f.items()
+            if task.get("task_source") == TASK_SOURCE_SYSTEM_DEFAULT
+            and task.get("state") not in {"completed", "waiting_broker"}
+        )
+        report.check(
+            not incomplete_defaults,
+            task="default_tasks",
+            source="system_default",
+            expected="incomplete defaults hidden during open Request More",
+            actual=incomplete_defaults or "hidden",
+            layer="Constitution",
+            case_id=case_f,
+        )
         if broker_task:
             _assert_task_contract(report, broker_task)
 
-        # E — Case isolation (same session identity)
+        # E — Case isolation (distinct identities; One Active Case forbids dual Active)
         report.journey_step = "E Case isolation"
-        sess = f"p26h-iso-{harness_run_id[-8:]}"
-        iso_a = client.create_case(harness_run_id, suffix="iso_a", session_id=sess)
+        sess_a = f"p26h-iso-a-{harness_run_id[-8:]}"
+        sess_b = f"p26h-iso-b-{harness_run_id[-8:]}"
+        iso_a = client.create_case(harness_run_id, suffix="iso_a", session_id=sess_a)
         case_iso_a = str(iso_a.get("case_id") or "")
         report.case_ids.append(case_iso_a)
         client.register_evidence(harness_run_id, case_iso_a, "policy_or_insurance_card")
-        iso_b = client.create_case(harness_run_id, suffix="iso_b", session_id=sess)
+        iso_b = client.create_case(harness_run_id, suffix="iso_b", session_id=sess_b)
         case_iso_b = str(iso_b.get("case_id") or "")
         report.case_ids.append(case_iso_b)
+        # Same identity resumes Active Case (must not 503).
+        iso_resume = client.create_case(
+            harness_run_id, suffix="iso_a_resume", session_id=sess_a
+        )
+        report.check(
+            str(iso_resume.get("case_id") or "") == case_iso_a
+            and str(iso_resume.get("outcome") or "") in {"accepted", "replayed", "resumed"},
+            task="same_identity_resumes",
+            source="system_default",
+            expected=f"resume {case_iso_a}",
+            actual={"case_id": iso_resume.get("case_id"), "outcome": iso_resume.get("outcome")},
+            layer="Case Isolation",
+            case_id=case_iso_a,
+        )
         inspect_b = client.inspect(harness_run_id, case_iso_b)
         tasks_b = _task_map_from_inspect(inspect_b)
         report.check(

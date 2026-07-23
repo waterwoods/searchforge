@@ -309,6 +309,30 @@ def test_vin_only_appears_when_broker_requests_vin():
     assert by_id["vehicle_vin"]["task_source"] == "broker_requested"
 
 
+def test_closed_history_constitution_is_non_actionable():
+    """Close → History: customer projection must not advertise actionable Today."""
+    case = {
+        "case_id": "case-closed-history",
+        "service_lane": SERVICE_LANE_CLAIM,
+        "case_status": "closed",
+        "admin_lifecycle": "closed",
+        "case_history_state": "history",
+        "closed_at": "2026-07-22T00:00:00Z",
+        "claim_phase": "accident_basics_complete",
+        "known_facts": {"accident_description": "倒车碰撞"},
+        "claim_evidence_summary": {"received_slots": [], "missing_required_slots": []},
+    }
+    projection = build_constitution_projection(ConstitutionInputs(case=case))
+    customer = projection["customer"]
+    broker = projection["broker"]
+    assert customer["current_stage"] == "history"
+    assert customer["case_closed_read_only"] is True
+    assert customer["today"] == "案件已关闭"
+    assert customer["tasks"] == []
+    assert broker["next_action"]["enabled"] is False
+    assert projection["current_stage"] == "history"
+
+
 def test_photo_uploads_as_gallery_categories_complete_accident_photos_task():
     """P26F — live H5 uploads may store vehicle_damage; Constitution must still reconcile."""
     case = _camry_after_upload_case()

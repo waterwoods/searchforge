@@ -40,6 +40,7 @@ PROJECTION_VERSION = 1
 STAGE_CUSTOMER_ACTION_NEEDED = "customer_action_needed"
 STAGE_WAITING_BROKER = "waiting_broker"
 STAGE_WAITING = "waiting"
+STAGE_HISTORY = "history"
 
 # Deterministic customer copy lifted from Camry One Truth / sharedMockClaim.
 _TODAY_WAIT = "先不用操作"
@@ -52,6 +53,13 @@ _WHY_GENERIC_ACTION = "请先完成这一步，方便我们继续处理。"
 _AFTER_GENERIC_ACTION = "完成后我们会继续处理。"
 _WHY_NEUTRAL_WAIT = "目前没有需要您操作的事项。"
 _AFTER_NEUTRAL_WAIT = "有进展时我们会联系您。"
+_TODAY_HISTORY = "案件已关闭"
+_WHY_HISTORY = "此案件已进入历史记录，只能查看，不能再提交。"
+_AFTER_HISTORY = "如需继续办理，请重新开始报案。"
+_TRUST_HISTORY = {
+    "care_line": "案件已归档",
+    "care_note": "历史记录仅供查看",
+}
 
 _TRUST_CUSTOMER_ACTION = {
     "care_line": "陈总已收到资料",
@@ -1147,6 +1155,18 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
 
 
 def _customer_projection(deps: _ResolvedDeps) -> dict[str, Any]:
+    from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
+
+    if case_is_closed_history(deps.case):
+        return {
+            "today": _TODAY_HISTORY,
+            "why": _WHY_HISTORY,
+            "after": _AFTER_HISTORY,
+            "trust": dict(_TRUST_HISTORY),
+            "current_stage": STAGE_HISTORY,
+            "tasks": [],
+            "case_closed_read_only": True,
+        }
     today = _customer_today(deps)
     customer = {
         "today": today,
@@ -1230,10 +1250,14 @@ def _satisfied_item_types(slice1: Mapping[str, Any] | None) -> set[str]:
 
 
 def _customer_owes_active_task(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> bool:
+    if str(customer.get("current_stage") or "") == STAGE_HISTORY:
+        return False
+    if customer.get("case_closed_read_only"):
+        return False
     if str(customer.get("current_stage") or "") == STAGE_CUSTOMER_ACTION_NEEDED:
         return True
     today = str(customer.get("today") or "").strip()
-    if today and today != _TODAY_WAIT:
+    if today and today not in {_TODAY_WAIT, _TODAY_HISTORY}:
         return True
     action = _slice1_customer_action(deps.slice1)
     return _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES
@@ -1292,6 +1316,10 @@ def _review_next_action(deps: _ResolvedDeps) -> dict[str, Any]:
 
 def _broker_next_action(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> dict[str, Any]:
     """Precedence: Slice1 broker action → review-ready → customer owes → done → idle."""
+    if str(customer.get("current_stage") or "") == STAGE_HISTORY or customer.get(
+        "case_closed_read_only"
+    ):
+        return _idle_next_action(note="案件已关闭，仅可查看历史记录。")
     broker_action = _slice1_broker_action(deps.slice1)
     broker_type = _action_type(broker_action)
     customer_owes = _customer_owes_active_task(deps, customer)
@@ -1332,6 +1360,10 @@ def _priority_band(
     customer: Mapping[str, Any],
     next_action: Mapping[str, Any],
 ) -> str:
+    if str(customer.get("current_stage") or "") == STAGE_HISTORY or customer.get(
+        "case_closed_read_only"
+    ):
+        return BAND_RECENTLY_DONE
     if _is_recently_done(deps):
         return BAND_RECENTLY_DONE
     if _customer_owes_active_task(deps, customer):

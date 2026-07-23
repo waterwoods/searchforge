@@ -166,6 +166,17 @@ def _create_bound(monkeypatch, *, suffix: str) -> tuple[InMemoryIntakeStore, str
 
 def test_broker_closes_active_case_sets_history_and_clears_binding(monkeypatch):
     store, link, case_id, _token = _create_bound(monkeypatch, suffix="close-1")
+    # Seed Cap2 aggregate so Close stamps both axes.
+    from services.fiqa_api.inbox_triage.p20_case_intake_command_service import IntakeAggregate
+
+    store.aggregates[case_id] = IntakeAggregate(
+        case_id=case_id,
+        admin_lifecycle="active",
+        aggregate_version=1,
+        is_test=True,
+        office_id="office_demo",
+        tenant_id="tenant_demo",
+    )
     result = close_case(case_id, actor="office:office_demo", reason="founder qa")
     assert result["ok"] is True
     assert result["outcome"] == "closed"
@@ -177,6 +188,7 @@ def test_broker_closes_active_case_sets_history_and_clears_binding(monkeypatch):
     assert case["closed_at"]
     assert case["closed_by"] == "office:office_demo"
     assert case["close_reason"] == "founder qa"
+    assert store.aggregates[case_id].admin_lifecycle == "closed"
     assert lookup_bound_case_id(link) is None
     assert resolve_active_case_for_person_link(link) is None
 

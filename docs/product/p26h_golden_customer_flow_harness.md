@@ -75,8 +75,8 @@ P26H_QA_TRANSPORT=inprocess \
 | A | Fresh zero-broker claim — collecting defaults, resume token, no false completion |
 | B | Normal intake — vehicle + insurance/photo evidence; Timeline / Projection update |
 | C | Resume — same case via signed token |
-| D | Broker follow-up — one `broker_requested` task; defaults retained |
-| E | Case isolation — Case B does not inherit Case A evidence/completion |
+| D | Broker follow-up — one `broker_requested` task; incomplete defaults hidden (One-Task) |
+| E | Case isolation — distinct identities; Case B does not inherit Case A evidence; same identity resumes |
 | F | Expired token — rejected; tokens masked |
 | G | Idempotency — same idempotency key → same case_id |
 

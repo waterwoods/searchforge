@@ -1977,7 +1977,17 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
             case["case_intake_projection"] = intake_projection
             case["missing_information_checklist"] = intake_projection.get("missing_information_checklist")
             case["request_draft"] = intake_projection.get("request_draft")
-            case["admin_lifecycle"] = intake_projection.get("admin_lifecycle")
+            from services.fiqa_api.inbox_triage.case_close import (
+                ADMIN_LIFECYCLE_CLOSED,
+                case_is_closed_history,
+            )
+
+            # History Close wins over Cap2 intake overlay so workbench never
+            # re-animates a closed case as admin_lifecycle=active.
+            if case_is_closed_history(case):
+                case["admin_lifecycle"] = ADMIN_LIFECYCLE_CLOSED
+            else:
+                case["admin_lifecycle"] = intake_projection.get("admin_lifecycle")
             if intake_projection.get("is_test"):
                 case["workbench_test"] = True
     except Exception as exc:

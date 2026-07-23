@@ -103,6 +103,56 @@ def _clear_intake_session_active_pointers(case_id: str) -> int:
     return cleared
 
 
+def _stamp_intake_aggregate_closed(case_id: str) -> None:
+    """Keep Cap2 claim_intake_aggregates.admin_lifecycle aligned with History Close.
+
+    Case GET overlays intake projection admin_lifecycle onto the workbench case.
+    Without this stamp, Close looks closed on case_status/history but still reads
+    as admin_lifecycle=active from the Cap2 aggregate.
+    """
+    cid = (case_id or "").strip()
+    if not cid:
+        return
+    try:
+        from services.fiqa_api.db.service_record_settings import service_record_database_url
+        from services.fiqa_api.db.service_record_repository import service_record_connection
+
+        if service_record_database_url():
+            with service_record_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE claim_intake_aggregates
+                        SET admin_lifecycle = %s,
+                            updated_at = NOW()
+                        WHERE case_id = %s
+                        """,
+                        (ADMIN_LIFECYCLE_CLOSED, cid),
+                    )
+                conn.commit()
+    except Exception as exc:
+        logger.warning(
+            "close_case intake aggregate stamp failed case_id=%s err=%s",
+            cid,
+            type(exc).__name__,
+        )
+    # In-memory Cap2 path (unit tests / local fixture without DB URL).
+    try:
+        from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
+            default_case_intake_service,
+        )
+
+        svc = default_case_intake_service()
+        store = getattr(svc, "store", None)
+        aggregates = getattr(store, "aggregates", None)
+        if isinstance(aggregates, dict) and cid in aggregates:
+            agg = aggregates[cid]
+            if hasattr(agg, "admin_lifecycle"):
+                agg.admin_lifecycle = ADMIN_LIFECYCLE_CLOSED
+    except Exception:
+        pass
+
+
 def close_case(
     case_id: str,
     *,
@@ -139,6 +189,13 @@ def close_case(
         except Exception:
             logger.warning("close_case already_closed binding cleanup failed case_id=%s", cid)
         _clear_intake_session_active_pointers(cid)
+        _stamp_intake_aggregate_closed(cid)
+        # Re-assert closed axes on the durable case row when a prior close drifted.
+        if str(normalized.get("admin_lifecycle") or "").strip().lower() != ADMIN_LIFECYCLE_CLOSED:
+            normalized["admin_lifecycle"] = ADMIN_LIFECYCLE_CLOSED
+            normalized["case_status"] = CASE_STATUS_CLOSED
+            normalized["case_history_state"] = CASE_HISTORY_STATE
+            _persist_case_after_update(cid, normalized)
         return {
             "ok": True,
             "outcome": ERROR_ALREADY_CLOSED,
@@ -171,6 +228,8 @@ def close_case(
             "case": None,
             "error_code": "persist_failed",
         }
+
+    _stamp_intake_aggregate_closed(cid)
 
     bindings_removed = 0
     try:

@@ -235,6 +235,61 @@ def test_tokens_masked_in_create_response(enable_runner, intake_store):
     fx.cleanup_run(run_id)
 
 
+def test_create_accepts_resumed_same_identity(enable_runner, intake_store, monkeypatch):
+    """One Active Case: fixture create must treat outcome=resumed as success."""
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_settings.service_record_database_url",
+        lambda: "postgresql://fixture-test",
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.p20_customer_start_claim.start_customer_claim",
+        lambda **_kwargs: {
+            "outcome": "resumed",
+            "case_id": "case_fx_resumed",
+            "resume_token": "h5t1.resumed-token",
+        },
+    )
+    intake_store.cases["case_fx_resumed"] = {
+        "case_id": "case_fx_resumed",
+        "service_lane": "claim",
+        "case_status": "new",
+        "known_facts": {"accident_description": "已有案件"},
+        "claim_evidence_summary": {
+            "received_slots": ["scene_photo"],
+            "missing_required_slots": [],
+        },
+        "case_attachments": [{"attachment_id": "att_keep"}],
+    }
+    run_id = fx.create_run()["harness_run_id"]
+    created = fx.create_fresh_claim(harness_run_id=run_id, suffix="resumed")
+    assert created["case_id"] == "case_fx_resumed"
+    assert created["outcome"] == "resumed"
+    assert created["resume_token"]
+    # Resume must not wipe prior evidence.
+    kept = intake_store.cases["case_fx_resumed"]
+    assert kept["claim_evidence_summary"]["received_slots"] == ["scene_photo"]
+    assert kept["case_attachments"]
+    fx.cleanup_run(run_id)
+
+
+def test_broker_followup_rejects_closed_history(enable_runner, intake_store):
+    from services.fiqa_api.inbox_triage.case_close import ERROR_CASE_CLOSED_READ_ONLY
+
+    run_id = fx.create_run()["harness_run_id"]
+    created = fx.create_fresh_claim(harness_run_id=run_id, suffix="closed-fu")
+    cid = created["case_id"]
+    case = intake_store.cases[cid]
+    case["case_status"] = "closed"
+    case["admin_lifecycle"] = "closed"
+    case["case_history_state"] = "history"
+    case["closed_at"] = "2026-07-22T00:00:00Z"
+    result = fx.create_broker_followup(harness_run_id=run_id, case_id=cid)
+    assert result["ok"] is False
+    assert result["outcome"] == "rejected"
+    assert result["error_code"] == ERROR_CASE_CLOSED_READ_ONLY
+    fx.cleanup_run(run_id)
+
+
 def test_http_refuses_when_disabled(monkeypatch):
     monkeypatch.delenv("ENABLE_P26H_FIXTURE_RUNNER", raising=False)
     monkeypatch.delenv("UNIFIED_INTAKE_QA_FIXTURE_SURFACE", raising=False)

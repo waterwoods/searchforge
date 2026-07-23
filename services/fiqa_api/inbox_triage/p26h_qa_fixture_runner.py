@@ -237,7 +237,9 @@ def _create_claim_via_real_contracts(
             office_id="p26h_ephemeral",
             tenant_id="p26h_ephemeral",
         )
-        if result.get("outcome") not in ("accepted", "replayed"):
+        # One Active Case: same identity may resume the existing Active Case.
+        # Fixture create must treat resumed as success (return that case), not 503.
+        if result.get("outcome") not in ("accepted", "replayed", "resumed"):
             raise RuntimeError(
                 f"create_claim_failed:{result.get('error_code') or result.get('outcome')}"
             )
@@ -282,7 +284,7 @@ def _create_claim_via_real_contracts(
             "title": "QA Customer Claim intake",
         },
     )
-    if result.get("outcome") not in ("accepted", "replayed"):
+    if result.get("outcome") not in ("accepted", "replayed", "resumed"):
         raise RuntimeError(
             f"create_claim_failed:{result.get('error_code') or result.get('outcome')}"
         )
@@ -346,22 +348,25 @@ def create_fresh_claim(
         raise RuntimeError(f"case_unreadable:{case_id}")
 
     tagged = _tag_case(case, harness_run_id=run_id)
-    # Clear broker/stale carriers for a true fresh claim.
-    tagged["p20_slice1_projection"] = {
-        "case_id": case_id,
-        "workflow_state": "intake",
-        "customer_next_action": None,
-        "broker_next_action": {"action_type": "none", "status": "none"},
-        "open_request": None,
-    }
-    tagged.setdefault("case_attachments", [])
-    tagged.setdefault("claim_attachment_slots", {})
-    tagged.setdefault(
-        "claim_evidence_summary",
-        {"received_slots": [], "missing_required_slots": []},
-    )
-    tagged.setdefault("timeline_events", [])
-    tagged["active_case_id"] = None
+    outcome = str(result.get("outcome") or "").strip().lower()
+    if outcome != "resumed":
+        # Clear broker/stale carriers for a true fresh claim only.
+        # Resumed Active Case must keep evidence / Request More truth intact.
+        tagged["p20_slice1_projection"] = {
+            "case_id": case_id,
+            "workflow_state": "intake",
+            "customer_next_action": None,
+            "broker_next_action": {"action_type": "none", "status": "none"},
+            "open_request": None,
+        }
+        tagged.setdefault("case_attachments", [])
+        tagged.setdefault("claim_attachment_slots", {})
+        tagged.setdefault(
+            "claim_evidence_summary",
+            {"received_slots": [], "missing_required_slots": []},
+        )
+        tagged.setdefault("timeline_events", [])
+        tagged["active_case_id"] = None
     if not _persist_case_after_update(case_id, tagged):
         _upsert_case_json(case_id, tagged)
     if _FIXTURE_MEMORY_STORE is not None:
@@ -565,6 +570,22 @@ def create_broker_followup(*, harness_run_id: str, case_id: str) -> dict[str, An
             _upsert_case_json(cid, tagged)
         return {"outcome": "accepted", "customer_projection": slice1, "fallback": "compat_projection"}
 
+    from services.fiqa_api.inbox_triage.case_close import (
+        ERROR_CASE_CLOSED_READ_ONLY,
+        case_is_closed_history,
+    )
+
+    # Never invent Request More on History via compat fallback.
+    if case_is_closed_history(case):
+        return {
+            "ok": False,
+            "harness_run_id": run_id,
+            "case_id": cid,
+            "outcome": "rejected",
+            "error_code": ERROR_CASE_CLOSED_READ_ONLY,
+            "projection": None,
+        }
+
     cmd = f"p26h-fx-followup-{uuid.uuid4().hex[:12]}"
     try:
         result = default_slice1_service().accept_request_more(
@@ -585,9 +606,35 @@ def create_broker_followup(*, harness_run_id: str, case_id: str) -> dict[str, An
             ],
             reason="P26H ephemeral exceptional follow-up",
         )
+    except ValueError as exc:
+        code = str(exc).strip() or "broker_followup_failed"
+        if code == ERROR_CASE_CLOSED_READ_ONLY:
+            return {
+                "ok": False,
+                "harness_run_id": run_id,
+                "case_id": cid,
+                "outcome": "rejected",
+                "error_code": ERROR_CASE_CLOSED_READ_ONLY,
+                "projection": None,
+            }
+        result = _compat_followup()
     except Exception:
         result = _compat_followup()
+
+    # Closed / illegal rejections must surface — never rewrite to accepted via compat.
     if result.get("outcome") != "accepted":
+        error_code = str(result.get("error_code") or result.get("outcome") or "rejected")
+        if error_code == ERROR_CASE_CLOSED_READ_ONLY or case_is_closed_history(
+            get_case_for_read(cid) or case
+        ):
+            return {
+                "ok": False,
+                "harness_run_id": run_id,
+                "case_id": cid,
+                "outcome": "rejected",
+                "error_code": ERROR_CASE_CLOSED_READ_ONLY,
+                "projection": result.get("customer_projection") or result.get("broker_projection"),
+            }
         result = _compat_followup()
     return {
         "ok": True,
