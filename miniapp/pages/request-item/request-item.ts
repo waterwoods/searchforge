@@ -283,7 +283,7 @@ Page({
     itemType: "",
     inputLabel: "",
     inputPlaceholder: "",
-    submitLabel: "提交给陈总",
+    submitLabel: "提交补充资料",
     submitDisabled: false,
     submitDisabledReason: "",
     shellSafetyCopy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
@@ -547,7 +547,7 @@ Page({
       itemType === "vehicle_information"
         ? CLAIM_VEHICLE_COPY.pageTitle
         : waitingForBroker
-          ? "资料已提交，等待经纪人审核"
+          ? "补充资料已收到"
           : "";
     const instructionsDefault =
       itemType === "vehicle_information" ? CLAIM_VEHICLE_COPY.explanation : "";
@@ -602,7 +602,7 @@ Page({
           ? "uncertain"
           : "idle",
       retryAvailable: !waitingForBroker && !itemChanged && this.data.submissionState === "uncertain",
-      submitLabel: waitingForBroker ? "返回我的资料" : "提交给陈总",
+      submitLabel: waitingForBroker ? "返回我的资料" : "提交补充资料",
       submitDisabled,
       submitDisabledReason: waitingForBroker ? "" : "",
       pageError: EMPTY_TASK_ERROR,
@@ -1146,7 +1146,7 @@ Page({
               submitDisabledReason: "",
             });
             wx.showToast({
-              title: after.waitingForBroker ? "已提交，等待经纪人" : "进度已更新",
+              title: after.waitingForBroker ? "补充资料已收到" : "进度已更新",
               icon: "none",
             });
           }
@@ -1255,8 +1255,8 @@ Page({
         itemType === "vin" || itemType === "vehicle_information"
           ? CLAIM_VEHICLE_COPY.submitSuccess
           : waiting
-            ? "已提交，等待经纪人"
-            : "已提交下一项";
+            ? "补充资料已收到"
+            : "补充资料已收到，请继续下一项";
       wx.showToast({
         title: successTitle,
         icon: "none",

@@ -258,6 +258,11 @@ export async function resolveStartClaimSessionId(): Promise<string> {
   return session.sessionId;
 }
 
+/** Synchronous session id for lightweight hooks (e.g. Start Claim STT upload). */
+export function getCustomerSessionId(): string {
+  return loadCustomerSessionId() || getPrototypeSessionId();
+}
+
 export function getSessionIdentityLabel(): string {
   const sid = loadCustomerSessionId();
   if (sid.startsWith("wx_")) return "微信身份已绑定（技术会话）";

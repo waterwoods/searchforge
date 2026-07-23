@@ -243,3 +243,36 @@ test("contact broker opens shared guidance modal, not postpone/back", async () =
   assert.match(modals[0].content, /返回微信/);
   assert.equal(backs.length, 0);
 });
+
+test("story page exposes voice controls and preserves typed text on leave/resume", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { dirname, join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const here = dirname(fileURLToPath(import.meta.url));
+  const wxml = readFileSync(join(here, "../pages/story/story.wxml"), "utf8");
+  assert.match(wxml, /onTapRecord/);
+  assert.match(wxml, /showRecordBtn/);
+  assert.match(wxml, /\{\{cardSubtitle\}\}/);
+
+  const page = await loadStoryPage();
+  assert.match(String(page.data.cardSubtitle || ""), /可录音转文字/);
+  const task = buildTask({ key_facts: { accident_description: "服务器已保存的事故经过。" } });
+  const ctx = createPageContext(page, {
+    requireToken: () => "h5t1.valid",
+    loadTask: async () => {
+      ctx.setData({ task });
+      return task;
+    },
+    data: {
+      ...page.data,
+      localDirty: true,
+      story: "离开前未保存的本地草稿文字内容。",
+      charCount: "离开前未保存的本地草稿文字内容。".length,
+      showRecordBtn: true,
+    },
+  });
+  await page.onShow.call(ctx);
+  // Leave/return with localDirty must not wipe in-progress story.
+  assert.equal(ctx.data.story, "离开前未保存的本地草稿文字内容。");
+  assert.equal(ctx.data.showRecordBtn, true);
+});

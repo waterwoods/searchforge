@@ -815,11 +815,21 @@ def _attach_h5_constitution_projection(
         )
 
 
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def patch_intake_fields(
     claims: VerifiedH5TaskToken,
     *,
     step: str,
     fields: dict[str, str],
+    voice_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not claims.is_intake_form_token:
         raise ValueError("unsupported_flow")
@@ -835,6 +845,27 @@ def patch_intake_fields(
     facts_patch = _validate_step_fields(step_norm, fields)
     if submitted and not facts_patch:
         raise ValueError("post_submit_fields_required")
+
+    # P28: voice audit never enters known_facts; only confirmed text is case truth.
+    voice_meta: dict[str, Any] | None = None
+    if voice_audit and step_norm == "story":
+        from services.fiqa_api.inbox_triage.voice_story import (
+            build_voice_audit_metadata,
+            emit_voice_confirm_metrics,
+        )
+
+        confirmed = str(facts_patch.get("accident_description") or "").strip()
+        voice_meta = build_voice_audit_metadata(
+            raw_transcript=str(voice_audit.get("raw_transcript") or ""),
+            confirmed_story=str(voice_audit.get("confirmed_story") or confirmed),
+            speech_provider=str(voice_audit.get("speech_provider") or "") or None,
+            stt_latency_ms=_optional_int(voice_audit.get("stt_latency_ms")),
+            recording_duration_ms=_optional_int(voice_audit.get("recording_duration_ms")),
+        )
+        if voice_meta["confirmed_story"] != confirmed:
+            facts_patch = {**facts_patch, "accident_description": voice_meta["confirmed_story"]}
+        emit_voice_confirm_metrics(claims.case_id, voice_meta)
+
     value_hash = _field_value_hash(step_norm, facts_patch)
     state = _h5_intake_state(case)
     dedup_key = f"h5_field:{claims.case_id}:{step_norm}:{value_hash}"
@@ -842,6 +873,25 @@ def patch_intake_fields(
         return intake_info_for_token(claims)
 
     supplement_changes = _post_submit_change_payload(case, facts_patch) if submitted else {}
+    event_metadata: dict[str, Any] = {
+        "step": step_norm,
+        "fields": list(facts_patch.keys()),
+        "post_submit": submitted,
+        "submitted_at": str(state.get("submitted_at") or ""),
+        "changes": supplement_changes,
+    }
+    if voice_meta:
+        event_metadata["voice"] = {
+            "raw_transcript": voice_meta["raw_transcript"],
+            "confirmed_story": voice_meta["confirmed_story"],
+            "speech_provider": voice_meta["speech_provider"],
+            "edit_distance": voice_meta["edit_distance"],
+            "edit_distance_normalized": voice_meta["edit_distance_normalized"],
+            "stt_latency_ms": voice_meta.get("stt_latency_ms"),
+            "recording_duration_ms": voice_meta.get("recording_duration_ms"),
+            "audio_retained": False,
+        }
+        event_metadata["source"] = "voice"
 
     patch_case_known_facts(
         claims.case_id,
@@ -856,13 +906,7 @@ def patch_intake_fields(
             event_type="h5_post_submit_supplement" if submitted else "h5_step_complete",
             source_channel="h5_task",
             actor="customer",
-            metadata={
-                "step": step_norm,
-                "fields": list(facts_patch.keys()),
-                "post_submit": submitted,
-                "submitted_at": str(state.get("submitted_at") or ""),
-                "changes": supplement_changes,
-            },
+            metadata=event_metadata,
         ),
     )
 
@@ -873,6 +917,17 @@ def patch_intake_fields(
         dedup_keys.append(dedup_key)
     new_state["field_dedup_keys"] = dedup_keys[-50:]
     new_state["last_step"] = step_norm
+    if voice_meta:
+        new_state["last_voice_story"] = {
+            "raw_transcript": voice_meta["raw_transcript"],
+            "confirmed_story": voice_meta["confirmed_story"],
+            "speech_provider": voice_meta["speech_provider"],
+            "edit_distance": voice_meta["edit_distance"],
+            "edit_distance_normalized": voice_meta["edit_distance_normalized"],
+            "stt_latency_ms": voice_meta.get("stt_latency_ms"),
+            "recording_duration_ms": voice_meta.get("recording_duration_ms"),
+            "audio_retained": False,
+        }
     if submitted:
         new_state["last_post_submit_supplement_at"] = build_claim_timeline_event(
             event_type="h5_post_submit_supplement",

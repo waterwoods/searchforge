@@ -236,6 +236,7 @@ test("Build Gate permanent Preview contract constants are locked", () => {
     "pages/start-claim/start-claim",
     "pages/service-home/service-home",
     "pages/entry/entry",
+    "pages/case-status/case-status",
     "pages/receipt/receipt",
   ]);
   assert.deepEqual([...REQUIRED_PACK_IGNORE_CLI_GLOBS], ["scripts/**", "tests/**"]);

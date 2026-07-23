@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import {
   applySlice1ProjectionToTask,
@@ -245,6 +247,19 @@ test("waiting-for-Broker state has no submission action", () => {
   assert.equal(view.waitingForBroker, true);
   assert.equal(view.primaryActionable, false);
   assert.equal(view.primaryRoute, "");
+});
+
+test("Request More submit uses 提交补充资料 and success copy hides active submit", () => {
+  const here = dirname(__filename);
+  const ts = readFileSync(join(here, "../pages/request-item/request-item.ts"), "utf8");
+  const wxml = readFileSync(join(here, "../pages/request-item/request-item.wxml"), "utf8");
+  assert.match(ts, /提交补充资料/);
+  assert.match(ts, /补充资料已收到/);
+  assert.equal(ts.includes('submitLabel: waitingForBroker ? "返回我的资料" : "提交给陈总"'), false);
+  assert.match(wxml, /waitingForBroker/);
+  assert.match(wxml, /返回我的资料/);
+  // Active submit CTA is hidden once waitingForBroker (success state).
+  assert.match(wxml, /showFooterCta && !waitingForBroker/);
 });
 
 test("legacy case maps to legacy behavior", () => {

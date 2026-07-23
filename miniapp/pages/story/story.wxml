@@ -19,7 +19,23 @@
 
     <view class="card">
       <view class="card-title">请简单说一下发生了什么</view>
-      <view class="card-subtitle">例如：我在等红灯时，被后车追尾。</view>
+      <view class="card-subtitle">{{cardSubtitle}}</view>
+      <view class="voice-row">
+        <button
+          wx:if="{{showRecordBtn}}"
+          class="voice-btn"
+          hover-class="voice-btn-hover"
+          disabled="{{recordBtnDisabled}}"
+          bindtap="onTapRecord"
+        >{{recordBtnLabel}}</button>
+        <button
+          wx:if="{{showStopBtn}}"
+          class="voice-btn voice-btn-stop"
+          hover-class="voice-btn-hover"
+          bindtap="onTapStop"
+        >停止</button>
+        <view wx:if="{{voiceHint}}" class="voice-hint">{{voiceHint}}</view>
+      </view>
       <textarea
         class="textarea-field"
         placeholder="请描述事故经过…"
@@ -28,6 +44,7 @@
         bindinput="onInput"
         auto-height
         show-confirm-bar="{{false}}"
+        disabled="{{busy.saving || storyInputDisabled}}"
       />
       <view class="char-count">{{charCount}} 字</view>
     </view>
@@ -36,7 +53,7 @@
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
       label="保存并返回我的资料"
-      disabled="{{busy.saving}}"
+      disabled="{{busy.saving || confirmDisabled}}"
       loading="{{busy.saving}}"
       bindtap="onSave"
     />

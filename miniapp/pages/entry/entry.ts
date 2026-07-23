@@ -5,7 +5,6 @@ import type { TaskLaunchContext } from "../../types/task";
 import { appConfig, devLog } from "../../utils/config";
 import {
   contactBrokerModalCopy,
-  isSubmitted,
   mapErrorMessage,
 } from "../../utils/taskMapping";
 import { resetApiHealthCache } from "../../utils/apiHealth";
@@ -13,9 +12,10 @@ import { DEFAULT_SAFETY_COPY, EMPTY_TASK_ERROR } from "../../utils/resolveTaskVi
 import { ApiRequestError } from "../../utils/request";
 import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
+import { resolveCustomerCaseSurfaceRoute } from "../../utils/customerCaseSurface";
 import { markResumeRestoredHint } from "../../utils/resumeHint";
-import { clearResumeToken } from "../../utils/storage";
 import { SERVICE_HOME_ROUTE } from "../../utils/serviceHome";
+import { clearResumeToken } from "../../utils/storage";
 
 const ENTRY_RETRY_COOLDOWN_MS = 2000;
 const NON_RETRYABLE_CODES = new Set([
@@ -213,9 +213,8 @@ Page({
         markResumeRestoredHint();
       }
 
-      const target = isSubmitted(task)
-        ? "/pages/receipt/receipt"
-        : "/pages/task-home/task-home";
+      // D-014: Action Needed → Task Home; Waiting Broker → Case Status; submitted → Receipt.
+      const target = resolveCustomerCaseSurfaceRoute(task);
       this.setBusy("navigating", true);
       wx.reLaunch({
         url: target,
@@ -257,7 +256,7 @@ Page({
           // ignore
         }
       }
-      // Missing/deleted case: recover to Service Home (no ghost Continue / Receipt).
+      // Missing/deleted case: recover to clean Service Home (no ghost Continue / Receipt).
       if (code === "case_not_found") {
         this.setBusy("navigating", true);
         this.setBusy("loading", false);

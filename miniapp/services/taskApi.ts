@@ -24,12 +24,83 @@ function enc(token: string): string {
   return encodeURIComponent(token);
 }
 
+export type VoiceStoryAudit = {
+  raw_transcript: string;
+  confirmed_story: string;
+  speech_provider?: string;
+  stt_latency_ms?: number;
+  recording_duration_ms?: number;
+};
+
+export type StoryTranscriptDraft = {
+  raw_transcript: string;
+  speech_provider: string;
+  stt_latency_ms: number;
+  recording_duration_ms?: number | null;
+  audio_retained?: boolean;
+};
+
 export async function getTask(token: string): Promise<CustomerTask> {
   return requestJson<CustomerTask>("GET", `/api/h5/tasks/${enc(token)}/intake`);
 }
 
-export async function saveStory(token: string, accidentDescription: string): Promise<CustomerTask> {
-  return saveFields(token, "story", { accident_description: accidentDescription });
+export async function saveStory(
+  token: string,
+  accidentDescription: string,
+  voiceAudit?: VoiceStoryAudit | null,
+): Promise<CustomerTask> {
+  return saveFields(token, "story", { accident_description: accidentDescription }, voiceAudit || undefined);
+}
+
+export async function transcribeStoryAudio(
+  token: string,
+  localFilePath: string,
+  options?: { recordingDurationMs?: number },
+): Promise<StoryTranscriptDraft> {
+  const formData: Record<string, string> = {};
+  if (options?.recordingDurationMs != null && Number.isFinite(options.recordingDurationMs)) {
+    formData.recording_duration_ms = String(Math.max(0, Math.round(options.recordingDurationMs)));
+  }
+  const path = `/api/h5/tasks/${enc(token)}/story/transcribe`;
+  console.info("[p28_voice_upload]", {
+    event: "upload_start",
+    path_suffix: "/api/h5/tasks/*/story/transcribe",
+    has_token: Boolean(token),
+    has_file: Boolean(localFilePath),
+    recording_duration_ms: formData.recording_duration_ms || null,
+  });
+  try {
+    const data = await uploadFile(path, localFilePath, formData);
+    if (!data || typeof data !== "object") {
+      throw new ApiRequestError("stt_failed");
+    }
+    const body = data as StoryTranscriptDraft;
+    return {
+      raw_transcript: String(body.raw_transcript || ""),
+      speech_provider: String(body.speech_provider || "google_chirp"),
+      stt_latency_ms: Number(body.stt_latency_ms || 0),
+      recording_duration_ms: body.recording_duration_ms ?? null,
+      audio_retained: Boolean(body.audio_retained),
+    };
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      if (err.status === 404) {
+        throw new ApiRequestError("stt_route_missing", 404, err.detail);
+      }
+      throw err;
+    }
+    throw new ApiRequestError("stt_failed");
+  }
+}
+
+export async function emitVoiceRecordStart(token: string): Promise<void> {
+  try {
+    await requestJson("POST", `/api/h5/tasks/${enc(token)}/story/voice-event`, {
+      event: "voice_record_start",
+    });
+  } catch {
+    // Metrics must not block recording.
+  }
 }
 
 export async function saveBasics(
@@ -44,12 +115,26 @@ async function saveFields(
   token: string,
   step: string,
   fields: Record<string, string>,
+  voiceAudit?: VoiceStoryAudit,
 ): Promise<CustomerTask> {
   try {
-    return await requestJson<CustomerTask>("PATCH", `/api/h5/tasks/${enc(token)}/fields`, {
-      step,
-      fields,
-    });
+    const body: Record<string, unknown> = { step, fields };
+    if (voiceAudit) {
+      const roundMs = (n: unknown): number | undefined => {
+        if (n == null || n === "") return undefined;
+        const num = Number(n);
+        if (!Number.isFinite(num) || num < 0) return undefined;
+        return Math.round(num);
+      };
+      body.voice_audit = {
+        raw_transcript: voiceAudit.raw_transcript,
+        confirmed_story: voiceAudit.confirmed_story,
+        speech_provider: voiceAudit.speech_provider || "google_chirp",
+        stt_latency_ms: roundMs(voiceAudit.stt_latency_ms),
+        recording_duration_ms: roundMs(voiceAudit.recording_duration_ms),
+      };
+    }
+    return await requestJson<CustomerTask>("PATCH", `/api/h5/tasks/${enc(token)}/fields`, body);
   } catch (err) {
     if (err instanceof ApiRequestError) {
       throw err;
@@ -162,6 +247,8 @@ export async function submitRequestItem(
 export const CustomerTaskApi = {
   getTask,
   saveStory,
+  transcribeStoryAudio,
+  emitVoiceRecordStart,
   saveBasics,
   getUploadTaskInfo,
   uploadPhoto,

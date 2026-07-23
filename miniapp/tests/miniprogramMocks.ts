@@ -41,10 +41,22 @@ export function installMiniProgramGlobals(): void {
     },
     request: () => undefined,
     uploadFile: () => undefined,
+    authorize: (opts?: { success?: () => void; fail?: () => void }) => {
+      opts?.success?.();
+      return undefined;
+    },
+    getRecorderManager: () => ({
+      start: () => undefined,
+      stop: () => undefined,
+      onStart: () => undefined,
+      onStop: () => undefined,
+      onError: () => undefined,
+    }),
     login: (opts?: { success?: (res: { code: string }) => void; fail?: () => void }) => {
       opts?.success?.({ code: "sim:test-openid" });
       return undefined;
     },
+    showActionSheet: () => undefined,
     getAccountInfoSync: () => ({
       miniProgram: { appId: "wxa610932351416622" },
     }),

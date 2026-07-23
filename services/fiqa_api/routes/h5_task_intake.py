@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Response
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, File, Form, Header, HTTPException, Response, UploadFile
+from pydantic import BaseModel, Field, field_validator
 
 from services.fiqa_api.inbox_triage.h5_task_intake import (
     intake_info_for_token,
@@ -20,6 +20,12 @@ from services.fiqa_api.inbox_triage.p20_customer_start_claim import (
     start_customer_claim,
 )
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
+from services.fiqa_api.inbox_triage.voice_story import (
+    transcribe_story_audio,
+    transcribe_story_audio_bytes,
+)
+from services.fiqa_api.speech.metrics import emit_voice_metric
+from services.fiqa_api.speech.provider import SpeechProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +39,33 @@ def _verify_or_403(task_token: str):
     return claims
 
 
+class VoiceStoryAuditBody(BaseModel):
+    """Optional P28 voice provenance — never written into known_facts directly."""
+
+    raw_transcript: str = Field(default="", max_length=4000)
+    confirmed_story: str | None = Field(default=None, max_length=2000)
+    speech_provider: str | None = Field(default=None, max_length=64)
+    stt_latency_ms: int | None = Field(default=None, ge=0, le=600_000)
+    recording_duration_ms: int | None = Field(default=None, ge=0, le=600_000)
+
+    @field_validator("stt_latency_ms", "recording_duration_ms", mode="before")
+    @classmethod
+    def _coerce_ms_fields(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        if isinstance(value, bool):
+            raise ValueError("invalid_ms")
+        if isinstance(value, (int, float)):
+            return int(round(float(value)))
+        if isinstance(value, str) and value.strip():
+            return int(round(float(value.strip())))
+        return value
+
+
 class H5IntakeFieldsBody(BaseModel):
     step: str = Field(..., min_length=1)
     fields: dict[str, str] = Field(default_factory=dict)
+    voice_audit: VoiceStoryAuditBody | None = None
 
 
 class H5IntakeSubmitBody(BaseModel):
@@ -131,6 +161,88 @@ async def post_customer_start_claim(
     raise HTTPException(status_code=422, detail=customer_start_claim_response(result))
 
 
+@router.post("/customer/start-claim/story/voice-event")
+async def post_start_claim_story_voice_event(
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    """P30: same voice_record_start metric hook before a case exists."""
+    event = str((body or {}).get("event") or "").strip()
+    if event not in ("voice_record_start",):
+        raise HTTPException(status_code=400, detail="unsupported_voice_event")
+    emit_voice_metric(
+        event,
+        surface="start_claim",
+        session_id=str((body or {}).get("session_id") or "")[:80] or None,
+        recording_duration_ms=(body or {}).get("recording_duration_ms"),
+    )
+    return {"ok": True, "event": event}
+
+
+@router.post("/customer/start-claim/story/transcribe")
+async def post_start_claim_story_transcribe(
+    file: UploadFile = File(...),
+    recording_duration_ms: int | None = Form(default=None),
+    session_id: str | None = Form(default=None),
+) -> dict[str, Any]:
+    """
+    P30 consistency: Start Claim Voice Story draft STT (pre-case).
+
+    Same SpeechProvider as token Story path. Does not create a case or write facts.
+    """
+    content = await file.read()
+    filename = str(file.filename or "")
+    content_type = str(file.content_type or "")
+    session_key = str(session_id or "").strip()[:80]
+    logger.info(
+        "p28_voice_transcribe_request %s",
+        {
+            "surface": "start_claim",
+            "has_session": bool(session_key),
+            "content_type": content_type,
+            "filename_ext": filename.rsplit(".", 1)[-1].lower() if "." in filename else "",
+            "byte_length": len(content or b""),
+            "recording_duration_ms": recording_duration_ms,
+            "multipart_field": "file",
+        },
+    )
+    try:
+        result = transcribe_story_audio_bytes(
+            audio_bytes=content,
+            content_type=content_type,
+            filename=filename,
+            recording_duration_ms=recording_duration_ms,
+            metric_case_id=None,
+            metric_surface="start_claim",
+        )
+        logger.info(
+            "p28_voice_transcribe_ok %s",
+            {
+                "surface": "start_claim",
+                "speech_provider": result.get("speech_provider"),
+                "stt_latency_ms": result.get("stt_latency_ms"),
+                "transcript_chars": len(str(result.get("raw_transcript") or "")),
+            },
+        )
+        return result
+    except SpeechProviderError as exc:
+        status = 422 if exc.kind.value in ("unsupported_media", "empty") else 503
+        if exc.kind.value == "fatal":
+            status = 503
+        logger.warning(
+            "p28_voice_transcribe_fail %s",
+            {
+                "surface": "start_claim",
+                "http_status": status,
+                "error_kind": exc.kind.value,
+                "message": exc.message,
+                "detail": (exc.detail or "")[:240],
+                "content_type": content_type,
+                "byte_length": len(content or b""),
+            },
+        )
+        raise HTTPException(status_code=status, detail=exc.as_dict()) from exc
+
+
 @router.get("/tasks/{task_token}/intake")
 async def get_h5_intake(task_token: str) -> dict[str, Any]:
     """Return Claim intake wizard state for H5 task page."""
@@ -153,8 +265,14 @@ async def patch_h5_intake_fields(
 ) -> dict[str, Any]:
     """Persist one wizard step's fields to known_facts + claim_timeline."""
     claims = _verify_or_403(task_token)
+    voice_audit = body.voice_audit.model_dump() if body.voice_audit else None
     try:
-        return patch_intake_fields(claims, step=body.step, fields=body.fields)
+        return patch_intake_fields(
+            claims,
+            step=body.step,
+            fields=body.fields,
+            voice_audit=voice_audit,
+        )
     except ValueError as exc:
         code = str(exc)
         if code == "case_not_found":
@@ -165,6 +283,94 @@ async def patch_h5_intake_fields(
             raise HTTPException(status_code=409, detail=code) from exc
         if code == "case_closed_read_only":
             raise HTTPException(status_code=409, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.post("/tasks/{task_token}/story/voice-event")
+async def post_story_voice_event(
+    task_token: str,
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    """Lightweight metrics hook (e.g. voice_record_start). No case fact writes."""
+    claims = _verify_or_403(task_token)
+    event = str((body or {}).get("event") or "").strip()
+    if event not in ("voice_record_start",):
+        raise HTTPException(status_code=400, detail="unsupported_voice_event")
+    emit_voice_metric(
+        event,
+        case_id=claims.case_id,
+        recording_duration_ms=(body or {}).get("recording_duration_ms"),
+    )
+    return {"ok": True, "event": event}
+
+
+@router.post("/tasks/{task_token}/story/transcribe")
+async def post_story_transcribe(
+    task_token: str,
+    file: UploadFile = File(...),
+    recording_duration_ms: int | None = Form(default=None),
+) -> dict[str, Any]:
+    """
+    P28 Happy Path: upload audio → SpeechProvider (Chirp) → editable transcript draft.
+
+    Does not write accident_description. STT failure is recoverable (type manually).
+    """
+    claims = _verify_or_403(task_token)
+    content = await file.read()
+    filename = str(file.filename or "")
+    content_type = str(file.content_type or "")
+    logger.info(
+        "p28_voice_transcribe_request %s",
+        {
+            "case_id": claims.case_id,
+            "content_type": content_type,
+            "filename_ext": filename.rsplit(".", 1)[-1].lower() if "." in filename else "",
+            "byte_length": len(content or b""),
+            "recording_duration_ms": recording_duration_ms,
+            "multipart_field": "file",
+        },
+    )
+    try:
+        result = transcribe_story_audio(
+            claims,
+            audio_bytes=content,
+            content_type=content_type,
+            filename=filename,
+            recording_duration_ms=recording_duration_ms,
+        )
+        logger.info(
+            "p28_voice_transcribe_ok %s",
+            {
+                "case_id": claims.case_id,
+                "speech_provider": result.get("speech_provider"),
+                "stt_latency_ms": result.get("stt_latency_ms"),
+                "transcript_chars": len(str(result.get("raw_transcript") or "")),
+            },
+        )
+        return result
+    except SpeechProviderError as exc:
+        status = 422 if exc.kind.value in ("unsupported_media", "empty") else 503
+        if exc.kind.value == "fatal":
+            status = 503
+        logger.warning(
+            "p28_voice_transcribe_fail %s",
+            {
+                "case_id": claims.case_id,
+                "http_status": status,
+                "error_kind": exc.kind.value,
+                "message": exc.message,
+                "detail": (exc.detail or "")[:240],
+                "content_type": content_type,
+                "byte_length": len(content or b""),
+            },
+        )
+        raise HTTPException(status_code=status, detail=exc.as_dict()) from exc
+    except ValueError as exc:
+        code = str(exc)
+        if code == "case_not_found":
+            raise HTTPException(status_code=404, detail=code) from exc
+        if code in ("lane_mismatch", "unsupported_flow"):
+            raise HTTPException(status_code=403, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc
 
 

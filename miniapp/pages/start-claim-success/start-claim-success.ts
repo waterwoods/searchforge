@@ -23,7 +23,7 @@ Page({
     });
   },
 
-  /** Explicit Home / Start New Claim — never leave user on a dead-end receipt. */
+  /** Explicit Home — Service Home when active; empty form otherwise. */
   onBackHome() {
     reLaunchStartClaimHome(wx);
   },

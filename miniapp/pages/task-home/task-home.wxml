@@ -26,7 +26,7 @@
         <view wx:if="{{careNote}}" class="case-trust-note">{{careNote}}</view>
       </view>
 
-      <view wx:if="{{!showWaiting && constitutionToday}}" class="today-focus">
+      <view wx:if="{{constitutionToday}}" class="today-focus">
         <view class="today-focus-kicker">今天建议</view>
         <view class="today-focus-action">{{constitutionToday}}</view>
         <view wx:if="{{constitutionWhy}}" class="today-focus-why">
@@ -38,12 +38,6 @@
           <view class="today-focus-after-arrow">↓</view>
           <view class="today-focus-after-body">{{constitutionAfter}}</view>
         </view>
-      </view>
-
-      <view wx:if="{{showWaiting}}" class="waiting-block">
-        <view class="waiting-title">当前状态</view>
-        <view class="waiting-value">{{waitingLabel || constitutionToday || '先不用操作'}}</view>
-        <view wx:if="{{constitutionWhy}}" class="today-focus-why-body">{{constitutionWhy}}</view>
       </view>
 
       <view class="section-label section-gap" wx:if="{{taskCards.length}}">任务</view>
@@ -110,21 +104,14 @@
     <view class="disclaimer" bindtap="onShowDisclaimer">{{taskViewModel.safetyCopy}}</view>
   </task-shell>
 
-  <view class="footer-cta" wx:if="{{!busy.loading}}">
+  <view class="footer-cta" wx:if="{{!busy.loading && !showWaiting}}">
     <task-cta
       label="{{slice1Enabled ? slice1PrimaryLabel : (task && (task.submitted || task.current_step === 'done') ? '补充或修改资料' : taskViewModel.cta.label)}}"
-      disabled="{{slice1Enabled ? (slice1WaitingForBroker || busy.navigating || busy.submitting) : (task && (task.submitted || task.current_step === 'done') ? (busy.navigating || busy.submitting) : taskViewModel.cta.disabled)}}"
+      disabled="{{slice1Enabled ? (busy.navigating || busy.submitting) : (task && (task.submitted || task.current_step === 'done') ? (busy.navigating || busy.submitting) : taskViewModel.cta.disabled)}}"
       loading="{{busy.navigating || busy.submitting}}"
-      disabledReason="{{slice1Enabled && slice1WaitingForBroker ? '资料已提交，等待经纪人审核' : ctaDisabledReason}}"
+      disabledReason="{{ctaDisabledReason}}"
       bindtap="onPrimaryAction"
     />
-    <button
-      wx:if="{{slice1Enabled && slice1WaitingForBroker}}"
-      class="btn-secondary"
-      hover-class="btn-secondary-hover"
-      bindtap="onViewReceipt"
-      disabled="{{busy.navigating || busy.submitting}}"
-    >查看提交结果</button>
     <button
       wx:if="{{!slice1Enabled && task && (task.submitted || task.current_step === 'done')}}"
       class="btn-secondary"
@@ -133,7 +120,7 @@
       disabled="{{busy.navigating || busy.submitting}}"
     >查看提交结果</button>
     <button
-      wx:if="{{!(slice1Enabled && slice1WaitingForBroker) && !(task && (task.submitted || task.current_step === 'done'))}}"
+      wx:if="{{!(task && (task.submitted || task.current_step === 'done'))}}"
       class="btn-secondary"
       hover-class="btn-secondary-hover"
       bindtap="onViewAll"

@@ -141,7 +141,7 @@ test("blocking error then retry keeps shell bindings as strings", async () => {
   CustomerTaskApi.getTask = async () => {
     calls += 1;
     if (calls === 1) {
-      // Non-recoverable-but-stay-on-page code (case_not_found now relaunches clean home).
+      // Non-recoverable-but-stay-on-page code (case_not_found now relaunches Service Home).
       throw new ApiRequestError("lane_mismatch", "任务不存在");
     }
     return task;
@@ -186,7 +186,7 @@ test("retryable failure uses cached task fallback", async () => {
   CustomerTaskApi.getTask = originalGetTask;
 });
 
-test("case_not_found clears resume and relaunches clean Start Claim", async () => {
+test("case_not_found clears resume and relaunches Service Home", async () => {
   const module = await import("../behaviors/taskPage");
   const behavior = module.taskPage as TaskPageBehavior;
   const { saveResumeToken, loadResumeToken, clearResumeToken } = await import("../utils/storage");
@@ -217,7 +217,7 @@ test("case_not_found clears resume and relaunches clean Start Claim", async () =
   assert.equal(appState.taskToken, "");
   assert.equal(appState.task, undefined);
   assert.equal(ctx.data.task, null);
-  assert.deepEqual(relaunches, ["/pages/start-claim/start-claim"]);
+  assert.deepEqual(relaunches, ["/pages/service-home/service-home"]);
 
   CustomerTaskApi.getTask = originalGetTask;
   clearResumeToken();

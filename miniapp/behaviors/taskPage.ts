@@ -3,9 +3,8 @@ import type { CustomerTask, TaskErrorState, TaskViewModel } from "../types/task"
 import { resetApiHealthCache } from "../utils/apiHealth";
 import { qaPathLog } from "../utils/qaPathLog";
 import { ApiRequestError } from "../utils/request";
+import { SERVICE_HOME_ROUTE } from "../utils/serviceHome";
 import { clearResumeToken } from "../utils/storage";
-
-const CLEAN_HOME_ROUTE = "/pages/start-claim/start-claim";
 import { mapErrorMessage } from "../utils/taskMapping";
 import {
   resolveTaskViewModel,
@@ -289,7 +288,7 @@ export const taskPage = Behavior({
             return null;
           }
 
-          // Hard-deleted / missing case: clear resume and recover to clean Start Claim.
+          // Hard-deleted / missing case: clear resume and recover to clean Service Home.
           if (code === "case_not_found") {
             clearResumeToken();
             try {
@@ -304,9 +303,9 @@ export const taskPage = Behavior({
               ...taskViewModelDataPatch(EMPTY_TASK_VIEW_MODEL),
             });
             wx.reLaunch({
-              url: CLEAN_HOME_ROUTE,
+              url: SERVICE_HOME_ROUTE,
               fail: () => {
-                wx.redirectTo({ url: CLEAN_HOME_ROUTE });
+                wx.redirectTo({ url: SERVICE_HOME_ROUTE });
               },
             });
             return null;

@@ -21,6 +21,10 @@ import {
   resolveTaskHomePrimaryRoute,
   type CustomerTaskCardView,
 } from "../../utils/resolveCustomerTaskCards";
+import {
+  CASE_STATUS_ROUTE,
+  isWaitingBrokerSurface,
+} from "../../utils/customerCaseSurface";
 
 type PageData = {
   loadingMessage: string;
@@ -172,6 +176,7 @@ Page({
       note: "first_js_page_onload_or_navigated",
     });
     void this.ensureTaskInitialized({ ownerLoad: true }).then((task) => {
+      if (task && this.redirectIfWaitingBroker(task)) return;
       if (task) this.applyConstitutionOverlay(task);
     });
   },
@@ -187,6 +192,7 @@ Page({
       });
     }
     void this.ensureTaskInitialized().then((task) => {
+      if (task && this.redirectIfWaitingBroker(task)) return;
       if (task) this.applyConstitutionOverlay(task);
     });
   },
@@ -198,9 +204,28 @@ Page({
   onPullDownRefresh() {
     void this.rehydrateAuthoritativeTask()
       .then((task) => {
+        if (task && this.redirectIfWaitingBroker(task)) return;
         if (task) this.applyConstitutionOverlay(task);
       })
       .finally(() => wx.stopPullDownRefresh());
+  },
+
+  /** D-014: Waiting Broker is Case Status — never a fake Task Home. */
+  redirectIfWaitingBroker(task: Parameters<typeof mapSlice1CustomerView>[0]): boolean {
+    if (!isWaitingBrokerSurface(task)) return false;
+    if (this.isBusy("navigating")) return true;
+    this.setBusy("navigating", true);
+    wx.reLaunch({
+      url: CASE_STATUS_ROUTE,
+      complete: () => this.setBusy("navigating", false),
+      fail: () => {
+        wx.redirectTo({
+          url: CASE_STATUS_ROUTE,
+          complete: () => this.setBusy("navigating", false),
+        });
+      },
+    });
+    return true;
   },
 
   applyConstitutionOverlay(task: Parameters<typeof mapSlice1CustomerView>[0]) {

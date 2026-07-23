@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "案件状态",
+  "usingComponents": {
+    "task-shell": "/components/task-shell/index",
+    "task-error": "/components/task-error/index"
+  },
+  "enablePullDownRefresh": true
+}

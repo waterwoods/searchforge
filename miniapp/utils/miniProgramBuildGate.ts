@@ -23,6 +23,7 @@ export const REQUIRED_PREVIEW_PAGES = [
   "pages/start-claim/start-claim",
   "pages/service-home/service-home",
   "pages/entry/entry",
+  "pages/case-status/case-status",
   "pages/receipt/receipt",
 ] as const;
 
@@ -42,6 +43,7 @@ export const REQUIRED_REGISTERED_PAGES = [
   "pages/service-home/service-home",
   "pages/entry/entry",
   "pages/task-home/task-home",
+  "pages/case-status/case-status",
   "pages/request-item/request-item",
   "pages/receipt/receipt",
 ] as const;

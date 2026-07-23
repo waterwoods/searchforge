@@ -13,6 +13,7 @@ import {
   photoCount,
 } from "../../utils/taskMapping";
 import { consumeResumeRestoredHint } from "../../utils/resumeHint";
+import { resolveCustomerCaseSurfaceRoute } from "../../utils/customerCaseSurface";
 import {
   isSlice1CustomerFlow,
   mapSlice1CustomerView,
@@ -321,12 +322,13 @@ Page({
   onViewStatus() {
     if (this.isBusy("navigating")) return;
     this.setBusy("navigating", true);
+    const hub = resolveCustomerCaseSurfaceRoute(this.data.task as CustomerTask);
     wx.redirectTo({
-      url: "/pages/task-home/task-home",
+      url: hub,
       complete: () => this.setBusy("navigating", false),
       fail: () => {
         wx.navigateTo({
-          url: "/pages/task-home/task-home",
+          url: hub,
           complete: () => this.setBusy("navigating", false),
         });
       },
@@ -335,8 +337,8 @@ Page({
 
   /**
    * Explicit Home / Start New Claim from Submit Result.
-   * Clears claim-draft resume only, then reLaunches Start Claim so a prior
-   * submission cannot strand the customer on a blank or stale result stack.
+   * Active case → Service Home (preserves resume / Golden one-scan).
+   * No active case → empty Start Claim form.
    */
   onBackHome() {
     if (this.isBusy("navigating")) return;

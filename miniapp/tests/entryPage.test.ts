@@ -137,7 +137,7 @@ test("missing token falls back to recovery error if redirect fails", async () =>
   assert.equal(ctx.data.busy.navigating, false);
 });
 
-test("resume source uses restore loading copy then relaunches task home", async () => {
+test("resume source uses restore loading copy then relaunches task home when work owed", async () => {
   const page = await loadEntryPage();
   const relaunches: string[] = [];
   (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
@@ -167,6 +167,62 @@ test("resume source uses restore loading copy then relaunches task home", async 
   assert.deepEqual(relaunches, ["/pages/task-home/task-home"]);
   assert.equal(ctx.data.busy.navigating, true);
   assert.equal(Boolean(appState.__mp_resume_restored_hint), true);
+});
+
+test("waiting broker resume relaunches Case Status (not Task Home)", async () => {
+  const page = await loadEntryPage();
+  const relaunches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    relaunches.push(url);
+  };
+  (globalThis as Record<string, unknown>).getApp = () => ({});
+
+  const ctx = createPageContext(page, {
+    data: {
+      ...page.data,
+      busy: idleBusy(),
+      launchSource: "",
+      errorState: { code: "", message: "", retryable: false, blocking: false },
+      retryMeta: { attempts: 0, cooldownUntil: 0 },
+    },
+    resolveLaunchContext: () => ({
+      token: "h5t1.wait",
+      source: "resume_storage",
+    }),
+    persistLaunch: () => undefined,
+    fetchTask: async () =>
+      buildTask({
+        constitution_projection: {
+          current_stage: "waiting_broker",
+          customer: {
+            today: "先不用操作",
+            why: "资料已齐，陈总正在审核。",
+            after: "请等待确认。",
+            current_stage: "waiting_broker",
+          },
+        },
+        slice1_projection: {
+          case_id: "case_1",
+          workflow_state: "broker_review_ready",
+          aggregate_version: 1,
+          customer_next_action: {
+            action_type: "wait_for_broker_review",
+            title: "先不用操作",
+            instructions: "资料已齐，陈总正在审核。",
+            request_id: "r1",
+            request_item_id: "",
+            item_type: "",
+          },
+          queued_request_items: [],
+          request_progress: { satisfied: 1, total: 1, remaining: 0 },
+          open_request: null,
+          broker_next_action: null,
+        },
+      }),
+  });
+
+  await page.bootstrap.call(ctx, {});
+  assert.deepEqual(relaunches, ["/pages/case-status/case-status"]);
 });
 
 test("submitted resume relaunches receipt", async () => {
@@ -221,7 +277,6 @@ test("network failure keeps retryable error and clears loading", async () => {
   assert.equal(ctx.data.errorState.retryable, true);
   assert.equal(ctx.data.busy.loading, false);
 });
-
 
 test("case_not_found clears resume and relaunches clean Service Home", async () => {
   const page = await loadEntryPage();

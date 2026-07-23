@@ -1,5 +1,9 @@
 import { appConfig, QA_API_BASE_URL } from "../../utils/config";
-import { startClaim } from "../../services/startClaimApi";
+import {
+  emitStartClaimVoiceRecordStart,
+  startClaim,
+  transcribeStartClaimStoryAudio,
+} from "../../services/startClaimApi";
 import { ApiRequestError } from "../../utils/request";
 import { resetApiHealthCache } from "../../utils/apiHealth";
 import { buildRequestDiagnostic } from "../../utils/requestErrors";
@@ -34,6 +38,29 @@ import {
 } from "../../utils/startClaimEntry";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { saveResumeToken } from "../../utils/storage";
+import {
+  VOICE_MAX_RECORD_MS,
+  initialVoiceUiData,
+  logVoiceUploadDiagnostic,
+  sttFailureCopy,
+  voiceUiPatch,
+  type VoicePhase,
+  type VoiceSession,
+} from "../../utils/voiceStoryInput";
+
+type RecorderState = {
+  recorder: WechatMiniprogram.RecorderManager | null;
+  bound: boolean;
+  startedAt: number;
+};
+
+function recorderState(page: WechatMiniprogram.Page.Instance): RecorderState {
+  const target = page as WechatMiniprogram.Page.Instance & { __voiceRecorder?: RecorderState };
+  if (!target.__voiceRecorder) {
+    target.__voiceRecorder = { recorder: null, bound: false, startedAt: 0 };
+  }
+  return target.__voiceRecorder;
+}
 
 type PageData = {
   description: string;
@@ -50,8 +77,18 @@ type PageData = {
   errorRetryable: boolean;
   pageReady: boolean;
   initErrorMessage: string;
+  voicePhase: VoicePhase;
+  voiceHint: string;
+  voiceSession: VoiceSession | null;
+  showRecordBtn: boolean;
+  showStopBtn: boolean;
+  recordBtnLabel: string;
+  recordBtnDisabled: boolean;
+  storyInputDisabled: boolean;
+  confirmDisabled: boolean;
   busy: {
     submitting: boolean;
+    uploading: boolean;
   };
 };
 
@@ -64,10 +101,12 @@ Page({
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+    ...initialVoiceUiData(),
     brokerName: appConfig.brokerDisplayName || "陈总",
     shellSafetyCopy: START_CLAIM_SAFETY_COPY,
     busy: {
       submitting: false,
+      uploading: false,
     },
   } as PageData,
 
@@ -81,11 +120,12 @@ Page({
       note: "first_js_page_onload_or_redirect_target",
     });
     try {
-      // P26D: capsule Home opens pages[0] (Start Claim). Active case → Task Home.
-      if (redirectStartClaimIfActiveCase(wx)) {
+      // Capsule Home opens pages[0] (Start Claim). Operational home → Service Home.
+      // Intentional form entry uses ?entry=form (empty-state Start Claim only).
+      if (redirectStartClaimIfActiveCase(wx, options || {})) {
         qaPathLog("EARLY_EXIT", {
-          reason: "active_case_redirect_entry",
-          why: "resume_token_present_in_storage",
+          reason: "capsule_home_redirect_service_home",
+          why: "operational_home_is_service_home",
           page: "pages/start-claim/start-claim",
           launchPath: "pages/start-claim/start-claim",
           hasToken: q.hasToken,
@@ -93,6 +133,7 @@ Page({
         });
         this.setData({
           ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+          ...initialVoiceUiData(),
           pageReady: true,
           initErrorMessage: "",
         });
@@ -111,6 +152,7 @@ Page({
       });
       this.setData({
         ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+        ...initialVoiceUiData(),
         canSubmit: validated.canSubmit,
         missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
         pageReady: true,
@@ -159,6 +201,15 @@ Page({
     if (!this._form) {
       this._form = createEmptyCanonicalForm();
     }
+    this._ensureRecorder();
+  },
+
+  onUnload() {
+    try {
+      recorderState(this).recorder?.stop();
+    } catch {
+      // ignore
+    }
   },
 
   onResetAndRetry() {
@@ -172,9 +223,10 @@ Page({
       });
       this.setData({
         ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+        ...initialVoiceUiData(),
         canSubmit: validated.canSubmit,
         missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
-        busy: { submitting: false },
+        busy: { submitting: false, uploading: false },
         initErrorMessage: "",
         pageReady: true,
         errorMessage: "",
@@ -272,7 +324,176 @@ Page({
     });
   },
 
+  onTapRecord() {
+    if (this.data.busy.submitting || this.data.voicePhase === "transcribing") return;
+
+    const recorder = this._ensureRecorder();
+    if (!recorder) {
+      this._setVoicePhase("stt_failed", "当前环境无法录音，请直接打字填写。");
+      return;
+    }
+
+    wx.authorize({
+      scope: "scope.record",
+      success: () => {
+        this._startRecording(recorder);
+      },
+      fail: () => {
+        wx.showModal({
+          title: "需要麦克风权限",
+          content: "请允许录音后重试，或直接打字填写事故经过。",
+          showCancel: false,
+          confirmText: "知道了",
+        });
+        this._setVoicePhase("stt_failed", "未获得麦克风权限，请直接打字填写。");
+      },
+    });
+  },
+
+  onTapStop() {
+    if (this.data.voicePhase !== "recording") return;
+    try {
+      recorderState(this).recorder?.stop();
+    } catch {
+      this._setVoicePhase("stt_failed", "停止录音失败，请直接打字填写。");
+    }
+  },
+
+  _setVoicePhase(phase: VoicePhase, hint: string, extra?: Record<string, unknown>) {
+    this.setData({
+      voiceHint: hint,
+      ...voiceUiPatch(phase, this.data.busy),
+      ...(extra || {}),
+    });
+  },
+
+  _ensureRecorder(): WechatMiniprogram.RecorderManager | null {
+    if (typeof wx === "undefined" || typeof wx.getRecorderManager !== "function") {
+      return null;
+    }
+    const state = recorderState(this);
+    if (!state.recorder) {
+      state.recorder = wx.getRecorderManager();
+    }
+    if (!state.bound && state.recorder) {
+      const recorder = state.recorder;
+      recorder.onStart(() => {
+        state.startedAt = Date.now();
+        this._setVoicePhase("recording", "正在录音…说完后点停止");
+      });
+      recorder.onStop((res) => {
+        void this._onRecordStop(res);
+      });
+      recorder.onError(() => {
+        this._setVoicePhase("stt_failed", "录音失败，请直接打字填写。", {
+          busy: { ...this.data.busy, uploading: false },
+        });
+      });
+      state.bound = true;
+    }
+    return state.recorder;
+  },
+
+  _startRecording(recorder: WechatMiniprogram.RecorderManager) {
+    void emitStartClaimVoiceRecordStart();
+    console.info("[p28_voice_metric]", { event: "voice_record_start", surface: "start_claim" });
+    this.setData({
+      voiceHint: "正在录音…",
+      voiceSession: null,
+      ...voiceUiPatch("recording", this.data.busy),
+    });
+    try {
+      recorder.start({
+        duration: VOICE_MAX_RECORD_MS,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        encodeBitRate: 48000,
+        format: "mp3",
+      });
+    } catch {
+      this._setVoicePhase("stt_failed", "无法开始录音，请直接打字填写。");
+    }
+  },
+
+  async _onRecordStop(res: WechatMiniprogram.OnStopCallbackResult) {
+    const tempFilePath = String(res?.tempFilePath || "");
+    const state = recorderState(this);
+    const durationMs = Math.max(
+      0,
+      Number(res?.duration || 0) || (state.startedAt ? Date.now() - state.startedAt : 0),
+    );
+    if (!tempFilePath) {
+      this._setVoicePhase("stt_failed", "录音文件无效，请直接打字填写。");
+      return;
+    }
+
+    const extMatch = tempFilePath.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+    const fileExt = extMatch ? extMatch[1].toLowerCase() : "";
+    logVoiceUploadDiagnostic({
+      event: "record_stop",
+      surface: "start_claim",
+      has_temp_path: Boolean(tempFilePath),
+      path_ext: fileExt || "unknown",
+      duration_ms: durationMs,
+      file_size_bytes: Number(res?.fileSize || 0) || null,
+    });
+
+    this.setData({
+      voiceHint: "正在识别语音…",
+      busy: { ...this.data.busy, uploading: true },
+      ...voiceUiPatch("transcribing", this.data.busy),
+    });
+
+    try {
+      const draft = await transcribeStartClaimStoryAudio(tempFilePath, {
+        recordingDurationMs: durationMs,
+      });
+      const text = String(draft.raw_transcript || "").trim();
+      if (!text) {
+        this._setVoicePhase("stt_failed", "没有识别出文字，请重录或直接打字填写。", {
+          busy: { ...this.data.busy, uploading: false },
+        });
+        return;
+      }
+      logVoiceUploadDiagnostic({
+        event: "transcribe_ok",
+        surface: "start_claim",
+        path_ext: fileExt || "unknown",
+        duration_ms: durationMs,
+        transcript_chars: text.length,
+        stt_latency_ms: Number(draft.stt_latency_ms || 0),
+        speech_provider: draft.speech_provider || "google_chirp",
+      });
+      this._applyFormPatch({ description: text });
+      this.setData({
+        voiceHint: "已生成草稿，可修改后点提交。",
+        voiceSession: {
+          rawTranscript: text,
+          speechProvider: draft.speech_provider || "google_chirp",
+          sttLatencyMs: Number(draft.stt_latency_ms || 0),
+          recordingDurationMs: durationMs,
+        },
+        busy: { ...this.data.busy, uploading: false },
+        ...voiceUiPatch("draft", { submitting: this.data.busy.submitting }),
+      });
+    } catch (err) {
+      const apiErr = err instanceof ApiRequestError ? err : null;
+      logVoiceUploadDiagnostic({
+        event: "transcribe_fail",
+        surface: "start_claim",
+        path_ext: fileExt || "unknown",
+        duration_ms: durationMs,
+        http_status: apiErr?.status || 0,
+        error_code: apiErr?.code || "unknown",
+      });
+      this._setVoicePhase("stt_failed", sttFailureCopy(err), {
+        busy: { ...this.data.busy, uploading: false },
+      });
+    }
+  },
+
   async onSubmit() {
+    if (this.data.confirmDisabled) return;
     // Final flush from canonical `_form` (already updated by input/blur).
     const validated = this._applyFormPatch({}, { showErrors: true });
     if (!validated.ok) {
@@ -343,7 +564,7 @@ Page({
     if (!gate.started) return;
 
     this.setData({
-      busy: { submitting: true },
+      busy: { submitting: true, uploading: this.data.busy.uploading },
       errorMessage: "",
       errorRetryable: false,
       fieldErrors: {},
@@ -383,7 +604,7 @@ Page({
         this.setData({
           errorMessage: mapped.message,
           errorRetryable: mapped.retryable,
-          busy: { submitting: false },
+          busy: { submitting: false, uploading: false },
           // Keep completed form values — timeout/transport must not erase input.
           description: this._form.description,
           accidentDatetime: this._form.accidentDatetime,
@@ -395,7 +616,7 @@ Page({
         return;
       }
       endStartClaimSubmit(this._submitState, true);
-      this.setData({ busy: { submitting: false } });
+      this.setData({ busy: { submitting: false, uploading: false } });
       // P26G: persist resume token and open Task Home — no broker QR required.
       const resumeToken = String(result.resume_token || "").trim();
       if (resumeToken) {
@@ -458,7 +679,7 @@ Page({
       this.setData({
         errorMessage: mapped.message,
         errorRetryable: mapped.retryable,
-        busy: { submitting: false },
+        busy: { submitting: false, uploading: false },
         description: this._form.description,
         accidentDatetime: this._form.accidentDatetime,
         accidentLocation: this._form.accidentLocation,

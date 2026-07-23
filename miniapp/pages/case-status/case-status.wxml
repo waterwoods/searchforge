@@ -1,0 +1,84 @@
+<view class="container case-status-page">
+  <task-shell
+    loading="{{busy.loading}}"
+    error="{{errorState}}"
+    loadingMessage="{{loadingMessage}}"
+    safetyCopy="{{shellSafetyCopy}}"
+    showFooter="{{true}}"
+    bind:retry="onRetry"
+    bind:contactBroker="onContactBroker"
+  >
+    <task-error
+      wx:if="{{errorState.message && !errorState.blocking}}"
+      message="{{errorState.message}}"
+      retryable="{{errorState.retryable}}"
+      retryDisabled="{{busy.retrying}}"
+      bind:retry="onRetry"
+      bind:contactBroker="onContactBroker"
+    />
+
+    <view class="card" wx:if="{{!busy.loading}}">
+      <view class="status-pill">{{statusLabel}}</view>
+      <view class="card-title">{{title}}</view>
+
+      <view class="body-block">
+        <view wx:for="{{bodyLines}}" wx:key="*this" class="body-line">{{item}}</view>
+      </view>
+
+      <view wx:if="{{why}}" class="section-gap">
+        <view class="section-label">当前说明</view>
+        <view class="list-item">{{why}}</view>
+      </view>
+
+      <view wx:if="{{after}}" class="section-gap">
+        <view class="section-label">接下来</view>
+        <view class="list-item">{{after}}</view>
+      </view>
+
+      <view wx:if="{{lastSubmittedLines.length}}" class="section-gap">
+        <view class="section-label">最近提交</view>
+        <view
+          wx:for="{{lastSubmittedLines}}"
+          wx:key="*this"
+          class="list-item"
+        >{{item}}</view>
+      </view>
+
+      <view wx:if="{{completedLines.length}}" class="section-gap">
+        <view class="section-label">已提交资料</view>
+        <view
+          wx:for="{{completedLines}}"
+          wx:key="*this"
+          class="list-item"
+        >{{item}}</view>
+      </view>
+
+      <view wx:if="{{careLine}}" class="case-trust section-gap">
+        <view class="case-trust-care">{{careLine}}</view>
+        <view wx:if="{{careNote}}" class="case-trust-note">{{careNote}}</view>
+      </view>
+    </view>
+  </task-shell>
+
+  <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <button
+      wx:if="{{showVoluntarySupplement}}"
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onVoluntarySupplement"
+      disabled="{{busy.navigating}}"
+    >补充资料</button>
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onViewSubmitted"
+      disabled="{{busy.navigating}}"
+    >查看已提交资料</button>
+    <button
+      class="btn-secondary"
+      hover-class="btn-secondary-hover"
+      bindtap="onContactBroker"
+      disabled="{{busy.navigating}}"
+    >联系保险顾问</button>
+  </view>
+</view>

@@ -18,9 +18,9 @@
     />
 
     <view class="card" wx:if="{{waitingForBroker}}">
-      <view class="status-pill done">等待经纪人</view>
-      <view class="card-title">{{nextActionTitle || '资料已提交，等待经纪人审核'}}</view>
-      <view class="card-subtitle">{{nextActionInstructions || '陈总会查看你补充的资料。'}}</view>
+      <view class="status-pill done">已收到</view>
+      <view class="card-title">{{nextActionTitle || '补充资料已收到'}}</view>
+      <view class="card-subtitle">{{nextActionInstructions || '陈总已收到您的补充资料，正在审核。'}}</view>
       <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
       <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
     </view>

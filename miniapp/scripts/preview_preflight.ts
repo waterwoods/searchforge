@@ -64,6 +64,7 @@ try {
     "pages/start-claim-success/start-claim-success",
     "pages/service-home/service-home",
     "pages/task-home/task-home",
+    "pages/case-status/case-status",
     "pages/request-item/request-item",
     "pages/entry/entry",
   ]) {

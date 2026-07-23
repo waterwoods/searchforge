@@ -275,7 +275,7 @@ test("reload refreshes from server and does not keep stale title", async () => {
   assert.equal(loadCount, 2);
 });
 
-test("return home redirects to task home", async () => {
+test("return home redirects via case-surface router", async () => {
   const page = await loadReceiptPage();
   const redirects: string[] = [];
   (globalThis as Record<string, any>).wx.redirectTo = ({
@@ -303,11 +303,12 @@ test("return home redirects to task home", async () => {
     },
   });
   page.onViewStatus.call(ctx);
-  assert.deepEqual(redirects, ["/pages/task-home/task-home"]);
+  // No task on context → Waiting/Case Status surface (not Task Home dead-end).
+  assert.deepEqual(redirects, ["/pages/case-status/case-status"]);
   assert.equal(ctx.data.busy.navigating, false);
 });
 
-test("Submit Result Home handler relaunches Start Claim", async () => {
+test("Submit Result Home handler relaunches Service Home and keeps resume", async () => {
   const page = await loadReceiptPage();
   const launches: string[] = [];
   (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
@@ -330,8 +331,8 @@ test("Submit Result Home handler relaunches Start Claim", async () => {
     },
   });
   page.onBackHome.call(ctx);
-  assert.deepEqual(launches, ["/pages/start-claim/start-claim"]);
-  assert.equal(loadResumeToken(), "");
+  assert.deepEqual(launches, ["/pages/service-home/service-home"]);
+  assert.equal(loadResumeToken(), "h5t1.stale-receipt");
   assert.equal(ctx.data.busy.navigating, false);
 });
 

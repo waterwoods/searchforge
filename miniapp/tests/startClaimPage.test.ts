@@ -42,7 +42,7 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
   data.errorRetryable = false;
   data.pageReady = true;
   data.initErrorMessage = "";
-  data.busy = { submitting: false };
+  data.busy = { submitting: false, uploading: false };
   const ctx: Record<string, any> = {
     ...page,
     route: "/pages/start-claim/start-claim",
@@ -86,12 +86,43 @@ test("start-claim wxml asks accident Must Have and never teaches VIN-first", () 
   assert.match(wxml, /missingHint/);
   assert.match(wxml, /fieldErrors/);
   assert.match(wxml, /Today 9 am/);
+  assert.match(wxml, /onTapRecord/);
+  assert.match(wxml, /showRecordBtn/);
+  assert.match(wxml, /可录音转文字/);
   assert.equal(wxml.includes("Coming soon"), false);
   assert.equal(wxml.includes("Coming Later"), false);
   assert.equal(wxml.includes("请填写 VIN"), false);
   assert.equal(wxml.includes("case_id"), false);
   assert.equal(wxml.includes("aggregate_version"), false);
   assert.equal(wxml.includes("command_id"), false);
+});
+
+test("start-claim voice controls are available without wiping typed description", async () => {
+  const page = await loadStartClaimPage();
+  const ctx = createPageContext(page, {});
+  page.onLoad.call(ctx, { entry: "form" });
+  assert.equal(ctx.data.showRecordBtn, true);
+  assert.equal(ctx.data.showStopBtn, false);
+  assert.match(String(ctx.data.recordBtnLabel || ""), /录音/);
+
+  page.onDescriptionInput.call(ctx, { detail: { value: "先打字填写的事故经过内容。" } });
+  assert.equal(ctx.data.description, "先打字填写的事故经过内容。");
+  assert.equal(ctx.data.showRecordBtn, true);
+
+  // Mic denial keeps typed text and shows friendly Chinese copy.
+  (globalThis as Record<string, any>).wx.authorize = (opts: {
+    fail?: () => void;
+  }) => {
+    opts.fail?.();
+  };
+  const modals: Array<{ content: string }> = [];
+  (globalThis as Record<string, any>).wx.showModal = (opts: { content: string }) => {
+    modals.push(opts);
+  };
+  page.onTapRecord.call(ctx);
+  assert.equal(ctx.data.description, "先打字填写的事故经过内容。");
+  assert.match(String(ctx.data.voiceHint || ""), /麦克风|打字/);
+  assert.ok(modals.some((m) => /麦克风|打字/.test(m.content)));
 });
 
 test("founder Must Have values enable CTA and send normalized payload", async () => {
@@ -115,7 +146,7 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
       });
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
 
   page.onDescriptionInput.call(ctx, { detail: { value: " 被车后装 " } });
   page.onDatetimeInput.call(ctx, { detail: { value: "  Today   9 am " } });
@@ -151,7 +182,7 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
 test("founder live values complete → no missing hint + CTA enabled", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -164,7 +195,7 @@ test("founder live values complete → no missing hint + CTA enabled", async () 
 test("injury selection preserves description/time/location", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -185,7 +216,7 @@ test("injury selection preserves description/time/location", async () => {
 test("stale missing banner clears when form becomes complete", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
   // Force the historical sticky banner shape from showErrors-on-injury.
   ctx.data.errorMessage = "请先填写：事故经过、事故时间、事故地点";
@@ -211,7 +242,7 @@ test("submit uses latest typed value from blur flush before API", async () => {
       return Promise.resolve({ ok: true, outcome: "accepted" });
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "旧描述" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -232,7 +263,7 @@ test("local invalid submit does not call API", async () => {
       return Promise.resolve({ ok: true, outcome: "accepted" });
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   await page.onSubmit.call(ctx);
   assert.equal(called, 0);
@@ -248,7 +279,7 @@ test("transport failure maps distinctly and preserves form", async () => {
       });
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -282,7 +313,7 @@ test("accepted-but-replayed retry reuses identity and opens Task Home", async ()
       });
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -314,7 +345,7 @@ test("submit with missing injury shows field error instead of silent disable-onl
       throw new Error("should not submit");
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "被车后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "Today 9 am" } });
   page.onLocationInput.call(ctx, { detail: { value: "路口" } });
@@ -336,7 +367,7 @@ test("start-claim-success wxml shows founder-facing receipt copy only", () => {
   assert.equal(wxml.includes("command_id"), false);
 });
 
-test("start-claim with active resume redirects to Entry (Task Home), keeps token", async () => {
+test("start-claim with active resume redirects to Service Home, keeps token", async () => {
   const page = await loadStartClaimPage();
   const { saveResumeToken, loadResumeToken } = await import("../utils/storage");
   saveResumeToken("h5t1.prior-submitted");
@@ -345,13 +376,13 @@ test("start-claim with active resume redirects to Entry (Task Home), keeps token
     launches.push(url);
   };
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx);
-  assert.deepEqual(launches, ["/pages/entry/entry"]);
+  page.onLoad.call(ctx, {});
+  assert.deepEqual(launches, ["/pages/service-home/service-home"]);
   assert.equal(loadResumeToken(), "h5t1.prior-submitted");
   assert.equal(ctx.data.pageReady, true);
 });
 
-test("start-claim with no resume renders fresh form shell", async () => {
+test("start-claim cold Home without entry redirects to Service Home", async () => {
   const page = await loadStartClaimPage();
   const { clearResumeToken } = await import("../utils/storage");
   clearResumeToken();
@@ -360,7 +391,20 @@ test("start-claim with no resume renders fresh form shell", async () => {
     launches.push(url);
   };
   const clean = createPageContext(page);
-  page.onLoad.call(clean);
+  page.onLoad.call(clean, {});
+  assert.deepEqual(launches, ["/pages/service-home/service-home"]);
+});
+
+test("start-claim with entry=form and no resume renders fresh form shell", async () => {
+  const page = await loadStartClaimPage();
+  const { clearResumeToken } = await import("../utils/storage");
+  clearResumeToken();
+  const launches: string[] = [];
+  (globalThis as Record<string, any>).wx.reLaunch = ({ url }: { url: string }) => {
+    launches.push(url);
+  };
+  const clean = createPageContext(page);
+  page.onLoad.call(clean, { entry: "form" });
   assert.deepEqual(launches, []);
   assert.equal(clean.data.pageReady, true);
   assert.equal(clean.data.initErrorMessage, "");
@@ -375,7 +419,7 @@ test("start-claim with no resume renders fresh form shell", async () => {
 test("initialization rejection surfaces error + retry without blanking form", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   ctx.setData({
     initErrorMessage: "页面初始化失败，请重试或联系陈总。",
     pageReady: true,
@@ -416,7 +460,7 @@ test("start-claim submit is single-flight and retries with same identity", async
       return startPromise;
     },
   });
-  page.onLoad.call(ctx);
+  page.onLoad.call(ctx, { entry: "form" });
   page.onDescriptionInput.call(ctx, { detail: { value: "被车后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "Today 9 am" } });
   page.onLocationInput.call(ctx, { detail: { value: "路口" } });
@@ -443,7 +487,7 @@ test("start-claim submit is single-flight and retries with same identity", async
       return Promise.resolve({ ok: true, outcome: "replayed" });
     },
   });
-  page.onLoad.call(retryCtx);
+  page.onLoad.call(retryCtx, { entry: "form" });
   page.onDescriptionInput.call(retryCtx, { detail: { value: "被车后装" } });
   page.onDatetimeInput.call(retryCtx, { detail: { value: "Today 9 am" } });
   page.onLocationInput.call(retryCtx, { detail: { value: "路口" } });

@@ -150,18 +150,18 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/p24f_golden_production_qa_flow.md` |
 
-### D-008 — Home with active case opens Task Home
+### D-008 — Home opens Service Home (product entrance)
 
 | Field | Content |
 |-------|---------|
-| **Decision** | Capsule / operational Home: active case/token → Task Home (via Entry); no active case → Start Claim. Explicit「开始新报案」clears resume and opens Start Claim. `pages[0]` stays Start Claim for packaging. |
-| **Context** | P26A Founder QA: Home with Camry resume cleared the token and stranded customers on「开始报案」, so Task Home was not the operational home. |
-| **Alternatives Considered** | (1) Change `pages[0]` to Task Home/Entry (breaks Build Gate / empty-launch packaging); (2) Always Home → Start Claim (fails One Active Case); (3) Multi-case picker (out of Constitution). |
-| **Why This Decision** | Keeps packaging gates stable while making Home resume the active case. Start New Claim remains the only intentional new-case reset. |
+| **Decision** | Capsule / operational Home → Service Home. Active case → Continue primary (Entry → Task Home); no active case → Start Claim. Explicit「开始新的报案」with active case → One Active Case policy (never wipe resume / never second case). `pages[0]` stays Start Claim for packaging. |
+| **Context** | P26A Founder QA: Home with Camry resume cleared the token and stranded customers on「开始报案」. Later D-008 briefly routed Home → Task Home, which trapped Founder inside the case and hid the product shell. |
+| **Alternatives Considered** | (1) Change `pages[0]` to Service Home (breaks Build Gate packaging contract); (2) Always Home → Task Home when active (fails Home ≠ Task Home / product shell QA); (3) Multi-case picker (out of Constitution). |
+| **Why This Decision** | Home is the product entrance; Task Home is one page inside the product. Preserves One Active Case and Golden one-scan while restoring lightweight Service Home. |
 | **Constitution Principle** | One Active Case; North Star §J |
-| **Date** | 2026-07-18 |
-| **Status** | Active |
-| **SSOT** | `docs/product/p20_product_north_star.md` §J; `miniapp/utils/startClaimEntry.ts` |
+| **Date** | 2026-07-22 |
+| **Status** | Active (supersedes 2026-07-18 Home→Task Home wording) |
+| **SSOT** | `docs/product/p20_product_north_star.md` §J; `miniapp/pages/service-home/`; `miniapp/utils/startClaimEntry.ts` |
 
 ### D-009 — Default intake must not require Broker Request More
 
@@ -202,7 +202,6 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/CLAIM_VEHICLE_VS_ADD_CAR_TERMINOLOGY.md` |
 
-
 ### D-016 — Durable MP identity enforces One Active Case
 
 | Field | Content |
@@ -216,7 +215,6 @@ Copy for every new decision:
 | **Status** | Active |
 | **SSOT** | `docs/product/p0_one_active_case_identity_foundation.md` |
 
-
 ### D-017 — Broker Close → History (read-only)
 
 | Field | Content |
@@ -229,6 +227,19 @@ Copy for every new decision:
 | **Date** | 2026-07-22 |
 | **Status** | Active |
 | **SSOT** | `docs/product/p0_broker_close_history_lifecycle.md` |
+
+### D-014 — Customer Waiting State (Case Status)
+
+| Field | Content |
+|-------|---------|
+| **Decision** | When the customer owes no work, Continue opens **Case Status** (Waiting Broker), not Task Home. Title:「陈总正在审核您的资料」. Soft-freeze + voluntary append are later commits; Commit 1 is Case Status mode + routing only. Task Home is Action Needed only. |
+| **Context** | Founder PAT dead-end after insurance submit: Task Home showed「先不用操作」with no meaningful next step. |
+| **Alternatives Considered** | (1) Copy-only change on Task Home; (2) Always land Receipt; (3) Separate Status product with new APIs. |
+| **Why This Decision** | Home ≠ Task; Waiting is a real state; one shared router preserves Golden one-scan / resume token / Request More. |
+| **Constitution Principle** | Today First; After; One Truth; North Star §J |
+| **Date** | 2026-07-22 |
+| **Status** | Active (Commit 1 implemented; Voluntary Supplement deferred) |
+| **SSOT** | `docs/product/p0_customer_waiting_state_architecture_freeze.md`; `miniapp/utils/customerCaseSurface.ts`; `miniapp/pages/case-status/` |
 
 ### D-015 — Founder QA Broker Workbench = QA document-intake
 
@@ -258,10 +269,11 @@ Copy for every new decision:
 | D-005 | After (Loop 4.1) | After | Active |
 | D-006 | One Truth (Loop 4.2) | One Truth | Active |
 | D-007 | Golden Production QA only | One Truth / User Done | Active |
-| D-008 | Home → Task Home when active | One Active Case / §J | Active |
+| D-008 | Home → Service Home (Continue when active) | One Active Case / §J | Active |
 | D-009 | Default intake without broker gate | One Truth / §J2 | Active |
 | D-010 | Claim Vehicle Identity V1 | One Truth / Smallest Working Solution | Active |
 | D-011 | Claim Vehicle vs Add Car naming | Complexity Stays Inside / One Truth | Active |
+| D-014 | Customer Waiting State (Case Status) | Today First / After / One Truth | Active |
 | D-015 | Founder QA Workbench = QA document-intake | One Truth / User Done | Active |
 
 ---
@@ -276,8 +288,8 @@ Copy for every new decision:
 | v1.3 | 2026-07-18 | D-009 Default intake without broker Request More |
 | v1.4 | 2026-07-21 | D-010 Claim Vehicle Identity V1 freeze |
 | v1.5 | 2026-07-21 | D-011 Claim Vehicle vs Add Car naming freeze |
-| v1.6 | 2026-07-22 | D-015 Founder QA Broker Workbench = QA document-intake |
-| v1.7 | 2026-07-22 | D-016 Durable MP identity / One Active Case server enforcement |
+| v1.6 | 2026-07-22 | D-008 Service Home; D-014 Customer Waiting State Commit 1 |
+| v1.7 | 2026-07-22 | D-015 Founder QA Broker Workbench = QA document-intake; D-016 identity foundation |
 | v1.8 | 2026-07-22 | D-017 Broker Close → History (read-only) |
 
 **Change rule:** New Active entries require Founder acknowledgment. Superseding an entry requires a new ID and an explicit Status update on the old entry.
