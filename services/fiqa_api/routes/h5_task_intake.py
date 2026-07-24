@@ -14,11 +14,19 @@ from services.fiqa_api.inbox_triage.h5_task_intake import (
     submit_intake_form,
 )
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
+from services.fiqa_api.inbox_triage.customer_lookup import (
+    customer_lookup_mock_enabled,
+    lookup_customer,
+    lookup_customer_for_session,
+)
 from services.fiqa_api.inbox_triage.mp_customer_identity import establish_mp_customer_session
 from services.fiqa_api.inbox_triage.p0_customer_context import resolve_customer_context
 from services.fiqa_api.inbox_triage.p20_customer_start_claim import (
     customer_start_claim_response,
     start_customer_claim,
+)
+from services.fiqa_api.inbox_triage.smart_claim_start.service import (
+    build_smart_claim_start_response,
 )
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
 from services.fiqa_api.inbox_triage.voice_story import (
@@ -109,6 +117,22 @@ class CustomerContextBody(BaseModel):
     launch_token: str | None = Field(default=None, max_length=4096)
 
 
+class CustomerLookupBody(BaseModel):
+    """P4 Capability 01 — read-only Customer Lookup (mock harness)."""
+
+    session_id: str | None = Field(default=None, max_length=128)
+    person_link_key: str | None = Field(default=None, max_length=256)
+
+
+class SmartClaimStartBody(BaseModel):
+    """P4 Integration 01 — Cap 01→02→03 plan for Mini Program Start Claim."""
+
+    session_id: str | None = Field(default=None, max_length=128)
+    person_link_key: str | None = Field(default=None, max_length=256)
+    # Honored only when P4_CUSTOMER_LOOKUP_MOCK=1 (Founder QA / sim).
+    mock_scenario: str | None = Field(default=None, max_length=64)
+
+
 @router.post("/customer/session")
 async def post_customer_session(body: CustomerSessionBody) -> dict[str, Any]:
     """
@@ -142,6 +166,55 @@ async def post_customer_context(body: CustomerContextBody) -> dict[str, Any]:
         code = str(exc)
         status = 404 if code == "case_not_found" else 403 if code == "invalid_or_expired_task_link" else 401
         raise HTTPException(status_code=status, detail=code) from exc
+
+
+@router.post("/customer/lookup")
+async def post_customer_lookup(body: CustomerLookupBody) -> dict[str, Any]:
+    """
+    P4 Capability 01 — Customer Lookup (READ ONLY, mock-flagged).
+
+    Answers only: "Who is this customer?"
+    Never creates/merges/updates CRM, customer, policy, or vehicle.
+    Always returns a complete LookupResult (graceful degrade when flag off).
+    """
+    if body.person_link_key and str(body.person_link_key).strip():
+        result = lookup_customer(str(body.person_link_key).strip())
+    elif body.session_id and str(body.session_id).strip():
+        result = lookup_customer_for_session(str(body.session_id).strip())
+    else:
+        result = lookup_customer(None)
+
+    # Never echo identity keys back to the client.
+    safe = dict(result)
+    safe.pop("person_link_key", None)
+    safe.pop("openid", None)
+    return {
+        "ok": True,
+        "lookup_enabled": customer_lookup_mock_enabled(),
+        "lookup": safe,
+    }
+
+
+@router.post("/customer/smart-claim-start")
+async def post_customer_smart_claim_start(body: SmartClaimStartBody) -> dict[str, Any]:
+    """
+    P4 Integration 01 — Smart Claim Start plan (READ ONLY).
+
+    Chains Cap 01 Lookup → Cap 02 Prefill → Cap 03 Plan.
+    Never creates/merges customers or claims. Mini Program renders the plan;
+    submit still uses existing /customer/start-claim.
+    """
+    result = build_smart_claim_start_response(
+        session_id=body.session_id,
+        person_link_key=body.person_link_key,
+        mock_scenario=body.mock_scenario,
+    )
+    # Never echo identity keys.
+    plan = dict(result.get("plan") or {})
+    plan.pop("person_link_key", None)
+    plan.pop("openid", None)
+    result["plan"] = plan
+    return result
 
 
 @router.post("/customer/start-claim")

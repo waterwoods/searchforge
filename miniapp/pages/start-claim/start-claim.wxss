@@ -65,3 +65,14 @@
   line-height: 1.4;
   text-align: center;
 }
+
+.start-claim-page .why-ask {
+  margin: -4rpx 0 10rpx;
+  font-size: 22rpx;
+  color: #718096;
+  line-height: 1.4;
+}
+
+.start-claim-page .why-ask-photos {
+  margin-top: 20rpx;
+}

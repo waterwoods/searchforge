@@ -1,0 +1,140 @@
+.scs-panel {
+  margin-bottom: 8rpx;
+}
+
+.scs-card {
+  margin: 24rpx 32rpx;
+  padding: 28rpx 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 12rpx rgba(13, 59, 102, 0.06);
+}
+
+.scs-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #0d3b66;
+  line-height: 1.35;
+  margin-bottom: 12rpx;
+}
+
+.scs-sub {
+  font-size: 26rpx;
+  color: #4a5568;
+  line-height: 1.5;
+  margin-bottom: 12rpx;
+}
+
+.scs-signal {
+  font-size: 24rpx;
+  color: #2b6cb0;
+  line-height: 1.4;
+  margin-bottom: 20rpx;
+}
+
+.scs-known {
+  margin-top: 8rpx;
+  padding-top: 16rpx;
+  border-top: 1px solid #edf2f7;
+}
+
+.scs-known-label {
+  font-size: 24rpx;
+  color: #718096;
+  margin-bottom: 12rpx;
+}
+
+.scs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.scs-chip {
+  display: flex;
+  flex-direction: column;
+  min-width: 140rpx;
+  padding: 12rpx 16rpx;
+  background: #f7fafc;
+  border-radius: 12rpx;
+  border: 1px solid #e2e8f0;
+}
+
+.scs-chip-label {
+  font-size: 22rpx;
+  color: #718096;
+  margin-bottom: 4rpx;
+}
+
+.scs-chip-value {
+  font-size: 26rpx;
+  color: #1a202c;
+  font-weight: 500;
+}
+
+.scs-confirm {
+  margin-top: 20rpx;
+}
+
+.scs-confirm-prompt {
+  font-size: 28rpx;
+  color: #0d3b66;
+  font-weight: 500;
+  margin-bottom: 12rpx;
+  line-height: 1.4;
+}
+
+.scs-confirm-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.scs-option {
+  text-align: left;
+  padding: 18rpx 20rpx;
+  font-size: 28rpx;
+  color: #0d3b66;
+  background: #fff;
+  border: 1px solid #0d3b66;
+  border-radius: 12rpx;
+  line-height: 1.35;
+}
+
+.scs-option::after {
+  border: none;
+}
+
+.scs-option-active {
+  background: #0d3b66;
+  color: #fff;
+}
+
+.scs-primary {
+  margin-top: 24rpx;
+  min-height: 88rpx;
+  border-radius: 16rpx;
+  background: #2251cc;
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.scs-primary::after {
+  border: none;
+}
+
+.scs-secondary {
+  margin-top: 12rpx;
+  min-height: 80rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  color: #0d3b66;
+  border: 1px solid #0d3b66;
+  font-size: 28rpx;
+}
+
+.scs-secondary::after {
+  border: none;
+}

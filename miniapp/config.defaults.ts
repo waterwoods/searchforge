@@ -14,4 +14,10 @@ export const config = {
   tenantDisplayName: "陈总保险办公室",
   brokerDisplayName: "陈总",
   prototypeMode: true,
+  /**
+   * P4 Integration 01 — Smart Claim Start wiring (default OFF).
+   * When true, Start Claim fetches Cap 01→02→03 plan after Customer Context.
+   * Rollback: set false (or omit) — existing accident form remains.
+   */
+  smartClaimStartEnabled: false,
 };

@@ -182,7 +182,7 @@ test("start-claim wxml has no blankable full-page guard", () => {
   const wxml = readFileSync(join(miniappRoot, "pages/start-claim/start-claim.wxml"), "utf8");
   const failures = assertStartClaimWxmlNotBlankable(wxml);
   assert.deepEqual(failures, []);
-  assert.match(wxml, /告诉陈总发生了什么/);
+  assert.match(wxml, /formTitle|告诉陈总发生了什么/);
   assert.match(wxml, /事故经过/);
   assert.match(wxml, /事故时间/);
   assert.match(wxml, /事故地点/);

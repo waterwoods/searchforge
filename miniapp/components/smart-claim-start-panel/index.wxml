@@ -1,0 +1,65 @@
+<view class="scs-panel" wx:if="{{uiMode !== 'legacy'}}">
+  <!-- S1 continue gate -->
+  <block wx:if="{{uiMode === 'continue_active'}}">
+    <view class="scs-card">
+      <view class="scs-title">{{headlineZh}}</view>
+      <view class="scs-sub">{{subtitleZh}}</view>
+      <view wx:if="{{confidenceSignal}}" class="scs-signal">{{confidenceSignal}}</view>
+      <button class="scs-primary" bindtap="onPrimaryTap">{{primaryCtaZh}}</button>
+      <button
+        wx:if="{{secondaryCtaZh}}"
+        class="scs-secondary"
+        bindtap="onSecondaryTap"
+      >{{secondaryCtaZh}}</button>
+    </view>
+  </block>
+
+  <!-- Ambiguous / contact broker -->
+  <block wx:elif="{{uiMode === 'contact_broker'}}">
+    <view class="scs-card">
+      <view class="scs-title">{{headlineZh}}</view>
+      <view class="scs-sub">{{subtitleZh}}</view>
+      <button class="scs-primary" bindtap="onPrimaryTap">联系{{brokerName}}</button>
+    </view>
+  </block>
+
+  <!-- Matched / blank degrade header + chips + confirms -->
+  <block wx:else>
+    <view class="scs-card">
+      <view class="scs-title">{{headlineZh}}</view>
+      <view class="scs-sub">{{subtitleZh}}</view>
+      <view wx:if="{{confidenceSignal}}" class="scs-signal">{{confidenceSignal}}</view>
+
+      <view wx:if="{{showKnownSection}}" class="scs-known">
+        <view class="scs-known-label">我们已了解您</view>
+        <view class="scs-chips">
+          <view
+            class="scs-chip"
+            wx:for="{{knownChips}}"
+            wx:key="field_key"
+          >
+            <text class="scs-chip-label">{{item.label_zh}}</text>
+            <text class="scs-chip-value">{{item.value}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{showConfirmSection}}" class="scs-confirm">
+        <block wx:for="{{confirmSteps}}" wx:key="step_id" wx:for-item="step">
+          <view class="scs-confirm-prompt">{{step.prompt_zh}}</view>
+          <view class="scs-confirm-options">
+            <button
+              wx:for="{{step.options}}"
+              wx:for-item="opt"
+              wx:key="*this"
+              class="scs-option {{confirmSelections[step.step_id] === opt ? 'scs-option-active' : ''}}"
+              data-step-id="{{step.step_id}}"
+              data-option="{{opt}}"
+              bindtap="onConfirmOption"
+            >{{opt}}</button>
+          </view>
+        </block>
+      </view>
+    </view>
+  </block>
+</view>

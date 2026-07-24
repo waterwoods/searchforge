@@ -225,6 +225,11 @@ else:
     ALLOW_ALL_CORS = os.getenv("ALLOW_ALL_CORS", "1") in ("1", "true", "True", "yes")
     CORS_ORIGINS = _parse_origins(os.getenv("CORS_ORIGINS", ""))
 
+# Optional regex for ephemeral hosts (Vercel Preview hashes). Exact origins still come
+# from ALLOWED_ORIGINS. Example:
+#   ALLOWED_ORIGIN_REGEX=https://ui(-[a-z0-9]+)?-andys-projects-1f411b73\.vercel\.app
+_ALLOWED_ORIGIN_REGEX = (os.getenv("ALLOWED_ORIGIN_REGEX") or "").strip() or None
+
 # Force override configuration
 force_config = settings.get_force_override_config()
 FORCE_OVERRIDE = force_config["enabled"]
@@ -671,14 +676,17 @@ EXPOSE_HEADERS = [
 ]
 _cors_allow_origins = ["*"] if ALLOW_ALL_CORS else CORS_ORIGINS
 _cors_allow_credentials = False if ALLOW_ALL_CORS else True
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_allow_origins,
-    allow_credentials=_cors_allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=EXPOSE_HEADERS
-)
+_cors_kwargs: dict = {
+    "allow_origins": _cors_allow_origins,
+    "allow_credentials": _cors_allow_credentials,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": EXPOSE_HEADERS,
+}
+# Only pass regex when set — Starlette treats None vs omit differently across versions.
+if _ALLOWED_ORIGIN_REGEX and not ALLOW_ALL_CORS:
+    _cors_kwargs["allow_origin_regex"] = _ALLOWED_ORIGIN_REGEX
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 # ========================================
 # Health & Readiness Endpoints

@@ -49,15 +49,23 @@ fi
 
 if [ -n "$ORIGIN" ]; then
   echo "3) CORS preflight for GET /api/inbox/cases (real page origin) ..."
-  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -X OPTIONS \
+  hdrs=$(mktemp)
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -D "$hdrs" -X OPTIONS \
     "${BASE_URL}/api/inbox/cases?limit=1" \
     -H "Origin: ${ORIGIN}" \
     -H "Access-Control-Request-Method: GET" || true)
+  aca=$(tr -d '\r' <"$hdrs" | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2; exit}')
+  rm -f "$hdrs"
   if [ "$code" != "200" ]; then
-    echo "   FAIL: OPTIONS returned HTTP $code — add this origin to Cloud Run ALLOWED_ORIGINS (comma-separated) and redeploy/patch env"
+    echo "   FAIL: OPTIONS returned HTTP $code — add this origin to Cloud Run ALLOWED_ORIGINS (or ALLOWED_ORIGIN_REGEX), then update-traffic --to-latest"
     exit 1
   fi
-  echo "   OK (HTTP $code)"
+  if [ "$aca" != "$ORIGIN" ]; then
+    echo "   FAIL: OPTIONS 200 but Access-Control-Allow-Origin='$aca' (expected '$ORIGIN')"
+    echo "         Serving revision may still be pinned — gcloud run services update-traffic ... --to-latest"
+    exit 1
+  fi
+  echo "   OK (HTTP $code, ACA=$aca)"
 fi
 
 echo ""

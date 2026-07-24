@@ -199,6 +199,8 @@ Keep Production host on the Production Mini Program allowlist if a Production re
 
 If Vercel Preview origins call `fiqa-api-qa`, ensure `ALLOWED_ORIGINS` on **fiqa-api-qa** includes those Preview origins (QA service only — never patch Production `fiqa-api` for this).
 
+**Before Founder QA:** run `bash scripts/run_deployment_qa_gate.sh` ([DEPLOYMENT_QA_GATE.md](./DEPLOYMENT_QA_GATE.md)) — verifies latest revision @ 100%, CORS for the bookmark origin, Office Queue, and Smart Claim Start surfaces.
+
 ---
 
 ## Related

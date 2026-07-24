@@ -2,6 +2,7 @@
 
 **Use every demo, pilot touch, or production release** — must-check before saying “please try it” or “we’re live.”
 
+**Before Founder QA (required deploy/config safety):** `bash scripts/run_deployment_qa_gate.sh` — see [DEPLOYMENT_QA_GATE.md](./DEPLOYMENT_QA_GATE.md) (latest revision @ 100%, CORS, Office Queue, Smart Claim Start).  
 **Fast automated slice (API + CORS preflight):** `bash scripts/unified_intake_release_gate.sh '<Cloud Run URL>' '<exact frontend origin you will open>'`  
 **Cloud Run sizing + intake flags (read-only):** `bash scripts/guardrail_cloudrun_runtime.sh`
 
@@ -18,11 +19,12 @@ Use this order so nothing important lives only in memory:
    - **New client pack only (short path):** after adding or swapping `configs/clients/<client_id>/`, run `bash scripts/second_client_pack_short_regression.sh '<client_id>'` (defaults to `socal_precision` when omitted). This is a **bounded** check (pack JSON, per-client cross-client scenarios, Add-Car contract slice, formal-submit intent notes, local persistence); it does **not** replace the full guardrail before a release.
 3. **Cloud deploy** — backend: `bash scripts/deploy_rag_demo.sh`; frontend: `cd ui && vercel --prod` (order: usually backend first if both changed).
 4. **Runtime guardrail (cloud)** — read-only drift check: `bash scripts/guardrail_cloudrun_runtime.sh` (when you have `gcloud` access).
-5. **Release gate (automated slice)** — `bash scripts/unified_intake_release_gate.sh '<Cloud Run URL>' '<exact production or preview origin you will open>'` (same origin you will use in the browser).
-6. **Browser / manual verification** — open the **canonical** workbench URL; hard refresh; no CORS errors; one real paste → triage and workbench list sanity (sections C–D below).
-7. **Only then** — share the link with brokers or customers (“green bar” in this doc).
+5. **Deployment QA Gate (required before Founder QA)** — `bash scripts/run_deployment_qa_gate.sh` (or set `FRONTEND_ORIGIN` to the exact origin). Must print **READY FOR FOUNDER QA**. Catches old revision / wrong traffic / CORS / empty Office Queue / missing Start Claim surface. SSOT: [DEPLOYMENT_QA_GATE.md](./DEPLOYMENT_QA_GATE.md).
+6. **Release gate (automated slice)** — `bash scripts/unified_intake_release_gate.sh '<Cloud Run URL>' '<exact production or preview origin you will open>'` (same origin you will use in the browser).
+7. **Browser / manual verification** — open the **canonical** workbench URL; hard refresh; no CORS errors; one real paste → triage and workbench list sanity (sections C–D below).
+8. **Only then** — share the link with brokers or customers (“green bar” in this doc).
 
-Skipping steps 2, 5, or 6 is the most common way to ship a “successful” deploy that still fails in the real browser.
+Skipping steps 2, 5, 6, or 7 is the most common way to ship a “successful” deploy that still fails in the real browser.
 
 ---
 
@@ -48,6 +50,7 @@ Structure: **pre-deploy → post-deploy runtime → browser path → one workflo
   **Do not** use top-level `/healthz` on Cloud Run as the primary check — Google edge often returns HTML 404 before the container.
 - [ ] **Readiness (informational):** `curl -sf '<Cloud Run URL>/readyz'` — if `ok` is false, triage may still work (Qdrant path); do **not** block pilot on this alone if liveness + triage test pass (see playbook).
 - [ ] **Triage API:** `python3 scripts/test_inbox_triage_api.py --url '<Cloud Run URL>'` → **PASS**.
+- [ ] **Required before Founder QA:** `bash scripts/run_deployment_qa_gate.sh` → **READY FOR FOUNDER QA** ([DEPLOYMENT_QA_GATE.md](./DEPLOYMENT_QA_GATE.md)).
 - [ ] **Optional but high value:** `bash scripts/unified_intake_release_gate.sh '<Cloud Run URL>' '<https://your-exact-frontend-origin>'` — combines liveness + triage + **CORS preflight** for `GET /api/inbox/cases`.
 - [ ] **When you have gcloud:** `bash scripts/guardrail_cloudrun_runtime.sh` — memory/concurrency parity + shows `ALLOWED_ORIGINS` and whitelisted `UNIFIED_INTAKE_*` flags (no secrets).
 

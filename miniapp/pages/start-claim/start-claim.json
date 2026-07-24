@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "开始报案",
   "usingComponents": {
-    "task-cta": "/components/task-cta/index"
+    "task-cta": "/components/task-cta/index",
+    "smart-claim-start-panel": "/components/smart-claim-start-panel/index"
   }
 }

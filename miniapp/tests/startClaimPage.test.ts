@@ -75,6 +75,29 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
   data.initErrorMessage = "";
   data.formAuthorized = false;
   data.contextPhase = "checking";
+  data.smartUi = {
+    uiMode: "legacy",
+    planMode: "",
+    headlineZh: "",
+    subtitleZh: "",
+    confidenceSignal: "",
+    knownChips: [],
+    confirmSteps: [],
+    showAccidentForm: true,
+    showKnownSection: false,
+    showConfirmSection: false,
+    primaryCtaZh: "提交给陈总",
+    secondaryCtaZh: "",
+    whyAskTime: "",
+    whyAskPhotos: "",
+    confirmSelections: {},
+    confirmsComplete: true,
+    canShowAccidentBlock: true,
+  };
+  data.smartClaimEnabled = false;
+  data.formTitle = "告诉陈总发生了什么";
+  data.formSubtitle =
+    "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。";
   data.busy = { submitting: false, uploading: false };
   const ctx: Record<string, any> = {
     ...page,
@@ -85,6 +108,8 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
     _gateInFlight: false,
     _navigatingAway: false,
     _launchOptions: { entry: "form" },
+    _smartPlan: null,
+    _confirmSelections: {},
     _form: {
       description: "",
       accidentDatetime: "",
@@ -123,19 +148,20 @@ test("app.json registers start-claim pages first", () => {
 
 test("start-claim wxml asks accident Must Have and never teaches VIN-first", () => {
   const wxml = readFileSync(join(miniappRoot, "pages/start-claim/start-claim.wxml"), "utf8");
-  assert.match(wxml, /告诉陈总发生了什么/);
+  // Title may be bound (Smart Claim Start) or legacy literal — fields are the contract.
+  assert.match(wxml, /formTitle|告诉陈总发生了什么/);
   assert.match(wxml, /事故经过/);
   assert.match(wxml, /事故时间/);
   assert.match(wxml, /事故地点/);
   assert.match(wxml, /是否有人受伤/);
   assert.match(wxml, /提交给陈总/);
-  assert.match(wxml, /如需再补充会通知您/);
+  assert.match(wxml, /formSubtitle|如需再补充会通知您/);
   assert.match(wxml, /missingHint/);
   assert.match(wxml, /fieldErrors/);
   assert.match(wxml, /Today 9 am/);
   assert.match(wxml, /onTapRecord/);
   assert.match(wxml, /showRecordBtn/);
-  assert.match(wxml, /可录音转文字/);
+  assert.match(wxml, /smart-claim-start-panel/);
   assert.equal(wxml.includes("Coming soon"), false);
   assert.equal(wxml.includes("Coming Later"), false);
   assert.equal(wxml.includes("请填写 VIN"), false);

@@ -455,6 +455,10 @@ fi
 if [ -n "${ALLOWED_ORIGINS:-}" ]; then
     ENV_VARS+=("ALLOWED_ORIGINS=$ALLOWED_ORIGINS")
 fi
+# Optional regex for ephemeral Vercel Preview hosts (see app_main ALLOWED_ORIGIN_REGEX).
+if [ -n "${ALLOWED_ORIGIN_REGEX:-}" ]; then
+    ENV_VARS+=("ALLOWED_ORIGIN_REGEX=$ALLOWED_ORIGIN_REGEX")
+fi
 
 # OpenAI: required for LLM features (inbox triage, jobhunter, etc.)
 if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ] || [ -n "${OPENAI_API_KEY:-}" ]; then
@@ -522,6 +526,13 @@ if [ -n "${ENABLE_P35_MP_QA_HARNESS:-}" ]; then
 fi
 if [ -n "${P20_SLICE1_REQUEST_MORE:-}" ]; then
     ENV_VARS+=("P20_SLICE1_REQUEST_MORE=$P20_SLICE1_REQUEST_MORE")
+fi
+# P4 Cap 01 mock Customer Lookup (Cloud QA Founder harness — default OFF)
+if [ -n "${P4_CUSTOMER_LOOKUP_MOCK:-}" ]; then
+    ENV_VARS+=("P4_CUSTOMER_LOOKUP_MOCK=$P4_CUSTOMER_LOOKUP_MOCK")
+fi
+if [ -n "${P4_CUSTOMER_LOOKUP_FORCE_UNAVAILABLE:-}" ]; then
+    ENV_VARS+=("P4_CUSTOMER_LOOKUP_FORCE_UNAVAILABLE=$P4_CUSTOMER_LOOKUP_FORCE_UNAVAILABLE")
 fi
 
 # Optional: default client pack (GET /api/inbox/client-config without ?client= uses this)

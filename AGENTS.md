@@ -82,6 +82,7 @@ Full hierarchy: `docs/PROJECT_DOC_SYSTEM_MAP.md` → **START HERE** table.
 | Task | Command |
 |------|---------|
 | **Mini Program Build Gate** | `cd miniapp && npm run build:gate` (before Form/Nav/Preview QA) |
+| **Deployment QA Gate** | `bash scripts/run_deployment_qa_gate.sh` → `READY FOR FOUNDER QA` (latest revision, CORS, Office Queue, Smart Claim Start) |
 | **Claim release gate (local)** | `bash scripts/run_claim_release_gate.sh --local` → `READY FOR QA DEPLOY` |
 | **Claim release gate (QA)** | `bash scripts/run_claim_release_gate.sh --qa` → `READY FOR FOUNDER QA` (needs `P26H_QA_BASE_URL` + support key) |
 | **Golden Customer Flow** | `bash scripts/run_golden_customer_flow.sh --local\|--qa` |

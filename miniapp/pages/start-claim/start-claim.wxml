@@ -27,119 +27,151 @@
   </block>
 
   <block wx:elif="{{formAuthorized}}">
-    <view class="card">
-      <view class="card-title">告诉陈总发生了什么</view>
-      <view class="card-subtitle">
-        可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。
+    <!-- P4 Integration 01 — Cap 03 plan panel (no-op when legacy / flag off) -->
+    <smart-claim-start-panel
+      uiMode="{{smartUi.uiMode}}"
+      headlineZh="{{smartUi.headlineZh}}"
+      subtitleZh="{{smartUi.subtitleZh}}"
+      confidenceSignal="{{smartUi.confidenceSignal}}"
+      knownChips="{{smartUi.knownChips}}"
+      confirmSteps="{{smartUi.confirmSteps}}"
+      confirmSelections="{{smartUi.confirmSelections}}"
+      showKnownSection="{{smartUi.showKnownSection}}"
+      showConfirmSection="{{smartUi.showConfirmSection}}"
+      showAccidentForm="{{smartUi.showAccidentForm}}"
+      canShowAccidentBlock="{{smartUi.canShowAccidentBlock}}"
+      primaryCtaZh="{{smartUi.primaryCtaZh}}"
+      secondaryCtaZh="{{smartUi.secondaryCtaZh}}"
+      brokerName="{{brokerName}}"
+      bind:confirmselect="onSmartConfirmSelect"
+      bind:primarytap="onSmartPrimaryTap"
+      bind:secondarytap="onSmartSecondaryTap"
+    />
+
+    <block wx:if="{{smartUi.uiMode === 'legacy' || (smartUi.showAccidentForm && smartUi.canShowAccidentBlock)}}">
+      <view class="card">
+        <view class="card-title">{{formTitle}}</view>
+        <view class="card-subtitle">{{formSubtitle}}</view>
+
+        <view class="section-label">事故经过</view>
+        <view class="voice-row">
+          <button
+            wx:if="{{showRecordBtn}}"
+            class="voice-btn"
+            hover-class="voice-btn-hover"
+            disabled="{{recordBtnDisabled}}"
+            bindtap="onTapRecord"
+          >{{recordBtnLabel}}</button>
+          <button
+            wx:if="{{showStopBtn}}"
+            class="voice-btn voice-btn-stop"
+            hover-class="voice-btn-hover"
+            bindtap="onTapStop"
+          >停止</button>
+          <view wx:if="{{voiceHint}}" class="voice-hint">{{voiceHint}}</view>
+        </view>
+        <textarea
+          id="start-claim-description"
+          class="textarea-field {{fieldErrors.description ? 'field-invalid' : ''}}"
+          placeholder="例如：等红灯时被后车追尾。"
+          maxlength="2000"
+          value="{{description}}"
+          bindinput="onDescriptionInput"
+          bindblur="onDescriptionBlur"
+          auto-height
+          show-confirm-bar="{{false}}"
+          disabled="{{busy.submitting || storyInputDisabled}}"
+        />
+        <view class="char-count">{{charCount}} 字</view>
+        <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
+
+        <view class="section-label section-gap">事故时间</view>
+        <view wx:if="{{smartUi.whyAskTime}}" class="why-ask">{{smartUi.whyAskTime}}</view>
+        <input
+          id="start-claim-datetime"
+          class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
+          placeholder="例如：今天上午 9 点 或 Today 9 am"
+          value="{{accidentDatetime}}"
+          bindinput="onDatetimeInput"
+          bindblur="onDatetimeBlur"
+          disabled="{{busy.submitting}}"
+        />
+        <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
+
+        <view class="section-label section-gap">事故地点</view>
+        <input
+          id="start-claim-location"
+          class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
+          placeholder="城市 / 路口 / 停车场"
+          value="{{accidentLocation}}"
+          bindinput="onLocationInput"
+          bindblur="onLocationBlur"
+          disabled="{{busy.submitting}}"
+        />
+        <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
+
+        <view id="start-claim-injury" class="section-label section-gap">是否有人受伤</view>
+        <view class="choice-row">
+          <button
+            class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"
+            data-value="no"
+            bindtap="onInjurySelect"
+            disabled="{{busy.submitting}}"
+          >没有受伤</button>
+          <button
+            class="choice-btn {{injuryStatus === 'yes' ? 'choice-btn-active' : ''}}"
+            data-value="yes"
+            bindtap="onInjurySelect"
+            disabled="{{busy.submitting}}"
+          >有人受伤</button>
+          <button
+            class="choice-btn {{injuryStatus === 'unknown' ? 'choice-btn-active' : ''}}"
+            data-value="unknown"
+            bindtap="onInjurySelect"
+            disabled="{{busy.submitting}}"
+          >不确定</button>
+        </view>
+        <view wx:if="{{fieldErrors.injuryStatus}}" class="field-error">{{fieldErrors.injuryStatus}}</view>
+        <view wx:if="{{smartUi.whyAskPhotos}}" class="why-ask why-ask-photos">{{smartUi.whyAskPhotos}}</view>
       </view>
 
-      <view class="section-label">事故经过</view>
-      <view class="voice-row">
+      <view class="card" wx:if="{{errorMessage}}">
+        <view class="error-text">{{errorMessage}}</view>
         <button
-          wx:if="{{showRecordBtn}}"
-          class="voice-btn"
-          hover-class="voice-btn-hover"
-          disabled="{{recordBtnDisabled}}"
-          bindtap="onTapRecord"
-        >{{recordBtnLabel}}</button>
+          wx:if="{{errorRetryable}}"
+          class="btn-secondary"
+          hover-class="btn-secondary-hover"
+          bindtap="onRetry"
+          disabled="{{busy.submitting}}"
+        >重试提交</button>
         <button
-          wx:if="{{showStopBtn}}"
-          class="voice-btn voice-btn-stop"
-          hover-class="voice-btn-hover"
-          bindtap="onTapStop"
-        >停止</button>
-        <view wx:if="{{voiceHint}}" class="voice-hint">{{voiceHint}}</view>
+          class="btn-secondary"
+          hover-class="btn-secondary-hover"
+          bindtap="onContactBroker"
+          disabled="{{busy.submitting}}"
+        >联系{{brokerName}}</button>
       </view>
-      <textarea
-        id="start-claim-description"
-        class="textarea-field {{fieldErrors.description ? 'field-invalid' : ''}}"
-        placeholder="例如：等红灯时被后车追尾。"
-        maxlength="2000"
-        value="{{description}}"
-        bindinput="onDescriptionInput"
-        bindblur="onDescriptionBlur"
-        auto-height
-        show-confirm-bar="{{false}}"
-        disabled="{{busy.submitting || storyInputDisabled}}"
-      />
-      <view class="char-count">{{charCount}} 字</view>
-      <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
 
-      <view class="section-label section-gap">事故时间</view>
-      <input
-        id="start-claim-datetime"
-        class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
-        placeholder="例如：今天上午 9 点 或 Today 9 am"
-        value="{{accidentDatetime}}"
-        bindinput="onDatetimeInput"
-        bindblur="onDatetimeBlur"
-        disabled="{{busy.submitting}}"
-      />
-      <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
+      <view class="safety-footer">{{shellSafetyCopy}}</view>
 
-      <view class="section-label section-gap">事故地点</view>
-      <input
-        id="start-claim-location"
-        class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
-        placeholder="城市 / 路口 / 停车场"
-        value="{{accidentLocation}}"
-        bindinput="onLocationInput"
-        bindblur="onLocationBlur"
-        disabled="{{busy.submitting}}"
-      />
-      <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
-
-      <view id="start-claim-injury" class="section-label section-gap">是否有人受伤</view>
-      <view class="choice-row">
-        <button
-          class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"
-          data-value="no"
-          bindtap="onInjurySelect"
-          disabled="{{busy.submitting}}"
-        >没有受伤</button>
-        <button
-          class="choice-btn {{injuryStatus === 'yes' ? 'choice-btn-active' : ''}}"
-          data-value="yes"
-          bindtap="onInjurySelect"
-          disabled="{{busy.submitting}}"
-        >有人受伤</button>
-        <button
-          class="choice-btn {{injuryStatus === 'unknown' ? 'choice-btn-active' : ''}}"
-          data-value="unknown"
-          bindtap="onInjurySelect"
-          disabled="{{busy.submitting}}"
-        >不确定</button>
+      <view class="footer-cta">
+        <view wx:if="{{!canSubmit && missingHint && !busy.submitting}}" class="submit-hint">{{missingHint}}</view>
+        <task-cta
+          label="提交给陈总"
+          disabled="{{busy.submitting || !canSubmit || confirmDisabled}}"
+          loading="{{busy.submitting}}"
+          bindtap="onSubmit"
+        />
       </view>
-      <view wx:if="{{fieldErrors.injuryStatus}}" class="field-error">{{fieldErrors.injuryStatus}}</view>
-    </view>
+    </block>
 
-    <view class="card" wx:if="{{errorMessage}}">
+    <view class="card" wx:elif="{{errorMessage}}">
       <view class="error-text">{{errorMessage}}</view>
-      <button
-        wx:if="{{errorRetryable}}"
-        class="btn-secondary"
-        hover-class="btn-secondary-hover"
-        bindtap="onRetry"
-        disabled="{{busy.submitting}}"
-      >重试提交</button>
       <button
         class="btn-secondary"
         hover-class="btn-secondary-hover"
         bindtap="onContactBroker"
-        disabled="{{busy.submitting}}"
       >联系{{brokerName}}</button>
-    </view>
-
-    <view class="safety-footer">{{shellSafetyCopy}}</view>
-
-    <view class="footer-cta">
-      <view wx:if="{{!canSubmit && missingHint && !busy.submitting}}" class="submit-hint">{{missingHint}}</view>
-      <task-cta
-        label="提交给陈总"
-        disabled="{{busy.submitting || !canSubmit || confirmDisabled}}"
-        loading="{{busy.submitting}}"
-        bindtap="onSubmit"
-      />
     </view>
   </block>
 </view>

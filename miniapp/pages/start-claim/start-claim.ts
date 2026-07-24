@@ -4,6 +4,10 @@ import {
   startClaim,
   transcribeStartClaimStoryAudio,
 } from "../../services/startClaimApi";
+import {
+  fetchSmartClaimStartPlan,
+  type SmartClaimStartPlan,
+} from "../../services/smartClaimStartApi";
 import { resolveCustomerContext } from "../../services/sessionIdentityAdapter";
 import { ApiRequestError } from "../../utils/request";
 import { resetApiHealthCache } from "../../utils/apiHealth";
@@ -42,6 +46,12 @@ import {
   redirectStartClaimIfActiveCase,
   resetStartClaimDraftState,
 } from "../../utils/startClaimEntry";
+import {
+  buildSmartClaimUiState,
+  emptySmartClaimUiState,
+  resolveMockScenarioFromQuery,
+  type SmartClaimUiState,
+} from "../../utils/smartClaimStartPlan";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import {
   VOICE_MAX_RECORD_MS,
@@ -96,6 +106,11 @@ type PageData = {
   recordBtnDisabled: boolean;
   storyInputDisabled: boolean;
   confirmDisabled: boolean;
+  /** P4 Integration 01 — Smart Claim Start presentation (legacy when flag off). */
+  smartUi: SmartClaimUiState;
+  smartClaimEnabled: boolean;
+  formTitle: string;
+  formSubtitle: string;
   busy: {
     submitting: boolean;
     uploading: boolean;
@@ -112,6 +127,8 @@ Page({
   _divertedToHome: false,
   _gateInFlight: false,
   _navigatingAway: false,
+  _smartPlan: null as SmartClaimStartPlan | null,
+  _confirmSelections: {} as Record<string, string>,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
@@ -121,6 +138,11 @@ Page({
     formAuthorized: false,
     contextPhase: "checking",
     pageReady: true,
+    smartUi: emptySmartClaimUiState(),
+    smartClaimEnabled: Boolean(appConfig.smartClaimStartEnabled),
+    formTitle: "告诉陈总发生了什么",
+    formSubtitle:
+      "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
     busy: {
       submitting: false,
       uploading: false,
@@ -243,6 +265,8 @@ Page({
         resetStartClaimDraftState();
         this._submitState = createStartClaimSubmitState();
         this._form = createEmptyCanonicalForm();
+        this._smartPlan = null;
+        this._confirmSelections = {};
         const validated = validateStartClaimForm({
           ...this._form,
           reachabilityKnown: true,
@@ -258,7 +282,13 @@ Page({
           initErrorMessage: "",
           errorMessage: "",
           errorRetryable: false,
+          smartUi: emptySmartClaimUiState(),
+          smartClaimEnabled: Boolean(appConfig.smartClaimStartEnabled),
+          formTitle: "告诉陈总发生了什么",
+          formSubtitle:
+            "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
         });
+        await this.loadSmartClaimStartPlan();
       } else {
         this.setData({
           formAuthorized: true,
@@ -281,6 +311,96 @@ Page({
     } finally {
       this._gateInFlight = false;
     }
+  },
+
+  /**
+   * P4 Integration 01 — Cap 01→02→03 plan. Fail-open to legacy form.
+   */
+  async loadSmartClaimStartPlan() {
+    if (!appConfig.smartClaimStartEnabled) {
+      this._smartPlan = null;
+      this._confirmSelections = {};
+      this.setData({
+        smartClaimEnabled: false,
+        smartUi: emptySmartClaimUiState(),
+      });
+      return;
+    }
+    try {
+      const mockScenario = resolveMockScenarioFromQuery(this._launchOptions);
+      const res = await fetchSmartClaimStartPlan({
+        mockScenario: mockScenario || undefined,
+      });
+      const plan = res && res.plan ? res.plan : null;
+      this._smartPlan = plan;
+      this._confirmSelections = {};
+      const smartUi = buildSmartClaimUiState(plan, this._confirmSelections);
+      const matched = smartUi.uiMode === "matched";
+      this.setData({
+        smartClaimEnabled: true,
+        smartUi,
+        formTitle: matched || smartUi.uiMode === "blank_degrade" ? "事故事实" : "告诉陈总发生了什么",
+        formSubtitle: matched
+          ? "只需补充今天的事故情况。照片现在可以跳过，之后也可以补交。"
+          : "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+      });
+      qaPathLog("BOOTSTRAP", {
+        page: "pages/start-claim/start-claim",
+        phase: "smart_claim_start_plan",
+        mode: smartUi.planMode || "legacy",
+      });
+    } catch {
+      // S6 / network: never dead-end — keep existing accident form.
+      this._smartPlan = null;
+      this._confirmSelections = {};
+      this.setData({
+        smartClaimEnabled: true,
+        smartUi: emptySmartClaimUiState(),
+        formTitle: "告诉陈总发生了什么",
+        formSubtitle:
+          "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+      });
+      qaPathLog("BOOTSTRAP", {
+        page: "pages/start-claim/start-claim",
+        phase: "smart_claim_start_degraded",
+      });
+    }
+  },
+
+  _applySmartUiFromSelections() {
+    const smartUi = buildSmartClaimUiState(this._smartPlan, this._confirmSelections);
+    this.setData({ smartUi });
+  },
+
+  onSmartConfirmSelect(e: WechatMiniprogram.CustomEvent) {
+    const stepId = String((e.detail && e.detail.stepId) || "").trim();
+    const option = String((e.detail && e.detail.option) || "").trim();
+    if (!stepId || !option) return;
+    this._confirmSelections = { ...this._confirmSelections, [stepId]: option };
+    this._applySmartUiFromSelections();
+  },
+
+  onSmartPrimaryTap() {
+    const mode = String(this.data.smartUi?.uiMode || "");
+    if (mode === "continue_active") {
+      // Mock or real One Active Case — never create a duplicate claim.
+      this.interruptResumedActiveCase("");
+      return;
+    }
+    if (mode === "contact_broker") {
+      this.onContactBroker();
+      return;
+    }
+  },
+
+  onSmartSecondaryTap() {
+    const mode = String(this.data.smartUi?.uiMode || "");
+    if (mode === "continue_active") {
+      this.onContactBroker();
+      return;
+    }
+    // Matched "修改我的信息" — lightweight contact path; no identity redesign.
+    this.onContactBroker();
   },
 
   onUnload() {
@@ -550,6 +670,21 @@ Page({
   async onSubmit() {
     if (!this.data.formAuthorized || this.data.contextPhase !== "ready") return;
     if (this.data.confirmDisabled) return;
+    const smartUi = this.data.smartUi || emptySmartClaimUiState();
+    // Never create a claim from continue / contact gates.
+    if (smartUi.uiMode === "continue_active" || smartUi.uiMode === "contact_broker") {
+      return;
+    }
+    if (smartUi.showConfirmSection && !smartUi.confirmsComplete) {
+      this.setData({
+        errorMessage: "请先确认车辆或保单信息，再填写事故事实。",
+        errorRetryable: false,
+      });
+      return;
+    }
+    if (smartUi.showAccidentForm && !smartUi.canShowAccidentBlock) {
+      return;
+    }
     // Final flush from canonical `_form` (already updated by input/blur).
     const validated = this._applyFormPatch({}, { showErrors: true });
     if (!validated.ok) {

@@ -152,7 +152,11 @@ export function redirectStartClaimIfActiveCase(
  */
 export function assertStartClaimWxmlNotBlankable(wxml: string): string[] {
   const failures: string[] = [];
-  if (!wxml.includes("告诉陈总发生了什么") && !wxml.includes("事故经过")) {
+  if (
+    !wxml.includes("告诉陈总发生了什么") &&
+    !wxml.includes("formTitle") &&
+    !wxml.includes("事故经过")
+  ) {
     failures.push("missing visible form title/fields");
   }
   if (!wxml.includes("formAuthorized")) {
