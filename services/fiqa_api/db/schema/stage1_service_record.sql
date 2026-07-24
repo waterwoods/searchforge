@@ -29,8 +29,16 @@ CREATE TABLE IF NOT EXISTS service_records (
     updated_at TIMESTAMPTZ NOT NULL,
     closed_at TIMESTAMPTZ,
     office_owner_org_id TEXT,
+    -- P3-B: human case reference CLM-#### (additive; record_id remains PK)
+    case_ref TEXT,
     extra JSONB NOT NULL DEFAULT '{}'::jsonb
 );
+
+CREATE SEQUENCE IF NOT EXISTS service_records_case_ref_seq;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_service_records_case_ref
+    ON service_records (case_ref)
+    WHERE case_ref IS NOT NULL AND TRIM(case_ref) <> '';
 
 CREATE INDEX IF NOT EXISTS idx_service_records_client_updated
     ON service_records (client_id, updated_at DESC);

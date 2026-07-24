@@ -24,18 +24,27 @@ test('fullCaseId returns exact trimmed id', () => {
   assert.equal(fullCaseId(undefined), '');
 });
 
-test('document-intake exposes short Case ID column and full detail copy', () => {
+test('document-intake freeze: list has no identifiers; detail keeps internal Case ID copy', () => {
   const page = readFileSync(
     join(here, '../../../pages/DocumentIntakeInboxPage.tsx'),
     'utf8',
   );
-  assert.match(page, /title:\s*'Case ID'/);
-  assert.match(page, /shortCaseId/);
-  assert.match(page, /CaseIdMeta/);
-  assert.match(page, /mode:\s*'row'\s*\|\s*'detail'/);
-  assert.match(page, /mode="detail"/);
-  assert.match(page, /Copy Case ID|Case ID copied|Copy \$\{full\}|aria-label=\{`Copy Case ID/);
+  assert.match(page, /InternalCaseIdMeta/);
+  assert.match(page, /title:\s*'客户'/);
+  assert.match(page, /title:\s*'车辆'/);
+  assert.match(page, /title:\s*'下一步'/);
+  assert.match(page, /title:\s*'更新'/);
+  assert.match(page, /title:\s*'打开'/);
+  assert.match(page, /内部 Case ID/);
+  assert.match(page, /Copy Case ID|已复制内部 Case ID|aria-label=\{`Copy Case ID/);
   assert.match(page, /copyToClipboard\(full\)/);
+  // Frozen: no Case Number / Case ID / Lane columns on the main list.
+  assert.doesNotMatch(page, /title:\s*'案件'/);
+  assert.doesNotMatch(page, /title:\s*'Case ID'/);
+  assert.doesNotMatch(page, /title:\s*'Lane'/);
+  assert.doesNotMatch(page, /mode:\s*'row'/);
+  assert.doesNotMatch(page, /案件编号/);
+  assert.doesNotMatch(page, /CLM-####/);
   // Must not expose resume tokens / person_link in the Case ID UI helper.
   assert.doesNotMatch(page, /resume_token|person_link_key|mp_prototype_resume/);
 });

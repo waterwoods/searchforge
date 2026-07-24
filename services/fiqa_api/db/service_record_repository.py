@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # First-connection DDL: promoted office ownership column (nullable, indexed).
 _OFFICE_OWNER_SCHEMA_READY = False
+_CASE_REF_SCHEMA_READY = False
 
 
 def _ensure_office_owner_org_schema(cur: Any) -> None:
@@ -50,6 +51,112 @@ def _ensure_office_owner_org_schema(cur: Any) -> None:
     logger.info(
         "service_records office_owner_org_id schema verified (IFF adds column; backfill from extra)"
     )
+
+
+def _ensure_case_ref_schema(cur: Any) -> None:
+    """P3-B: additive ``case_ref`` column + sequence; backfill CLM-#### for existing rows.
+
+    DDL runs on a dedicated autocommit connection so a later read-only connection
+    close cannot roll back the schema while leaving the process-local READY flag
+    stuck True (which previously emptied GET /api/inbox/cases).
+    """
+
+    global _CASE_REF_SCHEMA_READY
+    if _CASE_REF_SCHEMA_READY:
+        return
+
+    # Cheap truth check — never trust READY alone after a rolled-back DDL txn.
+    cur.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'service_records'
+          AND column_name = 'case_ref'
+        LIMIT 1
+        """
+    )
+    if cur.fetchone():
+        _CASE_REF_SCHEMA_READY = True
+        return
+
+    import psycopg
+
+    url = service_record_database_url()
+    if not url:
+        raise RuntimeError("no service record database URL configured")
+
+    with psycopg.connect(url, connect_timeout=3, autocommit=True) as ddl_conn:
+        with ddl_conn.cursor() as ddl_cur:
+            ddl_cur.execute(
+                """
+                ALTER TABLE service_records
+                ADD COLUMN IF NOT EXISTS case_ref TEXT
+                """
+            )
+            ddl_cur.execute("CREATE SEQUENCE IF NOT EXISTS service_records_case_ref_seq")
+            ddl_cur.execute(
+                """
+                WITH numbered AS (
+                    SELECT record_id,
+                           nextval('service_records_case_ref_seq') AS n
+                    FROM service_records
+                    WHERE case_ref IS NULL OR TRIM(case_ref) = ''
+                    ORDER BY created_at ASC NULLS LAST, record_id ASC
+                )
+                UPDATE service_records sr
+                SET case_ref = 'CLM-' || LPAD(numbered.n::text, 4, '0')
+                FROM numbered
+                WHERE sr.record_id = numbered.record_id
+                """
+            )
+            ddl_cur.execute(
+                """
+                SELECT setval(
+                    'service_records_case_ref_seq',
+                    GREATEST(
+                        COALESCE(
+                            (
+                                SELECT MAX(
+                                    CASE
+                                        WHEN case_ref ~ '^CLM-[0-9]+$'
+                                        THEN SUBSTRING(case_ref FROM 5)::bigint
+                                        ELSE 0
+                                    END
+                                )
+                                FROM service_records
+                            ),
+                            0
+                        ),
+                        1
+                    ),
+                    true
+                )
+                """
+            )
+            ddl_cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_service_records_case_ref
+                ON service_records (case_ref)
+                WHERE case_ref IS NOT NULL AND TRIM(case_ref) <> ''
+                """
+            )
+
+    _CASE_REF_SCHEMA_READY = True
+    logger.info("service_records case_ref schema verified (IFF add + backfill CLM-####)")
+
+
+def allocate_case_ref_number() -> int:
+    """Allocate the next case_ref sequence integer from Postgres."""
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_case_ref_schema(cur)
+            cur.execute("SELECT nextval('service_records_case_ref_seq')")
+            row = cur.fetchone()
+            n = int(row[0]) if row else 0
+            if n < 1:
+                raise RuntimeError("case_ref_sequence_invalid")
+            return n
 
 
 def _office_owner_org_id_from_case(case: dict[str, Any]) -> str | None:
@@ -162,6 +269,8 @@ def _build_structured_payload(case: dict[str, Any]) -> dict[str, Any]:
         "p20_slice1_request_summary",
         "manual_handle",
         "urgent",
+        # P3-B — human case reference (also promoted to service_records.case_ref)
+        "case_ref",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -354,6 +463,12 @@ def persist_new_case(case: dict[str, Any]) -> None:
         with conn.transaction():
             with conn.cursor() as cur:
                 _ensure_office_owner_org_schema(cur)
+                _ensure_case_ref_schema(cur)
+                case_ref = _str(case.get("case_ref")) or None
+                if not case_ref:
+                    from services.fiqa_api.inbox_triage.case_ref import ensure_case_ref
+
+                    case_ref = ensure_case_ref(case)
                 cur.execute(
                     """
                     INSERT INTO service_records (
@@ -362,14 +477,14 @@ def persist_new_case(case: dict[str, Any]) -> None:
                         current_owner, current_next_action,
                         customer_name, customer_phone, customer_email, policy_number, contact_note,
                         origin_session_id, created_at, updated_at, closed_at,
-                        office_owner_org_id, extra
+                        office_owner_org_id, case_ref, extra
                     ) VALUES (
                         %(record_id)s, %(client_id)s, %(intake_channel)s, %(issue_category)s, %(title_summary)s,
                         %(case_status)s, %(lifecycle_status)s, %(waiting_on)s, %(next_contact_by)s,
                         %(current_owner)s, %(current_next_action)s,
                         %(customer_name)s, %(customer_phone)s, %(customer_email)s, %(policy_number)s, %(contact_note)s,
                         %(origin_session_id)s, %(created_at)s, %(updated_at)s, %(closed_at)s,
-                        %(office_owner_org_id)s, %(extra)s
+                        %(office_owner_org_id)s, %(case_ref)s, %(extra)s
                     )
                     """,
                     {
@@ -398,6 +513,7 @@ def persist_new_case(case: dict[str, Any]) -> None:
                         "updated_at": now_updated,
                         "closed_at": None,
                         "office_owner_org_id": oid_col,
+                        "case_ref": case_ref,
                         "extra": Json(extra),
                     },
                 )
@@ -492,6 +608,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
         with conn.transaction():
             with conn.cursor() as cur:
                 _ensure_office_owner_org_schema(cur)
+                _ensure_case_ref_schema(cur)
                 cur.execute(
                     "SELECT extra FROM service_records WHERE record_id = %s FOR UPDATE",
                     (record_id,),
@@ -501,6 +618,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
                     existing_row[0] if existing_row and isinstance(existing_row[0], dict) else {}
                 )
                 extra = {**existing_extra, **extra_patch}
+                case_ref = _str(case.get("case_ref")) or None
                 cur.execute(
                     """
                     UPDATE service_records SET
@@ -523,6 +641,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
                             NULLIF(TRIM(%(office_owner_patch)s), ''),
                             office_owner_org_id
                         ),
+                        case_ref = COALESCE(NULLIF(TRIM(case_ref), ''), %(case_ref)s),
                         extra = %(extra)s
                     WHERE record_id = %(record_id)s
                     """,
@@ -548,6 +667,7 @@ def persist_case_append(case: dict[str, Any]) -> None:
                         "updated_at": now_updated,
                         "closed_at": _str(case.get("closed_at")) or None,
                         "office_owner_patch": oid_incoming,
+                        "case_ref": case_ref,
                         "extra": Json(extra),
                     },
                 )
@@ -755,6 +875,7 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
     with service_record_connection() as conn:
         with conn.cursor() as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 """
                 SELECT
@@ -778,7 +899,8 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
                     sr.office_owner_org_id,
                     sr.extra,
                     srd.structured_payload,
-                    srd.quote_readiness
+                    srd.quote_readiness,
+                    sr.case_ref
                 FROM service_records sr
                 LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
                 WHERE sr.record_id = %s
@@ -816,6 +938,7 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
     extra = row[18] if isinstance(row[18], dict) else {}
     structured = row[19] if isinstance(row[19], dict) else {}
     q_readiness_col = _str(row[20])
+    case_ref_col = _str(row[21]) if len(row) > 21 else ""
 
     case: dict[str, Any] = {}
     for k, v in structured.items():
@@ -859,6 +982,11 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
         case["workbench_archived"] = bool(extra.get("workbench_archived"))
     _hydrate_extra_pilot_fields(case, extra)
     _hydrate_case_asserted_org_id(case, office_owner_col, extra)
+    if case_ref_col:
+        case["case_ref"] = case_ref_col
+    elif not _str(case.get("case_ref")):
+        # Legacy rows before backfill — leave empty; list projection may lazy-assign.
+        pass
 
     if q_readiness_col:
         case["quote_ready_status"] = q_readiness_col
@@ -941,6 +1069,7 @@ def count_service_records_office_scoped(req_org: str, strict_exclude_unstamped: 
     with service_record_connection() as conn:
         with conn.cursor() as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 f"SELECT COUNT(*) FROM service_records sr WHERE {_PG_OFFICE_LIST_FILTER}",
                 {"strict": strict_exclude_unstamped, "req_org": org},
@@ -965,6 +1094,7 @@ def list_record_ids_office_scoped(
     with service_record_connection() as conn:
         with conn.cursor() as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 f"""
                 SELECT sr.record_id FROM service_records sr
@@ -1004,7 +1134,8 @@ _PG_LIST_SELECT = """
                     sr.office_owner_org_id,
                     sr.extra,
                     srd.structured_payload,
-                    srd.quote_readiness
+                    srd.quote_readiness,
+                    sr.case_ref
                 FROM service_records sr
                 LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
 """
@@ -1025,6 +1156,7 @@ def list_binding_stub_rows_recent(limit: int, offset: int = 0) -> list[dict[str,
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT
                 + """
@@ -1063,6 +1195,7 @@ def list_binding_stub_rows_office_scoped(
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT
                 + f"""
@@ -1137,6 +1270,9 @@ def _case_dict_from_pg_join_dict_row(row: dict[str, Any]) -> dict[str, Any]:
         case["workbench_archived"] = bool(extra.get("workbench_archived"))
     _hydrate_extra_pilot_fields(case, extra)
     _hydrate_case_asserted_org_id(case, row.get("office_owner_org_id"), extra)
+    case_ref_col = _str(row.get("case_ref"))
+    if case_ref_col:
+        case["case_ref"] = case_ref_col
 
     if q_readiness_col:
         case["quote_ready_status"] = q_readiness_col
@@ -1166,6 +1302,7 @@ def list_binding_stub_rows_by_phone_digits(phone_digits: str, limit: int = 24) -
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT
                 + """
@@ -1199,6 +1336,7 @@ def load_workbench_queue_cases_from_postgres(record_ids: list[str]) -> list[dict
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT + " WHERE sr.record_id = ANY(%s)",
                 (ids,),
@@ -1243,6 +1381,7 @@ def load_case_triage_stub_from_postgres(record_id: str) -> dict[str, Any] | None
     with service_record_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             _ensure_office_owner_org_schema(cur)
+            _ensure_case_ref_schema(cur)
             cur.execute(
                 _PG_LIST_SELECT + " WHERE sr.record_id = %s",
                 (rid,),
@@ -1654,6 +1793,7 @@ class _PostgresSlice1Store:
         with service_record_connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 _ensure_office_owner_org_schema(cur)
+                _ensure_case_ref_schema(cur)
                 _ensure_slice1_schema(cur)
                 return self._snapshot(cur, cid, lock_case=False)
 
@@ -1677,6 +1817,7 @@ class _PostgresSlice1Store:
             with conn.transaction():
                 with conn.cursor(row_factory=dict_row) as cur:
                     _ensure_office_owner_org_schema(cur)
+                    _ensure_case_ref_schema(cur)
                     _ensure_slice1_schema(cur)
                     snapshot = self._snapshot(cur, cid, lock_case=True)
                     if snapshot is None:
@@ -2200,6 +2341,7 @@ class _PostgresCaseIntakeStore:
         with service_record_connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 _ensure_office_owner_org_schema(cur)
+                _ensure_case_ref_schema(cur)
                 _ensure_case_intake_schema(cur)
                 # Ensure Slice 1 schema exists so open-request probe does not fail hard.
                 try:
@@ -2513,6 +2655,7 @@ class _PostgresCaseIntakeStore:
             with conn.transaction():
                 with conn.cursor(row_factory=dict_row) as cur:
                     _ensure_office_owner_org_schema(cur)
+                    _ensure_case_ref_schema(cur)
                     _ensure_case_intake_schema(cur)
                     try:
                         _ensure_slice1_schema(cur)
@@ -2572,6 +2715,7 @@ class _PostgresCaseIntakeStore:
             with conn.transaction():
                 with conn.cursor(row_factory=dict_row) as cur:
                     _ensure_office_owner_org_schema(cur)
+                    _ensure_case_ref_schema(cur)
                     _ensure_case_intake_schema(cur)
                     try:
                         _ensure_slice1_schema(cur)
@@ -2738,6 +2882,7 @@ class _PostgresSendRequestStore:
         with service_record_connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 _ensure_office_owner_org_schema(cur)
+                _ensure_case_ref_schema(cur)
                 _ensure_case_intake_schema(cur)
                 _ensure_slice1_schema(cur)
                 _ensure_customer_access_schema(cur)
@@ -2853,6 +2998,7 @@ class _PostgresSendRequestStore:
             with conn.transaction():
                 with conn.cursor(row_factory=dict_row) as cur:
                     _ensure_office_owner_org_schema(cur)
+                    _ensure_case_ref_schema(cur)
                     _ensure_case_intake_schema(cur)
                     _ensure_slice1_schema(cur)
                     _ensure_customer_access_schema(cur)

@@ -484,7 +484,25 @@ export type CreateClaimCommand = {
     title?: string;
     vin?: string;
     accident_description?: string;
+    /** P3-B: optional QA device/label (e.g. Founder-iPhone) */
+    qa_label?: string;
     known_facts?: Record<string, string>;
+};
+
+/** P3-B Slice 1 — broker list findability projection */
+export type WorkbenchListProjection = {
+    case_ref?: string | null;
+    customer_display_name?: string | null;
+    phone_last_four?: string | null;
+    policy_suffix?: string | null;
+    vehicle_summary?: string | null;
+    qa_label?: string | null;
+    is_test?: boolean;
+    customer_current_action_label?: string | null;
+    broker_next_action_label?: string | null;
+    latest_meaningful_summary?: string | null;
+    updated_at?: string | null;
+    filter_bucket?: string | null;
 };
 
 export type SaveRequestDraftCommand = {
@@ -822,6 +840,10 @@ export type PgMirrorState = 'unknown' | 'mirrored' | 'pg_missing' | 'mismatch';
 
 export interface SavedCase extends TriageResult {
     case_id: string;
+    /** P3-B: human case reference CLM-#### (immutable after assignment) */
+    case_ref?: string | null;
+    /** P3-B: broker list findability projection */
+    workbench_list?: WorkbenchListProjection | null;
     case_status: CaseStatus;
     created_at: string;
     updated_at: string;
@@ -1115,6 +1137,7 @@ export async function createClaimCase(command: CreateClaimCommand): Promise<Case
         title: command.title,
         vin: command.vin,
         accident_description: command.accident_description,
+        qa_label: command.qa_label,
         known_facts: command.known_facts,
     });
     return response.data;

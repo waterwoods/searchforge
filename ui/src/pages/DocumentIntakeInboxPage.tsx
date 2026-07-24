@@ -8,7 +8,10 @@ import {
   Button,
   Card,
   Drawer,
+  Input,
   Modal,
+  Segmented,
+  Select,
   Skeleton,
   Space,
   Spin,
@@ -25,6 +28,7 @@ import {
   PaperClipOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import {
   confirmCaseByBroker,
@@ -68,7 +72,22 @@ import {
   logCaseDetailLoaded,
   type WorkbenchPerfSession,
 } from '@/features/intake/utils/workbenchPerfLog';
-import { fullCaseId, shortCaseId } from '@/features/intake/utils/caseIdDisplay';
+import { fullCaseId } from '@/features/intake/utils/caseIdDisplay';
+import {
+  defaultTestFilterForEnv,
+  formatRelativeUpdated,
+  matchesWorkbenchFilters,
+  matchesWorkbenchSearch,
+  resolveCurrentActionLabel,
+  resolveFindabilityCustomerName,
+  resolveFindabilityPhoneLastFour,
+  resolveIsTestCase,
+  resolveLatestSummary,
+  resolveQaLabel,
+  resolveVehicleContext,
+  type WorkbenchStatusFilter,
+  type WorkbenchTestFilter,
+} from '@/features/intake/utils/workbenchFindability';
 import { resolveDrawerRefreshPresentation } from '@/features/intake/utils/workbenchDrawerRefresh';
 import { copyToClipboard } from '@/utils/demoCopy';
 
@@ -76,65 +95,36 @@ const { Title, Text, Paragraph } = Typography;
 
 const OFFICE_NAME = 'Chen Kui Insurance Office';
 
-/** Compact Founder QA Case ID line — short in tables, full + copy in detail. */
-function CaseIdMeta({
-  caseId,
-  mode,
+/** P3-B freeze: list has no identifiers; detail drawer exposes internal case_id only. */
+function InternalCaseIdMeta({
+  caseItem,
 }: {
-  caseId: string;
-  mode: 'row' | 'detail';
+  caseItem: Pick<SavedCase, 'case_id'>;
 }) {
-  const full = fullCaseId(caseId);
+  const full = fullCaseId(caseItem.case_id);
   if (!full) return null;
-  const short = shortCaseId(full);
-  const onCopy = async (e?: MouseEvent) => {
+  const onCopyInternal = async (e?: MouseEvent) => {
     e?.stopPropagation?.();
     const ok = await copyToClipboard(full);
-    message.success(ok ? 'Case ID copied' : 'Copy failed');
+    message.success(ok ? '已复制内部 Case ID' : '复制失败');
   };
-  if (mode === 'row') {
-    return (
-      <Space size={2}>
-        <Text
-          type="secondary"
-          style={{ fontSize: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-          title={full}
-        >
-          {short}
-        </Text>
-        <Button
-          type="text"
-          size="small"
-          icon={<CopyOutlined />}
-          onClick={(e) => void onCopy(e)}
-          title={`Copy ${full}`}
-          aria-label={`Copy Case ID ${full}`}
-          style={{ width: 22, height: 22, padding: 0 }}
-        />
-      </Space>
-    );
-  }
   return (
-    <Space size={6} style={{ marginBottom: 12 }} wrap>
+    <Space size={6} wrap style={{ marginBottom: 12 }}>
       <Text type="secondary" style={{ fontSize: 12 }}>
-        Case ID
+        内部 Case ID
       </Text>
-      <Text
-        code
-        copyable={false}
-        style={{ fontSize: 12 }}
-        title={full}
-      >
+      <Text code style={{ fontSize: 12 }} title={full}>
         {full}
       </Text>
       <Button
         type="link"
         size="small"
         icon={<CopyOutlined />}
-        onClick={() => void onCopy()}
+        onClick={() => void onCopyInternal()}
         style={{ padding: 0, height: 'auto' }}
+        aria-label={`Copy Case ID ${full}`}
       >
-        Copy
+        复制
       </Button>
     </Space>
   );
@@ -159,8 +149,11 @@ type QueueRow = {
   key: string;
   case_id: string;
   customer_name: string;
-  lane: string;
-  status: string;
+  phone_last_four: string | null;
+  qa_label: string | null;
+  is_test: boolean;
+  vehicle_context: string;
+  current_action: string;
   summary: string;
   opportunity_badges: OpportunityBadge[];
   updated_at: string;
@@ -382,14 +375,7 @@ function buildSummary(c: SavedCase): string {
 }
 
 function formatUpdated(iso: string): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
+  return formatRelativeUpdated(iso);
 }
 
 function OpportunityBadgeList({ badges }: { badges: OpportunityBadge[] }) {
@@ -552,7 +538,7 @@ function BrokerCaseDetail({
   if (!hasFullPacket) {
     return (
       <div>
-        <CaseIdMeta caseId={caseItem.case_id} mode="detail" />
+        <InternalCaseIdMeta caseItem={caseItem} />
         <Space style={{ marginBottom: 12 }} wrap>
           <ClosedHistoryBadge caseRecord={caseItem} />
         </Space>
@@ -682,7 +668,7 @@ function BrokerCaseDetail({
 
   return (
     <div>
-      <CaseIdMeta caseId={caseItem.case_id} mode="detail" />
+      <InternalCaseIdMeta caseItem={caseItem} />
       <Space style={{ marginBottom: 12 }} wrap>
         <ClosedHistoryBadge caseRecord={caseItem} />
       </Space>
@@ -860,7 +846,30 @@ export default function DocumentIntakeInboxPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [claimBrokerDoneSaving, setClaimBrokerDoneSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<WorkbenchStatusFilter>('all');
+  const [testFilter, setTestFilter] = useState<WorkbenchTestFilter>(() => defaultTestFilterForEnv());
   const [messageApi, contextHolder] = message.useMessage();
+
+  const mapCaseToRow = useCallback((c: SavedCase): QueueRow => {
+    const phone4 = resolveFindabilityPhoneLastFour(c);
+    const displayName = resolveFindabilityCustomerName(c);
+    return {
+      key: c.case_id,
+      case_id: c.case_id,
+      customer_name: phone4 && !displayName.includes(phone4) ? `${displayName} · ${phone4}` : displayName,
+      phone_last_four: phone4,
+      qa_label: resolveQaLabel(c),
+      is_test: resolveIsTestCase(c),
+      vehicle_context: resolveVehicleContext(c),
+      current_action: resolveCurrentActionLabel(c),
+      summary: resolveLatestSummary(c) || buildSummary(c),
+      opportunity_badges: buildOpportunityBadges(c),
+      updated_at: c.updated_at || c.created_at || '',
+      attachment_count: countCaseAttachments(c.case_attachments),
+      raw: c,
+    };
+  }, []);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -868,18 +877,7 @@ export default function DocumentIntakeInboxPage() {
     try {
       const resp = await listRecentCasesPage({ limit: 50, offset: 0 });
       const filtered = (resp.cases || []).filter(isWorkbenchQueueCase);
-      const mapped = filtered.map((c) => ({
-          key: c.case_id,
-          case_id: c.case_id,
-          customer_name: resolveCustomerDisplayName(c),
-          lane: laneLabel(c),
-          status: readinessFromCase(c),
-          summary: buildSummary(c),
-          opportunity_badges: buildOpportunityBadges(c),
-          updated_at: c.updated_at || c.created_at || '',
-          attachment_count: countCaseAttachments(c.case_attachments),
-          raw: c,
-        }));
+      const mapped = filtered.map(mapCaseToRow);
       mapped.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
       setRows(mapped);
     } catch (e) {
@@ -890,7 +888,7 @@ export default function DocumentIntakeInboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [messageApi]);
+  }, [messageApi, mapCaseToRow]);
 
   useEffect(() => {
     loadQueue();
@@ -1006,22 +1004,18 @@ export default function DocumentIntakeInboxPage() {
 
   const syncDrawerCase = useCallback((updated: SavedCase) => {
     setDetail(updated);
+    const mapped = mapCaseToRow(updated);
     setRows((prev) =>
-      prev.map((row) =>
-        row.case_id === updated.case_id
-          ? {
-              ...row,
-              status: readinessFromCase(updated),
-              summary: buildSummary(updated),
-              opportunity_badges: buildOpportunityBadges(updated),
-              updated_at: updated.updated_at || updated.created_at || row.updated_at,
-              attachment_count: countCaseAttachments(updated.case_attachments),
-              raw: updated,
-            }
-          : row,
-      ),
+      prev.map((row) => (row.case_id === updated.case_id ? mapped : row)),
     );
-  }, []);
+  }, [mapCaseToRow]);
+
+  const visibleRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (!matchesWorkbenchSearch(row.raw, searchQuery)) return false;
+      return matchesWorkbenchFilters(row.raw, { status: statusFilter, testFilter });
+    });
+  }, [rows, searchQuery, statusFilter, testFilter]);
 
   // Background poll (MissingInformationChecklistPanel): update fields in place.
   // Do not flip detailLoading — that remounts/flashes "Refreshing case details…"
@@ -1061,88 +1055,83 @@ export default function DocumentIntakeInboxPage() {
 
   const columns: ColumnsType<QueueRow> = [
     {
-      title: 'Customer',
+      title: '客户',
       dataIndex: 'customer_name',
       key: 'customer_name',
-      width: 150,
+      width: 220,
       render: (name: string, row: QueueRow) => (
-        <Space size={6}>
-          <Text strong>{name}</Text>
-          {row.raw.workbench_test || row.raw.p20_case_intake_projection?.is_test ? (
-            <Tag color="orange">TEST</Tag>
-          ) : null}
-        </Space>
+        <div>
+          <Text strong style={{ display: 'block', fontSize: 14 }}>{name}</Text>
+          <Space size={4} wrap style={{ marginTop: 2 }}>
+            {row.qa_label ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>{row.qa_label}</Text>
+            ) : null}
+            {row.is_test ? (
+              <Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: '18px', paddingInline: 4 }}>
+                TEST
+              </Tag>
+            ) : null}
+          </Space>
+        </div>
       ),
     },
     {
-      title: 'Case ID',
-      dataIndex: 'case_id',
-      key: 'case_id',
-      width: 110,
-      render: (id: string) => <CaseIdMeta caseId={id} mode="row" />,
-    },
-    {
-      title: 'Lane',
-      dataIndex: 'lane',
-      key: 'lane',
-      width: 130,
-      render: (lane: string) => <Tag color={laneTagColor(lane)}>{lane}</Tag>,
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 130,
-      render: (s: string) => statusTag(s),
-    },
-    {
-      title: 'Summary',
-      dataIndex: 'summary',
-      key: 'summary',
+      title: '车辆',
+      dataIndex: 'vehicle_context',
+      key: 'vehicle_context',
+      width: 200,
       ellipsis: true,
-      render: (s: string, row: QueueRow) => (
+      render: (v: string, row: QueueRow) => (
         <div>
-          <Text type="secondary">{s}</Text>
+          <Text style={{ fontSize: 13 }}>{v || '—'}</Text>
+          {row.summary && row.summary !== v ? (
+            <div>
+              <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                {row.summary}
+              </Text>
+            </div>
+          ) : null}
           <OpportunityBadgeList badges={row.opportunity_badges} />
         </div>
       ),
     },
     {
-      title: 'Updated',
+      title: '下一步',
+      dataIndex: 'current_action',
+      key: 'current_action',
+      width: 180,
+      render: (label: string) => (
+        <Text style={{ fontSize: 13 }}>{label || '处理中'}</Text>
+      ),
+    },
+    {
+      title: '更新',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      width: 140,
+      width: 90,
       render: (v: string) => <Text style={{ fontSize: 13 }}>{formatUpdated(v)}</Text>,
     },
     {
-      title: '',
-      dataIndex: 'attachment_count',
-      key: 'attachments',
-      width: 48,
-      align: 'center',
-      render: (count: number) =>
-        count > 0 ? (
-          <Text style={{ fontSize: 13 }} title={`${count} attachment(s)`}>
-            <PaperClipOutlined /> {count}
-          </Text>
-        ) : null,
-    },
-    {
-      title: '',
+      title: '打开',
       key: 'actions',
-      width: 160,
+      width: 150,
       render: (_, row) => (
         <Space size={4}>
           <Button type="primary" size="small" onClick={() => openCase(row.case_id)}>
-            Open
+            打开
           </Button>
+          {row.attachment_count > 0 ? (
+            <Text style={{ fontSize: 12 }} type="secondary" title={`${row.attachment_count} 个附件`}>
+              <PaperClipOutlined /> 附件 {row.attachment_count}
+            </Text>
+          ) : null}
           <Button
             type="text"
             size="small"
             danger
             icon={<DeleteOutlined />}
             onClick={() => confirmDeleteCase(row.case_id)}
-            title="Delete demo case / 删除测试案件"
+            title="删除测试案件"
           />
         </Space>
       ),
@@ -1150,22 +1139,22 @@ export default function DocumentIntakeInboxPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px 48px' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px 48px' }}>
       {contextHolder}
 
       <div style={{ marginBottom: 24 }}>
         <Title level={3} style={{ margin: '0 0 6px' }}>
           <InboxOutlined style={{ marginRight: 10, color: '#1677ff' }} />
-          Office Review Queue
+          办公室审核队列
         </Title>
         <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 14 }}>
-          {OFFICE_NAME} — customer document intake cases awaiting broker review
+          {OFFICE_NAME} — 2–3 秒内找到正确客户与案件
         </Paragraph>
       </div>
 
       <Card
         style={{ borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
-        styles={{ body: { padding: rows.length === 0 && !loading && !loadError ? 0 : undefined } }}
+        styles={{ body: { padding: visibleRows.length === 0 && !loading && !loadError ? 0 : undefined } }}
         extra={
           <Space>
             <NewClaimEntryButton
@@ -1177,27 +1166,63 @@ export default function DocumentIntakeInboxPage() {
               }}
             />
             <Button icon={<ReloadOutlined />} onClick={loadQueue} loading={loading}>
-              Refresh
+              刷新
             </Button>
           </Space>
         }
       >
+        <div style={{ padding: '12px 16px 0', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="搜姓名、手机尾号、车辆、QA 标签…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ maxWidth: 380, minWidth: 240 }}
+          />
+          <Segmented
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v as WorkbenchStatusFilter)}
+            options={[
+              { label: '全部', value: 'all' },
+              { label: '等客户', value: 'waiting_customer' },
+              { label: '等办公室', value: 'waiting_broker' },
+            ]}
+          />
+          <Select
+            value={testFilter}
+            onChange={(v) => setTestFilter(v)}
+            style={{ width: 130 }}
+            options={[
+              { label: '隐藏 TEST', value: 'hide' },
+              { label: '显示 TEST', value: 'show' },
+              { label: '仅 TEST', value: 'only' },
+            ]}
+          />
+        </div>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}><Spin size="large" /></div>
         ) : loadError ? (
-          <Alert type="error" showIcon message="Could not load office queue" description={loadError} style={{ margin: 16 }} />
+          <Alert type="error" showIcon message="无法加载办公室队列" description={loadError} style={{ margin: 16 }} />
         ) : rows.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '64px 24px' }}>
             <InboxOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 16 }} />
-            <Title level={4} style={{ margin: '0 0 8px', fontWeight: 500 }}>No cases in queue</Title>
+            <Title level={4} style={{ margin: '0 0 8px', fontWeight: 500 }}>队列暂无案件</Title>
             <Paragraph type="secondary" style={{ maxWidth: 400, margin: '0 auto' }}>
-              When a customer submits from the wizard, their case appears here for office review.
+              客户从小程序提交后，案件会出现在这里供办公室审核。
+            </Paragraph>
+          </div>
+        ) : visibleRows.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <Title level={5} style={{ margin: '0 0 8px', fontWeight: 500 }}>没有匹配的案件</Title>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              可清空搜索，或切换「显示 TEST / 全部」筛选。
             </Paragraph>
           </div>
         ) : (
           <Table
             columns={columns}
-            dataSource={rows}
+            dataSource={visibleRows}
             pagination={false}
             size="middle"
             rowClassName={() => 'office-queue-row'}
@@ -1208,7 +1233,7 @@ export default function DocumentIntakeInboxPage() {
       <Drawer
         title={
           detail
-            ? `${resolveCustomerDisplayName(detail)} · ${laneLabel(detail)}`
+            ? `${resolveFindabilityCustomerName(detail)}${resolveQaLabel(detail) ? ` · ${resolveQaLabel(detail)}` : ''}`
             : 'Case detail'
         }
         width={520}

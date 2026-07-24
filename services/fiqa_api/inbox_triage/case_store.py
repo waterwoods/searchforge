@@ -364,6 +364,14 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
     # Office workbench: lightweight test/archive flags (JSON-first; soft-hide only by default)
     normalized["workbench_test"] = bool(normalized.get("workbench_test"))
     normalized["workbench_archived"] = bool(normalized.get("workbench_archived"))
+    # P3-B: preserve human case_ref when present (immutable after assignment).
+    from services.fiqa_api.inbox_triage.case_ref import normalize_case_ref
+
+    cref = normalize_case_ref(str(normalized.get("case_ref") or ""))
+    if cref:
+        normalized["case_ref"] = cref
+    elif "case_ref" in normalized and not str(normalized.get("case_ref") or "").strip():
+        normalized.pop("case_ref", None)
     # Stage-1 boundary + lane detail (nullable vehicle_key for Add-Car).
     if "service_type" not in normalized:
         normalized["service_type"] = ""
@@ -740,8 +748,11 @@ def save_case(
     if cust_phone and len(cust_phone) > MAX_CUSTOMER_PHONE_LENGTH:
         cust_phone = cust_phone[: MAX_CUSTOMER_PHONE_LENGTH - 1]
 
+    from services.fiqa_api.inbox_triage.case_ref import allocate_case_ref
+
     case = {
         "case_id": f"case_{uuid4().hex[:12]}",
+        "case_ref": allocate_case_ref(),
         "case_status": normalized_status,
         "created_at": timestamp,
         "updated_at": timestamp,

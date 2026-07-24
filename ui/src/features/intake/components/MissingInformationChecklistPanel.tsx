@@ -826,7 +826,7 @@ export function MissingInformationChecklistPanel({
       return;
     }
     if (selectedSendableCount < 1) {
-      setError(CLAIM_REQUEST_MORE_COPY.selectVinBeforeSend);
+      setError(CLAIM_REQUEST_MORE_COPY.selectAtLeastOneBeforeSend);
       return;
     }
     if (saveStatus === 'failed') {

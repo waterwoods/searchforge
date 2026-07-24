@@ -797,6 +797,11 @@ class CreateClaimBody(BaseModel):
     title: str | None = Field(default=None, max_length=160)
     vin: str | None = Field(default=None, max_length=32)
     accident_description: str | None = Field(default=None, max_length=2000)
+    qa_label: str | None = Field(
+        default=None,
+        max_length=80,
+        description="P3-B: optional QA device/label marker (e.g. Founder-iPhone)",
+    )
     known_facts: dict[str, Any] | None = Field(default=None)
 
 
@@ -1843,6 +1848,22 @@ async def get_recent_cases(
                 )
     except Exception as exc:
         logger.warning("Constitution queue projection import/attach failed: %s", exc)
+
+    # P3-B Slice 1 — findability list projection (case_ref + human labels).
+    try:
+        from services.fiqa_api.inbox_triage.workbench_list_projection import (
+            attach_workbench_list_projection,
+        )
+
+        for row in enriched:
+            try:
+                attach_workbench_list_projection(row)
+            except Exception as exc:
+                cid = str((row or {}).get("case_id") or "").strip() or "?"
+                logger.warning("Workbench list projection failed for case %s: %s", cid, exc)
+    except Exception as exc:
+        logger.warning("Workbench list projection import/attach failed: %s", exc)
+
     from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
         redact_case_slice1_responses_for_list,
     )
@@ -2016,6 +2037,15 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Constitution projection attach failed for case %s: %s", cid, exc)
 
+    try:
+        from services.fiqa_api.inbox_triage.workbench_list_projection import (
+            attach_workbench_list_projection,
+        )
+
+        attach_workbench_list_projection(case)
+    except Exception as exc:
+        logger.warning("Workbench list projection failed for case %s: %s", cid, exc)
+
     return sanitize_case_for_workbench_api(case)
 
 
@@ -2098,6 +2128,7 @@ async def post_create_claim(
                 "title": body.title,
                 "vin": body.vin,
                 "accident_description": body.accident_description,
+                "qa_label": body.qa_label,
                 "known_facts": body.known_facts or {},
             },
         )

@@ -404,6 +404,7 @@ def _minimum_create_inputs(body: dict[str, Any]) -> dict[str, Any]:
         "police_involved",
         "other_party_info",
         "other_party_plate",
+        "qa_label",
     ):
         val = str(known_facts_in.get(key) or body.get(key) or "").strip()
         if val:
@@ -413,11 +414,15 @@ def _minimum_create_inputs(body: dict[str, Any]) -> dict[str, Any]:
         known_facts["injury_status"] = known_facts["anyone_injured"]
     if known_facts.get("accident_date") and not known_facts.get("accident_datetime"):
         known_facts["accident_datetime"] = known_facts["accident_date"]
+    qa_label = str(body.get("qa_label") or known_facts.get("qa_label") or "").strip()[:80]
+    if qa_label:
+        known_facts["qa_label"] = qa_label
     out: dict[str, Any] = {
         "customer_name": customer_name,
         "customer_phone": customer_phone,
         "contact_note": note,
         "known_facts": known_facts,
+        "qa_label": qa_label,
         "is_test": bool(body.get("is_test") or body.get("workbench_test")),
         "title": str(body.get("title") or "").strip()[:160],
     }
@@ -498,8 +503,14 @@ def _build_new_case_record(
     person_link_source = str(inputs.get("person_link_source") or "").strip() or None
     identity_binding_state = str(inputs.get("identity_binding_state") or "").strip() or None
     person_link_confidence = inputs.get("person_link_confidence")
+    qa_label = str(inputs.get("qa_label") or known_facts.get("qa_label") or "").strip()
+    if qa_label:
+        known_facts["qa_label"] = qa_label[:80]
+    from services.fiqa_api.inbox_triage.case_ref import allocate_case_ref
+
     case: dict[str, Any] = {
         "case_id": case_id,
+        "case_ref": allocate_case_ref(),
         "case_status": "new",
         "created_at": timestamp,
         "updated_at": timestamp,
@@ -508,7 +519,9 @@ def _build_new_case_record(
         "case_messages": [],
         "waiting_on": "none",
         "next_contact_by": "",
-        "customer_name": inputs.get("customer_name") or ("QA Customer" if is_test else ""),
+        # P3-B: never manufacture a fake customer name for TEST rows.
+        # Empty name → Workbench displays 微信客户 · <suffix> (+ qa_label when present).
+        "customer_name": str(inputs.get("customer_name") or "").strip(),
         "customer_phone": inputs.get("customer_phone") or "",
         "customer_email": "",
         "policy_number": str(known_facts.get("policy_number") or ""),

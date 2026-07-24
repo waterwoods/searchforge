@@ -114,10 +114,12 @@ export const CLAIM_REQUEST_MORE_COPY = {
   candidatesHint: (labels: string) => `可请客户补充：${labels}`,
   accidentGapsTitle: '事故信息仍缺',
   accidentReadyTitle: '事故信息已齐 — 可按需请客户补充',
-  vinOnlyHint: '当前仅支持发送车辆 VIN。请只勾选 VIN，保存后再发出。',
-  selectVinBeforeSend: '请先勾选 VIN，再向客户发出补充请求。',
+  vinOnlyHint: '请先去掉暂不支持在线提交的项目，或只保留可发送项（如 VIN、保险卡）后再发出。',
+  selectAtLeastOneBeforeSend: '请选择至少一项需要客户补充的资料。',
+  /** @deprecated P3-B: VIN is optional; use selectAtLeastOneBeforeSend */
+  selectVinBeforeSend: '请选择至少一项需要客户补充的资料。',
   saveFailedBeforeSend: '保存未成功 — 请先重试保存，再发出。',
-  waitingDraftSave: '正在保存草稿。请勾选 VIN 后稍候再试。',
+  waitingDraftSave: '正在保存草稿。请勾选补充项后稍候再试。',
   draftNotReady: '草稿尚未就绪。请等待保存完成后再发出。',
   caseUpdatedReview: '案件有更新。请核对刷新后的内容，再发出一次。',
   caseUpdatedToast: '案件已更新，请核对后再次发出。',
@@ -184,7 +186,7 @@ export function claimRequestMoreBlockedMessage(
     return `以下项目暂不支持客户在线提交：${unique.join('、')}。`;
   }
   if (errorCode === 'request_draft_empty') {
-    return '请至少勾选一项可发送的补充项（VIN 或保险卡）后再发出。';
+    return '请选择至少一项需要客户补充的资料。';
   }
   if (errorCode === 'illegal_state') {
     return '本案件暂时还不能发出补充请求。请刷新后再试。';

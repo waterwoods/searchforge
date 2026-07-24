@@ -18,6 +18,7 @@ type FormValues = {
   accident_location?: string;
   injury_status?: string;
   vin?: string;
+  qa_label?: string;
 };
 
 export function NewClaimEntryButton({
@@ -54,6 +55,7 @@ export function NewClaimEntryButton({
         knownFacts.anyone_injured = values.injury_status;
       }
       if (values.vin) knownFacts.vin = values.vin;
+      if (values.qa_label?.trim()) knownFacts.qa_label = values.qa_label.trim();
       const result = await createClaimCase({
         command_id: ids.command_id,
         idempotency_key: ids.idempotency_key,
@@ -63,6 +65,7 @@ export function NewClaimEntryButton({
         contact_note: values.contact_note,
         vin: values.vin,
         accident_description: values.accident_description,
+        qa_label: values.qa_label?.trim() || undefined,
         known_facts: knownFacts,
       });
       const caseId = String(result.case_id || result.broker_projection?.case_id || '').trim();
@@ -130,6 +133,13 @@ export function NewClaimEntryButton({
         >
           <Form.Item name="is_test" valuePropName="checked">
             <Checkbox>Mark as TEST / QA Claim (no real customer PII required)</Checkbox>
+          </Form.Item>
+          <Form.Item
+            name="qa_label"
+            label="QA label (optional)"
+            tooltip="Physical-device QA marker, e.g. Founder-iPhone. Shown in Workbench; not a real customer name."
+          >
+            <Input placeholder="Founder-iPhone" maxLength={80} />
           </Form.Item>
           <Form.Item name="accident_description" label="Accident description (what happened)">
             <Input.TextArea rows={3} placeholder="Short story of the accident" maxLength={2000} />
