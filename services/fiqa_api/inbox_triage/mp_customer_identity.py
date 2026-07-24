@@ -393,9 +393,10 @@ def issue_resume_for_case(case_id: str) -> dict[str, str]:
 
 async def establish_mp_customer_session(code: str) -> dict[str, Any]:
     """
-    OpenID login → session lookup → Active Case lookup → optional resume.
+    OpenID login → opaque session identity.
 
-    Customer-safe response: no openid, no case_id.
+    Routing is deliberately not decided here.  The following customer-context
+    read owns Active Case, resume-token, and next-action resolution.
     """
     openid, err = await exchange_mp_code_for_openid(code)
     if not openid:
@@ -403,30 +404,12 @@ async def establish_mp_customer_session(code: str) -> dict[str, Any]:
 
     person_link_key = opaque_person_link_key(openid)
     session_id = session_id_for_person_link(person_link_key)
-    active = resolve_active_case_for_person_link(person_link_key)
-    body: dict[str, Any] = {
+    return {
         "ok": True,
         "session_id": session_id,
-        "has_active_case": False,
         "identity_binding_state": "linked",
         "person_link_source": "wechat",
     }
-    if not active:
-        return body
-
-    case_id = str(active.get("case_id") or "").strip()
-    if not case_id:
-        return body
-    try:
-        resume = issue_resume_for_case(case_id)
-    except Exception:
-        logger.warning("resume token issue failed for bound active case")
-        return body
-
-    body["has_active_case"] = True
-    body["resume_token"] = resume["resume_token"]
-    body["resume_expires_at"] = resume["resume_expires_at"]
-    return body
 
 
 BROKER_ENTRY_SOURCE_LABEL = "WeChat Mini Program"

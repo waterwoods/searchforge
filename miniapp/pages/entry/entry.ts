@@ -1,7 +1,5 @@
 import { taskPage } from "../../behaviors/taskPage";
-import { CustomerTaskApi } from "../../services/taskApi";
-import * as taskLaunchContext from "../../services/taskLaunchContext";
-import type { TaskLaunchContext } from "../../types/task";
+import { resolveCustomerContext } from "../../services/sessionIdentityAdapter";
 import { appConfig, devLog } from "../../utils/config";
 import {
   contactBrokerModalCopy,
@@ -12,8 +10,7 @@ import { DEFAULT_SAFETY_COPY, EMPTY_TASK_ERROR } from "../../utils/resolveTaskVi
 import { ApiRequestError } from "../../utils/request";
 import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
-import { resolveCustomerCaseSurfaceRoute } from "../../utils/customerCaseSurface";
-import { markResumeRestoredHint } from "../../utils/resumeHint";
+import { routeForCustomerNextAction } from "../../utils/customerContextRoute";
 import { SERVICE_HOME_ROUTE } from "../../utils/serviceHome";
 import { clearResumeToken } from "../../utils/storage";
 
@@ -44,13 +41,6 @@ type PageData = {
   };
   shellSafetyCopy: string;
 };
-
-function loadingMessageForSource(source: TaskLaunchContext["source"] | ""): string {
-  if (source === "resume_storage") {
-    return "正在恢复您上次填写的资料…";
-  }
-  return "正在打开您的资料…";
-}
 
 function entryErrorState(code: string): typeof EMPTY_TASK_ERROR {
   const retryable = !NON_RETRYABLE_CODES.has(code);
@@ -96,19 +86,7 @@ Page({
     } catch (_err) {
       // Never block Page lifecycle / registration on QA logging.
     }
-    void this.bootstrap(options);
-  },
-
-  resolveLaunchContext(options: Record<string, string | undefined>) {
-    return taskLaunchContext.resolveTaskLaunchContext(options);
-  },
-
-  persistLaunch(ctx: TaskLaunchContext) {
-    taskLaunchContext.persistLaunchToken(ctx);
-  },
-
-  async fetchTask(token: string) {
-    return CustomerTaskApi.getTask(token);
+    return this.bootstrap(options);
   },
 
   async bootstrap(options: Record<string, string | undefined>) {
@@ -149,72 +127,39 @@ Page({
       },
     });
 
-    const resolution = taskLaunchContext.inspectLaunchTokenSources(options);
-    qaPathLog("BOOTSTRAP", {
-      page: "pages/entry/entry",
-      phase: "token_resolve",
-      tokenSource: resolution.source,
-      hasLaunchQueryToken: resolution.launchQuery,
-      hasDevTaskToken: resolution.devTaskToken,
-      hasResumeToken: resolution.resumeToken,
-    });
-
-    const ctx = this.resolveLaunchContext(options);
-    if (!ctx) {
-      const q = summarizeLaunchQuery(options || {});
-      // First abort on Entry Preview with empty compile query: no API involved.
-      qaPathLog("EARLY_EXIT", {
-        reason: "token_missing_redirect_start_claim",
-        why: "no_launch_query_token_and_no_devTaskToken_and_no_resume_storage",
-        page: "pages/entry/entry",
-        launchPath: "pages/entry/entry",
-        hasToken: q.hasToken,
-        queryKeys: q.queryKeys,
-      });
-      this.setBusy("navigating", true);
-      wx.redirectTo({
-        url: "/pages/start-claim/start-claim",
-        fail: () => {
-          qaPathLog("EARLY_EXIT", {
-            page: "entry",
-            reason: "token_missing_and_redirect_failed",
-            errorCode: "token_missing",
-          });
-          this.setData({
-            launchSource: "",
-            loadingMessage: "正在打开您的资料…",
-            errorState: entryErrorState("token_missing"),
-          });
-          this.setBusy("navigating", false);
-          this.setBusy("loading", false);
-        },
-      });
-      return;
-    }
-
     this.setData({
-      launchSource: ctx.source,
-      loadingMessage: loadingMessageForSource(ctx.source),
+      launchSource: "server_context",
+      loadingMessage: "正在确认您的资料…",
     });
 
     try {
+      const context = await resolveCustomerContext({
+        launchToken: String(options?.token || "").trim(),
+      });
+      const target = routeForCustomerNextAction(context.nextAction);
+      if (context.nextAction === "START_NEW_CLAIM") {
+        this.setBusy("navigating", true);
+        wx.reLaunch({
+          url: target,
+          fail: () => {
+            this.setData({ errorState: entryErrorState("navigation_failed") });
+            this.setBusy("navigating", false);
+            this.setBusy("loading", false);
+          },
+        });
+        return;
+      }
+      if (!context.resumeToken) {
+        throw new ApiRequestError("token_missing");
+      }
+      const app = getApp<IAppOption>();
+      app.taskToken = context.resumeToken;
+      app.task = undefined;
       qaPathLog("BOOTSTRAP", {
         page: "entry",
-        phase: "fetch_task",
-        tokenSource: ctx.source,
+        phase: "navigate_from_server_context",
+        nextAction: context.nextAction,
       });
-      const task = await this.fetchTask(ctx.token);
-      this.persistLaunch(ctx);
-      const app = getApp<IAppOption>();
-      app.taskToken = ctx.token;
-      app.task = task;
-
-      if (ctx.source === "resume_storage") {
-        markResumeRestoredHint();
-      }
-
-      // D-014: Action Needed → Task Home; Waiting Broker → Case Status; submitted → Receipt.
-      const target = resolveCustomerCaseSurfaceRoute(task);
       this.setBusy("navigating", true);
       wx.reLaunch({
         url: target,

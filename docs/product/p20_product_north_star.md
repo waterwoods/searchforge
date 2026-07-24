@@ -239,13 +239,20 @@ automatic FAIL and a release blocker.
 
 1. **Non-blank destinations.** Every primary navigation destination renders
    non-blank content (form shell, loading, error, or actionable empty state).
-2. **Home routing (P26D).** Capsule / operational Home follows One Active Case:
-   - **If** an active case/token exists → Home → Task Home (via Entry bootstrap).
-   - **Else** → Home → Start Claim (fresh form shell).
-   `pages[0]` remains Start Claim for Build Gate packaging; Start Claim must
-   redirect to Entry when a resume token is present (must not clear it first).
-3. **Start New Claim vs Home.** Explicit「开始新报案」clears claim-draft resume
-   and opens Start Claim. Home with an active case must **not** clear the token.
+2. **Home routing (P29 Service Home).** Capsule / operational Home is the
+   product entrance (Home ≠ Task Home):
+   - Capsule Home / `pages[0]` Start Claim redirects to **Service Home**
+     (must not clear an active resume token first).
+   - **If** an active case/token exists → Service Home shows
+     **继续处理当前报案** (primary) → Entry → Task Home.
+   - **Else** → Service Home shows **开始报案** → Start Claim form
+     (`?entry=form`).
+   `pages[0]` remains Start Claim for Build Gate packaging.
+3. **Start New Claim vs Home.** Explicit「开始新的报案」with an active case
+   shows the One Active Case policy (continue / contact broker) and must
+   **not** clear the resume token or create a second Active Case. Empty-state
+   Start Claim (no active case) opens the form. Home with an active case must
+   **not** clear the token.
 4. **No stale-result stranding.** Restored sessions cannot permanently strand
    users on stale Submit Result / receipt pages with no path to a fresh entry
    or Task Home.
@@ -323,7 +330,7 @@ Repo-root equivalent: `node scripts/validate_miniapp_build_gate.mjs`
 The gate must verify at minimum:
 
 1. `app.json` page registration is valid and `pages[0]` is Start Claim
-   (capsule Home entry; active-case redirect to Task Home is enforced in
+   (capsule Home entry; active-case redirect to Service Home is enforced in
    Start Claim / `startClaimEntry` — see §J Home routing).
 2. Every registered page exists on disk (`.ts` / `.json` / `.wxml` / `.wxss`).
 3. Every `usingComponents` path exists.

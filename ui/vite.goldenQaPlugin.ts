@@ -71,6 +71,7 @@ export function goldenQaPreviewPlugin(repoRoot: string): Plugin {
                             'evidence',
                             'golden_qa',
                             'last_reset',
+                            'qa',
                             'devtools_compile_line.txt',
                         );
                         fs.mkdirSync(path.dirname(linePath), { recursive: true });

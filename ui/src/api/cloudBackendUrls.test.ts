@@ -53,6 +53,18 @@ assert.notEqual(CLOUD_QA_API_BASE_URL, PRODUCTION_API_BASE_URL);
   if (!r.ok) assert.match(r.error, /must not use Production/i);
 }
 
+// The legacy Production Cloud Run alias is also rejected for Preview.
+{
+  const r = assertVercelApiBaseUrl({
+    vercel: true,
+    mode: 'production',
+    vercelEnv: 'preview',
+    rawBaseUrl: 'https://fiqa-api-1013093472160.us-west1.run.app',
+  });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /must be exactly.*fiqa-api-qa/i);
+}
+
 // Production stays on Production URL
 {
   const r = assertVercelApiBaseUrl({

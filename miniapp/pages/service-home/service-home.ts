@@ -1,27 +1,31 @@
 /**
  * Lightweight Service Home — product entrance (Home ≠ Task Home).
  *
- * Continue / Start Claim UI is server-authoritative via ensureCustomerSession()
- * (/customer/session). Local resume token is cache only.
+ * Continue / Start Claim UI is server-authoritative via Customer Context.
+ * Never fail-open into Start Claim before / without a successful context read.
  */
 
 import { appConfig } from "../../utils/config";
-import { ensureCustomerSession } from "../../services/sessionIdentityAdapter";
+import { resolveCustomerContext } from "../../services/sessionIdentityAdapter";
+import { resetApiHealthCache } from "../../utils/apiHealth";
 import {
   ENTRY_ROUTE,
   ONE_ACTIVE_CASE_POLICY_CONTACT,
   ONE_ACTIVE_CASE_POLICY_CONTENT,
   ONE_ACTIVE_CASE_POLICY_CONTINUE,
   ONE_ACTIVE_CASE_POLICY_TITLE,
-  hasActiveCustomerCase,
   reLaunchEmptyStartClaimForm,
 } from "../../utils/startClaimEntry";
 import { buildServiceHomeViewModel } from "../../utils/serviceHome";
 import { contactBrokerModalCopy } from "../../utils/taskMapping";
 
+type HomePhase = "checking" | "ready" | "error";
+
 type PageData = ReturnType<typeof buildServiceHomeViewModel> & {
   /** Last server-authoritative Active Case decision for this Home show. */
   serverHasActiveCase: boolean | null;
+  homePhase: HomePhase;
+  contextErrorMessage: string;
 };
 
 function brandFromConfig(): string {
@@ -39,12 +43,12 @@ Page({
       brokerName: brokerFromConfig(),
     }),
     serverHasActiveCase: null,
+    homePhase: "checking",
+    contextErrorMessage: "",
   } as PageData,
 
   /**
-   * Apply Home cards from server authority (preferred) or post-sync cache.
-   * Never invent Continue from an unsynced local token after a failed authority path
-   * that already cleared storage.
+   * Apply Home cards only after a successful Customer Context read.
    */
   applyHomeAuthority(hasActive: boolean) {
     const vm = buildServiceHomeViewModel(hasActive, {
@@ -54,30 +58,52 @@ Page({
     this.setData({
       ...vm,
       serverHasActiveCase: hasActive,
+      homePhase: "ready",
+      contextErrorMessage: "",
+    });
+  },
+
+  showContextError() {
+    this.setData({
+      homePhase: "error",
+      serverHasActiveCase: null,
+      hasActiveSession: false,
+      contextErrorMessage: "暂时无法确认您的案件状态，请重试或联系保险顾问。",
     });
   },
 
   onShow() {
-    // Shell first (North Star §J): default Start Claim until server authority returns.
-    this.applyHomeAuthority(false);
+    // Neutral checking shell only — never Start Claim until context succeeds.
+    this.setData({
+      homePhase: "checking",
+      serverHasActiveCase: null,
+      hasActiveSession: false,
+      contextErrorMessage: "",
+    });
     void this.syncIdentityAndRefresh();
   },
 
   async syncIdentityAndRefresh() {
     try {
-      const session = await ensureCustomerSession();
-      // Server (or closed-case reconcile) decides — not raw storage alone.
-      this.applyHomeAuthority(Boolean(session.hasActiveCase));
+      const context = await resolveCustomerContext();
+      this.applyHomeAuthority(context.hasActiveCase);
     } catch {
-      // Durable identity hard-fail: show Start Claim (fail closed for Continue).
-      this.applyHomeAuthority(false);
+      this.showContextError();
     }
+  },
+
+  onRetryContext() {
+    resetApiHealthCache();
+    this.setData({
+      homePhase: "checking",
+      contextErrorMessage: "",
+    });
+    void this.syncIdentityAndRefresh();
   },
 
   /** Continue / View Progress → Entry → Task Home or Case Status (system decides). */
   onContinueCurrentClaim() {
-    if (!this.data.hasActiveSession || !hasActiveCustomerCase()) {
-      this.applyHomeAuthority(false);
+    if (this.data.homePhase !== "ready" || !this.data.hasActiveSession) {
       return;
     }
     wx.reLaunch({
@@ -108,7 +134,10 @@ Page({
    * - Active Case → policy modal (continue / contact); never clear resume / never second case
    */
   onStartNewClaim() {
-    if (this.data.hasActiveSession && hasActiveCustomerCase()) {
+    if (this.data.homePhase !== "ready") {
+      return;
+    }
+    if (this.data.hasActiveSession) {
       this.showOneActiveCasePolicy();
       return;
     }

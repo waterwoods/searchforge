@@ -15,6 +15,7 @@ from services.fiqa_api.inbox_triage.h5_task_intake import (
 )
 from services.fiqa_api.inbox_triage.h5_task_token import verify_h5_task_token
 from services.fiqa_api.inbox_triage.mp_customer_identity import establish_mp_customer_session
+from services.fiqa_api.inbox_triage.p0_customer_context import resolve_customer_context
 from services.fiqa_api.inbox_triage.p20_customer_start_claim import (
     customer_start_claim_response,
     start_customer_claim,
@@ -96,9 +97,16 @@ class CustomerStartClaimBody(BaseModel):
 
 
 class CustomerSessionBody(BaseModel):
-    """P29B — Mini Program wx.login code → opaque session + optional resume."""
+    """P29B — Mini Program wx.login code → opaque session identity."""
 
     code: str = Field(..., min_length=1, max_length=256)
+
+
+class CustomerContextBody(BaseModel):
+    """Established Mini Program identity → one server-owned customer context."""
+
+    session_id: str = Field(..., min_length=8, max_length=128)
+    launch_token: str | None = Field(default=None, max_length=4096)
 
 
 @router.post("/customer/session")
@@ -106,7 +114,7 @@ async def post_customer_session(body: CustomerSessionBody) -> dict[str, Any]:
     """
     OpenID login flow (technical only).
 
-    Returns opaque session_id + optional resume_token when an Active Case exists.
+    Returns opaque session_id only. Customer Context resolves routing next.
     Never returns OpenID.
     """
     result = await establish_mp_customer_session(body.code)
@@ -118,13 +126,22 @@ async def post_customer_session(body: CustomerSessionBody) -> dict[str, Any]:
     safe = {
         "ok": True,
         "session_id": result.get("session_id"),
-        "has_active_case": bool(result.get("has_active_case")),
     }
-    if result.get("resume_token"):
-        safe["resume_token"] = result.get("resume_token")
-    if result.get("resume_expires_at"):
-        safe["resume_expires_at"] = result.get("resume_expires_at")
     return safe
+
+
+@router.post("/customer/context")
+async def post_customer_context(body: CustomerContextBody) -> dict[str, Any]:
+    """Resolve Active Case, resume token, and next action after identity."""
+    try:
+        return resolve_customer_context(
+            session_id=body.session_id,
+            launch_token=body.launch_token,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "case_not_found" else 403 if code == "invalid_or_expired_task_link" else 401
+        raise HTTPException(status_code=status, detail=code) from exc
 
 
 @router.post("/customer/start-claim")

@@ -16,20 +16,19 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.camry_golden_qa import ARTIFACT_DIR, reset_golden_qa  # noqa: E402
+from scripts.camry_golden_qa import artifact_dir_for_target, reset_golden_qa  # noqa: E402
 from scripts.golden_qa_preview import (  # noqa: E402
     clear_devtools_preview_tokens,
     prepare_devtools_preview,
     preview_has_session_token,
 )
 
-STATUS_PATH: Final[Path] = ARTIFACT_DIR / "launch_status.json"
 LOCK = threading.Lock()
 _LAUNCH_IN_FLIGHT = False
 
@@ -46,14 +45,21 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _status_path(target: str) -> Path:
+    return artifact_dir_for_target(target) / "launch_status.json"
+
+
 def _write_status(payload: dict[str, Any]) -> dict[str, Any]:
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    target = str(payload.get("target") or "qa")
+    path = _status_path(target)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return payload
 
 
-def read_launch_status() -> dict[str, Any]:
-    if not STATUS_PATH.exists():
+def read_launch_status(target: str = "qa") -> dict[str, Any]:
+    path = _status_path(target)
+    if not path.exists():
         return {
             "status": STATUS_IDLE,
             "case_id": None,
@@ -66,15 +72,15 @@ def read_launch_status() -> dict[str, Any]:
             "devtools_hint": None,
         }
     try:
-        data = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {"status": STATUS_IDLE}
     except Exception:
         return {"status": STATUS_IDLE, "failure_reason": "status_unreadable"}
 
 
-def public_status_view(raw: dict[str, Any] | None = None) -> dict[str, Any]:
+def public_status_view(raw: dict[str, Any] | None = None, *, target: str = "qa") -> dict[str, Any]:
     """Safe fields for Workbench UI — never includes raw token."""
-    data = dict(raw or read_launch_status())
+    data = dict(raw or read_launch_status(target))
     return {
         "status": data.get("status") or STATUS_IDLE,
         "case_id": data.get("case_id"),
@@ -104,7 +110,7 @@ def launch_golden_qa(
 
     with LOCK:
         if _LAUNCH_IN_FLIGHT and not force:
-            current = public_status_view()
+            current = public_status_view(target=target)
             current["ok"] = False
             current["failure_reason"] = current.get("failure_reason") or "launch_already_in_progress"
             return current
@@ -156,13 +162,13 @@ def launch_golden_qa(
                     "preview_prepared": False,
                     "last_run_utc": _utc_now_iso(),
                     "failure_reason": None,
-                    "report_relpath": "docs/evidence/golden_qa/last_reset/handoff.json",
+                    "report_relpath": f"docs/evidence/golden_qa/last_reset/{target}/handoff.json",
                     "devtools_hint": None,
                     "target": target,
                 }
             )
             try:
-                preview_meta = prepare_devtools_preview(token)
+                preview_meta = prepare_devtools_preview(token, target=target)
             except Exception as exc:
                 # Reset succeeded; Preview prep failed — still useful, mark ready with warning
                 status = {
@@ -174,7 +180,7 @@ def launch_golden_qa(
                     "preview_prepared": False,
                     "last_run_utc": _utc_now_iso(),
                     "failure_reason": f"preview_prepare_failed:{exc}",
-                    "report_relpath": "docs/evidence/golden_qa/last_reset/handoff.json",
+                    "report_relpath": f"docs/evidence/golden_qa/last_reset/{target}/handoff.json",
                     "devtools_hint": "Reset OK — set DevTools compile query from handoff or re-run with local repo.",
                     "target": target,
                     # Support-only one-shot for local Vite apply (not shown in product UI)
@@ -194,7 +200,7 @@ def launch_golden_qa(
             "preview_prepared": bool(preview_meta.get("preview_prepared")),
             "last_run_utc": _utc_now_iso(),
             "failure_reason": None,
-            "report_relpath": "docs/evidence/golden_qa/last_reset/handoff.json",
+            "report_relpath": f"docs/evidence/golden_qa/last_reset/{target}/handoff.json",
             "devtools_hint": preview_meta.get("devtools_hint"),
             "target": target,
             "devtools_launch_query": f"token={token}",

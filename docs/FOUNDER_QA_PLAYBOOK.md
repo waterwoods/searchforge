@@ -56,7 +56,7 @@ Task Home ──► Request Item ──► Receipt
 |---|---|---|---|
 | Golden Seed | `camry_golden_qa` fixture | Camry data + open insurance-card request / engineering | wrong task or no active work |
 | QA database | `--qa`, Cloud QA configuration | writes only to `caseiq-qa` / platform | QA case appears in Production or no durable case |
-| Golden reset | remove → seed → mint → verify | verified case, token, `handoff.json` / `launch_golden_qa.py` | `golden_reset_failed_closed` |
+| Golden reset | remove → seed → mint → verify | verified case, token, target-scoped `qa/handoff.json` / `launch_golden_qa.py` | `golden_reset_failed_closed` |
 | Preview preparation | token + founder laptop | gitignored DevTools compile condition / `golden_qa_preview.py` | `preview_prepared=false`; stale or missing query |
 | Entry | `pages/entry/entry?token=…` | token recognised and bootstrap starts / Mini Program | Start Claim, blank page, or token absent |
 | Bootstrap | valid token + QA API | task plan and active case / Mini Program + API | `EARLY_EXIT`, `case_not_found`, loading does not end |
@@ -66,8 +66,8 @@ Task Home ──► Request Item ──► Receipt
 | Request Item | open insurance-card item | “上传保险卡” / projection | item absent, inactive, or wrong label |
 | Receipt | completed submission | visible receipt plus broker projection / client + API | accepted data missing downstream |
 
-`handoff.json` contains a raw session token and is intentionally gitignored.
-`launch_status.json` is safe status only; it exposes a masked token.
+`qa/handoff.json` contains a raw session token and is intentionally gitignored.
+Target-scoped `qa/launch_status.json` is safe status only; it exposes a masked token.
 
 ## 3. Startup Checklist
 
@@ -90,7 +90,7 @@ Stop immediately unless all are true:
 - launch result is `status=ready_to_scan`, target is `qa`, and
   `preview_prepared=true`.
 - the output shows a fresh masked token and future `expires_at`.
-- `docs/evidence/golden_qa/last_reset/handoff.json` says `target=qa` and
+- `docs/evidence/golden_qa/last_reset/qa/handoff.json` says `target=qa` and
   `verification.ok=true`.
 - DevTools uses Compile Mode **`pages/entry/entry (Golden QA session)`** with
   entry path `pages/entry/entry`; do not select a historical `service-home`

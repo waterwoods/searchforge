@@ -7,8 +7,30 @@
     </view>
   </view>
 
+  <!-- Neutral: waiting for Customer Context — never Start Claim -->
+  <block wx:if="{{homePhase === 'checking'}}">
+    <view class="sh-status-card">
+      <view class="sh-status-title">正在确认您的案件状态…</view>
+      <view class="sh-status-sub">请稍候，我们不会在确认前开始新的报案。</view>
+    </view>
+  </block>
+
+  <!-- Context failed: Retry / Contact — never fail-open to Start Claim -->
+  <block wx:elif="{{homePhase === 'error'}}">
+    <view class="sh-status-card sh-status-error">
+      <view class="sh-status-title">暂时无法确认案件状态</view>
+      <view class="sh-status-sub">{{contextErrorMessage}}</view>
+      <view class="sh-status-actions">
+        <view class="sh-status-cta" bindtap="onRetryContext" hover-class="sh-card-hover">重试</view>
+        <view class="sh-secondary-row" bindtap="onContactBroker" hover-class="sh-row-hover">
+          {{contactLabel}}
+        </view>
+      </view>
+    </view>
+  </block>
+
   <!-- Active case: Continue is the only primary CTA -->
-  <block wx:if="{{hasActiveSession}}">
+  <block wx:elif="{{hasActiveSession}}">
     <view class="sh-primary-card" bindtap="onContinueCurrentClaim" hover-class="sh-card-hover">
       <view class="sh-primary-title">{{continueTitle}}</view>
       <view class="sh-primary-sub">您有一个进行中的报案，可继续未完成事项</view>
@@ -32,7 +54,7 @@
     </view>
   </block>
 
-  <!-- No active case: Start Claim is primary -->
+  <!-- No active case: Start Claim is primary (only after successful context) -->
   <block wx:else>
     <view class="sh-primary-card" bindtap="onStartNewClaim" hover-class="sh-card-hover">
       <view class="sh-primary-title">{{startClaimTitle}}</view>

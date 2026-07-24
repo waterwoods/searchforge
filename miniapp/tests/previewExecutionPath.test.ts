@@ -113,20 +113,42 @@ test("PATH A — default/pages[0] Start Claim: stops before REQUEST_SENT", async
     assert.equal(abort.detail.page, "pages/start-claim/start-claim");
     assert.equal(abort.detail.launchPath, "pages/start-claim/start-claim");
 
-    // Intentional form entry still bootstraps without REQUEST_SENT.
+    // Intentional form entry: Customer Context gate runs; create-claim never fires.
     steps.length = 0;
-    page.onLoad.call(ctx, { entry: "form" });
+    const wx = (globalThis as { wx: Record<string, any> }).wx;
+    wx.login = (opts: any) => opts.success?.({ code: "sim:path-a-form" });
+    wx.request = (opts: any) => {
+      if (opts.url.includes("/health/live")) opts.success?.({ statusCode: 200, data: { ok: true } });
+      else if (opts.url.includes("/customer/session")) {
+        opts.success?.({ statusCode: 200, data: { session_id: "wx_path_a_form_01" } });
+      } else if (opts.url.includes("/customer/context")) {
+        opts.success?.({
+          statusCode: 200,
+          data: { has_active_case: false, next_action: "START_NEW_CLAIM" },
+        });
+      } else {
+        opts.fail?.({ errMsg: "unexpected" });
+      }
+    };
+    Object.assign(ctx, page);
+    ctx._divertedToHome = false;
+    ctx._gateInFlight = false;
+    ctx._navigatingAway = false;
+    await page.onLoad.call(ctx, { entry: "form" });
     const formNames = stepNames(steps);
     assert.ok(formNames.includes("BOOTSTRAP"), `missing BOOTSTRAP: ${formNames.join(",")}`);
-    assert.ok(formNames.includes("EARLY_EXIT"), `missing EARLY_EXIT: ${formNames.join(",")}`);
-    assert.equal(formNames.includes("REQUEST_SENT"), false);
-    assert.equal(first(steps, "EARLY_EXIT")!.detail.reason, "start_claim_no_request_until_submit");
+    assert.equal(ctx.data.formAuthorized, true);
+    assert.equal(
+      steps.some((s) => String(s.detail.path || "").includes("/customer/start-claim")),
+      false,
+    );
+    assert.equal(first(steps, "BOOTSTRAP")!.detail.phase, "form_authorized_by_customer_context");
   } finally {
     restore();
   }
 });
 
-test("PATH B — Entry compile mode with empty query: EARLY_EXIT before REQUEST_SENT", async () => {
+test("PATH B — Entry compile mode with empty query resolves Customer Context", async () => {
   const { steps, restore } = installPathCapture();
   try {
     const { qaPathLog, summarizeLaunchQuery } = await import("../utils/qaPathLog");
@@ -177,23 +199,30 @@ test("PATH B — Entry compile mode with empty query: EARLY_EXIT before REQUEST_
       ...page,
     };
 
+    const wx = (globalThis as { wx: Record<string, any> }).wx;
+    wx.login = (opts: any) => opts.success?.({ code: "sim:path-b-entry" });
+    wx.request = (opts: any) => {
+      if (opts.url.includes("/health/live")) opts.success?.({ statusCode: 200, data: { ok: true } });
+      else if (opts.url.includes("/customer/session")) {
+        opts.success?.({ statusCode: 200, data: { session_id: "wx_path_b_entry_01" } });
+      } else if (opts.url.includes("/customer/context")) {
+        opts.success?.({
+          statusCode: 200,
+          data: { has_active_case: false, next_action: "START_NEW_CLAIM" },
+        });
+      } else {
+        opts.fail?.({ errMsg: "unexpected" });
+      }
+    };
+    wx.reLaunch = () => undefined;
     await page.onLoad.call(ctx, {});
 
     const names = stepNames(steps);
     assert.ok(names.includes("LAUNCH"));
     assert.ok(names.includes("ENTRY"));
     assert.ok(names.includes("BOOTSTRAP"));
-    assert.ok(names.includes("EARLY_EXIT"));
-    assert.equal(names.includes("REQUEST_START"), false);
-    assert.equal(names.includes("REQUEST_SENT"), false);
-
-    const abort = steps.filter((s) => s.step === "EARLY_EXIT").pop()!;
-    assert.equal(abort.detail.reason, "token_missing_redirect_start_claim");
-    assert.equal(abort.detail.why, "no_launch_query_token_and_no_devTaskToken_and_no_resume_storage");
-    assert.equal(abort.detail.page, "pages/entry/entry");
-    assert.equal(abort.detail.launchPath, "pages/entry/entry");
-    assert.equal(abort.detail.hasToken, false);
-    assert.equal(abort.detail.queryKeys, "(none)");
+    assert.ok(names.includes("REQUEST_START"));
+    assert.ok(names.includes("REQUEST_SENT"));
   } finally {
     restore();
   }

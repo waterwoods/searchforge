@@ -125,8 +125,8 @@ If a customer/broker form changed, confirm before Release:
 ### Founder Entry and Navigation Gate quick check (governing SSOT: North Star §J)
 
 - [ ] Every primary navigation destination renders non-blank content
-- [ ] Home with active token → Task Home; no token → Start Claim
-- [ ] Explicit「开始新报案」clears draft and opens Start Claim
+- [ ] Home → Service Home; active token → Continue → Task Home; no token → Start Claim
+- [ ] Explicit「开始新的报案」with active case → One Active Case policy (resume preserved)
 - [ ] Restored sessions cannot strand users on stale result pages
 - [ ] Start New Claim resets only claim-draft state
 - [ ] Page shell renders before remote data completes

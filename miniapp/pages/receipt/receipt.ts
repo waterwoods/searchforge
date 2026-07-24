@@ -13,7 +13,6 @@ import {
   photoCount,
 } from "../../utils/taskMapping";
 import { consumeResumeRestoredHint } from "../../utils/resumeHint";
-import { resolveCustomerCaseSurfaceRoute } from "../../utils/customerCaseSurface";
 import {
   isSlice1CustomerFlow,
   mapSlice1CustomerView,
@@ -322,13 +321,12 @@ Page({
   onViewStatus() {
     if (this.isBusy("navigating")) return;
     this.setBusy("navigating", true);
-    const hub = resolveCustomerCaseSurfaceRoute(this.data.task as CustomerTask);
     wx.redirectTo({
-      url: hub,
+      url: "/pages/entry/entry",
       complete: () => this.setBusy("navigating", false),
       fail: () => {
         wx.navigateTo({
-          url: hub,
+          url: "/pages/entry/entry",
           complete: () => this.setBusy("navigating", false),
         });
       },

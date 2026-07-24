@@ -3,13 +3,13 @@
  *
  * Home routing contract (P29 Service Home):
  * - Operational Home → Service Home (product entrance; Home ≠ Task Home)
- * - Active case/token → Continue on Service Home → Entry → Task Home
+ * - Server Customer Context → Continue on Service Home → Entry → Task Home
  * - No active case → Start Claim from Service Home (?entry=form)
  * - Explicit「开始新的报案」with active case → One Active Case policy (never wipe resume)
  * - pages[0] remains Start Claim (Build Gate / WeChat capsule Home entry)
  */
 
-import { loadResumeToken, clearResumeToken, clearSubmitIntentId } from "./storage";
+import { clearResumeToken, clearSubmitIntentId } from "./storage";
 import { SERVICE_HOME_ROUTE } from "./serviceHome";
 
 export const START_CLAIM_ROUTE = "/pages/start-claim/start-claim";
@@ -76,11 +76,6 @@ export function resetStartClaimDraftState(): void {
   clearSubmitIntentId();
 }
 
-/** True when a resumable active case/token is present in local storage. */
-export function hasActiveCustomerCase(): boolean {
-  return Boolean(loadResumeToken());
-}
-
 /** Intentional Start Claim form entry from Service Home (empty state). */
 export function resolveHomeStartClaimUrl(): string {
   return `${START_CLAIM_ROUTE}?entry=form`;
@@ -126,34 +121,24 @@ export function reLaunchEmptyStartClaimForm(wxLike: WxNavigate): void {
 }
 
 /**
- * 「开始新报案」from Receipt / success:
- * - Active case → Service Home (never wipe Golden/active resume)
- * - No active case → empty Start Claim form
+ * 「开始新报案」from Receipt / success always returns to Service Home. That page
+ * performs the server Customer Context read before offering a form or Continue.
  */
 export function reLaunchStartClaimHome(wxLike: WxNavigate): void {
-  if (hasActiveCustomerCase()) {
-    launchUrl(wxLike, SERVICE_HOME_ROUTE);
-    return;
-  }
-  reLaunchEmptyStartClaimForm(wxLike);
+  launchUrl(wxLike, SERVICE_HOME_ROUTE);
 }
 
 /**
  * Capsule Home opens pages[0] (Start Claim). Operational home is Service Home.
- * - Active case → Service Home (must not clear resume)
  * - Cold Home without ?entry=form → Service Home
- * - Explicit ?entry=form and no active case → stay on form
- * Returns true when a redirect was started (caller must not reset draft).
+ * - Explicit ?entry=form must resolve Customer Context; form renders only when
+ *   next_action is START_NEW_CLAIM (enforced by start-claim page gate).
  */
 export function redirectStartClaimIfActiveCase(
   wxLike: WxNavigate,
   options?: Record<string, string | undefined>,
 ): boolean {
   const intentionalForm = String(options?.entry || "").trim() === "form";
-  if (hasActiveCustomerCase()) {
-    launchUrl(wxLike, SERVICE_HOME_ROUTE);
-    return true;
-  }
   if (!intentionalForm) {
     launchUrl(wxLike, SERVICE_HOME_ROUTE);
     return true;
@@ -161,28 +146,30 @@ export function redirectStartClaimIfActiveCase(
   return false;
 }
 
-/** WXML must never be able to hide the entire form shell. */
+/**
+ * WXML must keep a visible shell: checking / error / authorized form.
+ * Form fields may sit behind formAuthorized only when checking + error paths exist.
+ */
 export function assertStartClaimWxmlNotBlankable(wxml: string): string[] {
   const failures: string[] = [];
   if (!wxml.includes("告诉陈总发生了什么") && !wxml.includes("事故经过")) {
     failures.push("missing visible form title/fields");
   }
-  // Entire-page readiness gates that default false are a blank-screen footgun.
-  if (/wx:if\s*=\s*"\{\{\s*pageReady\s*\}\}"/.test(wxml) && !wxml.includes("initErrorMessage")) {
-    // pageReady may wrap extras, but the form card itself must not be solely behind it.
+  if (!wxml.includes("formAuthorized")) {
+    failures.push("missing Customer Context formAuthorized gate");
   }
-  const formCardGuarded =
-    /wx:if\s*=\s*"\{\{\s*(ready|pageReady|initialized|showForm)\s*\}\}"[\s\S]{0,80}事故经过/.test(
-      wxml,
-    ) ||
-    /事故经过[\s\S]{0,40}wx:if\s*=\s*"\{\{\s*(ready|pageReady|initialized|showForm)\s*\}\}"/.test(
-      wxml,
-    );
-  if (formCardGuarded) {
-    failures.push("required form fields are behind a readiness wx:if guard");
+  if (!wxml.includes("contextPhase") && !wxml.includes("正在确认")) {
+    failures.push("missing context checking shell");
   }
   if (!wxml.includes("initErrorMessage") && !wxml.includes("errorMessage")) {
     failures.push("missing visible error fallback bindings");
+  }
+  // Legacy blank-screen footgun: entire form behind pageReady alone.
+  if (
+    /wx:if\s*=\s*"\{\{\s*pageReady\s*\}\}"[\s\S]{0,80}事故经过/.test(wxml) &&
+    !wxml.includes("formAuthorized")
+  ) {
+    failures.push("required form fields are behind a pageReady-only guard");
   }
   return failures;
 }

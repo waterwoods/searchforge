@@ -47,7 +47,7 @@ def test_openid_never_in_session_response(monkeypatch):
     assert "openid" not in body
     assert "secret-openid-value" not in str(body)
     assert body["session_id"].startswith("wx_")
-    assert body["has_active_case"] is False
+    assert "has_active_case" not in body
 
 
 def test_session_id_is_opaque_person_link():
@@ -55,6 +55,44 @@ def test_session_id_is_opaque_person_link():
     assert session_id_for_person_link(key) == key
     assert person_link_from_session_id(key) == key
     assert person_link_from_session_id("anon-local") is None
+
+
+def test_customer_context_is_the_only_active_case_and_next_action_read(monkeypatch):
+    from services.fiqa_api.inbox_triage import p0_customer_context as context
+
+    link = opaque_person_link_key("context-openid")
+    monkeypatch.setattr(
+        context,
+        "resolve_active_case_for_person_link",
+        lambda identity: {"case_id": "case_context_1"} if identity == link else None,
+    )
+    monkeypatch.setattr(
+        context,
+        "issue_resume_for_case",
+        lambda case_id: {
+            "resume_token": "h5t1.context-resume",
+            "resume_expires_at": "2099-01-01T00:00:00Z",
+        },
+    )
+    monkeypatch.setattr(
+        context,
+        "_context_for_token",
+        lambda *, token, active_case: {
+            "has_active_case": active_case,
+            "resume_token": token,
+            "resume_expires_at": "",
+            "next_action": context.UPLOAD_REQUEST_ITEM,
+        },
+    )
+
+    resolved = context.resolve_customer_context(session_id=link)
+
+    assert resolved == {
+        "has_active_case": True,
+        "resume_token": "h5t1.context-resume",
+        "resume_expires_at": "2099-01-01T00:00:00Z",
+        "next_action": "UPLOAD_REQUEST_ITEM",
+    }
 
 
 def test_active_case_bind_and_resume(monkeypatch):
@@ -139,31 +177,16 @@ def test_customer_session_http_never_returns_openid(monkeypatch):
     assert body["session_id"].startswith("wx_")
 
 
-def test_session_with_active_case_returns_resume(monkeypatch):
+def test_session_establishes_identity_without_routing(monkeypatch):
     monkeypatch.setenv("WECHAT_MP_ALLOW_SIMULATE", "1")
     link = opaque_person_link_key("bound-openid")
     bind_active_case(link, "case_bounddemo01")
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.mp_customer_identity.issue_resume_for_case",
-        lambda case_id: {
-            "resume_token": "h5t1.test-resume",
-            "resume_expires_at": "2099-01-01T00:00:00Z",
-        },
-    )
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.mp_customer_identity._load_case",
-        lambda case_id: {
-            "case_id": case_id,
-            "case_status": "new",
-            "admin_lifecycle": "active",
-        },
-    )
-
     import asyncio
 
     body = asyncio.run(establish_mp_customer_session("sim:bound-openid"))
-    assert body["has_active_case"] is True
-    assert body["resume_token"] == "h5t1.test-resume"
+    assert body["session_id"] == link
+    assert "has_active_case" not in body
+    assert "resume_token" not in body
     assert "openid" not in body
     assert "case_id" not in body
 
@@ -185,21 +208,17 @@ def test_missing_bound_case_self_heals_and_clears_binding(monkeypatch):
     assert lookup_bound_case_id(link) is None
 
 
-def test_customer_session_missing_bound_case_has_no_resume(monkeypatch):
+def test_customer_session_does_not_resolve_bound_case(monkeypatch):
     monkeypatch.setenv("WECHAT_MP_ALLOW_SIMULATE", "1")
     link = opaque_person_link_key("session-ghost-openid")
     bind_active_case(link, "case_missing_for_session")
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.mp_customer_identity._load_case",
-        lambda case_id: None,
-    )
     import asyncio
 
     body = asyncio.run(establish_mp_customer_session("sim:session-ghost-openid"))
     assert body["ok"] is True
-    assert body["has_active_case"] is False
+    assert "has_active_case" not in body
     assert "resume_token" not in body
-    assert lookup_bound_case_id(link) is None
+    assert lookup_bound_case_id(link) == "case_missing_for_session"
 
 
 def test_clear_bindings_for_case_removes_index_entry():

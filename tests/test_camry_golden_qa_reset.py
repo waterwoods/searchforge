@@ -7,6 +7,7 @@ import json
 import pytest
 
 from scripts.camry_golden_qa import (
+    API_QA_BASE,
     DEMO_NAME,
     EXPECTED_BROKER,
     EXPECTED_CUSTOMER,
@@ -24,6 +25,11 @@ from scripts.camry_golden_qa import (
 def golden_local(monkeypatch):
     path = configure_ephemeral_local()
     yield path
+
+
+def test_qa_handoff_uses_isolated_cloud_qa_api():
+    assert API_QA_BASE == "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app"
+    assert "fiqa-api-1013093472160" not in API_QA_BASE
 
 
 def test_reset_is_idempotent_and_deterministic(golden_local):
@@ -109,9 +115,10 @@ def test_fail_closed_when_verify_impossible(golden_local, monkeypatch):
 def test_handoff_json_shape(golden_local, tmp_path, monkeypatch):
     monkeypatch.setattr("scripts.camry_golden_qa.ARTIFACT_DIR", tmp_path)
     handoff = reset_golden_qa(target="local", reseed=True, dry_run=False)
-    path = tmp_path / "handoff.json"
+    path = tmp_path / "local" / "handoff.json"
     assert path.exists()
     data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["target"] == "local"
     assert data["case_id"] == handoff["case_id"]
     assert data["token"]
     assert data["devtools_launch_query"].startswith("token=")

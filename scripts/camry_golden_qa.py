@@ -71,6 +71,12 @@ def _utc_tag() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
 
+def artifact_dir_for_target(target: str) -> Path:
+    """Keep local and Cloud QA handoff evidence from overwriting each other."""
+    normalized = "qa" if (target or "").strip().lower() in ("qa", "cloud", "gcp") else "local"
+    return ARTIFACT_DIR / normalized
+
+
 def _mask_token(token: str) -> str:
     t = (token or "").strip()
     if len(t) <= 16:
@@ -529,7 +535,13 @@ def _check_constitution(projection: dict[str, Any]) -> list[str]:
     return defects
 
 
-def verify_via_apis(case_id: str, token: str, *, prefer_live_slice1: bool) -> dict[str, Any]:
+def verify_via_apis(
+    case_id: str,
+    token: str,
+    *,
+    prefer_live_slice1: bool,
+    artifact_dir: Path | None = None,
+) -> dict[str, Any]:
     """Verify Customer H5 + broker list/detail Constitution via FastAPI TestClient."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -662,6 +674,7 @@ def verify_via_apis(case_id: str, token: str, *, prefer_live_slice1: bool) -> di
         h5_body=h5_body,
         list_row=list_row or {},
         detail_body=detail_body,
+        artifact_dir=artifact_dir or ARTIFACT_DIR,
     )
     report["checks"]["customer_resolver"] = resolver_result.get("customer", "SKIP")
     report["checks"]["broker_resolver"] = resolver_result.get("broker", "SKIP")
@@ -677,12 +690,13 @@ def _verify_frontend_resolvers(
     h5_body: dict[str, Any],
     list_row: dict[str, Any],
     detail_body: dict[str, Any],
+    artifact_dir: Path,
 ) -> dict[str, Any]:
     """Best-effort production resolver check via node --import tsx."""
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    h5_path = ARTIFACT_DIR / "verify_h5.json"
-    list_path = ARTIFACT_DIR / "verify_list_row.json"
-    detail_path = ARTIFACT_DIR / "verify_detail.json"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    h5_path = artifact_dir / "verify_h5.json"
+    list_path = artifact_dir / "verify_list_row.json"
+    detail_path = artifact_dir / "verify_detail.json"
     h5_path.write_text(json.dumps(h5_body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     list_path.write_text(json.dumps(list_row, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     detail_path.write_text(json.dumps(detail_body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -791,6 +805,8 @@ def reset_golden_qa(
       remove tagged cases → seed → mint token → verify.
     On verify failure after seed: one recovery reseed; still fail closed if not green.
     """
+    target = "qa" if target in ("qa", "cloud", "gcp") else "local"
+    artifact_dir = artifact_dir_for_target(target)
     storage = configure_target(target)
     print("=" * 56)
     print(f"Camry Golden QA Reset (target={target})")
@@ -833,6 +849,7 @@ def reset_golden_qa(
                 case_id,
                 str(token_info["token"]),
                 prefer_live_slice1=prefer_live,
+                artifact_dir=artifact_dir,
             )
             if verify_report.get("ok"):
                 break
@@ -852,7 +869,7 @@ def reset_golden_qa(
             + " — Golden Case may be absent or unverified; re-run reset after fixing cause"
         )
 
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    artifact_dir.mkdir(parents=True, exist_ok=True)
     handoff = {
         "timestamp_utc": _utc_now_iso(),
         "target": target,
@@ -880,10 +897,10 @@ def reset_golden_qa(
             "broker": EXPECTED_BROKER,
         },
     }
-    handoff_path = ARTIFACT_DIR / "handoff.json"
+    handoff_path = artifact_dir / "handoff.json"
     # Session handoff — contains raw token; do not commit
     handoff_path.write_text(json.dumps(handoff, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (ARTIFACT_DIR / "verify_report.json").write_text(
+    (artifact_dir / "verify_report.json").write_text(
         json.dumps(verify_report, ensure_ascii=False, indent=2, default=str) + "\n",
         encoding="utf-8",
     )

@@ -275,7 +275,7 @@ test("reload refreshes from server and does not keep stale title", async () => {
   assert.equal(loadCount, 2);
 });
 
-test("return home redirects via case-surface router", async () => {
+test("return home delegates through Entry Customer Context", async () => {
   const page = await loadReceiptPage();
   const redirects: string[] = [];
   (globalThis as Record<string, any>).wx.redirectTo = ({
@@ -304,7 +304,7 @@ test("return home redirects via case-surface router", async () => {
   });
   page.onViewStatus.call(ctx);
   // No task on context → Waiting/Case Status surface (not Task Home dead-end).
-  assert.deepEqual(redirects, ["/pages/case-status/case-status"]);
+  assert.deepEqual(redirects, ["/pages/entry/entry"]);
   assert.equal(ctx.data.busy.navigating, false);
 });
 

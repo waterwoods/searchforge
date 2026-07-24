@@ -11,7 +11,6 @@ import {
   START_CLAIM_ROUTE,
   assertStartClaimWxmlNotBlankable,
   createEmptyStartClaimShell,
-  hasActiveCustomerCase,
   redirectStartClaimIfActiveCase,
   reLaunchCustomerHome,
   reLaunchEmptyStartClaimForm,
@@ -32,17 +31,15 @@ installMiniProgramGlobals();
 const here = dirname(fileURLToPath(import.meta.url));
 const miniappRoot = join(here, "..");
 
-test("no active case → Home target is Service Home", () => {
+test("Home target is Service Home without consulting local resume storage", () => {
   clearResumeToken();
-  assert.equal(hasActiveCustomerCase(), false);
   assert.equal(resolveHomeStartClaimUrl(), `${START_CLAIM_ROUTE}?entry=form`);
   assert.equal(resolveCustomerHomeUrl(), SERVICE_HOME_ROUTE);
   assert.equal(SERVICE_HOME_ROUTE, "/pages/service-home/service-home");
 });
 
-test("active case/token → Home target is still Service Home (not Task Home)", () => {
+test("cached token does not alter Home route", () => {
   saveResumeToken("h5t1.active-camry");
-  assert.equal(hasActiveCustomerCase(), true);
   assert.equal(resolveCustomerHomeUrl(), SERVICE_HOME_ROUTE);
   assert.notEqual(resolveCustomerHomeUrl(), ENTRY_ROUTE);
   clearResumeToken();
@@ -164,7 +161,7 @@ test("intentional entry=form without token stays on Start Claim", () => {
   assert.deepEqual(launches, []);
 });
 
-test("entry=form with active token still redirects to Service Home (P30)", () => {
+test("entry=form ignores cached tokens pending server Customer Context", () => {
   saveResumeToken("h5t1.block-second");
   const launches: string[] = [];
   const redirected = redirectStartClaimIfActiveCase(
@@ -175,8 +172,8 @@ test("entry=form with active token still redirects to Service Home (P30)", () =>
     },
     { entry: "form" },
   );
-  assert.equal(redirected, true);
-  assert.deepEqual(launches, [SERVICE_HOME_ROUTE]);
+  assert.equal(redirected, false);
+  assert.deepEqual(launches, []);
   assert.equal(loadResumeToken(), "h5t1.block-second");
   clearResumeToken();
 });
@@ -191,7 +188,9 @@ test("start-claim wxml has no blankable full-page guard", () => {
   assert.match(wxml, /事故地点/);
   assert.match(wxml, /是否有人受伤/);
   assert.match(wxml, /initErrorMessage/);
-  assert.match(wxml, /重新加载表单/);
+  assert.match(wxml, /重试/);
+  assert.match(wxml, /formAuthorized/);
+  assert.match(wxml, /contextPhase/);
   // Required fields must not sit solely behind pageReady/ready.
   assert.equal(/wx:if="\{\{pageReady\}\}"/.test(wxml), false);
 });

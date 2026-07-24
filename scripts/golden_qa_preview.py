@@ -62,7 +62,7 @@ def _private_config_label() -> str:
         return str(PRIVATE_CONFIG)
 
 
-def prepare_devtools_preview(token: str) -> dict[str, Any]:
+def prepare_devtools_preview(token: str, *, target: str = "qa") -> dict[str, Any]:
     """Inject session compile query for pages/entry/entry. Returns status dict."""
     raw = (token or "").strip()
     if not raw.startswith("h5t1."):
@@ -93,7 +93,8 @@ def prepare_devtools_preview(token: str) -> dict[str, Any]:
         )
     _save_private_config(cfg)
     compile_line = f"{ENTRY_PATH}?{query}"
-    line_path = ROOT / "docs" / "evidence" / "golden_qa" / "last_reset" / "devtools_compile_line.txt"
+    artifact_target = "qa" if target in ("qa", "cloud", "gcp") else "local"
+    line_path = ROOT / "docs" / "evidence" / "golden_qa" / "last_reset" / artifact_target / "devtools_compile_line.txt"
     line_path.parent.mkdir(parents=True, exist_ok=True)
     line_path.write_text(compile_line + "\n", encoding="utf-8")
     return {

@@ -4,6 +4,7 @@ import {
   startClaim,
   transcribeStartClaimStoryAudio,
 } from "../../services/startClaimApi";
+import { resolveCustomerContext } from "../../services/sessionIdentityAdapter";
 import { ApiRequestError } from "../../utils/request";
 import { resetApiHealthCache } from "../../utils/apiHealth";
 import { buildRequestDiagnostic } from "../../utils/requestErrors";
@@ -27,8 +28,13 @@ import type {
   StartClaimFieldKey,
 } from "../../utils/startClaimValidation";
 import { contactBrokerModalCopy } from "../../utils/taskMapping";
+import { routeForCustomerNextAction } from "../../utils/customerContextRoute";
 import {
   ENTRY_ROUTE,
+  ONE_ACTIVE_CASE_POLICY_CONTACT,
+  ONE_ACTIVE_CASE_POLICY_CONTENT,
+  ONE_ACTIVE_CASE_POLICY_CONTINUE,
+  ONE_ACTIVE_CASE_POLICY_TITLE,
   START_CLAIM_MISSING_HINT,
   START_CLAIM_SAFETY_COPY,
   START_CLAIM_SUCCESS_ROUTE,
@@ -37,7 +43,6 @@ import {
   resetStartClaimDraftState,
 } from "../../utils/startClaimEntry";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
-import { saveResumeToken } from "../../utils/storage";
 import {
   VOICE_MAX_RECORD_MS,
   initialVoiceUiData,
@@ -62,6 +67,8 @@ function recorderState(page: WechatMiniprogram.Page.Instance): RecorderState {
   return target.__voiceRecorder;
 }
 
+type ContextPhase = "checking" | "ready" | "error";
+
 type PageData = {
   description: string;
   charCount: number;
@@ -77,6 +84,9 @@ type PageData = {
   errorRetryable: boolean;
   pageReady: boolean;
   initErrorMessage: string;
+  /** Form fields render only after Customer Context says START_NEW_CLAIM. */
+  formAuthorized: boolean;
+  contextPhase: ContextPhase;
   voicePhase: VoicePhase;
   voiceHint: string;
   voiceSession: VoiceSession | null;
@@ -98,12 +108,19 @@ Page({
   _submitState: null as StartClaimSubmitState | null,
   /** Synchronous canonical model — source of truth for CTA / hint / submit. */
   _form: createEmptyCanonicalForm() as StartClaimCanonicalForm,
+  _launchOptions: {} as Record<string, string | undefined>,
+  _divertedToHome: false,
+  _gateInFlight: false,
+  _navigatingAway: false,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
     ...initialVoiceUiData(),
     brokerName: appConfig.brokerDisplayName || "陈总",
     shellSafetyCopy: START_CLAIM_SAFETY_COPY,
+    formAuthorized: false,
+    contextPhase: "checking",
+    pageReady: true,
     busy: {
       submitting: false,
       uploading: false,
@@ -112,6 +129,9 @@ Page({
 
   onLoad(options: Record<string, string | undefined>) {
     const q = summarizeLaunchQuery(options || {});
+    this._launchOptions = options || {};
+    this._divertedToHome = false;
+    this._navigatingAway = false;
     qaPathLog("ENTRY", {
       page: "pages/start-claim/start-claim",
       queryKeys: q.queryKeys,
@@ -121,8 +141,8 @@ Page({
     });
     try {
       // Capsule Home opens pages[0] (Start Claim). Operational home → Service Home.
-      // Intentional form entry uses ?entry=form (empty-state Start Claim only).
       if (redirectStartClaimIfActiveCase(wx, options || {})) {
+        this._divertedToHome = true;
         qaPathLog("EARLY_EXIT", {
           reason: "capsule_home_redirect_service_home",
           why: "operational_home_is_service_home",
@@ -134,41 +154,14 @@ Page({
         this.setData({
           ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
           ...initialVoiceUiData(),
+          formAuthorized: false,
+          contextPhase: "checking",
           pageReady: true,
           initErrorMessage: "",
         });
         return;
       }
-      qaPathLog("BOOTSTRAP", {
-        page: "pages/start-claim/start-claim",
-        phase: "form_init_no_api",
-      });
-      resetStartClaimDraftState();
-      this._submitState = createStartClaimSubmitState();
-      this._form = createEmptyCanonicalForm();
-      const validated = validateStartClaimForm({
-        ...this._form,
-        reachabilityKnown: true,
-      });
-      this.setData({
-        ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
-        ...initialVoiceUiData(),
-        canSubmit: validated.canSubmit,
-        missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
-        pageReady: true,
-        initErrorMessage: "",
-        errorMessage: "",
-        errorRetryable: false,
-      });
-      // Path verification: Start Claim open never reaches REQUEST_SENT.
-      qaPathLog("EARLY_EXIT", {
-        reason: "start_claim_no_request_until_submit",
-        why: "pages0_or_compile_mode_opens_form_only_no_backend_call",
-        page: "pages/start-claim/start-claim",
-        launchPath: "pages/start-claim/start-claim",
-        hasToken: q.hasToken,
-        queryKeys: q.queryKeys,
-      });
+      return this.authorizeFormEntry({ preserveDraft: false });
     } catch {
       qaPathLog("EARLY_EXIT", {
         reason: "onload_throw_before_any_request",
@@ -180,28 +173,114 @@ Page({
       });
       this.setData({
         pageReady: true,
+        formAuthorized: false,
+        contextPhase: "error",
         initErrorMessage: "页面初始化失败，请重试或联系陈总。",
       });
     }
   },
 
   onShow() {
-    if (!this.data.pageReady) {
-      this.setData({ pageReady: true });
-    }
-    if (!this._submitState) {
-      try {
+    if (this._divertedToHome || this._navigatingAway) return;
+    if (String(this._launchOptions?.entry || "").trim() !== "form") return;
+    void this.authorizeFormEntry({ preserveDraft: Boolean(this.data.formAuthorized) });
+    this._ensureRecorder();
+  },
+
+  /**
+   * Server Customer Context gate: form only when next_action is START_NEW_CLAIM.
+   */
+  async authorizeFormEntry(options: { preserveDraft: boolean }) {
+    if (this._gateInFlight || this._navigatingAway || this._divertedToHome) return;
+    this._gateInFlight = true;
+    this.setData({
+      contextPhase: "checking",
+      formAuthorized: options.preserveDraft ? this.data.formAuthorized : false,
+      initErrorMessage: "",
+      pageReady: true,
+    });
+    try {
+      const context = await resolveCustomerContext();
+      if (context.nextAction !== "START_NEW_CLAIM") {
+        this._navigatingAway = true;
+        if (context.resumeToken) {
+          try {
+            const app = getApp<IAppOption>();
+            app.taskToken = context.resumeToken;
+            app.task = undefined;
+          } catch {
+            // ignore
+          }
+        }
+        const target = routeForCustomerNextAction(context.nextAction);
+        qaPathLog("EARLY_EXIT", {
+          reason: "start_claim_blocked_by_customer_context",
+          why: String(context.nextAction || ""),
+          page: "pages/start-claim/start-claim",
+          next: target,
+        });
+        this.setData({ formAuthorized: false, contextPhase: "checking" });
+        wx.reLaunch({
+          url: target,
+          fail: () => {
+            wx.redirectTo({
+              url: target,
+              fail: () => {
+                this._navigatingAway = false;
+                this.setData({
+                  contextPhase: "error",
+                  formAuthorized: false,
+                  initErrorMessage: "您已有进行中的报案，但打开失败。请重试或联系陈总。",
+                });
+              },
+            });
+          },
+        });
+        return;
+      }
+
+      if (!options.preserveDraft || !this.data.formAuthorized) {
+        resetStartClaimDraftState();
         this._submitState = createStartClaimSubmitState();
-      } catch {
+        this._form = createEmptyCanonicalForm();
+        const validated = validateStartClaimForm({
+          ...this._form,
+          reachabilityKnown: true,
+        });
         this.setData({
-          initErrorMessage: "页面初始化失败，请重试或联系陈总。",
+          ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
+          ...initialVoiceUiData(),
+          canSubmit: validated.canSubmit,
+          missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
+          formAuthorized: true,
+          contextPhase: "ready",
+          pageReady: true,
+          initErrorMessage: "",
+          errorMessage: "",
+          errorRetryable: false,
+        });
+      } else {
+        this.setData({
+          formAuthorized: true,
+          contextPhase: "ready",
+          pageReady: true,
+          initErrorMessage: "",
         });
       }
+      qaPathLog("BOOTSTRAP", {
+        page: "pages/start-claim/start-claim",
+        phase: "form_authorized_by_customer_context",
+      });
+    } catch {
+      this.setData({
+        formAuthorized: false,
+        contextPhase: "error",
+        pageReady: true,
+        initErrorMessage: "暂时无法确认是否可以开始新的报案，请重试或联系陈总。",
+      });
+    } finally {
+      this._gateInFlight = false;
     }
-    if (!this._form) {
-      this._form = createEmptyCanonicalForm();
-    }
-    this._ensureRecorder();
   },
 
   onUnload() {
@@ -213,31 +292,7 @@ Page({
   },
 
   onResetAndRetry() {
-    try {
-      resetStartClaimDraftState();
-      this._submitState = createStartClaimSubmitState();
-      this._form = createEmptyCanonicalForm();
-      const validated = validateStartClaimForm({
-        ...this._form,
-        reachabilityKnown: true,
-      });
-      this.setData({
-        ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
-        ...initialVoiceUiData(),
-        canSubmit: validated.canSubmit,
-        missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
-        busy: { submitting: false, uploading: false },
-        initErrorMessage: "",
-        pageReady: true,
-        errorMessage: "",
-        errorRetryable: false,
-      });
-    } catch {
-      this.setData({
-        pageReady: true,
-        initErrorMessage: "页面初始化失败，请重试或联系陈总。",
-      });
-    }
+    return this.authorizeFormEntry({ preserveDraft: false });
   },
 
   /**
@@ -493,6 +548,7 @@ Page({
   },
 
   async onSubmit() {
+    if (!this.data.formAuthorized || this.data.contextPhase !== "ready") return;
     if (this.data.confirmDisabled) return;
     // Final flush from canonical `_form` (already updated by input/blur).
     const validated = this._applyFormPatch({}, { showErrors: true });
@@ -615,18 +671,30 @@ Page({
         endStartClaimSubmit(this._submitState, false);
         return;
       }
+
+      // P0: silent resume must never look like a successful new claim.
+      if (String(result.outcome || "").trim() === "resumed") {
+        endStartClaimSubmit(this._submitState, false);
+        this.setData({
+          busy: { submitting: false, uploading: false },
+          description: this._form.description,
+          accidentDatetime: this._form.accidentDatetime,
+          accidentLocation: this._form.accidentLocation,
+          injuryStatus: this._form.injuryStatus,
+          canSubmit: true,
+          errorMessage: "",
+          errorRetryable: false,
+        });
+        this.interruptResumedActiveCase(String(result.resume_token || "").trim());
+        return;
+      }
+
       endStartClaimSubmit(this._submitState, true);
       this.setData({ busy: { submitting: false, uploading: false } });
-      // P26G: persist resume token and open Task Home — no broker QR required.
+      // Entry re-reads server Customer Context before navigating. It alone
+      // persists the returned resume token cache and selects the destination.
       const resumeToken = String(result.resume_token || "").trim();
       if (resumeToken) {
-        saveResumeToken(resumeToken);
-        try {
-          const app = getApp<IAppOption>();
-          if (app) app.taskToken = resumeToken;
-        } catch {
-          // Entry bootstrap rehydrates from resume storage.
-        }
         wx.reLaunch({
           url: ENTRY_ROUTE,
           fail: () => {
@@ -691,6 +759,53 @@ Page({
       // Keep command identity for uncertain/network retry (idempotent replay).
       endStartClaimSubmit(this._submitState, false);
     }
+  },
+
+  /**
+   * Honest Active Case interrupt — never treat resume as a new-claim success.
+   */
+  interruptResumedActiveCase(resumeToken: string) {
+    if (resumeToken) {
+      try {
+        const app = getApp<IAppOption>();
+        app.taskToken = resumeToken;
+        app.task = undefined;
+      } catch {
+        // ignore
+      }
+    }
+    wx.showModal({
+      title: ONE_ACTIVE_CASE_POLICY_TITLE,
+      content: ONE_ACTIVE_CASE_POLICY_CONTENT,
+      confirmText: ONE_ACTIVE_CASE_POLICY_CONTINUE,
+      cancelText: ONE_ACTIVE_CASE_POLICY_CONTACT,
+      success: (res) => {
+        if (res.cancel) {
+          this.onContactBroker();
+          return;
+        }
+        this._navigatingAway = true;
+        wx.reLaunch({
+          url: ENTRY_ROUTE,
+          fail: () => {
+            wx.redirectTo({
+              url: ENTRY_ROUTE,
+              fail: () => {
+                this._navigatingAway = false;
+                this.setData({
+                  errorMessage: "您已有进行中的报案。请从首页继续当前报案。",
+                  errorRetryable: false,
+                });
+              },
+            });
+          },
+        });
+      },
+      fail: () => {
+        this._navigatingAway = true;
+        wx.reLaunch({ url: ENTRY_ROUTE });
+      },
+    });
   },
 
   callStartClaim(command: {

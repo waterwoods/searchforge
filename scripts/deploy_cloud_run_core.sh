@@ -541,6 +541,16 @@ fi
 if [ -n "${WECHAT_APP_SECRET:-}" ]; then
     ENV_VARS+=("WECHAT_APP_SECRET=$WECHAT_APP_SECRET")
 fi
+# Mini Program jscode2session (Cloud QA / staging — never Production without review)
+if [ -n "${WECHAT_MP_APP_ID:-}" ]; then
+    ENV_VARS+=("WECHAT_MP_APP_ID=$WECHAT_MP_APP_ID")
+fi
+if [ -n "${WECHAT_MP_APP_SECRET:-}" ]; then
+    ENV_VARS+=("WECHAT_MP_APP_SECRET=$WECHAT_MP_APP_SECRET")
+fi
+if [ -n "${WECHAT_MP_ALLOW_SIMULATE:-}" ]; then
+    ENV_VARS+=("WECHAT_MP_ALLOW_SIMULATE=$WECHAT_MP_ALLOW_SIMULATE")
+fi
 if [ -n "${WECHAT_BINDING_REDIRECT_URI:-}" ]; then
     ENV_VARS+=("WECHAT_BINDING_REDIRECT_URI=$WECHAT_BINDING_REDIRECT_URI")
 fi
@@ -710,6 +720,28 @@ gcloud run deploy "$SERVICE_NAME" \
     "${SECRET_EXTRA_ARGS[@]}" \
     "${VPC_EXTRA_ARGS[@]}" \
     --quiet
+
+# Cloud Run occasionally leaves traffic on the prior revision after a successful
+# deploy (seen on fiqa-api-qa). Promote the newest Ready revision explicitly.
+LATEST_REV=$(gcloud run revisions list \
+    --service "$SERVICE_NAME" \
+    --region "$REGION" \
+    --project "$PROJECT_ID" \
+    --limit 1 \
+    --format 'value(metadata.name)' 2>/dev/null || true)
+ACTIVE_REV=$(gcloud run services describe "$SERVICE_NAME" \
+    --region "$REGION" \
+    --project "$PROJECT_ID" \
+    --format 'value(status.traffic[0].revisionName)' 2>/dev/null || true)
+if [ -n "$LATEST_REV" ] && [ -n "$ACTIVE_REV" ] && [ "$LATEST_REV" != "$ACTIVE_REV" ]; then
+    echo "⚠️  Traffic still on $ACTIVE_REV after deploy; promoting $LATEST_REV to 100%..."
+    gcloud run services update-traffic "$SERVICE_NAME" \
+        --region "$REGION" \
+        --project "$PROJECT_ID" \
+        --to-revisions "$LATEST_REV=100" \
+        --quiet
+    echo "✅ Traffic promoted to $LATEST_REV"
+fi
 
 # Post-deploy: confirm Cloud Run accepted the requested runtime (catches typos / API drift)
 ACTUAL_MEM=$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(spec.template.spec.containers[0].resources.limits.memory)' 2>/dev/null || echo "")

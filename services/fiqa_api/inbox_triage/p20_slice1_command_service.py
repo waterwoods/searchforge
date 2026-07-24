@@ -1238,6 +1238,10 @@ class P20Slice1CommandService:
                     if active_type == "vin":
                         mode = "submit"
                     case_obj = snapshot.case if isinstance(snapshot.case, dict) else {}
+                    # persist=False: Slice1 accept() already holds service_records
+                    # FOR UPDATE; nested patch_case_known_facts/persist_case_append
+                    # opens a second connection and self-deadlocks. Facts are written
+                    # once via tx.update_legacy_projection below.
                     claim_vehicle_result = self.vehicle_service.upsert(
                         case_id=case_id,
                         payload=vehicle_payload,
@@ -1252,7 +1256,7 @@ class P20Slice1CommandService:
                         if isinstance(case_obj.get("fact_records"), dict)
                         else None,
                         case=case_obj,
-                        persist=True,
+                        persist=False,
                         correlation_id=corr,
                         sequence_base=current_version,
                     )

@@ -49,8 +49,6 @@ def golden_local(monkeypatch, tmp_path):
     monkeypatch.setattr("scripts.golden_qa_preview.PRIVATE_CONFIG", private)
     art = tmp_path / "last_reset"
     art.mkdir()
-    monkeypatch.setattr("scripts.launch_golden_qa.ARTIFACT_DIR", art)
-    monkeypatch.setattr("scripts.launch_golden_qa.STATUS_PATH", art / "launch_status.json")
     monkeypatch.setattr("scripts.camry_golden_qa.ARTIFACT_DIR", art)
     yield {"private": private, "art": art}
 
@@ -77,7 +75,7 @@ def test_launch_local_resets_and_prepares(golden_local, monkeypatch):
     assert result["case_id"]
     assert result["preview_prepared"] is True
     assert preview_has_session_token() is True
-    public = public_status_view()
+    public = public_status_view(target="local")
     assert "devtools_launch_query" not in public
     assert public["case_id"] == result["case_id"]
     assert public["token_masked"]
@@ -105,3 +103,23 @@ def test_second_launch_fresh_token(golden_local):
     entry = next(e for e in cfg["condition"]["miniprogram"]["list"] if e["pathName"] == "pages/entry/entry")
     assert entry["query"].startswith("token=h5t1.")
     assert second["devtools_launch_query"] == entry["query"]
+
+
+def test_local_status_does_not_replace_qa_status(golden_local):
+    qa_status = {
+        "status": "ready_to_scan",
+        "case_id": "case_qa",
+        "target": "qa",
+        "token_masked": "qa…token",
+    }
+    qa_path = golden_local["art"] / "qa" / "launch_status.json"
+    qa_path.parent.mkdir()
+    qa_path.write_text(json.dumps(qa_status), encoding="utf-8")
+
+    local = launch_golden_qa(target="local", prepare_preview=False)
+
+    assert local["ok"] is True
+    assert json.loads(qa_path.read_text(encoding="utf-8")) == qa_status
+    local_status = read_launch_status("local")
+    assert local_status["target"] == "local"
+    assert local_status["case_id"] == local["case_id"]

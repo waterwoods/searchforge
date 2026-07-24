@@ -27,6 +27,37 @@ async function loadStartClaimPage(): Promise<CapturedPageOptions> {
   return cachedPage;
 }
 
+function installStartNewClaimContext(extra?: {
+  nextAction?: string;
+  hasActiveCase?: boolean;
+  resumeToken?: string;
+}) {
+  const wx = (globalThis as { wx: Record<string, any> }).wx;
+  (globalThis as { getApp?: () => Record<string, unknown> }).getApp = () => ({
+    taskToken: "",
+    task: undefined,
+  });
+  wx.login = (opts: any) => opts.success?.({ code: "sim:start-claim-form" });
+  wx.request = (opts: any) => {
+    const url = String(opts.url || "");
+    if (url.includes("/health/live")) opts.success?.({ statusCode: 200, data: { ok: true } });
+    else if (url.includes("/customer/session")) {
+      opts.success?.({ statusCode: 200, data: { ok: true, session_id: "wx_start_claim_form_01" } });
+    } else if (url.includes("/customer/context")) {
+      opts.success?.({
+        statusCode: 200,
+        data: {
+          has_active_case: Boolean(extra?.hasActiveCase),
+          resume_token: String(extra?.resumeToken || ""),
+          next_action: extra?.nextAction || "START_NEW_CLAIM",
+        },
+      });
+    } else {
+      opts.success?.({ statusCode: 500, data: { detail: "unexpected" } });
+    }
+  };
+}
+
 function createPageContext(page: CapturedPageOptions, overrides?: Record<string, unknown>) {
   const data = { ...(page.data || {}) } as Record<string, any>;
   // Reset Must Have fields so cached Page() options do not leak across tests.
@@ -42,12 +73,18 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
   data.errorRetryable = false;
   data.pageReady = true;
   data.initErrorMessage = "";
+  data.formAuthorized = false;
+  data.contextPhase = "checking";
   data.busy = { submitting: false, uploading: false };
   const ctx: Record<string, any> = {
     ...page,
     route: "/pages/start-claim/start-claim",
     data,
     _submitState: null,
+    _divertedToHome: false,
+    _gateInFlight: false,
+    _navigatingAway: false,
+    _launchOptions: { entry: "form" },
     _form: {
       description: "",
       accidentDatetime: "",
@@ -64,6 +101,16 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
     ctx.data = { ...data, ...(overrides.data as Record<string, unknown>) };
   }
   return ctx;
+}
+
+async function openAuthorizedStartClaimForm(
+  page: CapturedPageOptions,
+  ctx: Record<string, any>,
+): Promise<void> {
+  installStartNewClaimContext();
+  await page.onLoad.call(ctx, { entry: "form" });
+  assert.equal(ctx.data.formAuthorized, true);
+  assert.equal(ctx.data.contextPhase, "ready");
 }
 
 test("app.json registers start-claim pages first", () => {
@@ -100,7 +147,7 @@ test("start-claim wxml asks accident Must Have and never teaches VIN-first", () 
 test("start-claim voice controls are available without wiping typed description", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page, {});
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   assert.equal(ctx.data.showRecordBtn, true);
   assert.equal(ctx.data.showStopBtn, false);
   assert.match(String(ctx.data.recordBtnLabel || ""), /录音/);
@@ -146,7 +193,7 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
       });
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
 
   page.onDescriptionInput.call(ctx, { detail: { value: " 被车后装 " } });
   page.onDatetimeInput.call(ctx, { detail: { value: "  Today   9 am " } });
@@ -175,14 +222,14 @@ test("founder Must Have values enable CTA and send normalized payload", async ()
   assert.equal(ctx.data.injuryStatus, calls[0]?.injury_status);
   // P26G: resume token → Entry / Task Home (not dead-end success).
   assert.deepEqual(launches, ["/pages/entry/entry"]);
-  assert.equal(loadResumeToken(), "h5t1.p26g-fresh");
+  assert.equal(loadResumeToken(), "");
   clearResumeToken();
 });
 
 test("founder live values complete → no missing hint + CTA enabled", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -195,7 +242,7 @@ test("founder live values complete → no missing hint + CTA enabled", async () 
 test("injury selection preserves description/time/location", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -216,7 +263,7 @@ test("injury selection preserves description/time/location", async () => {
 test("stale missing banner clears when form becomes complete", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "yes" } } });
   // Force the historical sticky banner shape from showErrors-on-injury.
   ctx.data.errorMessage = "请先填写：事故经过、事故时间、事故地点";
@@ -242,7 +289,7 @@ test("submit uses latest typed value from blur flush before API", async () => {
       return Promise.resolve({ ok: true, outcome: "accepted" });
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "旧描述" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -263,7 +310,7 @@ test("local invalid submit does not call API", async () => {
       return Promise.resolve({ ok: true, outcome: "accepted" });
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   await page.onSubmit.call(ctx);
   assert.equal(called, 0);
@@ -279,7 +326,7 @@ test("transport failure maps distinctly and preserves form", async () => {
       });
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -313,7 +360,7 @@ test("accepted-but-replayed retry reuses identity and opens Task Home", async ()
       });
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "等红灯时被后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 9 点" } });
   page.onLocationInput.call(ctx, { detail: { value: "家门口" } });
@@ -326,7 +373,7 @@ test("accepted-but-replayed retry reuses identity and opens Task Home", async ()
   assert.equal(calls[1]?.command_id, firstId);
   assert.equal(calls[1]?.idempotency_key, calls[0]?.idempotency_key);
   assert.deepEqual(launches, ["/pages/entry/entry"]);
-  assert.equal(loadResumeToken(), "h5t1.p26g-replay");
+  assert.equal(loadResumeToken(), "");
   clearResumeToken();
 });
 
@@ -345,7 +392,7 @@ test("submit with missing injury shows field error instead of silent disable-onl
       throw new Error("should not submit");
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "被车后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "Today 9 am" } });
   page.onLocationInput.call(ctx, { detail: { value: "路口" } });
@@ -404,7 +451,7 @@ test("start-claim with entry=form and no resume renders fresh form shell", async
     launches.push(url);
   };
   const clean = createPageContext(page);
-  page.onLoad.call(clean, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, clean);
   assert.deepEqual(launches, []);
   assert.equal(clean.data.pageReady, true);
   assert.equal(clean.data.initErrorMessage, "");
@@ -419,17 +466,72 @@ test("start-claim with entry=form and no resume renders fresh form shell", async
 test("initialization rejection surfaces error + retry without blanking form", async () => {
   const page = await loadStartClaimPage();
   const ctx = createPageContext(page);
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   ctx.setData({
     initErrorMessage: "页面初始化失败，请重试或联系陈总。",
+    contextPhase: "error",
+    formAuthorized: false,
     pageReady: true,
   });
   assert.match(String(ctx.data.initErrorMessage), /初始化失败|重试/);
   assert.equal(ctx.data.pageReady, true);
-  page.onResetAndRetry.call(ctx);
+  installStartNewClaimContext();
+  await page.onResetAndRetry.call(ctx);
   assert.equal(ctx.data.initErrorMessage, "");
+  assert.equal(ctx.data.formAuthorized, true);
   assert.equal(ctx.data.pageReady, true);
   assert.match(String(ctx.data.missingHint || ""), /事故经过/);
+});
+
+test("entry=form with Active Case redirects to server next action — form never authorized", async () => {
+  const page = await loadStartClaimPage();
+  const launches: string[] = [];
+  const wx = (globalThis as { wx: Record<string, any> }).wx;
+  wx.reLaunch = ({ url }: { url: string }) => launches.push(url);
+  installStartNewClaimContext({
+    nextAction: "CONTINUE_ACTIVE_CASE",
+    hasActiveCase: true,
+    resumeToken: "h5t1.active-block",
+  });
+  const ctx = createPageContext(page);
+  await page.onLoad.call(ctx, { entry: "form" });
+  assert.equal(ctx.data.formAuthorized, false);
+  assert.deepEqual(launches, ["/pages/task-home/task-home"]);
+});
+
+test("outcome resumed shows honest Active Case interrupt — not a new-claim success", async () => {
+  const page = await loadStartClaimPage();
+  const launches: string[] = [];
+  const modals: Array<Record<string, unknown>> = [];
+  const wx = (globalThis as { wx: Record<string, any> }).wx;
+  wx.reLaunch = ({ url }: { url: string }) => launches.push(url);
+  wx.showModal = (opts: Record<string, unknown>) => {
+    modals.push(opts);
+    (opts.success as ((res: { confirm: boolean; cancel: boolean }) => void) | undefined)?.({
+      confirm: true,
+      cancel: false,
+    });
+  };
+  const ctx = createPageContext(page, {
+    callStartClaim() {
+      return Promise.resolve({
+        ok: true,
+        outcome: "resumed",
+        resume_token: "h5t1.silent-resume",
+      });
+    },
+  });
+  await openAuthorizedStartClaimForm(page, ctx);
+  page.onDescriptionInput.call(ctx, { detail: { value: "另一起事故描述不应被当成新报案" } });
+  page.onDatetimeInput.call(ctx, { detail: { value: "今天上午 10 点" } });
+  page.onLocationInput.call(ctx, { detail: { value: "停车场" } });
+  page.onInjurySelect.call(ctx, { currentTarget: { dataset: { value: "no" } } });
+  await page.onSubmit.call(ctx);
+  assert.equal(modals.length, 1);
+  assert.match(String(modals[0].title || ""), /正在处理的报案/);
+  assert.equal(ctx.data.description, "另一起事故描述不应被当成新报案");
+  assert.deepEqual(launches, ["/pages/entry/entry"]);
+  assert.equal(String(ctx.data.errorMessage || "").includes("已创建"), false);
 });
 
 test("Home → Start Claim still exposes required fields in wxml", () => {
@@ -460,7 +562,7 @@ test("start-claim submit is single-flight and retries with same identity", async
       return startPromise;
     },
   });
-  page.onLoad.call(ctx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, ctx);
   page.onDescriptionInput.call(ctx, { detail: { value: "被车后装" } });
   page.onDatetimeInput.call(ctx, { detail: { value: "Today 9 am" } });
   page.onLocationInput.call(ctx, { detail: { value: "路口" } });
@@ -487,7 +589,7 @@ test("start-claim submit is single-flight and retries with same identity", async
       return Promise.resolve({ ok: true, outcome: "replayed" });
     },
   });
-  page.onLoad.call(retryCtx, { entry: "form" });
+  await openAuthorizedStartClaimForm(page, retryCtx);
   page.onDescriptionInput.call(retryCtx, { detail: { value: "被车后装" } });
   page.onDatetimeInput.call(retryCtx, { detail: { value: "Today 9 am" } });
   page.onLocationInput.call(retryCtx, { detail: { value: "路口" } });

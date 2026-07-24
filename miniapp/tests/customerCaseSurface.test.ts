@@ -218,9 +218,10 @@ test("Task Home wxml no longer presents 先不用操作 waiting block", () => {
   assert.equal(wxml.includes("waiting-block"), false);
 });
 
-test("Entry uses shared case-surface router", () => {
+test("Entry uses server Customer Context routing", () => {
   const entryTs = readFileSync(join(miniappRoot, "pages/entry/entry.ts"), "utf8");
-  assert.match(entryTs, /resolveCustomerCaseSurfaceRoute/);
+  assert.match(entryTs, /resolveCustomerContext/);
+  assert.match(entryTs, /routeForCustomerNextAction/);
   assert.equal(entryTs.includes('"/pages/task-home/task-home"'), false);
 });
 

@@ -90,3 +90,41 @@
 .sh-row-hover {
   background: #f9fafb;
 }
+
+.sh-status-card {
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 36rpx 32rpx;
+  color: #111827;
+}
+
+.sh-status-error {
+  border: 1rpx solid #e5e7eb;
+}
+
+.sh-status-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sh-status-sub {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  line-height: 1.45;
+  color: #4b5563;
+}
+
+.sh-status-actions {
+  margin-top: 28rpx;
+}
+
+.sh-status-cta {
+  display: inline-block;
+  padding: 14rpx 36rpx;
+  border-radius: 999rpx;
+  background: #1f4b99;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 600;
+}

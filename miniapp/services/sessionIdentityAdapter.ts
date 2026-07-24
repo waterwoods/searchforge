@@ -4,8 +4,8 @@
  * Production / durable path:
  *   wx.login → POST /api/h5/customer/session → opaque wx_* session_id
  *
- * Home Continue / Start Claim is server-authoritative:
- *   session.has_active_case decides UI; mp_prototype_resume_token is cache only.
+ * Customer Context is server-authoritative:
+ *   context.next_action decides navigation; mp_prototype_resume_token is cache only.
  *
  * Prototype anon-* is isolated to non-Production API hosts when durable
  * login cannot be established (local DevTools / QA without MP credentials).
@@ -16,12 +16,11 @@
  */
 
 import { appConfig, PRODUCTION_API_BASE_URL } from "../utils/config";
-import { ApiRequestError, requestJson } from "../utils/request";
+import { requestJson } from "../utils/request";
 import {
   clearCustomerSessionId,
   clearResumeToken,
   loadCustomerSessionId,
-  loadResumeToken,
   saveCustomerSessionId,
   saveResumeToken,
 } from "../utils/storage";
@@ -31,26 +30,33 @@ const SIMULATE_SEED_KEY = "mp_simulate_openid_seed";
 
 export type CustomerSessionResult = {
   sessionId: string;
-  hasActiveCase: boolean;
-  resumeToken: string;
-  resumeExpiresAt: string;
   identitySource: "durable" | "prototype_anon";
-  /** How Active Case authority was decided for this call. */
-  authoritySource: "customer_session" | "resume_reconcile" | "none";
 };
 
 type SessionApiBody = {
   ok?: boolean;
   session_id?: string;
+};
+
+export type CustomerNextAction =
+  | "START_NEW_CLAIM"
+  | "CONTINUE_ACTIVE_CASE"
+  | "UPLOAD_REQUEST_ITEM"
+  | "BROKER_REVIEW"
+  | "CASE_CLOSED";
+
+export type CustomerContextResult = {
+  hasActiveCase: boolean;
+  resumeToken: string;
+  resumeExpiresAt: string;
+  nextAction: CustomerNextAction;
+};
+
+type CustomerContextApiBody = {
   has_active_case?: boolean;
   resume_token?: string;
   resume_expires_at?: string;
-};
-
-type IntakeAuthorityBody = {
-  case_closed_read_only?: boolean;
-  case_status?: string | null;
-  case_history_state?: string | null;
+  next_action?: CustomerNextAction;
 };
 
 function normalizeApiBase(url: unknown): string {
@@ -149,49 +155,6 @@ export function applyServerActiveCaseAuthority(body: {
   return { hasActiveCase: false, resumeToken: "", resumeExpiresAt: "" };
 }
 
-function intakeSaysClosedHistory(body: IntakeAuthorityBody | null | undefined): boolean {
-  if (!body || typeof body !== "object") return false;
-  if (Boolean(body.case_closed_read_only)) return true;
-  if (String(body.case_history_state || "").trim().toLowerCase() === "history") return true;
-  if (String(body.case_status || "").trim().toLowerCase() === "closed") return true;
-  return false;
-}
-
-/**
- * When /customer/session cannot run, reconcile local resume against case terminal state.
- * Returns whether Home should show Continue.
- */
-export async function reconcileLocalResumeAgainstCaseAuthority(): Promise<boolean> {
-  const token = loadResumeToken();
-  if (!token) return false;
-  try {
-    const body = await requestJson<IntakeAuthorityBody>(
-      "GET",
-      `/api/h5/tasks/${encodeURIComponent(token)}/intake`,
-    );
-    if (intakeSaysClosedHistory(body)) {
-      clearResumeToken();
-      return false;
-    }
-    return Boolean(loadResumeToken());
-  } catch (err) {
-    if (err instanceof ApiRequestError) {
-      const code = String(err.code || "");
-      if (
-        err.status === 404
-        || code === "case_not_found"
-        || code === "invalid_or_expired_task_link"
-        || code === "unsupported_flow"
-      ) {
-        clearResumeToken();
-        return false;
-      }
-    }
-    // Transient network: keep cache for this show; next successful session wins.
-    return Boolean(loadResumeToken());
-  }
-}
-
 async function exchangeCodeForSession(code: string): Promise<CustomerSessionResult> {
   const body = await requestJson<SessionApiBody>("POST", "/api/h5/customer/session", {
     code,
@@ -201,36 +164,26 @@ async function exchangeCodeForSession(code: string): Promise<CustomerSessionResu
     throw new Error("durable_session_missing");
   }
   saveCustomerSessionId(sessionId);
-  const applied = applyServerActiveCaseAuthority(body);
   return {
     sessionId: sessionId.slice(0, 80),
-    hasActiveCase: applied.hasActiveCase,
-    resumeToken: applied.resumeToken,
-    resumeExpiresAt: applied.resumeExpiresAt,
     identitySource: "durable",
-    authoritySource: "customer_session",
   };
 }
 
 /**
- * Establish or refresh durable customer session.
- * Syncs server Active Case → local resume cache (Home must use returned hasActiveCase).
+ * Establish or refresh durable customer session identity.
+ * This intentionally makes no Active Case or navigation decision.
  */
 export async function ensureCustomerSession(): Promise<CustomerSessionResult> {
   try {
     const code = await resolveLoginCode();
     return await exchangeCodeForSession(code);
   } catch {
-    const hasActiveFromCase = await reconcileLocalResumeAgainstCaseAuthority();
     const cached = loadCustomerSessionId();
     if (cached.startsWith("wx_")) {
       return {
         sessionId: cached,
-        hasActiveCase: hasActiveFromCase,
-        resumeToken: hasActiveFromCase ? loadResumeToken() : "",
-        resumeExpiresAt: "",
         identitySource: "durable",
-        authoritySource: hasActiveFromCase ? "resume_reconcile" : "none",
       };
     }
     if (!allowPrototypeAnonFallback()) {
@@ -241,13 +194,35 @@ export async function ensureCustomerSession(): Promise<CustomerSessionResult> {
     saveCustomerSessionId(anon);
     return {
       sessionId: anon,
-      hasActiveCase: hasActiveFromCase,
-      resumeToken: hasActiveFromCase ? loadResumeToken() : "",
-      resumeExpiresAt: "",
       identitySource: "prototype_anon",
-      authoritySource: hasActiveFromCase ? "resume_reconcile" : "none",
     };
   }
+}
+
+/**
+ * The only Mini Program authority for Active Case, resume token, and navigation.
+ * Local token storage is updated only from this server read and is never consulted
+ * to decide the customer's route.
+ */
+export async function resolveCustomerContext(options?: {
+  session?: CustomerSessionResult;
+  launchToken?: string;
+}): Promise<CustomerContextResult> {
+  const session = options?.session || (await ensureCustomerSession());
+  const body = await requestJson<CustomerContextApiBody>("POST", "/api/h5/customer/context", {
+    session_id: session.sessionId,
+    launch_token: String(options?.launchToken || "").trim() || undefined,
+  });
+  const applied = applyServerActiveCaseAuthority(body);
+  const nextAction = String(body.next_action || "").trim() as CustomerNextAction;
+  if (!nextAction) {
+    clearResumeToken();
+    throw new Error("customer_context_missing_next_action");
+  }
+  return {
+    ...applied,
+    nextAction,
+  };
 }
 
 /**
