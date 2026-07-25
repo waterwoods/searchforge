@@ -20,7 +20,13 @@ import {
 import { clearResumeToken } from "../../utils/storage";
 import {
   CASE_STATUS_ROUTE,
-  SUBMIT_RECEIPT_COPY,
+  DEFER_LATER_LABEL,
+  HUB_RETURN_LABEL,
+  HUB_VIEW_LABEL,
+  TASK_HOME_ROUTE,
+  buildSubmitReceiptCopy,
+  customerOwesWork,
+  resolveCustomerCaseSurfaceRoute,
 } from "../../utils/customerCaseSurface";
 import {
   applySlice1ProjectionToTask,
@@ -155,6 +161,8 @@ type PageData = {
   /** Demo Polish Sprint 2 — durable in-page submit receipt (not toast-only). */
   submitReceiptVisible: boolean;
   submitReceiptText: string;
+  deferLaterLabel: string;
+  waitingPrimaryLabel: string;
   shellSafetyCopy: string;
   /** P26H-UI — Empty Page Gate; WXML must bind these, not nextAction alone. */
   showWorkSurface: boolean;
@@ -218,7 +226,7 @@ function ensureInternal(page: WechatMiniprogram.Page.Instance): PageInternal {
 
 function brokerStatusLabel(status: string): string {
   if (status === "waiting_for_customer" || status === "wait_for_customer_item") return "等待您补充";
-  if (status === "review_ready" || status === "review_customer_response") return "等待经纪人审核";
+  if (status === "review_ready" || status === "review_customer_response") return "等待陈总审核";
   if (status === "reviewing" || status === "create_request") return "经纪人处理中";
   return "";
 }
@@ -295,6 +303,8 @@ Page({
     submitDisabledReason: "",
     submitReceiptVisible: false,
     submitReceiptText: "",
+    deferLaterLabel: DEFER_LATER_LABEL,
+    waitingPrimaryLabel: HUB_VIEW_LABEL,
     shellSafetyCopy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
     showWorkSurface: false,
     showFooterCta: false,
@@ -406,7 +416,7 @@ Page({
           showFooterCta: false,
           pageError: {
             code: "slice1_not_enabled",
-            message: "当前任务无需此步骤，请返回我的资料继续。",
+            message: `当前任务无需此步骤，请${HUB_RETURN_LABEL}继续。`,
             retryable: false,
             blocking: true,
           },
@@ -611,13 +621,15 @@ Page({
           ? "uncertain"
           : "idle",
       retryAvailable: !waitingForBroker && !itemChanged && this.data.submissionState === "uncertain",
-      submitLabel: waitingForBroker ? "返回我的资料" : "提交补充资料",
+      submitLabel: waitingForBroker ? HUB_RETURN_LABEL : "提交补充资料",
       submitDisabled,
       submitDisabledReason: waitingForBroker ? "" : "",
       pageError: EMPTY_TASK_ERROR,
       loading: false,
       showWorkSurface: workSurface.showWorkSurface,
       showFooterCta: workSurface.showFooterCta,
+      deferLaterLabel: DEFER_LATER_LABEL,
+      waitingPrimaryLabel: HUB_VIEW_LABEL,
     });
   },
 
@@ -911,43 +923,49 @@ Page({
     });
   },
 
-  showSubmitReceipt() {
+  showSubmitReceipt(task?: CustomerTask | null) {
+    const source = task || (this.data.task as CustomerTask | null);
     this.safePageSetData({
       submitReceiptVisible: true,
-      submitReceiptText: SUBMIT_RECEIPT_COPY,
+      submitReceiptText: buildSubmitReceiptCopy(source),
       submissionState: "confirmed",
     });
   },
 
-  /** Final Request More item → Case Status (Waiting Broker). Soft-freeze preserved. */
-  goCaseStatusAfterSuccess() {
+  /** After Request More success: Task Home if more work, else Case Status. */
+  goContinueSurfaceAfterSuccess(task?: CustomerTask | null) {
     if (this.isBusy("navigating")) return;
     this.setBusy("navigating", true);
+    const url = resolveCustomerCaseSurfaceRoute(task) || CASE_STATUS_ROUTE;
     wx.redirectTo({
-      url: CASE_STATUS_ROUTE,
+      url,
       complete: () => this.setBusy("navigating", false),
       fail: () => {
         wx.reLaunch({
-          url: CASE_STATUS_ROUTE,
+          url: url === TASK_HOME_ROUTE ? TASK_HOME_ROUTE : CASE_STATUS_ROUTE,
           complete: () => this.setBusy("navigating", false),
         });
       },
     });
   },
 
+  /** @deprecated Prefer goContinueSurfaceAfterSuccess — kept name for waiting-only callers. */
+  goCaseStatusAfterSuccess() {
+    this.goContinueSurfaceAfterSuccess(this.data.task as CustomerTask | null);
+  },
+
   finishSubmitSuccess(args: { waitingForBroker: boolean; nextTask: CustomerTask }) {
-    this.showSubmitReceipt();
-    if (args.waitingForBroker) {
-      try {
-        const app = getApp<IAppOption>();
-        app.task = args.nextTask;
-      } catch {
-        // ignore
-      }
-      // Brief in-page receipt, then land on Case Status (Loop 2).
-      setTimeout(() => this.goCaseStatusAfterSuccess(), 450);
-      return;
+    void args.waitingForBroker;
+    try {
+      const app = getApp<IAppOption>();
+      app.task = args.nextTask;
+    } catch {
+      // ignore
     }
+    this.showSubmitReceipt(args.nextTask);
+    // Leave Request More so the next hub CTA is clear (Task Home or Case Status).
+    // Chained Request More items stay on-page via handleSubmitResult instead.
+    setTimeout(() => this.goContinueSurfaceAfterSuccess(args.nextTask), 450);
   },
 
   async runSubmit(options: { reuseIdentity: boolean; partialVehicleSave?: boolean }) {
@@ -1013,7 +1031,11 @@ Page({
           this.applyAuthoritativeTask(refreshed, { restoreDraft: false });
           const stillOpen = resolveSystemDefaultInsurance(refreshed).enabled;
           if (!stillOpen) {
-            this.finishSubmitSuccess({ waitingForBroker: true, nextTask: refreshed });
+            // Do not claim “waiting broker” when Today still has work (e.g. photos).
+            this.finishSubmitSuccess({
+              waitingForBroker: !customerOwesWork(refreshed),
+              nextTask: refreshed,
+            });
           } else {
             this.safePageSetData({
               submissionState: "uncertain",
@@ -1210,7 +1232,7 @@ Page({
                   submitDisabled: !String(after.nextAction?.request_item_id || "").trim(),
                   submitDisabledReason: "",
                 });
-                this.showSubmitReceipt();
+                this.showSubmitReceipt(refreshed);
               }
             }
           }
@@ -1292,7 +1314,7 @@ Page({
           fieldErrors: {},
           needsCorrection: correction,
           submitReceiptVisible: !correction,
-          submitReceiptText: correction ? "" : SUBMIT_RECEIPT_COPY,
+          submitReceiptText: correction ? "" : buildSubmitReceiptCopy(nextTask),
         });
         this.persistDraftSafe();
         console.info("[slice1_submit]", { outcome, partial: true, itemType, correction });
@@ -1306,23 +1328,33 @@ Page({
       internal.idempotencyKey = "";
       internal.clientDraftId = newClientDraftId();
 
-      const waiting = mapSlice1CustomerView(nextTask).waitingForBroker;
+      const afterView = mapSlice1CustomerView(nextTask);
+      const waiting = afterView.waitingForBroker;
+      const nextRequestItemId = String(afterView.nextAction?.request_item_id || "").trim();
       console.info("[slice1_submit]", { outcome, waitingForBroker: waiting });
 
-      if (waiting) {
+      if (waiting || !customerOwesWork(nextTask)) {
         this.applyAuthoritativeTask(nextTask, { restoreDraft: false });
         this.finishSubmitSuccess({ waitingForBroker: true, nextTask });
         return;
       }
 
-      this.applyAuthoritativeTask(nextTask, { restoreDraft: true });
-      this.safePageSetData({
-        submissionState: "idle",
-        retryAvailable: false,
-        submitDisabled: !String(mapSlice1CustomerView(nextTask).nextAction?.request_item_id || "").trim(),
-        submitDisabledReason: "",
-      });
-      this.showSubmitReceipt();
+      // More Request More items on this page — stay and show next-step receipt (not “审核中”).
+      if (nextRequestItemId) {
+        this.applyAuthoritativeTask(nextTask, { restoreDraft: true });
+        this.safePageSetData({
+          submissionState: "idle",
+          retryAvailable: false,
+          submitDisabled: false,
+          submitDisabledReason: "",
+        });
+        this.showSubmitReceipt(nextTask);
+        return;
+      }
+
+      // Owes work elsewhere (e.g. photos on Task Home) — leave with clear next hub.
+      this.applyAuthoritativeTask(nextTask, { restoreDraft: false });
+      this.finishSubmitSuccess({ waitingForBroker: false, nextTask });
       return;
     }
 

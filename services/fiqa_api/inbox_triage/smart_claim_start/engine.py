@@ -224,9 +224,9 @@ def _screens_for_mode(mode: StartMode) -> list[ScreenStep]:
             base_entry,
             {
                 "screen_id": "contact_broker",
-                "title_zh": "请联系保险顾问",
+                "title_zh": "请联系陈总",
                 "purpose": "Ambiguous identity — no silent start",
-                "primary_cta_zh": "联系顾问",
+                "primary_cta_zh": "联系陈总",
             },
         ]
 
@@ -253,7 +253,7 @@ def _screens_for_mode(mode: StartMode) -> list[ScreenStep]:
         [
             {
                 "screen_id": "known_context",
-                "title_zh": "我们已了解您的信息",
+                "title_zh": "请确认以下信息",
                 "purpose": "Show known chips; edit-on-request only",
                 "primary_cta_zh": "信息无误，继续",
             },
@@ -273,7 +273,7 @@ def _screens_for_mode(mode: StartMode) -> list[ScreenStep]:
                 "screen_id": "review_submit",
                 "title_zh": "确认后提交",
                 "purpose": "Review known + accident; one submit",
-                "primary_cta_zh": "提交给顾问",
+                "primary_cta_zh": "提交给陈总",
             },
             {
                 "screen_id": "receipt",
@@ -303,7 +303,7 @@ def _screens_for_mode(mode: StartMode) -> list[ScreenStep]:
                 "screen_id": "review_submit",
                 "title_zh": "确认后提交",
                 "purpose": "Review accident facts only",
-                "primary_cta_zh": "提交给顾问",
+                "primary_cta_zh": "提交给陈总",
             },
             {
                 "screen_id": "receipt",
@@ -409,7 +409,7 @@ def build_smart_claim_start_plan(
             {
                 "step_id": "confirm_policy",
                 "prompt_zh": "系统显示保单可能已过期，请确认是否仍用此保单报案",
-                "options": ["确认使用此保单", "联系顾问更新保单"],
+                "options": ["确认使用此保单", "联系陈总更新保单"],
                 "required_before_accident": True,
                 "reason_code": "stale_policy_confirm",
             }
@@ -429,10 +429,10 @@ def build_smart_claim_start_plan(
             for k in MUST_HAVE_ACCIDENT_KEYS
         ]
         headline = "您已有一个正在处理的报案"
-        subtitle = "请先继续当前报案。如确需新的报案，请联系保险顾问。"
+        subtitle = "请先继续当前报案。如确需新的报案，请联系陈总。"
         confidence = "我们找到了您正在处理的报案"
         primary = "继续当前报案"
-        secondary: str | None = "联系保险顾问"
+        secondary: str | None = "联系陈总"
         failure = "one_active_case_gate"
         photos = "HIDDEN_UNTIL_REQUEST_MORE"
         never_ask = list(prefill.get("auto_fields") or []) + list(MUST_HAVE_ACCIDENT_KEYS)
@@ -441,10 +441,10 @@ def build_smart_claim_start_plan(
             _question(k, "HIDDEN", "ambiguous_no_silent_start", blocks_submit=False)
             for k in MUST_HAVE_ACCIDENT_KEYS
         ]
-        headline = "需要保险顾问协助确认身份"
-        subtitle = "为避免用错保单或车辆，请先联系顾问后再报案。"
+        headline = "需要陈总协助确认身份"
+        subtitle = "为避免用错保单或车辆，请先联系陈总后再报案。"
         confidence = "暂时无法自动确认您的信息"
-        primary = "联系保险顾问"
+        primary = "联系陈总"
         secondary = None
         failure = "ambiguous_match_contact_broker"
         photos = "HIDDEN_UNTIL_REQUEST_MORE"
@@ -458,10 +458,10 @@ def build_smart_claim_start_plan(
                 _question(key, "BROKER_OWNED", "degrade_identity_broker", blocks_submit=False),
             )
         headline = "今天发生了什么？"
-        subtitle = "先告诉我们事故情况。身份与保单信息如需补充，顾问会再联系您。"
+        subtitle = "先告诉我们事故情况。身份与保单信息如需补充，陈总会再联系您。"
         confidence = "我们会先记下事故情况"
-        primary = "提交给顾问"
-        secondary = "联系保险顾问"
+        primary = "提交给陈总"
+        secondary = "联系陈总"
         failure = "lookup_degrade_blank_claim"
         photos = "AFTER_SUBMIT_OPTIONAL"
         never_ask = []
@@ -487,19 +487,20 @@ def build_smart_claim_start_plan(
                     blocks_submit=True,
                 ),
             )
+        # Cap 02 AUTO Prefill is presentation/classification only — never promise CRM sync.
         if mode == "MATCHED_CONFIRM_VEHICLE":
             headline = "确认车辆后，告诉我们今天发生了什么"
-            subtitle = "我们已准备好您的姓名与联系方式；请先选择出险车辆。"
-            confidence = "我们已了解您的部分信息"
+            subtitle = "请先选择出险车辆，并确认下方信息。"
+            confidence = "请确认以下信息"
         elif mode == "MATCHED_CONFIRM_POLICY":
             headline = "确认保单后，告诉我们今天发生了什么"
             subtitle = "保单信息可能需要您确认一下，然后只需补充事故事实。"
-            confidence = "我们已准备好您的信息，请确认保单"
+            confidence = "请确认保单信息"
         else:
             headline = "今天发生了什么？"
-            subtitle = "我们已准备好您的信息。您只需补充事故事实。"
-            confidence = "我们已了解您"
-        primary = "提交给顾问"
+            subtitle = "请确认下方信息。您只需补充事故事实。"
+            confidence = "请确认以下信息"
+        primary = "提交给陈总"
         secondary = "修改我的信息"
         failure = "matched_smart_start"
         photos = "AFTER_SUBMIT_OPTIONAL"

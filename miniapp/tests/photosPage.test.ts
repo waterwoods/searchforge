@@ -208,7 +208,7 @@ test("upload success confirms via read-back and clears busy uploading", async ()
   assert.equal(ctx.data.slots[0].uploadIntentId, "");
   assert.equal(ctx.data.slots[0].canRetry, false);
   assert.equal(ctx.data.slots[0].localPath, "/tmp/p1.jpg");
-  assert.equal(ctx.data.slots[0].statusText, "已确认");
+  assert.equal(ctx.data.slots[0].statusText, "已收到");
   assert.equal(ctx.data.uploadStage, "上传完成");
   assert.ok(toasts.includes("上传完成"));
   assert.equal(timingLogs.length, 1);
@@ -353,7 +353,7 @@ test("retry uses existing local photo without repicking", async () => {
   assert.equal(ctx.data.slots[0].canRetry, false);
   assert.equal(ctx.data.slots[0].localPath, "/tmp/existing.jpg");
   assert.equal(ctx.data.slots[0].uploadIntentId, "");
-  assert.equal(ctx.data.slots[0].statusText, "已确认");
+  assert.equal(ctx.data.slots[0].statusText, "已收到");
 
   CustomerTaskApi.getUploadTaskInfo = originalGetUploadTaskInfo;
   CustomerTaskApi.uploadPhoto = originalUploadPhoto;
@@ -1093,7 +1093,7 @@ test("contact broker opens shared guidance modal, not hub escape", async () => {
   page.onContactBroker.call(createPageContext(page));
   assert.equal(modals.length, 1);
   assert.equal(modals[0].title, "联系陈总");
-  assert.match(modals[0].content, /返回微信/);
+  assert.match(modals[0].content, /打开微信/);
   assert.deepEqual(redirects, []);
 });
 
@@ -1313,7 +1313,7 @@ test("onShow reconciles pending upload after backgrounding", async () => {
   assert.equal(ctx.data.slots[0].requirementMet, true);
   assert.equal(ctx.data.slots[0].uploading, false);
   assert.equal(ctx.data.slots[0].localPath, "/tmp/bg.jpg");
-  assert.equal(ctx.data.slots[0].statusText, "已确认");
+  assert.equal(ctx.data.slots[0].statusText, "已收到");
   assert.equal(page.hasPendingUploadForSlot.call(ctx, "customer_damage_photo"), false);
 
   CustomerTaskApi.getUploadTaskInfo = originalGetUploadTaskInfo;
@@ -1558,7 +1558,7 @@ test("legacy completed slot shape hydrates requirementMet", async () => {
           error: "",
           canRetry: false,
           canRemove: false,
-          requiredHint: "已确认",
+          requiredHint: "已收到",
           statusText: "已上传并确认",
         },
       ],

@@ -20,7 +20,7 @@
     <view class="card" wx:if="{{pageState !== 'initializing'}}">
       <view class="card-title">补充事故照片</view>
       <view class="card-subtitle">
-        先上传必需照片。上传后会自动回读服务器确认，{{photoProgressText}}。
+        先上传必需照片。上传后我们会确认是否收到，{{photoProgressText}}。
       </view>
       <view wx:if="{{uploadStage}}" class="upload-stage" aria-live="polite">{{uploadStage}}</view>
 
@@ -37,15 +37,15 @@
 
   <view class="footer-cta" wx:if="{{pageState !== 'initializing'}}">
     <task-cta
-      wx:if="{{photoCount < maxActivePhotos}}"
-      label="{{photoCount < 1 ? '上传下一张' : '添加更多照片'}}"
+      wx:if="{{photoCount < 1}}"
+      label="上传照片"
       disabled="{{busy.uploading}}"
       loading="{{busy.uploading}}"
       bindtap="onAddPhoto"
     />
     <task-cta
-      wx:if="{{photoCount >= 1}}"
-      label="完成并返回我的资料"
+      wx:else
+      label="完成并继续"
       disabled="{{busy.uploading}}"
       loading="{{busy.uploading}}"
       bindtap="onDone"
@@ -56,7 +56,7 @@
       bindtap="onBackHome"
       disabled="{{busy.uploading}}"
     >
-      返回我的资料
+      先离开，稍后再继续
     </button>
   </view>
 </view>

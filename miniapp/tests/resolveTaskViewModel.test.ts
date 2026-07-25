@@ -220,7 +220,7 @@ test("review route CTA uses submit label and disabled reason", () => {
     buildContract({ submit_ready: false, review_ready: false }),
     { route: "/pages/review/review", busy: idleBusy },
   );
-  assert.equal(vm.cta.label, "提交给陈总审核");
+  assert.equal(vm.cta.label, "确认并交给陈总");
   assert.equal(vm.cta.actionType, "submit");
   assert.equal(vm.cta.disabled, true);
   assert.ok(String(vm.cta.disabledReason).length > 0);
@@ -232,7 +232,16 @@ test("receipt route CTA returns to task home", () => {
     buildContract({ task_status: "submitted", submit_ready: false }),
     { route: "/pages/receipt/receipt", busy: idleBusy },
   );
-  assert.equal(vm.cta.label, "返回我的资料");
+  assert.equal(vm.cta.label, "返回我的报案");
   assert.equal(vm.cta.actionType, "view_status");
   assert.equal(vm.statusTone, "done");
+});
+
+test("legacy hub title 我的事故资料 remaps to 我的报案", () => {
+  const vm = resolveTaskViewModel(
+    buildTask({ title: "我的事故资料" }),
+    buildContract({ title: "我的事故资料" }),
+    { busy: idleBusy },
+  );
+  assert.equal(vm.title, "我的报案");
 });

@@ -19,7 +19,7 @@
 
     <!-- P26A Constitution-first Task Home -->
     <view class="card" wx:if="{{constitutionEnabled || taskCards.length}}">
-      <view class="card-title">{{taskViewModel.title || '我的事故资料'}}</view>
+      <view class="card-title">{{taskViewModel.title || '我的报案'}}</view>
 
       <view wx:if="{{showCareLine}}" class="case-trust">
         <view class="case-trust-care">{{careLine}}</view>
@@ -65,11 +65,10 @@
         total="{{taskViewModel.progress.total}}"
       />
       <view class="status-pill {{slice1WaitingForBroker ? 'done' : ''}}">
-        {{slice1WaitingForBroker ? '等待经纪人' : '需补充材料'}}
+        {{slice1WaitingForBroker ? '等待陈总' : '需补充材料'}}
       </view>
       <view class="card-subtitle">{{slice1Instruction || taskViewModel.instruction || '请按陈总要求补充资料'}}</view>
       <view class="list-item" wx:if="{{slice1ProgressText}}">{{slice1ProgressText}}</view>
-      <view class="list-item" wx:if="{{slice1BrokerStatusLabel}}">经纪人状态：{{slice1BrokerStatusLabel}}</view>
       <view class="section-label" wx:if="{{slice1QueuedItems.length}}">稍后还需补充</view>
       <view
         class="list-item"

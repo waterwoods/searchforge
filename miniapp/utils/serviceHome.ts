@@ -8,9 +8,9 @@
 
 export const SERVICE_HOME_ROUTE = "/pages/service-home/service-home";
 
-export const CONTINUE_CLAIM_TITLE = "继续处理当前报案";
-export const VIEW_PROGRESS_LABEL = "查看案件进度";
-export const CONTACT_BROKER_LABEL = "联系保险顾问";
+export const CONTINUE_CLAIM_TITLE = "继续办理当前报案";
+export const VIEW_PROGRESS_LABEL = "查看我的报案";
+export const CONTACT_BROKER_LABEL = "联系陈总";
 export const START_NEW_CLAIM_LABEL = "开始新的报案";
 export const START_CLAIM_PRIMARY_TITLE = "开始报案";
 export const START_CLAIM_PRIMARY_HINT = "告诉陈总发生了什么，我们帮您整理资料";

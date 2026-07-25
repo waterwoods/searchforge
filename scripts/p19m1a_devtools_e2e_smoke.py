@@ -328,7 +328,7 @@ def run_e2e(
     # Launch / Task Home
     st, intake = _get(f"/api/h5/tasks/{token}/intake")
     checks["launch_intake_status"] = st
-    checks["launch_dashboard_title"] = (intake.get("dashboard_summary") or {}).get("title") == "我的事故资料"
+    checks["launch_dashboard_title"] = (intake.get("dashboard_summary") or {}).get("title") == "我的报案"
     checks["launch_not_submitted"] = intake.get("submitted") is False
 
     # Story + basics

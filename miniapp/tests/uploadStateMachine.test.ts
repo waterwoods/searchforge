@@ -83,7 +83,7 @@ test("Projection Confirmed wins over local uploaded/uploading", () => {
     }),
     "confirmed",
   );
-  assert.equal(UPLOAD_PHASE_LABEL.confirmed, "已确认");
+  assert.equal(UPLOAD_PHASE_LABEL.confirmed, "已收到");
 });
 
 test("reconcile keeps thumbnail after successful confirm (photos root-cause)", () => {
@@ -121,7 +121,7 @@ test("reconcile keeps thumbnail after successful confirm (photos root-cause)", (
   );
   assert.equal(
     uploadStatusText({ phase: "confirmed" }),
-    "已确认",
+    "已收到",
   );
 });
 

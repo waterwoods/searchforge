@@ -255,28 +255,32 @@ test("Request More submit uses 提交补充资料 and durable in-page receipt", 
   const ts = readFileSync(join(here, "../pages/request-item/request-item.ts"), "utf8");
   const wxml = readFileSync(join(here, "../pages/request-item/request-item.wxml"), "utf8");
   assert.match(ts, /提交补充资料/);
-  assert.match(ts, /SUBMIT_RECEIPT_COPY/);
+  assert.match(ts, /buildSubmitReceiptCopy/);
   assert.equal(SUBMIT_RECEIPT_COPY, "补充资料已收到，陈总会继续审核。");
   assert.match(ts, /setBusy\("submitting", true\)/);
-  assert.match(ts, /goCaseStatusAfterSuccess/);
-  assert.match(ts, /CASE_STATUS_ROUTE/);
+  assert.match(ts, /goContinueSurfaceAfterSuccess/);
+  assert.match(ts, /buildSubmitReceiptCopy/);
+  assert.match(ts, /resolveCustomerCaseSurfaceRoute/);
   assert.equal(ts.includes('submitLabel: waitingForBroker ? "返回我的资料" : "提交给陈总"'), false);
   assert.match(wxml, /waitingForBroker/);
   assert.match(wxml, /submitReceiptVisible/);
-  assert.match(wxml, /查看案件状态/);
+  assert.match(wxml, /waitingPrimaryLabel/);
+  assert.match(wxml, /deferLaterLabel/);
   // Active submit CTA is hidden once waitingForBroker (success state).
   assert.match(wxml, /showFooterCta && !waitingForBroker/);
   // Immediate busy + double-tap guard on CTA.
   assert.match(wxml, /submitDisabled \|\| busy\.submitting/);
 });
 
-test("Final Request More success navigates to Case Status", () => {
+test("Final Request More success navigates via case surface resolver", () => {
   const here = dirname(__filename);
   const ts = readFileSync(join(here, "../pages/request-item/request-item.ts"), "utf8");
   assert.match(ts, /finishSubmitSuccess/);
-  assert.match(ts, /waitingForBroker: true/);
+  assert.match(ts, /goContinueSurfaceAfterSuccess/);
+  assert.match(ts, /resolveCustomerCaseSurfaceRoute/);
   assert.match(ts, /redirectTo/);
   assert.match(ts, /CASE_STATUS_ROUTE/);
+  assert.match(ts, /TASK_HOME_ROUTE/);
   assert.equal(ts.includes("goTaskHome()"), false);
 });
 

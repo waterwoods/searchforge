@@ -7,12 +7,14 @@ import { fileURLToPath } from "node:url";
 import {
   CASE_STATUS_ROUTE,
   CASE_STATUS_TITLE,
+  DEFER_LATER_LABEL,
   LEGACY_WAIT_TODAY,
   SUBMIT_RECEIPT_COPY,
   TASK_HOME_ROUTE,
   RECEIPT_ROUTE,
   VOLUNTARY_SUPPLEMENT_LABEL,
   buildCaseStatusViewModel,
+  buildSubmitReceiptCopy,
   canVoluntarySupplement,
   customerOwesWork,
   isCustomerCaseClosedReadOnly,
@@ -201,6 +203,26 @@ test("Case Status VM replaces 先不用操作 with production title", () => {
   assert.match(vm.completedLines.join("、") || vm.lastSubmittedLines.join("、"), /保险卡/);
   assert.equal(VOLUNTARY_SUPPLEMENT_LABEL, "继续补充资料");
   assert.equal(SUBMIT_RECEIPT_COPY, "补充资料已收到，陈总会继续审核。");
+  assert.equal(DEFER_LATER_LABEL, "先离开，稍后再继续");
+  assert.equal(buildSubmitReceiptCopy(task), SUBMIT_RECEIPT_COPY);
+});
+
+test("Submit receipt names next step when customer still owes work", () => {
+  const task = {
+    ...applySlice1ProjectionToTask(baseTask(), actionableProjection()),
+    constitution_projection: {
+      customer: {
+        today: "上传事故照片",
+        why: "保险卡已收到",
+        after: "完成后由陈总审核",
+        current_stage: "customer_action_needed",
+        trust: { care_line: "陈总已收到资料", care_note: "请继续下一步" },
+        tasks: [],
+      },
+    },
+  } as CustomerTask;
+  assert.equal(customerOwesWork(task), true);
+  assert.equal(buildSubmitReceiptCopy(task), "已收到。下一步：上传事故照片");
 });
 
 test("Continue decision preserves Golden resume token", () => {
@@ -233,7 +255,7 @@ test("Case Status page registered and titled", () => {
   assert.equal(appJson.pages?.[0], "pages/start-claim/start-claim");
   const wxml = readFileSync(join(miniappRoot, "pages/case-status/case-status.wxml"), "utf8");
   assert.match(wxml, /\{\{title\}\}/);
-  assert.match(wxml, /联系保险顾问/);
+  assert.match(wxml, /联系陈总/);
   assert.match(wxml, /查看已提交资料/);
   assert.match(wxml, /voluntarySupplementLabel/);
   assert.match(wxml, /showVoluntarySupplement/);

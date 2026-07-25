@@ -161,7 +161,7 @@ Page({
     );
     const readyLabel = canSubmit ? "内容正确即可提交" : "还有资料需要确认";
     const readySummary = canSubmit
-      ? "主要资料已齐全，可以提交给陈总审核。"
+      ? "主要资料已齐全，可以确认并交给陈总。"
       : missing.length
         ? `还需补充：${missing.slice(0, 2).join("、")}${missing.length > 2 ? "等" : ""}。`
         : "请先补全必填资料后再提交。";

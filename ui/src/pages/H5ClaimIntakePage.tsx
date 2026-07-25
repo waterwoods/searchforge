@@ -799,7 +799,7 @@ export default function H5ClaimIntakePage() {
   const showSecondaryOverviewOnly = landing.kind === 'request_item' && showOverview;
   const headerTitle = showRequestItemFirst
     ? landing.title
-    : dashboard?.title || info?.title || '我的事故资料';
+    : dashboard?.title || info?.title || '我的报案';
 
   return (
     <div style={styles.page}>

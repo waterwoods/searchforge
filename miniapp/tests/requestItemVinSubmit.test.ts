@@ -169,6 +169,9 @@ function pageHarness(page: Record<string, any>, task: CustomerTask) {
       Object.assign(this.data, patch);
     },
     setBusy() {},
+    isBusy() {
+      return false;
+    },
     persistDraftSafe() {},
     uploadPhasePatch() {
       return { uploadPhase: "idle", uploadPhaseLabel: "", uploadStatusText: "" };

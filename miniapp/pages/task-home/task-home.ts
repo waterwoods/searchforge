@@ -70,7 +70,7 @@ type PageData = {
 
 function brokerStatusLabel(status: string): string {
   if (status === "waiting_for_customer" || status === "wait_for_customer_item") return "等待您补充";
-  if (status === "review_ready" || status === "review_customer_response") return "等待经纪人审核";
+  if (status === "review_ready" || status === "review_customer_response") return "等待陈总审核";
   return "";
 }
 
@@ -98,7 +98,7 @@ function slice1PagePatch(
     slice1Enabled: view.enabled,
     slice1WaitingForBroker: view.waitingForBroker,
     slice1PrimaryLabel: view.waitingForBroker
-      ? "资料已提交，等待经纪人审核"
+      ? "资料已提交，等待陈总审核"
       : view.primaryCtaLabel || "补充陈总需要的资料",
     slice1Instruction: focusInstruction,
     slice1ProgressText:
@@ -130,7 +130,7 @@ function taskCardsPatch(task: Parameters<typeof resolveCustomerTaskCardsFromTask
 Page({
   behaviors: [taskPage],
   data: {
-    loadingMessage: "正在加载我的资料…",
+    loadingMessage: "正在加载我的报案…",
     taskViewModel: EMPTY_TASK_VIEW_MODEL,
     ...taskShellBindingsFromViewModel(EMPTY_TASK_VIEW_MODEL),
     errorState: EMPTY_TASK_ERROR,
@@ -368,7 +368,7 @@ Page({
   onEditSupplementInfo() {
     if (this.data.slice1Enabled) {
       if (this.data.slice1WaitingForBroker) {
-        wx.showToast({ title: "资料已提交，等待经纪人审核", icon: "none" });
+        wx.showToast({ title: "资料已提交，等待陈总审核", icon: "none" });
         return;
       }
       const route = resolveTaskHomePrimaryRoute(this.data.task) || REQUEST_ITEM_ROUTE;

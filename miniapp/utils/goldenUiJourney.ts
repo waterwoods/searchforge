@@ -58,7 +58,7 @@ export function buildFreshSystemDefaultTask(overrides?: Partial<CustomerTask>): 
     lane: "claim",
     flow: "claim_intake_form",
     case_id: caseId,
-    title: "我的事故资料",
+    title: "我的报案",
     safety_copy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
     steps: ["start", "injury", "time_location", "story", "vehicle_other_party", "evidence", "review", "done"],
     current_step: "review",

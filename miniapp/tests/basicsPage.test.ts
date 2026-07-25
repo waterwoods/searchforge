@@ -323,6 +323,6 @@ test("contact broker opens shared guidance modal, not postpone/back", async () =
   page.onContactBroker.call(createPageContext(page));
   assert.equal(modals.length, 1);
   assert.equal(modals[0].title, "联系陈总");
-  assert.match(modals[0].content, /返回微信/);
+  assert.match(modals[0].content, /打开微信/);
   assert.equal(backs.length, 0);
 });

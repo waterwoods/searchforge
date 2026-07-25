@@ -189,7 +189,7 @@ function primaryCtaForAction(action: Slice1CustomerNextAction | null): {
   if (type === "wait_for_broker_review") {
     return {
       actionable: false,
-      label: "资料已提交，等待经纪人审核",
+      label: "资料已提交，等待陈总审核",
       route: "",
     };
   }

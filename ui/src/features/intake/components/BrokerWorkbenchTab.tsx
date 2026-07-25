@@ -126,6 +126,7 @@ import {
     UrgencyTag,
     CaseStatusTag,
 } from '@/features/intake/components/WorkbenchSummary';
+import { BrokerHeader } from '@/features/intake/components/BrokerHeader';
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
 import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
@@ -1657,6 +1658,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                         style={{ borderLeft: currentCase.manual_followup_needed ? '4px solid #fa8c16' : '4px solid #52c41a' }}
                     >
                         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                            <BrokerHeader caseItem={currentCase} style={{ marginBottom: 0 }} />
                             {currentCase.case_id && !productOnlyUi && (
                                 <div>
                                     <Text

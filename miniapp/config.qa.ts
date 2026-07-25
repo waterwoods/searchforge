@@ -17,6 +17,6 @@ export const config = {
   tenantDisplayName: "陈总保险办公室",
   brokerDisplayName: "陈总",
   prototypeMode: true,
-  // Founder QA may enable via config.local.ts — keep committed QA default OFF.
+  // Pilot posture (intentional): OFF. Cap 01–03 Founder QA → config.local.ts only.
   smartClaimStartEnabled: false,
 };

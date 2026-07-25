@@ -88,7 +88,7 @@ _H5_DONE_NEXT_STEP: Final[str] = (
 )
 _H5_DONE_DISCLAIMER: Final[str] = "这只是资料收集，不代表已经正式向保险公司报案。"
 _H5_DONE_MISSING_CLEAR: Final[str] = "目前主要资料已收到，陈总会进一步确认。"
-_H5_DASHBOARD_TITLE: Final[str] = "我的事故资料"
+_H5_DASHBOARD_TITLE: Final[str] = "我的报案"
 _H5_DASHBOARD_SUBTITLE: Final[str] = (
     "先告诉陈总发生了什么。照片和证件如需补充，陈总会再通知您。"
 )

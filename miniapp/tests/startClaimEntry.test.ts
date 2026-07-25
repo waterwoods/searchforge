@@ -50,7 +50,7 @@ test("Service Home active VM exposes Continue + demoted Start New", () => {
   assert.equal(vm.hasActiveSession, true);
   assert.equal(vm.continueTitle, CONTINUE_CLAIM_TITLE);
   assert.equal(vm.startNewClaimLabel, START_NEW_CLAIM_LABEL);
-  assert.match(vm.continueTitle, /继续处理当前报案/);
+  assert.match(vm.continueTitle, /继续办理当前报案/);
   assert.match(vm.startNewClaimLabel, /开始新的报案/);
 });
 
@@ -256,8 +256,8 @@ test("receipt Start New Claim preserves active path; start-claim redirects Home"
   assert.match(serviceHomeTs, /onContinueCurrentClaim/);
   assert.match(serviceHomeTs, /ONE_ACTIVE_CASE_POLICY/);
   assert.match(serviceHomeTs, /ENTRY_ROUTE/);
-  assert.match(receiptWxml, /开始新报案/);
-  assert.match(successWxml, /开始新报案/);
+  assert.match(receiptWxml, /返回首页/);
+  assert.match(successWxml, /返回首页/);
   assert.match(serviceHomeWxml, /\{\{continueTitle\}\}/);
   assert.match(serviceHomeWxml, /\{\{startNewClaimLabel\}\}/);
   assert.match(serviceHomeWxml, /\{\{viewProgressLabel\}\}/);
@@ -265,8 +265,8 @@ test("receipt Start New Claim preserves active path; start-claim redirects Home"
   assert.match(serviceHomeTs, /buildServiceHomeViewModel/);
   assert.match(serviceHomeTs, /onContinueCurrentClaim/);
   const serviceHomeUtil = readFileSync(join(miniappRoot, "utils/serviceHome.ts"), "utf8");
-  assert.match(serviceHomeUtil, /继续处理当前报案/);
+  assert.match(serviceHomeUtil, /继续办理当前报案/);
   assert.match(serviceHomeUtil, /开始新的报案/);
-  assert.match(serviceHomeUtil, /查看案件进度/);
-  assert.match(serviceHomeUtil, /联系保险顾问/);
+  assert.match(serviceHomeUtil, /查看我的报案/);
+  assert.match(serviceHomeUtil, /联系陈总/);
 });

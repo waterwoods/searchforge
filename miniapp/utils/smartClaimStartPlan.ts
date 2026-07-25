@@ -158,7 +158,7 @@ export function buildSmartClaimUiState(
       showKnownSection: false,
       showConfirmSection: false,
       primaryCtaZh: plan.primary_cta_zh || "继续当前报案",
-      secondaryCtaZh: plan.secondary_cta_zh || "联系保险顾问",
+      secondaryCtaZh: plan.secondary_cta_zh || "联系陈总",
       confirmsComplete: true,
       canShowAccidentBlock: false,
     };
@@ -170,14 +170,14 @@ export function buildSmartClaimUiState(
       uiMode: "contact_broker",
       planMode: mode || "CONTACT_BROKER",
       headlineZh: wantsBroker
-        ? "请联系保险顾问更新保单"
-        : plan.headline_zh || "需要保险顾问协助确认身份",
+        ? "请联系陈总更新保单"
+        : plan.headline_zh || "需要陈总协助确认身份",
       subtitleZh: wantsBroker
         ? "确认后再继续报案，可避免用错保单。"
-        : plan.subtitle_zh || "请先联系顾问后再报案。",
+        : plan.subtitle_zh || "请先联系陈总后再报案。",
       confidenceSignal: plan.confidence_signal || "",
       showAccidentForm: false,
-      primaryCtaZh: "联系保险顾问",
+      primaryCtaZh: "联系陈总",
       secondaryCtaZh: "",
       confirmSelections: selections,
       confirmsComplete: false,

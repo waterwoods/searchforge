@@ -48,7 +48,7 @@
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
-      label="提交给陈总审核"
+      label="确认并交给陈总"
       disabled="{{!canSubmit || busy.submitting || busy.navigating}}"
       loading="{{busy.submitting}}"
       disabledReason="{{submitDisabledReason}}"
@@ -66,6 +66,6 @@
       hover-class="btn-secondary-hover"
       bindtap="onLater"
       disabled="{{busy.submitting}}"
-    >返回我的资料</button>
+    >返回我的报案</button>
   </view>
 </view>

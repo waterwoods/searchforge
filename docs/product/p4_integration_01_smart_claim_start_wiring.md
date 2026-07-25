@@ -1,6 +1,7 @@
 # P4 Integration 01 — Smart Claim Start Wiring
 
-**Status:** Implemented — awaiting Founder QA  
+**Status:** Implemented — Mini Program flag **OFF (Pilot intentional)**; Cap 01–03 Founder QA is optional/separate  
+
 **Date:** 2026-07-24  
 **Governing SSOT:** `docs/product/p20_product_north_star.md`  
 **Reuses (do not redesign):**

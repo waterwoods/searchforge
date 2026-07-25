@@ -21,8 +21,8 @@ function matchedPlan(overrides?: Partial<SmartClaimStartPlan>): SmartClaimStartP
   return {
     mode: "MATCHED_KNOWN",
     headline_zh: "今天发生了什么？",
-    subtitle_zh: "我们已准备好您的信息。",
-    confidence_signal: "我们已了解您",
+    subtitle_zh: "请确认下方信息。您只需补充事故事实。",
+    confidence_signal: "请确认以下信息",
     known_chips: [
       { field_key: "customer_name", label_zh: "姓名", value: "陈明" },
       { field_key: "phone", label_zh: "电话", value: "尾号 1234" },
@@ -33,7 +33,7 @@ function matchedPlan(overrides?: Partial<SmartClaimStartPlan>): SmartClaimStartP
     questions: [
       { field_key: "accident_story", visibility: "VISIBLE_REQUIRED", label_zh: "事故经过" },
     ],
-    primary_cta_zh: "提交给顾问",
+    primary_cta_zh: "提交给陈总",
     ...overrides,
   };
 }
@@ -52,7 +52,7 @@ test("S3 matched path shows chips and accident block only", () => {
   assert.equal(ui.showKnownSection, true);
   assert.equal(ui.knownChips.length, 4);
   assert.equal(ui.canShowAccidentBlock, true);
-  assert.match(ui.confidenceSignal, /了解您/);
+  assert.match(ui.confidenceSignal, /确认以下信息/);
   assert.equal(ui.whyAskTime.includes("事故顺序"), true);
 });
 
@@ -99,7 +99,7 @@ test("S4 stale policy confirm; contact option routes to broker UI mode", () => {
       {
         step_id: "confirm_policy",
         prompt_zh: "保单可能已过期",
-        options: ["确认使用此保单", "联系顾问更新保单"],
+        options: ["确认使用此保单", "联系陈总更新保单"],
         required_before_accident: true,
       },
     ],
@@ -110,7 +110,7 @@ test("S4 stale policy confirm; contact option routes to broker UI mode", () => {
   assert.equal(confirm.uiMode, "matched");
   assert.equal(confirm.canShowAccidentBlock, true);
   const broker = buildSmartClaimUiState(plan, {
-    confirm_policy: "联系顾问更新保单",
+    confirm_policy: "联系陈总更新保单",
   });
   assert.equal(broker.uiMode, "contact_broker");
   assert.equal(broker.showAccidentForm, false);
@@ -182,7 +182,7 @@ test("start-claim registers smart-claim-start-panel and keeps accident fields", 
     join(miniappRoot, "components/smart-claim-start-panel/index.wxml"),
     "utf8",
   );
-  assert.match(panelWxml, /我们已了解您/);
+  assert.match(panelWxml, /请确认以下信息/);
   assert.equal(wxml.includes("openid"), false);
   assert.equal(wxml.includes("person_link_key"), false);
   assert.equal(wxml.includes("case_id"), false);

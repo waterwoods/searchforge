@@ -15,9 +15,10 @@ export const config = {
   brokerDisplayName: "陈总",
   prototypeMode: true,
   /**
-   * P4 Integration 01 — Smart Claim Start wiring (default OFF).
-   * When true, Start Claim fetches Cap 01→02→03 plan after Customer Context.
-   * Rollback: set false (or omit) — existing accident form remains.
+   * P4 Integration 01 — Smart Claim Start wiring.
+   * Pilot posture (intentional): OFF.
+   * Default Founder QA walk is S1–S6 customer journey without Cap 01–03.
+   * Enable only in gitignored config.local.ts when Founder validates Cap 01–03.
    */
   smartClaimStartEnabled: false,
 };

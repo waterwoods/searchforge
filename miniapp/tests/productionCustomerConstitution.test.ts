@@ -197,11 +197,11 @@ test("Camry after-upload: Focus from server; wait CTA unchanged", () => {
   assert.equal(view.nextAction?.title, "先不用操作");
   assert.equal(view.nextAction?.instructions, "资料已齐，陈总正在审核。");
   // Cap3B wait acknowledgment CTA must remain (not Focus Today).
-  assert.equal(view.primaryCtaLabel, "资料已提交，等待经纪人审核");
+  assert.equal(view.primaryCtaLabel, "资料已提交，等待陈总审核");
 
   const vm = resolveTaskViewModel(task, null, { route: "/pages/task-home/task-home" });
   assert.equal(vm.instruction, "先不用操作");
-  assert.equal(vm.cta.label, "资料已提交，等待经纪人审核");
+  assert.equal(vm.cta.label, "资料已提交，等待陈总审核");
   assert.equal(vm.cta.disabled, true);
 });
 

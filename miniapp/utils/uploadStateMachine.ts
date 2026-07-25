@@ -24,7 +24,7 @@ export const UPLOAD_PHASE_LABEL: Record<UploadPhase, string> = {
   selected: "已选择",
   uploading: "上传中",
   uploaded: "已上传",
-  confirmed: "已确认",
+  confirmed: "已收到",
   failed: "上传失败，可重试",
 };
 
@@ -72,8 +72,8 @@ export function uploadPhaseDetail(
     const safe = Math.max(0, Math.min(100, Number(progress) || 0));
     return `上传中… ${safe}%`;
   }
-  if (phase === "uploaded") return "已上传，待确认";
-  if (phase === "confirmed") return "已确认";
+  if (phase === "uploaded") return "已上传，正在确认";
+  if (phase === "confirmed") return "陈总已能看到";
   if (phase === "failed") return "上传失败，可重试";
   return "";
 }
@@ -86,8 +86,8 @@ export function uploadStatusText(args: {
   const { phase } = args;
   if (phase === "failed") return UPLOAD_PHASE_LABEL.failed;
   if (phase === "uploading") return UPLOAD_PHASE_LABEL.uploading;
-  if (phase === "confirmed") return UPLOAD_PHASE_LABEL.confirmed;
-  if (phase === "uploaded") return "已上传，确认中";
+  if (phase === "confirmed") return "已收到";
+  if (phase === "uploaded") return "正在确认是否收到";
   if (phase === "selected") return UPLOAD_PHASE_LABEL.selected;
   const received = Math.max(0, Number(args.received) || 0);
   const required = Math.max(1, Number(args.required) || 1);

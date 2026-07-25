@@ -40,6 +40,7 @@ import {
   type SavedCase,
 } from '@/api/inboxTriage';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
+import { BrokerHeader } from '@/features/intake/components/BrokerHeader';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
 import { ClaimCaseBriefPanel } from '@/features/intake/components/ClaimCaseBriefPanel';
 import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEvidenceChecklist';
@@ -538,6 +539,7 @@ function BrokerCaseDetail({
   if (!hasFullPacket) {
     return (
       <div>
+        <BrokerHeader caseItem={caseItem} />
         <InternalCaseIdMeta caseItem={caseItem} />
         <Space style={{ marginBottom: 12 }} wrap>
           <ClosedHistoryBadge caseRecord={caseItem} />
@@ -668,6 +670,7 @@ function BrokerCaseDetail({
 
   return (
     <div>
+      <BrokerHeader caseItem={caseItem} />
       <InternalCaseIdMeta caseItem={caseItem} />
       <Space style={{ marginBottom: 12 }} wrap>
         <ClosedHistoryBadge caseRecord={caseItem} />

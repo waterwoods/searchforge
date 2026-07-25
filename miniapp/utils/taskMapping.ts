@@ -644,7 +644,7 @@ export function mapErrorMessage(code: string): string {
     already_submitted: "资料已提交，无需重复提交。",
     version_conflict: "资料状态已更新，请查看最新要求后再提交。",
     request_item_not_active: "当前补充项已变更，请按最新要求继续。",
-    slice1_not_enabled: "当前任务仍使用原流程，请返回我的资料继续。",
+    slice1_not_enabled: "当前任务仍使用原流程，请返回我的报案继续。",
     fact_payload_invalid: "填写内容无效，请修改后重试。",
     evidence_payload_invalid: "请先上传有效照片后再提交。",
     evidence_required: "请先选择需要上传的照片。",
@@ -665,7 +665,7 @@ export function contactBrokerModalCopy(): { title: string; content: string } {
   return {
     title: "联系陈总",
     content:
-      "请返回微信，给陈总发一条消息说明您遇到的情况。陈总会协助您继续完成资料填写。",
+      "请打开微信，给陈总发一条消息说明您的情况。陈总会帮您继续办理。",
   };
 }
 

@@ -257,7 +257,7 @@ export function resolveH5ClaimLanding(args: {
     nextAction: null,
     progress,
     qaMarker,
-    title: info?.dashboard_summary?.title || info?.title || '我的事故资料',
+    title: info?.dashboard_summary?.title || info?.title || '我的报案',
     instructions: '',
     itemType: '',
     retryable: false,

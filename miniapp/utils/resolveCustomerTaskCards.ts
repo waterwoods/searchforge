@@ -54,7 +54,7 @@ const STATE_LABELS: Record<CustomerTaskCardState, string> = {
   pending: "待处理",
   in_progress: "进行中",
   completed: "已完成",
-  waiting_broker: "等待经纪人",
+  waiting_broker: "等待陈总",
   blocked: "稍后处理",
 };
 

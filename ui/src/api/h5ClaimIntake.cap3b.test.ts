@@ -15,7 +15,7 @@ function baseInfo(): H5ClaimIntakeInfo {
     lane: 'claim',
     flow: 'claim_intake_form',
     case_id: 'case_cap3b',
-    title: '我的事故资料',
+    title: '我的报案',
     safety_copy: 'safety',
     steps: ['start'],
     current_step: 'start',

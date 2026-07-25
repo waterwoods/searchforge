@@ -31,7 +31,7 @@
       <view wx:if="{{confidenceSignal}}" class="scs-signal">{{confidenceSignal}}</view>
 
       <view wx:if="{{showKnownSection}}" class="scs-known">
-        <view class="scs-known-label">我们已了解您</view>
+        <view class="scs-known-label">请确认以下信息</view>
         <view class="scs-chips">
           <view
             class="scs-chip"

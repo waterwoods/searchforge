@@ -27,7 +27,6 @@
       <view class="card-title">{{nextActionTitle || '资料已收到，等待陈总审核'}}</view>
       <view class="card-subtitle">{{nextActionInstructions || '陈总已收到您的补充资料，正在审核。'}}</view>
       <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
-      <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
     </view>
 
     <!-- P26H-UI: bind showWorkSurface — never nextAction alone (system_default has null nextAction). -->
@@ -38,8 +37,6 @@
         <view class="card-subtitle">{{nextActionInstructions}}</view>
         <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
         <view class="meta-line" wx:if="{{progress.total}}">进度 {{progress.satisfied}}/{{progress.total}}</view>
-        <view class="meta-line" wx:if="{{brokerStatusLabel}}">经纪人状态：{{brokerStatusLabel}}</view>
-        <view class="meta-line" wx:if="{{lastServerUpdate}}">进度已更新</view>
       </view>
 
       <view class="card correction-card" wx:if="{{needsCorrection}}">
@@ -237,12 +234,12 @@
       hover-class="btn-secondary-hover"
       bindtap="onLater"
       disabled="{{busy.submitting}}"
-    >稍后再填</button>
+    >{{deferLaterLabel}}</button>
   </view>
 
   <view class="footer-cta" wx:if="{{!loading && waitingForBroker}}">
     <task-cta
-      label="查看案件状态"
+      label="{{waitingPrimaryLabel}}"
       disabled="{{busy.navigating}}"
       loading="{{busy.navigating}}"
       bindtap="onBackHome"

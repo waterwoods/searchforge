@@ -68,7 +68,7 @@ Page({
       homePhase: "error",
       serverHasActiveCase: null,
       hasActiveSession: false,
-      contextErrorMessage: "暂时无法确认您的案件状态，请重试或联系保险顾问。",
+      contextErrorMessage: "暂时无法确认您的案件状态，请重试或联系陈总。",
     });
   },
 

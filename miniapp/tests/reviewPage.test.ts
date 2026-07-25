@@ -458,7 +458,7 @@ test("Review has no dead-end when missing Basics fields", async () => {
   assert.match(wxml, /onTapMissingRow/);
   assert.match(wxml, /onSupplement/);
   assert.match(wxml, /showSupplementCta/);
-  assert.match(wxml, /返回我的资料/);
+  assert.match(wxml, /返回我的报案/);
 
   const page = await loadReviewPage();
   const task = buildTask({

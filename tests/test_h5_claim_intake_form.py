@@ -529,12 +529,12 @@ def test_h5_intake_returns_dashboard_summary():
     assert resp.status_code == 200
     body = resp.json()
     dashboard = body.get("dashboard_summary") or {}
-    assert dashboard.get("title") == "我的事故资料"
+    assert dashboard.get("title") == "我的报案"
     assert dashboard.get("status") == "资料收集中"
     assert "received" in dashboard
     assert "missing" in dashboard
     assert dashboard.get("primary_cta")
-    assert body.get("title") == "我的事故资料"
+    assert body.get("title") == "我的报案"
 
 
 def test_h5_dashboard_submitted_allows_supplement_state():

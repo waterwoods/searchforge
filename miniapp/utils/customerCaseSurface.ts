@@ -20,11 +20,38 @@ export const LEGACY_WAIT_TODAY = "先不用操作";
 /** Demo Polish Sprint 2 — Waiting Broker Case Status title (durable confirmation). */
 export const CASE_STATUS_TITLE = "资料已收到，等待陈总审核";
 
-/** In-page Request More submit receipt (not toast-only). */
+/** In-page Request More submit receipt when customer is truly waiting (not toast-only). */
 export const SUBMIT_RECEIPT_COPY = "补充资料已收到，陈总会继续审核。";
+
+/** Pause mid-task — must not read as “case closed.” */
+export const DEFER_LATER_LABEL = "先离开，稍后再继续";
+
+/** Shared hub name — Task Home / return paths. */
+export const HUB_NAME = "我的报案";
+export const HUB_RETURN_LABEL = "返回我的报案";
+export const HUB_VIEW_LABEL = "查看我的报案";
 
 /** Secondary Waiting action — append-only; never reopens satisfied Request More items. */
 export const VOLUNTARY_SUPPLEMENT_LABEL = "继续补充资料";
+
+/**
+ * Post-submit receipt: never say “审核中 / 等待” when the customer still owes Today work.
+ */
+export function buildSubmitReceiptCopy(task?: CustomerTask | null): string {
+  if (!customerOwesWork(task)) {
+    return SUBMIT_RECEIPT_COPY;
+  }
+  const view = mapSlice1CustomerView(task);
+  const today = String(view.constitutionToday || "").trim();
+  if (today && today !== LEGACY_WAIT_TODAY) {
+    return `已收到。下一步：${today}`;
+  }
+  const nextTitle = String(view.nextAction?.title || view.primaryCtaLabel || "").trim();
+  if (nextTitle) {
+    return `已收到。下一步：${nextTitle}`;
+  }
+  return "已收到。请继续完成下一步。";
+}
 
 export const CASE_STATUS_BODY_LINES = [
   "资料已收到，等待陈总审核。",

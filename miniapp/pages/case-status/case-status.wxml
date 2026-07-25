@@ -79,6 +79,6 @@
       hover-class="btn-secondary-hover"
       bindtap="onContactBroker"
       disabled="{{busy.navigating}}"
-    >联系保险顾问</button>
+    >联系陈总</button>
   </view>
 </view>

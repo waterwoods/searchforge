@@ -223,7 +223,7 @@ function photoTaskUiPatch(
             error: draft.error,
             canRetry: draft.canRetry,
             canRemove: draft.canRemove,
-            requiredHint: requirementMet ? "已确认 · 可添加更多" : `还需 ${remaining || 1} 张`,
+            requiredHint: requirementMet ? "已收到 · 可再添加" : `还需 ${remaining || 1} 张`,
             statusText: uploadStatusText({ phase, received, required }),
           } satisfies SlotUi;
         })

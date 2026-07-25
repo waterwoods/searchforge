@@ -258,7 +258,7 @@ test("P26H-UI full local click/render/complete journey", async () => {
       task_id: "task_photos",
       task_type: "claim_intake",
       task_status: "collecting",
-      title: "我的事故资料",
+      title: "我的报案",
       instruction: "补充事故照片",
       progress: { completed: 3, total: 5 },
       sections: [],

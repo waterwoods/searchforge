@@ -145,7 +145,7 @@ def _dashboard_checks(body: dict[str, Any], *, submitted: bool) -> dict[str, Any
     dashboard = body.get("dashboard_summary") or {}
     return {
         "has_dashboard_summary": bool(dashboard),
-        "dashboard_title": dashboard.get("title") == "我的事故资料",
+        "dashboard_title": dashboard.get("title") == "我的报案",
         "has_status": bool(dashboard.get("status")),
         "has_received": isinstance(dashboard.get("received"), list),
         "has_missing": isinstance(dashboard.get("missing"), list),

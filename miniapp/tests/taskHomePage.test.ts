@@ -589,6 +589,6 @@ test("contact broker opens guidance modal, not safety disclaimer", async () => {
   page.onContactBroker.call(ctx);
   assert.equal(modals.length, 1);
   assert.equal(modals[0].title, "联系陈总");
-  assert.match(modals[0].content, /返回微信/);
+  assert.match(modals[0].content, /打开微信/);
   assert.equal(modals[0].content.includes("免责声明"), false);
 });

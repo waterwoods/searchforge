@@ -28,9 +28,9 @@ export const START_CLAIM_MISSING_HINT =
 /** P30 One Active Case — never silently create a second case. */
 export const ONE_ACTIVE_CASE_POLICY_TITLE = "您已有一个正在处理的报案";
 export const ONE_ACTIVE_CASE_POLICY_CONTINUE = "继续当前报案";
-export const ONE_ACTIVE_CASE_POLICY_CONTACT = "联系保险顾问";
+export const ONE_ACTIVE_CASE_POLICY_CONTACT = "联系陈总";
 export const ONE_ACTIVE_CASE_POLICY_CONTENT =
-  "请先继续当前报案。\n\n如确需新的报案，请联系保险顾问。";
+  "请先继续当前报案。\n\n如确需新的报案，请联系陈总。";
 
 /** Empty form shell — always safe to bind; never depends on network. */
 export type StartClaimShellState = {
@@ -121,7 +121,7 @@ export function reLaunchEmptyStartClaimForm(wxLike: WxNavigate): void {
 }
 
 /**
- * 「开始新报案」from Receipt / success always returns to Service Home. That page
+ * 「返回首页」from Receipt / success always returns to Service Home. That page
  * performs the server Customer Context read before offering a form or Continue.
  */
 export function reLaunchStartClaimHome(wxLike: WxNavigate): void {

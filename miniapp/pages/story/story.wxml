@@ -52,11 +52,11 @@
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
-      label="保存并返回我的资料"
+      label="保存并返回我的报案"
       disabled="{{busy.saving || confirmDisabled}}"
       loading="{{busy.saving}}"
       bindtap="onSave"
     />
-    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater">稍后再填</button>
+    <button class="btn-secondary" hover-class="btn-secondary-hover" bindtap="onLater">先离开，稍后再继续</button>
   </view>
 </view>

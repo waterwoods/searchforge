@@ -46,12 +46,12 @@
       label="{{slice1Enabled ? slice1PrimaryLabel : '补充或修改资料'}}"
       disabled="{{slice1Enabled ? (slice1WaitingForBroker || busy.navigating || busy.retrying || slice1LoadFailed) : (busy.navigating || busy.retrying)}}"
       loading="{{busy.navigating || busy.retrying}}"
-      disabledReason="{{slice1LoadFailed ? (errorState.message || '加载失败，请重试') : (slice1Enabled && slice1WaitingForBroker ? '资料已提交，等待经纪人审核' : ctaDisabledReason)}}"
+      disabledReason="{{slice1LoadFailed ? (errorState.message || '加载失败，请重试') : (slice1Enabled && slice1WaitingForBroker ? '资料已提交，等待陈总审核' : ctaDisabledReason)}}"
       bindtap="onEditSupplementInfo"
     />
     <task-cta
       wx:else
-      label="返回我的资料"
+      label="返回我的报案"
       disabled="{{busy.navigating}}"
       loading="{{busy.navigating}}"
       disabledReason="{{ctaDisabledReason}}"
@@ -63,12 +63,12 @@
       hover-class="btn-secondary-hover"
       bindtap="onViewAll"
       disabled="{{busy.navigating}}"
-    >查看全部资料</button>
+    >查看已提交内容</button>
     <button
       class="btn-secondary"
       hover-class="btn-secondary-hover"
       bindtap="onBackHome"
       disabled="{{busy.navigating}}"
-    >开始新报案</button>
+    >返回首页</button>
   </view>
 </view>

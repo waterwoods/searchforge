@@ -78,7 +78,7 @@ function slice1PagePatch(view: Slice1CustomerView): Partial<PageData> {
     slice1Enabled: view.enabled,
     slice1WaitingForBroker: view.waitingForBroker,
     slice1PrimaryLabel: view.waitingForBroker
-      ? "资料已提交，等待经纪人审核"
+      ? "资料已提交，等待陈总审核"
       : view.primaryCtaLabel || "补充陈总需要的资料",
     slice1PrimaryActionable: view.primaryActionable,
     slice1Instruction: focusInstruction,
@@ -242,7 +242,7 @@ Page({
     const supplementHint = serverWhy ||
       (view.enabled
         ? view.waitingForBroker
-          ? "资料已提交，等待经纪人审核"
+          ? "资料已提交，等待陈总审核"
           : view.nextAction?.instructions ||
             view.nextAction?.title ||
             view.primaryCtaLabel ||
@@ -401,7 +401,7 @@ Page({
 
     if (this.data.slice1Enabled || isSlice1CustomerFlow(this.data.task)) {
       if (this.data.slice1WaitingForBroker) {
-        wx.showToast({ title: "资料已提交，等待经纪人审核", icon: "none" });
+        wx.showToast({ title: "资料已提交，等待陈总审核", icon: "none" });
         return;
       }
       if (this.data.slice1PrimaryActionable) {

@@ -34,7 +34,7 @@ function baseInfo(overrides: Partial<H5ClaimIntakeInfo> = {}): H5ClaimIntakeInfo
     lane: 'claim',
     flow: 'claim_intake_form',
     case_id: 'case_d3187eb826f4',
-    title: '我的事故资料',
+    title: '我的报案',
     safety_copy: 'safety',
     steps: ['start', 'injury', 'done'],
     current_step: 'start',
@@ -48,7 +48,7 @@ function baseInfo(overrides: Partial<H5ClaimIntakeInfo> = {}): H5ClaimIntakeInfo
       { field: 'accident_location', label: '事故地点' },
     ],
     dashboard_summary: {
-      title: '我的事故资料',
+      title: '我的报案',
       subtitle: '请补充资料',
       status: '资料收集中',
       received: [],

@@ -12,6 +12,7 @@ import {
 } from "./taskMapping";
 import { isSlice1CustomerFlow, mapSlice1CustomerView, REQUEST_ITEM_ROUTE } from "./slice1Customer";
 import { resolveCustomerConstitutionFromTask } from "./resolveCustomerConstitution";
+import { HUB_NAME } from "./customerCaseSurface";
 import type {
   BusyState,
   CustomerTask,
@@ -26,6 +27,15 @@ import type {
 
 export const DEFAULT_SAFETY_COPY =
   "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。";
+
+/** Legacy hub titles from older contracts — remap to Pilot SSOT. */
+const LEGACY_HUB_TITLES = new Set(["我的事故资料", "事故资料"]);
+
+function normalizeHubTitle(raw: unknown, fallback: string = HUB_NAME): string {
+  const title = normalizeUiString(raw, fallback);
+  if (LEGACY_HUB_TITLES.has(title)) return HUB_NAME;
+  return title || HUB_NAME;
+}
 
 /** Non-null sentinel — safe to bind into TaskShell / inline TaskError. */
 export const EMPTY_TASK_ERROR: TaskErrorState = {
@@ -48,7 +58,7 @@ export const EMPTY_TASK_CTA: TaskCtaViewModel = {
 export const EMPTY_TASK_VIEW_MODEL: TaskViewModel = {
   source: "legacy",
   shellMode: "content",
-  title: "我的事故资料",
+  title: HUB_NAME,
   instruction: "",
   statusLabel: "进行中",
   statusTone: "active",
@@ -176,7 +186,7 @@ function normalizeContract(contract: CustomerTaskSafeContract): CustomerTaskSafe
 
   return {
     ...contract,
-    title: normalizeUiString(contract.title, "我的事故资料"),
+    title: normalizeHubTitle(contract.title),
     instruction: normalizeUiString(contract.instruction),
     fields: safeFields,
     missing_items: (contract.missing_items || []).map((item) => ({
@@ -262,7 +272,7 @@ function applyRouteSpecificCta(
     return {
       ...vm,
       cta: normalizeTaskCta({
-        label: "提交给陈总审核",
+        label: "确认并交给陈总",
         actionType: "submit",
         target: "receipt",
         disabled: !submitReady || disabledByState || disabledByError,
@@ -279,7 +289,7 @@ function applyRouteSpecificCta(
         ? normalizeUiString(vm.statusLabel, "已提交")
         : vm.statusLabel,
       cta: normalizeTaskCta({
-        label: "返回我的资料",
+        label: "返回我的报案",
         actionType: "view_status",
         target: "task-home",
         disabled: busy.loading || busy.navigating,
@@ -326,7 +336,7 @@ function applyRouteSpecificCta(
 function finalizeViewModel(vm: TaskViewModel): TaskViewModel {
   return {
     ...vm,
-    title: normalizeUiString(vm.title, "我的事故资料"),
+    title: normalizeHubTitle(vm.title),
     instruction: normalizeUiString(vm.instruction),
     statusLabel: normalizeUiString(vm.statusLabel, "进行中"),
     safetyCopy: normalizeUiString(vm.safetyCopy, DEFAULT_SAFETY_COPY),
@@ -377,21 +387,21 @@ export function resolveTaskViewModel(
     const baseVm = finalizeViewModel({
       source: "contract",
       shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
-      title: normalizeUiString(task.title, "我的事故资料"),
+      title: normalizeHubTitle(task.title),
       instruction: focusInstruction,
-      statusLabel: slice1.waitingForBroker ? "等待经纪人" : "需补充材料",
+      statusLabel: slice1.waitingForBroker ? "等待陈总" : "需补充材料",
       statusTone: slice1.waitingForBroker ? "done" : "active",
       progress,
       cta: normalizeTaskCta({
         label: slice1.waitingForBroker
-          ? "资料已提交，等待经纪人审核"
+          ? "资料已提交，等待陈总审核"
           : normalizeUiString(slice1.primaryCtaLabel, "补充陈总需要的资料"),
         actionType: slice1.waitingForBroker ? "view_status" : "go_to_section",
         target: slice1.waitingForBroker ? "/pages/receipt/receipt" : REQUEST_ITEM_ROUTE,
         disabled: slice1.waitingForBroker || disabledByState || disabledByError || !slice1.primaryActionable,
         loading: busy.submitting,
         disabledReason: slice1.waitingForBroker
-          ? "资料已提交，等待经纪人审核"
+          ? "资料已提交，等待陈总审核"
           : disabledByError
             ? "请先处理当前错误"
             : "",
@@ -431,7 +441,7 @@ export function resolveTaskViewModel(
     const baseVm = finalizeViewModel({
       source: "contract",
       shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
-      title: safeContract.title || normalizeUiString(task.title, "我的事故资料"),
+      title: normalizeHubTitle(safeContract.title || task.title),
       instruction: normalizeUiString(serverFocus || safeContract.instruction),
       statusLabel: status.label,
       statusTone: status.tone,
@@ -477,7 +487,7 @@ export function resolveTaskViewModel(
   const baseVm = finalizeViewModel({
     source: "legacy",
     shellMode: busy.loading ? "loading" : normalizedError?.blocking ? "blocking_error" : "content",
-    title: normalizeUiString(task.title, "我的事故资料"),
+    title: normalizeHubTitle(task.title),
     instruction: normalizeUiString(
       serverFocus || task.dashboard_summary?.next_action,
     ),

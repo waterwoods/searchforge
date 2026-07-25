@@ -18,6 +18,6 @@
       class="btn-secondary"
       hover-class="btn-secondary-hover"
       bindtap="onBackHome"
-    >开始新报案</button>
+    >返回首页</button>
   </view>
 </view>
