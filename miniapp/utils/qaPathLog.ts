@@ -79,14 +79,15 @@ export function summarizeLaunchQuery(
 
   const keys = Object.keys(obj).sort();
   const hasToken = Boolean(String(obj.token || "").trim());
+  const hasDit = Boolean(String(obj.dit || "").trim());
   const parts = keys.map((key) => {
-    if (key === "token") return "token=(redacted)";
+    if (key === "token" || key === "dit") return `${key}=(redacted)`;
     const v = String(obj[key] ?? "");
     return `${key}=${v.length > 40 ? `${v.slice(0, 40)}…` : v}`;
   });
   return {
     queryKeys: keys.length ? keys.join(",") : "(none)",
     queryRawSafe: parts.length ? parts.join("&") : "(empty)",
-    hasToken,
+    hasToken: hasToken || hasDit,
   };
 }

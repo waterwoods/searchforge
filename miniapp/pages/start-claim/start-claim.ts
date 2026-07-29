@@ -52,6 +52,15 @@ import {
   resolveMockScenarioFromQuery,
   type SmartClaimUiState,
 } from "../../utils/smartClaimStartPlan";
+import {
+  DEMO_INVITE_ACTIVE_CASE_CONTENT,
+  DEMO_INVITE_ACTIVE_CASE_TITLE,
+  hasDemoInviteLaunchQuery,
+} from "../../utils/demoInviteLaunch";
+import {
+  redeemDemoInviteToken,
+  resolveDemoInviteTokenFromQuery,
+} from "../../services/demoInviteApi";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import {
   VOICE_MAX_RECORD_MS,
@@ -129,6 +138,8 @@ Page({
   _navigatingAway: false,
   _smartPlan: null as SmartClaimStartPlan | null,
   _confirmSelections: {} as Record<string, string>,
+  /** Successful Demo Invite redeem this page lifetime — enables Smart Claim chips. */
+  _demoInviteActive: false,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
@@ -154,15 +165,18 @@ Page({
     this._launchOptions = options || {};
     this._divertedToHome = false;
     this._navigatingAway = false;
+    this._demoInviteActive = false;
     qaPathLog("ENTRY", {
       page: "pages/start-claim/start-claim",
       queryKeys: q.queryKeys,
       queryRawSafe: q.queryRawSafe,
       hasToken: q.hasToken,
+      hasDit: hasDemoInviteLaunchQuery(options),
       note: "first_js_page_onload_or_redirect_target",
     });
     try {
       // Capsule Home opens pages[0] (Start Claim). Operational home → Service Home.
+      // Demo Invite dit= counts as intentional form entry (see startClaimEntry).
       if (redirectStartClaimIfActiveCase(wx, options || {})) {
         this._divertedToHome = true;
         qaPathLog("EARLY_EXIT", {
@@ -204,7 +218,10 @@ Page({
 
   onShow() {
     if (this._divertedToHome || this._navigatingAway) return;
-    if (String(this._launchOptions?.entry || "").trim() !== "form") return;
+    const intentional =
+      String(this._launchOptions?.entry || "").trim() === "form" ||
+      hasDemoInviteLaunchQuery(this._launchOptions);
+    if (!intentional) return;
     void this.authorizeFormEntry({ preserveDraft: Boolean(this.data.formAuthorized) });
     this._ensureRecorder();
   },
@@ -222,6 +239,9 @@ Page({
       pageReady: true,
     });
     try {
+      // T4: redeem Demo Invite before context/plan — soft-fail to blank path.
+      await this.redeemDemoInviteIfPresent();
+
       const context = await resolveCustomerContext();
       if (context.nextAction !== "START_NEW_CLAIM") {
         this._navigatingAway = true;
@@ -240,6 +260,7 @@ Page({
           why: String(context.nextAction || ""),
           page: "pages/start-claim/start-claim",
           next: target,
+          demoInviteActive: Boolean(this._demoInviteActive),
         });
         this.setData({ formAuthorized: false, contextPhase: "checking" });
         wx.reLaunch({
@@ -283,7 +304,8 @@ Page({
           errorMessage: "",
           errorRetryable: false,
           smartUi: emptySmartClaimUiState(),
-          smartClaimEnabled: Boolean(appConfig.smartClaimStartEnabled),
+          smartClaimEnabled:
+            Boolean(appConfig.smartClaimStartEnabled) || Boolean(this._demoInviteActive),
           formTitle: "告诉陈总发生了什么",
           formSubtitle:
             "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
@@ -300,6 +322,7 @@ Page({
       qaPathLog("BOOTSTRAP", {
         page: "pages/start-claim/start-claim",
         phase: "form_authorized_by_customer_context",
+        demoInviteActive: Boolean(this._demoInviteActive),
       });
     } catch {
       this.setData({
@@ -314,10 +337,60 @@ Page({
   },
 
   /**
+   * T4 — redeem dit= once; soft-fail blank; Active Case switch shows friendly warning.
+   */
+  async redeemDemoInviteIfPresent() {
+    const dit = resolveDemoInviteTokenFromQuery(this._launchOptions);
+    if (!dit) {
+      this._demoInviteActive = false;
+      return;
+    }
+    const result = await redeemDemoInviteToken(dit);
+    if (result.ok) {
+      this._demoInviteActive = true;
+      qaPathLog("BOOTSTRAP", {
+        page: "pages/start-claim/start-claim",
+        phase: "demo_invite_redeemed",
+        status: String(result.status || "ok"),
+      });
+      return;
+    }
+
+    this._demoInviteActive = false;
+    qaPathLog("BOOTSTRAP", {
+      page: "pages/start-claim/start-claim",
+      phase: "demo_invite_redeem_soft_fail",
+      status: String(result.status || result.error_code || "invalid"),
+      fallback: String(result.fallback || "blank_claim"),
+    });
+
+    if (result.error_code === "active_case_blocks_scenario_switch") {
+      try {
+        wx.showModal({
+          title: DEMO_INVITE_ACTIVE_CASE_TITLE,
+          content: DEMO_INVITE_ACTIVE_CASE_CONTENT,
+          showCancel: false,
+          confirmText: "知道了",
+        });
+      } catch {
+        // ignore
+      }
+    }
+    // Drop dit so retries / onShow do not re-spam redeem with a dead token.
+    if (this._launchOptions && this._launchOptions.dit) {
+      const next = { ...this._launchOptions };
+      delete next.dit;
+      this._launchOptions = next;
+    }
+  },
+
+  /**
    * P4 Integration 01 — Cap 01→02→03 plan. Fail-open to legacy form.
+   * Demo Invite overlay enables Smart Claim even when the pilot flag is OFF.
    */
   async loadSmartClaimStartPlan() {
-    if (!appConfig.smartClaimStartEnabled) {
+    const demoActive = Boolean(this._demoInviteActive);
+    if (!appConfig.smartClaimStartEnabled && !demoActive) {
       this._smartPlan = null;
       this._confirmSelections = {};
       this.setData({
@@ -327,9 +400,12 @@ Page({
       return;
     }
     try {
-      const mockScenario = resolveMockScenarioFromQuery(this._launchOptions);
+      // Overlay is server-authoritative after redeem; client mock_scenario is DevTools-only.
+      const mockScenario = demoActive
+        ? undefined
+        : resolveMockScenarioFromQuery(this._launchOptions) || undefined;
       const res = await fetchSmartClaimStartPlan({
-        mockScenario: mockScenario || undefined,
+        mockScenario,
       });
       const plan = res && res.plan ? res.plan : null;
       this._smartPlan = plan;
@@ -348,6 +424,8 @@ Page({
         page: "pages/start-claim/start-claim",
         phase: "smart_claim_start_plan",
         mode: smartUi.planMode || "legacy",
+        identitySource: String(res?.identity_source || ""),
+        demoInviteActive: demoActive,
       });
     } catch {
       // S6 / network: never dead-end — keep existing accident form.

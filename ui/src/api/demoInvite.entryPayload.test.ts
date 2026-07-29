@@ -34,7 +34,7 @@ const entry = buildDemoInviteEntryPayload(sample);
 assert.equal(entry.kind, 'chen_demo_invite');
 assert.equal(entry.mini_program_path, 'pages/start-claim/start-claim');
 assert.equal(entry.qr_supported, false);
-assert.match(entry.launch_path_with_query, /^pages\/start-claim\/start-claim\?dit=/);
+assert.match(entry.launch_path_with_query, /^pages\/start-claim\/start-claim\?entry=form&dit=/);
 assert.ok(!entry.launch_path_with_query.includes('openid'));
 assert.ok(!entry.launch_path_with_query.includes('陈明'));
 assert.ok(entry.qr_blocker.includes('wxacode') || entry.qr_blocker === DEMO_INVITE_QR_BLOCKER);

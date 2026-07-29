@@ -525,6 +525,12 @@ def _build_new_case_record(
         "customer_phone": inputs.get("customer_phone") or "",
         "customer_email": "",
         "policy_number": str(known_facts.get("policy_number") or ""),
+        "primary_vehicle_summary": str(
+            inputs.get("primary_vehicle_summary")
+            or known_facts.get("primary_vehicle_summary")
+            or ""
+        ).strip()
+        or None,
         "contact_note": inputs.get("contact_note") or "",
         "case_notes": [],
         "case_activity": [
@@ -565,6 +571,9 @@ def _build_new_case_record(
         "entry_channel": entry_channel,
         "exclude_from_production_metrics": is_test,
     }
+    demo_name = str(inputs.get("demo_name") or "").strip()
+    if demo_name:
+        case["demo_name"] = demo_name[:80]
     if identity_binding_state:
         case["identity_binding_state"] = identity_binding_state
     if person_link_key:

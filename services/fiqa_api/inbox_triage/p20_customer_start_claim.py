@@ -167,6 +167,31 @@ def start_customer_claim(
         known_facts["anyone_injured"] = injury
 
     # Stamp durable WeChat link on the case only; prototype keys bind the index only.
+    # Demo Invite overlay (if any) supplies presentation identity for Workbench only.
+    demo_inputs: dict[str, Any] = {}
+    try:
+        from services.fiqa_api.inbox_triage.demo_invite import (
+            DEMO_NAME,
+            get_approved_scenario,
+            peek_session_overlay,
+        )
+
+        overlay = peek_session_overlay(session_id)
+        if overlay:
+            entry = get_approved_scenario(str(overlay.get("scenario_id") or ""))
+            if entry:
+                demo_inputs = {
+                    "customer_name": entry["customer_display_name"],
+                    "primary_vehicle_summary": entry["vehicle_summary"],
+                    "qa_label": f"演示·{entry['customer_display_name']}",
+                    "demo_name": DEMO_NAME,
+                    "is_test": True,
+                }
+                known_facts["primary_vehicle_summary"] = entry["vehicle_summary"]
+                known_facts["qa_label"] = f"演示·{entry['customer_display_name']}"
+    except Exception:
+        demo_inputs = {}
+
     result = default_case_intake_service().create_claim(
         broker_id=actor_identity,
         office_id=office,
@@ -176,18 +201,19 @@ def start_customer_claim(
         correlation_id=correlation_id,
         actor="customer",
         inputs={
-            "is_test": bool(is_test),
+            "is_test": bool(is_test or demo_inputs.get("is_test")),
             "accident_description": description or None,
             "accident_datetime": datetime_value or None,
             "accident_location": location or None,
             "injury_status": injury or None,
             "known_facts": known_facts,
-            "title": "Customer Claim intake" if not is_test else "QA Customer Claim intake",
+            "title": "Customer Claim intake" if not (is_test or demo_inputs) else "QA Customer Claim intake",
             "entry_channel": "mini_program",
             "identity_binding_state": "linked" if durable_link else "unbound",
             "person_link_key": durable_link,
             "person_link_source": "wechat" if durable_link else None,
             "person_link_confidence": 0.9 if durable_link else None,
+            **demo_inputs,
         },
     )
     out = _attach_resume_token(result)

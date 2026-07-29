@@ -101,28 +101,28 @@ export const DEMO_INVITE_QR_BLOCKER =
     'Do not invent a camera QR that WeChat cannot open.';
 
 export const DEMO_INVITE_T4_REQUIRED =
-    'T4 must: (1) read launch query dit= on Mini Program start, ' +
-    '(2) POST /api/h5/demo-invite/redeem with session_id + token, ' +
-    '(3) then run existing Smart Claim Start. Optional later: HTTPS bridge or wxacode.';
+  'Physical phones: WeChat DevTools → Preview / Experience Version with compile query ' +
+  'entry=form&dit=<token> (or paste launch path). T4 redeems dit on Start Claim; ' +
+  'optional later: HTTPS bridge or wxacode.getUnlimited.';
 
 export function buildDemoInviteEntryPayload(issued: DemoInviteIssued): DemoInviteEntryPayload {
-    const token = String(issued.token || '').trim();
-    const query = `dit=${encodeURIComponent(token)}`;
-    const path = 'pages/start-claim/start-claim';
-    const expiresAt = Number(issued.expires_at || 0);
-    return {
-        kind: 'chen_demo_invite',
-        mini_program_path: path,
-        query,
-        launch_path_with_query: `${path}?${query}`,
-        office_id: String(issued.office_id || ''),
-        scenario_id: String(issued.scenario_id || ''),
-        invite_id: String(issued.invite_id || ''),
-        expires_at_iso: expiresAt > 0 ? new Date(expiresAt * 1000).toISOString() : '',
-        qr_supported: false,
-        qr_blocker: DEMO_INVITE_QR_BLOCKER,
-        t4_required: DEMO_INVITE_T4_REQUIRED,
-    };
+  const token = String(issued.token || '').trim();
+  const query = `entry=form&dit=${encodeURIComponent(token)}`;
+  const path = 'pages/start-claim/start-claim';
+  const expiresAt = Number(issued.expires_at || 0);
+  return {
+    kind: 'chen_demo_invite',
+    mini_program_path: path,
+    query,
+    launch_path_with_query: `${path}?${query}`,
+    office_id: String(issued.office_id || ''),
+    scenario_id: String(issued.scenario_id || ''),
+    invite_id: String(issued.invite_id || ''),
+    expires_at_iso: expiresAt > 0 ? new Date(expiresAt * 1000).toISOString() : '',
+    qr_supported: false,
+    qr_blocker: DEMO_INVITE_QR_BLOCKER,
+    t4_required: DEMO_INVITE_T4_REQUIRED,
+  };
 }
 
 export function maskDemoInviteToken(token: string): string {

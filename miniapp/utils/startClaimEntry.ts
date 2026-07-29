@@ -11,6 +11,7 @@
 
 import { clearResumeToken, clearSubmitIntentId } from "./storage";
 import { SERVICE_HOME_ROUTE } from "./serviceHome";
+import { isIntentionalStartClaimEntry } from "./demoInviteLaunch";
 
 export const START_CLAIM_ROUTE = "/pages/start-claim/start-claim";
 export const START_CLAIM_SUCCESS_ROUTE = "/pages/start-claim-success/start-claim-success";
@@ -130,16 +131,15 @@ export function reLaunchStartClaimHome(wxLike: WxNavigate): void {
 
 /**
  * Capsule Home opens pages[0] (Start Claim). Operational home is Service Home.
- * - Cold Home without ?entry=form → Service Home
- * - Explicit ?entry=form must resolve Customer Context; form renders only when
- *   next_action is START_NEW_CLAIM (enforced by start-claim page gate).
+ * - Cold Home without ?entry=form / dit= → Service Home
+ * - Explicit ?entry=form or Demo Invite ?dit= must resolve Customer Context;
+ *   form renders only when next_action is START_NEW_CLAIM (start-claim page gate).
  */
 export function redirectStartClaimIfActiveCase(
   wxLike: WxNavigate,
   options?: Record<string, string | undefined>,
 ): boolean {
-  const intentionalForm = String(options?.entry || "").trim() === "form";
-  if (!intentionalForm) {
+  if (!isIntentionalStartClaimEntry(options)) {
     launchUrl(wxLike, SERVICE_HOME_ROUTE);
     return true;
   }
