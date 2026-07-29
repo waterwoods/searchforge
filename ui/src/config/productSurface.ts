@@ -33,3 +33,23 @@ export function isQaToolsEnabled(): boolean {
     if (truthy(import.meta.env.VITE_DISABLE_QA_TOOLS)) return false;
     return Boolean(import.meta.env.DEV);
 }
+
+/**
+ * Chen Demo Invite launcher (陈总演示工具).
+ * QA / Preview only — never on Production workbench API profile.
+ */
+export function isChenDemoInviteUiEnabled(): boolean {
+    if (truthy(import.meta.env.VITE_DISABLE_CHEN_DEMO_INVITE)) return false;
+    if (!isQaToolsEnabled()) return false;
+
+    const api = String(import.meta.env.VITE_API_BASE_URL || '').trim().toLowerCase();
+    const isProductionApi =
+        (api.includes('fiqa-api-') && api.includes('.run.app') && !api.includes('fiqa-api-qa')) ||
+        api.includes('fiqa-api-g7zatxrycq'); // known Production hostname
+
+    // Hard-off when UI is baked against Production API — even if QA tools flag leaked.
+    if (isProductionApi) return false;
+
+    // Preview / local with QA tools: show panel (API still gated by CHEN_DEMO_INVITE_ENABLED).
+    return true;
+}

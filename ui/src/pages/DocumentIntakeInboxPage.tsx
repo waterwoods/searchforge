@@ -47,6 +47,7 @@ import { ClaimEvidenceChecklist } from '@/features/intake/components/ClaimEviden
 import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
 import { MissingInformationChecklistPanel } from '@/features/intake/components/MissingInformationChecklistPanel';
 import { NewClaimEntryButton } from '@/features/intake/components/NewClaimEntryButton';
+import { ChenDemoInvitePanel } from '@/features/intake/components/ChenDemoInvitePanel';
 import { CloseCaseButton, ClosedHistoryBadge } from '@/features/intake/components/CloseCaseButton';
 import { isCaseClosedHistory } from '@/features/intake/utils/caseLifecycle';
 import { countCaseAttachments, isImageAttachment, isWeComMediaIntakeLane } from '@/features/intake/utils/attachmentDisplay';
@@ -1177,6 +1178,8 @@ export default function DocumentIntakeInboxPage() {
           {OFFICE_NAME} — 2–3 秒内找到正确客户与案件
         </Paragraph>
       </div>
+
+      <ChenDemoInvitePanel />
 
       <Card
         style={{ borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
