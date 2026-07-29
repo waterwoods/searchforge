@@ -534,6 +534,10 @@ fi
 if [ -n "${P4_CUSTOMER_LOOKUP_FORCE_UNAVAILABLE:-}" ]; then
     ENV_VARS+=("P4_CUSTOMER_LOOKUP_FORCE_UNAVAILABLE=$P4_CUSTOMER_LOOKUP_FORCE_UNAVAILABLE")
 fi
+# Chen Demo Invite overlay (QA only — never enable on Production)
+if [ -n "${CHEN_DEMO_INVITE_ENABLED:-}" ]; then
+    ENV_VARS+=("CHEN_DEMO_INVITE_ENABLED=$CHEN_DEMO_INVITE_ENABLED")
+fi
 
 # Optional: default client pack (GET /api/inbox/client-config without ?client= uses this)
 if [ -n "${CLIENT_ID:-}" ]; then
