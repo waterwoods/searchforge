@@ -14,6 +14,7 @@ from services.fiqa_api.inbox_triage.customer_lookup import (
     customer_lookup_mock_enabled,
     lookup_customer,
     lookup_customer_for_session,
+    lookup_demo_invite_fixture,
 )
 from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import SCENARIO_KEYS
 from services.fiqa_api.inbox_triage.smart_claim_start.engine import (
@@ -74,16 +75,50 @@ def build_smart_claim_start_response(
     """
     Cap 01 → Cap 02 → Cap 03 for one request.
 
-    mock_scenario is honored only when P4_CUSTOMER_LOOKUP_MOCK is enabled.
-    When flag is off, lookup degrades to LOOKUP_UNAVAILABLE → BLANK_DEGRADE plan.
-    """
-    mock_key = None
-    if customer_lookup_mock_enabled():
-        mock_key = resolve_mock_scenario_person_link(mock_scenario)
+    Demo Invite overlay (CHEN_DEMO_INVITE_ENABLED + redeemed session):
+      supplies mock Lookup/Prefill without requiring P4_CUSTOMER_LOOKUP_MOCK.
+      person_link_key is never rewritten.
 
-    if mock_key:
-        lookup = lookup_customer(mock_key)
-        identity_source = "mock_scenario"
+    Client-supplied mock_scenario remains DevTools-only and still requires
+    P4_CUSTOMER_LOOKUP_MOCK so ordinary QA traffic stays on blank claim.
+
+    When neither overlay nor (flag + mock_scenario) applies, lookup degrades
+    to LOOKUP_UNAVAILABLE → BLANK_DEGRADE.
+    """
+    overlay_scenario = None
+    if session_id and str(session_id).strip():
+        try:
+            from services.fiqa_api.inbox_triage.demo_invite import (
+                resolve_overlay_mock_scenario,
+            )
+
+            overlay_scenario = resolve_overlay_mock_scenario(str(session_id).strip())
+        except Exception:
+            overlay_scenario = None
+
+    if overlay_scenario:
+        mock_key = resolve_mock_scenario_person_link(overlay_scenario)
+        if mock_key:
+            lookup = lookup_demo_invite_fixture(mock_key)
+            identity_source = "demo_invite_overlay"
+        else:
+            lookup = lookup_customer(None)
+            identity_source = "demo_invite_overlay_invalid"
+    elif customer_lookup_mock_enabled() and mock_scenario:
+        # Global mock flag — Founder QA / DevTools only; not ordinary QA traffic.
+        mock_key = resolve_mock_scenario_person_link(mock_scenario)
+        if mock_key:
+            lookup = lookup_customer(mock_key)
+            identity_source = "mock_scenario"
+        elif person_link_key and str(person_link_key).strip():
+            lookup = lookup_customer(str(person_link_key).strip())
+            identity_source = "person_link_key"
+        elif session_id and str(session_id).strip():
+            lookup = lookup_customer_for_session(str(session_id).strip())
+            identity_source = "session_id"
+        else:
+            lookup = lookup_customer(None)
+            identity_source = "none"
     elif person_link_key and str(person_link_key).strip():
         lookup = lookup_customer(str(person_link_key).strip())
         identity_source = "person_link_key"
@@ -98,12 +133,24 @@ def build_smart_claim_start_response(
     plan = build_smart_claim_start_plan(lookup, prefill)
     safe_plan = _strip_banned(dict(plan))
 
-    return {
+    out: dict[str, Any] = {
         "ok": True,
-        "lookup_enabled": customer_lookup_mock_enabled(),
+        # True when global mock flag is on OR this response used a demo overlay.
+        "lookup_enabled": bool(
+            customer_lookup_mock_enabled() or identity_source == "demo_invite_overlay"
+        ),
         "identity_source": identity_source,
         "plan": safe_plan,
         # Thin diagnostics for Founder QA / simulation — not customer UI.
         "lookup_match_status": str(lookup.get("match_status") or ""),
         "prefill_source": str(prefill.get("prefill_source") or ""),
     }
+    if overlay_scenario:
+        out["demo_invite_overlay"] = True
+        try:
+            from services.fiqa_api.inbox_triage.demo_invite import DEMO_NAME
+
+            out["demo_name"] = DEMO_NAME
+        except Exception:
+            out["demo_name"] = "chen_known_customer_demo"
+    return out

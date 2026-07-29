@@ -24,6 +24,7 @@ from services.fiqa_api.inbox_triage.customer_lookup.facade import (
     customer_lookup_mock_enabled,
     lookup_customer,
     lookup_customer_for_session,
+    lookup_demo_invite_fixture,
     reset_customer_lookup_mock_for_tests,
 )
 
@@ -41,5 +42,6 @@ __all__ = [
     "empty_lookup_result",
     "lookup_customer",
     "lookup_customer_for_session",
+    "lookup_demo_invite_fixture",
     "reset_customer_lookup_mock_for_tests",
 ]

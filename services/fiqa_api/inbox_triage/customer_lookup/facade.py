@@ -93,6 +93,90 @@ def lookup_customer(person_link_key: str | None) -> LookupResult:
         )
 
 
+def lookup_demo_invite_fixture(person_link_key: str | None) -> LookupResult:
+    """
+    Read an allowlisted C01 mock fixture for a redeemed Demo Invite overlay.
+
+    Does NOT require P4_CUSTOMER_LOOKUP_MOCK. Ordinary QA traffic without an
+    overlay must keep using lookup_customer (flag-gated → blank degrade).
+    Still respects FORCE_UNAVAILABLE for controlled degrade tests.
+    """
+    try:
+        return _lookup_demo_invite_fixture_inner(person_link_key)
+    except Exception:
+        return _sanitize_result(
+            empty_lookup_result(
+                match_status="LOOKUP_UNAVAILABLE",
+                lookup_confidence="LOW",
+                next_action="start_blank_claim",
+                reason_codes=["demo_invite_lookup_exception_degraded"],
+            )
+        )
+
+
+def _lookup_demo_invite_fixture_inner(person_link_key: str | None) -> LookupResult:
+    if _truthy_env(FORCE_UNAVAILABLE_ENV):
+        result = empty_lookup_result(
+            match_status="LOOKUP_UNAVAILABLE",
+            lookup_confidence="LOW",
+            next_action="start_blank_claim",
+            reason_codes=["lookup_force_unavailable"],
+        )
+        result["lookup_source"] = "unavailable"
+        return _sanitize_result(result)
+
+    key = str(person_link_key or "").strip()
+    if not key or not _is_valid_person_link_shape(key):
+        return _sanitize_result(
+            empty_lookup_result(
+                match_status="UNMATCHED_IDENTITY",
+                lookup_confidence="LOW",
+                next_action="start_blank_claim",
+                reason_codes=["invalid_demo_fixture_key"],
+            )
+        )
+
+    if key == MOCK_KEY_S6_UNAVAILABLE:
+        result = empty_lookup_result(
+            match_status="LOOKUP_UNAVAILABLE",
+            lookup_confidence="LOW",
+            next_action="start_blank_claim",
+            reason_codes=["mock_lookup_unavailable"],
+        )
+        result["lookup_source"] = "unavailable"
+        return _sanitize_result(result)
+
+    if key == MOCK_KEY_S5_NO_MAPPING:
+        return _sanitize_result(
+            empty_lookup_result(
+                match_status="NOT_FOUND",
+                lookup_confidence="LOW",
+                next_action="start_blank_claim",
+                reason_codes=["identity_without_customer_mapping"],
+            )
+        )
+
+    fixture = get_fixture(key)
+    if fixture is None:
+        return _sanitize_result(
+            empty_lookup_result(
+                match_status="NOT_FOUND",
+                lookup_confidence="LOW",
+                next_action="start_blank_claim",
+                reason_codes=["no_mock_directory_row"],
+            )
+        )
+
+    out = _sanitize_result(fixture)
+    # Mark source so callers can distinguish invite overlay from global mock flag.
+    reasons = list(out.get("reason_codes") or [])
+    if "demo_invite_overlay" not in reasons:
+        reasons.append("demo_invite_overlay")
+    out["reason_codes"] = reasons
+    out["lookup_source"] = "demo_invite_mock"
+    return out
+
+
 def _lookup_customer_inner(person_link_key: str | None) -> LookupResult:
     if not customer_lookup_mock_enabled():
         result = empty_lookup_result(
