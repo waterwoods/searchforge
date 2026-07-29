@@ -7,13 +7,13 @@ import { closeCase, type SavedCase } from '@/api/inboxTriage';
 import { isCaseClosedHistory } from '@/features/intake/utils/caseLifecycle';
 
 const CLOSE_WARNING =
-  'Closing moves this case to read-only History. Customer can no longer edit or upload.';
+  '关闭后案件进入只读历史。客户将无法继续编辑或上传。';
 
 export function ClosedHistoryBadge({ caseRecord }: { caseRecord: SavedCase | null | undefined }) {
   if (!isCaseClosedHistory(caseRecord)) return null;
   return (
     <Tag color="default" data-testid="closed-history-badge">
-      Closed / History
+      已关闭 / 历史
     </Tag>
   );
 }
@@ -35,11 +35,11 @@ export function CloseCaseButton({
 
   const handleClick = () => {
     Modal.confirm({
-      title: 'Close Case?',
+      title: '关闭案件？',
       content: CLOSE_WARNING,
-      okText: 'Close Case',
+      okText: '关闭案件',
       okType: 'danger',
-      cancelText: 'Cancel',
+      cancelText: '取消',
       onOk: async () => {
         setLoading(true);
         try {
@@ -47,13 +47,13 @@ export function CloseCaseButton({
           const updated = result.case;
           message.success(
             result.outcome === 'already_closed'
-              ? 'Case already Closed / History'
-              : 'Case closed — now read-only History',
+              ? '案件已是关闭 / 历史状态'
+              : '案件已关闭 — 现为只读历史',
           );
           onClosed(updated);
         } catch (err) {
           const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-          message.error(typeof detail === 'string' ? detail : 'Close Case failed');
+          message.error(typeof detail === 'string' ? detail : '关闭案件失败');
           throw err;
         } finally {
           setLoading(false);
@@ -71,7 +71,7 @@ export function CloseCaseButton({
       data-testid="close-case-button"
       style={block ? { marginBottom: 8 } : undefined}
     >
-      Close Case
+      关闭案件
     </Button>
   );
 }

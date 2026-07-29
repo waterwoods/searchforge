@@ -21,6 +21,7 @@ import {
   isWaitingBrokerSurface,
   resolveCustomerCaseSurface,
   resolveCustomerCaseSurfaceRoute,
+  resolveWorkflowContinueRoute,
 } from "../utils/customerCaseSurface";
 import { applySlice1ProjectionToTask } from "../utils/slice1Customer";
 import type { CustomerTask, Slice1Projection } from "../types/task";
@@ -59,7 +60,7 @@ function waitingProjection(): Slice1Projection {
     customer_next_action: {
       action_type: "wait_for_broker_review",
       title: LEGACY_WAIT_TODAY,
-      instructions: "资料已齐，陈总正在审核。",
+      instructions: "资料已齐，陈总正在看。",
       request_id: "req_1",
       request_item_id: "",
       item_type: "",
@@ -132,10 +133,10 @@ test("Waiting Broker → case_status route; no Task Home", () => {
       current_stage: "waiting_broker",
       customer: {
         today: LEGACY_WAIT_TODAY,
-        why: "资料已齐，陈总正在审核。",
+        why: "资料已齐，陈总正在看。",
         after: "请等待确认。",
         current_stage: "waiting_broker",
-        trust: { care_line: "下一步由陈总审核", care_note: "我们会联系您（如需要）" },
+        trust: { care_line: "下一步由陈总联系您", care_note: "我们会联系您（如需要）" },
         tasks: [
           {
             task_id: "insurance",
@@ -162,7 +163,7 @@ test("Action Needed → Task Home", () => {
       customer: {
         today: "上传保险卡",
         why: "请上传",
-        after: "陈总开始审核。",
+        after: "陈总会尽快联系您。",
         current_stage: "customer_action_needed",
       },
     },
@@ -185,7 +186,7 @@ test("Case Status VM replaces 先不用操作 with production title", () => {
       current_stage: "waiting_broker",
       customer: {
         today: LEGACY_WAIT_TODAY,
-        why: "资料已齐，陈总正在审核。",
+        why: "资料已齐，陈总正在看。",
         after: "请等待确认。",
         current_stage: "waiting_broker",
         tasks: [{ task_id: "insurance", title: "上传保险卡", state: "completed" }],
@@ -194,15 +195,17 @@ test("Case Status VM replaces 先不用操作 with production title", () => {
   };
   const vm = buildCaseStatusViewModel(task);
   assert.equal(vm.title, CASE_STATUS_TITLE);
-  assert.equal(CASE_STATUS_TITLE, "资料已收到，等待陈总审核");
+  assert.equal(CASE_STATUS_TITLE, "已收到，陈总正在看");
   assert.equal(vm.title.includes(LEGACY_WAIT_TODAY), false);
   assert.ok(vm.bodyLines.length >= 3);
   assert.match(vm.bodyLines.join(""), /已收到/);
-  assert.match(vm.bodyLines.join(""), /审核/);
+  assert.match(vm.bodyLines.join(""), /陈总正在看/);
+  assert.equal(vm.bodyLines.join("").includes("审核"), false);
+  assert.equal(vm.statusLabel, "陈总正在看");
   assert.ok(vm.lastSubmittedLines.length + vm.completedLines.length > 0);
   assert.match(vm.completedLines.join("、") || vm.lastSubmittedLines.join("、"), /保险卡/);
   assert.equal(VOLUNTARY_SUPPLEMENT_LABEL, "继续补充资料");
-  assert.equal(SUBMIT_RECEIPT_COPY, "补充资料已收到，陈总会继续审核。");
+  assert.equal(SUBMIT_RECEIPT_COPY, "补充已收到，陈总会继续看。");
   assert.equal(DEFER_LATER_LABEL, "先离开，稍后再继续");
   assert.equal(buildSubmitReceiptCopy(task), SUBMIT_RECEIPT_COPY);
 });
@@ -244,6 +247,7 @@ test("Entry uses server Customer Context routing", () => {
   const entryTs = readFileSync(join(miniappRoot, "pages/entry/entry.ts"), "utf8");
   assert.match(entryTs, /resolveCustomerContext/);
   assert.match(entryTs, /routeForCustomerNextAction/);
+  assert.match(entryTs, /resolveWorkflowContinueRoute/);
   assert.equal(entryTs.includes('"/pages/task-home/task-home"'), false);
 });
 
@@ -262,7 +266,7 @@ test("Case Status page registered and titled", () => {
   assert.match(wxml, /btn-primary-append/);
   const ts = readFileSync(join(miniappRoot, "pages/case-status/case-status.ts"), "utf8");
   assert.match(ts, /customerOwesWork/);
-  assert.match(ts, /TASK_HOME_ROUTE/);
+  assert.match(ts, /resolveWorkflowContinueRoute/);
   assert.match(ts, /onVoluntarySupplement/);
   assert.match(ts, /canVoluntarySupplement/);
   assert.match(ts, /VOLUNTARY_SUPPLEMENT_LABEL/);
@@ -293,7 +297,7 @@ test("Request More Action Needed prioritizes Task Home over Case Status suppleme
       customer: {
         today: "上传保险卡",
         why: "请上传",
-        after: "陈总开始审核。",
+        after: "陈总会尽快联系您。",
         current_stage: "customer_action_needed",
       },
     },
@@ -311,4 +315,106 @@ test("One Active Case: voluntary supplement stays on same resume token", () => {
   assert.equal(resolveCustomerCaseSurfaceRoute(waiting), CASE_STATUS_ROUTE);
   assert.equal(loadResumeToken(), "h5t1.voluntary-append");
   clearResumeToken();
+});
+
+/** P3.6 — mid-journey after Story + Insurance; photos still open. */
+function midJourneyPhotosTask(): CustomerTask {
+  return {
+    ...applySlice1ProjectionToTask(baseTask(), {
+      case_id: "case_mid",
+      workflow_state: "intake",
+      aggregate_version: 4,
+      customer_next_action: null,
+      queued_request_items: [],
+      request_progress: { satisfied: 0, total: 0, remaining: 0 },
+      server_timestamp: "2026-07-26T12:00:00Z",
+      open_request: null,
+      broker_next_action: { action_type: "none", status: "none" },
+    }),
+    constitution_projection: {
+      current_stage: "customer_action_needed",
+      customer: {
+        today: "补充照片",
+        why: "请先完成这一步，方便我们继续处理。",
+        after: "完成后我们继续帮您处理。",
+        current_stage: "customer_action_needed",
+        tasks: [
+          {
+            task_id: "insurance_card",
+            title: "保险卡",
+            state: "completed",
+            actionable: false,
+            is_today: false,
+          },
+          {
+            task_id: "accident_photos",
+            title: "事故照片",
+            state: "in_progress",
+            actionable: true,
+            is_today: true,
+            route: "photos",
+            primary_action: "补充照片",
+          },
+          {
+            task_id: "accident_story",
+            title: "事故经过",
+            state: "completed",
+            actionable: false,
+            is_today: false,
+          },
+        ],
+      },
+    },
+  } as CustomerTask;
+}
+
+test("P3.6 Scenario A/D: after Insurance Card, continue goes to Photos not Waiting", () => {
+  const task = midJourneyPhotosTask();
+  assert.equal(customerOwesWork(task), true);
+  assert.equal(isWaitingBrokerSurface(task), false);
+  assert.equal(resolveCustomerCaseSurface(task), "task_home");
+  assert.equal(resolveWorkflowContinueRoute(task), "/pages/photos/photos");
+  assert.notEqual(resolveWorkflowContinueRoute(task), CASE_STATUS_ROUTE);
+  assert.match(buildSubmitReceiptCopy(task), /下一步：补充照片/);
+});
+
+test("P3.6 Scenario B: stale waiting stage with actionable photos still continues to Photos", () => {
+  const task = midJourneyPhotosTask();
+  // Legacy drift: stage said waiting while photos remained — must not celebrate.
+  (task.constitution_projection as { customer: { current_stage: string } }).customer.current_stage =
+    "waiting";
+  (task.constitution_projection as { current_stage: string }).current_stage = "waiting";
+  assert.equal(customerOwesWork(task), true);
+  assert.equal(resolveWorkflowContinueRoute(task), "/pages/photos/photos");
+});
+
+test("P3.6 Scenario C: true Waiting only when no actionable work remains", () => {
+  const task = {
+    ...applySlice1ProjectionToTask(baseTask(), waitingProjection()),
+    constitution_projection: {
+      current_stage: "waiting_broker",
+      customer: {
+        today: LEGACY_WAIT_TODAY,
+        why: "资料已齐，陈总正在看。",
+        after: "请等待确认。",
+        current_stage: "waiting_broker",
+        tasks: [
+          {
+            task_id: "insurance_card",
+            title: "保险卡",
+            state: "completed",
+            actionable: false,
+          },
+          {
+            task_id: "accident_photos",
+            title: "事故照片",
+            state: "completed",
+            actionable: false,
+          },
+        ],
+      },
+    },
+  };
+  assert.equal(customerOwesWork(task), false);
+  assert.equal(resolveWorkflowContinueRoute(task), CASE_STATUS_ROUTE);
 });

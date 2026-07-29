@@ -13,7 +13,7 @@ export const VIEW_PROGRESS_LABEL = "查看我的报案";
 export const CONTACT_BROKER_LABEL = "联系陈总";
 export const START_NEW_CLAIM_LABEL = "开始新的报案";
 export const START_CLAIM_PRIMARY_TITLE = "开始报案";
-export const START_CLAIM_PRIMARY_HINT = "告诉陈总发生了什么，我们帮您整理资料";
+export const START_CLAIM_PRIMARY_HINT = "告诉陈总发生了什么，我们帮您记下";
 
 export type ServiceHomeViewModel = {
   brandTitle: string;
@@ -39,7 +39,7 @@ export function buildServiceHomeViewModel(
   return {
     brandTitle,
     greetingLead: "您好，",
-    question: "今天需要办理什么？",
+    question: "今天怎么了？我们在。",
     hasActiveSession: Boolean(hasActiveSession),
     continueTitle: CONTINUE_CLAIM_TITLE,
     viewProgressLabel: VIEW_PROGRESS_LABEL,

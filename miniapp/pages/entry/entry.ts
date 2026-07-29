@@ -1,5 +1,6 @@
 import { taskPage } from "../../behaviors/taskPage";
 import { resolveCustomerContext } from "../../services/sessionIdentityAdapter";
+import { CustomerTaskApi } from "../../services/taskApi";
 import { appConfig, devLog } from "../../utils/config";
 import {
   contactBrokerModalCopy,
@@ -11,6 +12,7 @@ import { ApiRequestError } from "../../utils/request";
 import { buildQaRuntimeDiagnostic } from "../../utils/requestErrors";
 import { qaPathLog, summarizeLaunchQuery } from "../../utils/qaPathLog";
 import { routeForCustomerNextAction } from "../../utils/customerContextRoute";
+import { resolveWorkflowContinueRoute } from "../../utils/customerCaseSurface";
 import { SERVICE_HOME_ROUTE } from "../../utils/serviceHome";
 import { clearResumeToken } from "../../utils/storage";
 
@@ -55,7 +57,7 @@ function entryErrorState(code: string): typeof EMPTY_TASK_ERROR {
 Page({
   behaviors: [taskPage],
   data: {
-    loadingMessage: "正在打开您的资料…",
+    loadingMessage: "正在打开…",
     launchSource: "",
     errorState: EMPTY_TASK_ERROR,
     busy: {
@@ -129,14 +131,14 @@ Page({
 
     this.setData({
       launchSource: "server_context",
-      loadingMessage: "正在确认您的资料…",
+      loadingMessage: "正在为您准备…",
     });
 
     try {
       const context = await resolveCustomerContext({
         launchToken: String(options?.token || "").trim(),
       });
-      const target = routeForCustomerNextAction(context.nextAction);
+      let target = routeForCustomerNextAction(context.nextAction);
       if (context.nextAction === "START_NEW_CLAIM") {
         this.setBusy("navigating", true);
         wx.reLaunch({
@@ -155,6 +157,20 @@ Page({
       const app = getApp<IAppOption>();
       app.taskToken = context.resumeToken;
       app.task = undefined;
+      // P3.6 — Continue into the next unfinished task, not Waiting mid-journey.
+      if (
+        context.nextAction === "CONTINUE_ACTIVE_CASE" ||
+        context.nextAction === "UPLOAD_REQUEST_ITEM" ||
+        context.nextAction === "BROKER_REVIEW"
+      ) {
+        try {
+          const task = await CustomerTaskApi.getTask(context.resumeToken);
+          app.task = task;
+          target = resolveWorkflowContinueRoute(task);
+        } catch {
+          // Fall back to coarse context route when intake is unavailable.
+        }
+      }
       qaPathLog("BOOTSTRAP", {
         page: "entry",
         phase: "navigate_from_server_context",

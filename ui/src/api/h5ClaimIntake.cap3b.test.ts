@@ -61,7 +61,7 @@ test('applySlice1ProjectionToIntake merges Cap 3B receipt into intake info', () 
     customer_next_action: {
       action_type: 'wait_for_broker_review',
       title: '资料已收到',
-      instructions: '陈总正在审核中。',
+      instructions: '陈总正在看。',
       request_item_id: null,
     },
     broker_next_action: {

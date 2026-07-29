@@ -70,7 +70,7 @@ type PageData = {
 
 function brokerStatusLabel(status: string): string {
   if (status === "waiting_for_customer" || status === "wait_for_customer_item") return "等待您补充";
-  if (status === "review_ready" || status === "review_customer_response") return "等待陈总审核";
+  if (status === "review_ready" || status === "review_customer_response") return "陈总正在看";
   return "";
 }
 
@@ -98,7 +98,7 @@ function slice1PagePatch(
     slice1Enabled: view.enabled,
     slice1WaitingForBroker: view.waitingForBroker,
     slice1PrimaryLabel: view.waitingForBroker
-      ? "资料已提交，等待陈总审核"
+      ? "已提交，陈总正在看"
       : view.primaryCtaLabel || "补充陈总需要的资料",
     slice1Instruction: focusInstruction,
     slice1ProgressText:
@@ -368,7 +368,7 @@ Page({
   onEditSupplementInfo() {
     if (this.data.slice1Enabled) {
       if (this.data.slice1WaitingForBroker) {
-        wx.showToast({ title: "资料已提交，等待陈总审核", icon: "none" });
+        wx.showToast({ title: "已提交，陈总正在看", icon: "none" });
         return;
       }
       const route = resolveTaskHomePrimaryRoute(this.data.task) || REQUEST_ITEM_ROUTE;

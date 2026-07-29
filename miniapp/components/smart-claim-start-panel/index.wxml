@@ -14,16 +14,22 @@
     </view>
   </block>
 
-  <!-- Ambiguous / contact broker -->
+  <!-- Ambiguous: Contact Chen + blank escape — never trapped -->
   <block wx:elif="{{uiMode === 'contact_broker'}}">
     <view class="scs-card">
       <view class="scs-title">{{headlineZh}}</view>
       <view class="scs-sub">{{subtitleZh}}</view>
+      <view wx:if="{{confidenceSignal}}" class="scs-signal">{{confidenceSignal}}</view>
       <button class="scs-primary" bindtap="onPrimaryTap">联系{{brokerName}}</button>
+      <button
+        wx:if="{{secondaryCtaZh}}"
+        class="scs-secondary"
+        bindtap="onSecondaryTap"
+      >{{secondaryCtaZh}}</button>
     </view>
   </block>
 
-  <!-- Matched / blank degrade header + chips + confirms -->
+  <!-- Matched / blank degrade: known context + optional one decision + story -->
   <block wx:else>
     <view class="scs-card">
       <view class="scs-title">{{headlineZh}}</view>
@@ -31,7 +37,7 @@
       <view wx:if="{{confidenceSignal}}" class="scs-signal">{{confidenceSignal}}</view>
 
       <view wx:if="{{showKnownSection}}" class="scs-known">
-        <view class="scs-known-label">请确认以下信息</view>
+        <view class="scs-known-label">办公室已了解您</view>
         <view class="scs-chips">
           <view
             class="scs-chip"
@@ -47,7 +53,8 @@
       <view wx:if="{{showConfirmSection}}" class="scs-confirm">
         <block wx:for="{{confirmSteps}}" wx:key="step_id" wx:for-item="step">
           <view class="scs-confirm-prompt">{{step.prompt_zh}}</view>
-          <view class="scs-confirm-options">
+          <!-- Soft notices are banner text only — never a fake gate button. -->
+          <view wx:if="{{step.required_before_accident}}" class="scs-confirm-options">
             <button
               wx:for="{{step.options}}"
               wx:for-item="opt"
@@ -60,6 +67,12 @@
           </view>
         </block>
       </view>
+
+      <button
+        wx:if="{{secondaryCtaZh && uiMode === 'matched'}}"
+        class="scs-link"
+        bindtap="onSecondaryTap"
+      >{{secondaryCtaZh}}</button>
     </view>
   </block>
 </view>

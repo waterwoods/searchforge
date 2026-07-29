@@ -148,7 +148,7 @@ export function validateStartClaimForm(input: StartClaimFormInput): StartClaimVa
     errors.description = "请用一句话说明事故经过。";
   }
   if (!isAccidentDatetimeAcceptable(normalizedDatetime)) {
-    errors.accidentDatetime = "请填写事故时间，例如：今天上午 9 点 或 Today 9 am。";
+    errors.accidentDatetime = "请填写事故时间，例如：今天上午 9 点。";
   }
   if (!accidentLocation) {
     errors.accidentLocation = "请填写事故地点，例如：路口、停车场。";

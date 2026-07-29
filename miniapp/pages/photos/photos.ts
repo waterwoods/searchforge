@@ -23,6 +23,7 @@ import {
   resolveUploadPhase,
   uploadStatusText,
 } from "../../utils/uploadStateMachine";
+import { resolveWorkflowContinueRoute } from "../../utils/customerCaseSurface";
 
 const SLOT_SEQUENCE = ["customer_damage_photo", "other_party_vehicle_photo"] as const;
 const SLOT_LABELS: Record<string, string> = {
@@ -949,6 +950,38 @@ Page({
       wx.showToast({ title: "请至少添加一张照片", icon: "none" });
       return;
     }
-    this.onBackHome();
+    // P3.6 — after last required photos, continue to Waiting (or next task).
+    if (this.isBusy("navigating") || this.isBusy("uploading")) return;
+    this.setBusy("navigating", true);
+    const token = this.requireToken();
+    const finish = (task: CustomerTask | null | undefined) => {
+      const url = resolveWorkflowContinueRoute(task || this.data.task);
+      wx.redirectTo({
+        url,
+        complete: () => this.setBusy("navigating", false),
+        fail: () => {
+          wx.reLaunch({
+            url,
+            complete: () => this.setBusy("navigating", false),
+          });
+        },
+      });
+    };
+    if (!token) {
+      finish(this.data.task);
+      return;
+    }
+    void CustomerTaskApi.getTask(token)
+      .then((task) => {
+        try {
+          const app = getApp<IAppOption>();
+          app.task = task;
+        } catch {
+          // ignore
+        }
+        this.applyTaskToPhotoState(task);
+        finish(task);
+      })
+      .catch(() => finish(this.data.task));
   },
 });

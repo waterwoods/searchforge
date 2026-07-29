@@ -71,7 +71,7 @@ function previewStory(story: string): string {
 Page({
   behaviors: [taskPage],
   data: {
-    loadingMessage: "正在加载提交前检查…",
+    loadingMessage: "正在准备…",
     story: "",
     storyPreview: "未填写",
     photoCount: 0,
@@ -82,8 +82,8 @@ Page({
     supplementCtaLabel: "去补充资料",
     supplementRoute: "",
     canSubmit: false,
-    readyLabel: "请确认内容是否正确",
-    readySummary: "正在检查资料…",
+    readyLabel: "看一眼再交给陈总",
+    readySummary: "正在准备…",
     submitDisabledReason: "请先补全必填资料",
     disclaimer: "",
     task: null as CustomerTask | null,
@@ -159,12 +159,12 @@ Page({
       busyForVm,
       this.data.errorState?.message ? this.data.errorState : null,
     );
-    const readyLabel = canSubmit ? "内容正确即可提交" : "还有资料需要确认";
+    const readyLabel = canSubmit ? "没问题就可以交给陈总" : "还有内容需要补一下";
     const readySummary = canSubmit
-      ? "主要资料已齐全，可以确认并交给陈总。"
+      ? "这些内容会交给陈总。"
       : missing.length
         ? `还需补充：${missing.slice(0, 2).join("、")}${missing.length > 2 ? "等" : ""}。`
-        : "请先补全必填资料后再提交。";
+        : "请先补全后再交给陈总。";
     const supplement = resolveSupplementAction(missingRows);
 
     this.commitTaskViewModel(vm);
@@ -185,7 +185,7 @@ Page({
       submitDisabledReason,
       disclaimer:
         vm.safetyCopy ||
-        `提交后，${appConfig.brokerDisplayName}会查看这些资料并尽快回复您。这不是向保险公司正式报案。`,
+        `${appConfig.brokerDisplayName}会查看并尽快回复您。这不等于向保险公司正式报案。`,
       errorState: EMPTY_TASK_ERROR,
     });
   },

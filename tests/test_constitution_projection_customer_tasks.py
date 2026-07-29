@@ -81,7 +81,7 @@ def _camry_after_upload_case() -> dict:
             "title": "资料已收到",
             "required_input": None,
             "status": "waiting",
-            "instructions": "陈总正在审核中。",
+            "instructions": "陈总正在看。",
         },
         "broker_next_action": {
             "action_type": "review_customer_response",

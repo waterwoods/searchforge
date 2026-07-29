@@ -69,17 +69,28 @@ def test_s3_matched_known_feels_known():
     assert "customer_name" in chip_keys
     assert "vehicle" in chip_keys
     # Cap 01 S3 next_action may say confirm_vehicle; Cap 03 must trust AUTO vehicle.
-    assert "confirm_vehicle" not in [s["screen_id"] for s in plan["screens"]]
+    screen_ids = [s["screen_id"] for s in plan["screens"]]
+    assert "confirm_vehicle" not in screen_ids
+    # Customer Trust: no confirm-quiz gate before story.
+    assert "known_context" not in screen_ids
     assert "今天发生了什么" in plan["headline_zh"]
+    assert "办公室已了解您" in plan["confidence_signal"]
+    assert "请确认" not in plan["subtitle_zh"]
 
 
-def test_s4_stale_policy_confirm():
+def test_s4_stale_policy_soft_notice_never_blocks():
     plan = _plan_for(MOCK_KEY_S4_STALE_POLICY)
     assert plan["mode"] == "MATCHED_CONFIRM_POLICY"
-    assert plan["estimated_customer_inputs"] == 5
-    assert any(s["step_id"] == "confirm_policy" for s in plan["confirm_steps"])
-    # No silent trust — confirm before accident.
+    # Soft notice — does not add a forced input; story remains the work.
+    assert plan["estimated_customer_inputs"] == 4
+    step = next(s for s in plan["confirm_steps"] if s["step_id"] == "confirm_policy")
+    assert step["required_before_accident"] is False
     assert any(s["screen_id"] == "confirm_policy" for s in plan["screens"])
+    # Never imply claim is blocked — no exclusive contact-only trap option.
+    blob = " ".join(step.get("options") or [])
+    assert "继续" in blob or "知道了" in blob
+    assert "不能报案" not in plan["subtitle_zh"]
+    assert "今天发生了什么" in plan["headline_zh"]
 
 
 def test_s5_s6_graceful_blank_no_identity_wall():
@@ -96,12 +107,20 @@ def test_s5_s6_graceful_blank_no_identity_wall():
             if q["visibility"] == "VISIBLE_REQUIRED" and q["blocks_submit"]
         }
         assert set(MUST_HAVE_ACCIDENT_KEYS) <= blocking
+        # Silent degrade — no technical error copy.
+        blob = f"{plan['headline_zh']} {plan['subtitle_zh']}".lower()
+        assert "error" not in blob
+        assert "unavailable" not in blob
+        assert "网络" not in blob
 
 
-def test_ambiguous_contact_broker():
+def test_ambiguous_contact_broker_with_blank_escape():
     plan = _plan_for(MOCK_KEY_AMBIGUOUS)
     assert plan["mode"] == "CONTACT_BROKER"
     assert plan["estimated_customer_inputs"] == 1
+    assert plan["primary_cta_zh"] == "联系陈总"
+    assert plan["secondary_cta_zh"] == "仍要先报案"
+    assert any(s["screen_id"] == "blank_claim_escape" for s in plan["screens"])
 
 
 def test_never_expose_technical_ids_in_customer_chips():

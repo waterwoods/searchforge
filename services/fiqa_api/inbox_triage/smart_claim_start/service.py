@@ -14,37 +14,16 @@ from services.fiqa_api.inbox_triage.customer_lookup import (
     customer_lookup_mock_enabled,
     lookup_customer,
     lookup_customer_for_session,
+    person_link_for_mock_scenario,
 )
-from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import SCENARIO_KEYS
 from services.fiqa_api.inbox_triage.smart_claim_start.engine import (
     build_smart_claim_start_plan,
 )
 
-# Founder QA / DevTools scenario aliases (honored only when mock flag is on).
-_SCENARIO_ALIASES: dict[str, str] = {
-    "S1": "S1_existing_active",
-    "S2": "S2_multi_vehicle",
-    "S3": "S3_no_active",
-    "S4": "S4_stale_policy",
-    "S5": "S5_no_mapping",
-    "S6": "S6_unavailable",
-    "AMBIGUOUS": "AMBIGUOUS",
-}
-
 
 def resolve_mock_scenario_person_link(mock_scenario: str | None) -> str | None:
-    """Map S1…S6 / long ids → mock person_link_key. None if unknown."""
-    raw = str(mock_scenario or "").strip()
-    if not raw:
-        return None
-    upper = raw.upper()
-    scenario_id = _SCENARIO_ALIASES.get(upper) or raw
-    if scenario_id in SCENARIO_KEYS:
-        return SCENARIO_KEYS[scenario_id]
-    # Allow direct mock keys (wx_mock_cap01_…).
-    if raw.startswith("wx_mock_cap01_"):
-        return raw
-    return None
+    """Map S1…S6 / long ids → mock person_link_key via C01 QA helper (not adapter)."""
+    return person_link_for_mock_scenario(mock_scenario)
 
 
 def _strip_banned(plan: dict[str, Any]) -> dict[str, Any]:

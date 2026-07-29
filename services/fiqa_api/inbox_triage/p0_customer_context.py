@@ -30,6 +30,27 @@ def _next_action_from_task(task: dict[str, Any]) -> str:
     if bool(task.get("case_closed_read_only")) or str(task.get("case_status") or "").lower() == "closed":
         return CASE_CLOSED
 
+    # Unfinished actionable tasks win over wait signals — Continue must not
+    # land on Waiting while Story / Insurance / Photos still remain.
+    constitution = task.get("constitution_projection")
+    customer = constitution.get("customer") if isinstance(constitution, dict) else None
+    tasks = customer.get("tasks") if isinstance(customer, dict) else None
+    if isinstance(tasks, list) and any(isinstance(item, dict) and item.get("actionable") for item in tasks):
+        return UPLOAD_REQUEST_ITEM
+    stage = ""
+    today = ""
+    if isinstance(customer, dict):
+        stage = str(customer.get("current_stage") or "").strip()
+        today = str(customer.get("today") or "").strip()
+    if not stage and isinstance(constitution, dict):
+        stage = str(constitution.get("current_stage") or "").strip()
+    if stage == "customer_action_needed" or (
+        today and today not in {"先不用操作", "案件已关闭"}
+    ):
+        return CONTINUE_ACTIVE_CASE
+    if stage == "waiting_broker" or today == "先不用操作":
+        return BROKER_REVIEW
+
     slice1 = task.get("slice1_projection")
     customer_action = slice1.get("customer_next_action") if isinstance(slice1, dict) else None
     action_type = str(customer_action.get("action_type") or "").strip() if isinstance(customer_action, dict) else ""
@@ -45,12 +66,6 @@ def _next_action_from_task(task: dict[str, Any]) -> str:
         return UPLOAD_REQUEST_ITEM
     if contract_type in ("view_status", "contact_broker"):
         return BROKER_REVIEW
-
-    constitution = task.get("constitution_projection")
-    customer = constitution.get("customer") if isinstance(constitution, dict) else None
-    tasks = customer.get("tasks") if isinstance(customer, dict) else None
-    if isinstance(tasks, list) and any(isinstance(item, dict) and item.get("actionable") for item in tasks):
-        return UPLOAD_REQUEST_ITEM
 
     if bool(task.get("submitted")):
         return BROKER_REVIEW

@@ -15,11 +15,11 @@ import {
 import {
   CASE_STATUS_BODY_LINES,
   CASE_STATUS_TITLE,
-  TASK_HOME_ROUTE,
   VOLUNTARY_SUPPLEMENT_LABEL,
   buildCaseStatusViewModel,
   canVoluntarySupplement,
   customerOwesWork,
+  resolveWorkflowContinueRoute,
   type CaseStatusViewModel,
 } from "../../utils/customerCaseSurface";
 import type { CustomerTask } from "../../types/task";
@@ -46,7 +46,7 @@ function emptyStatus(): CaseStatusViewModel {
     bodyLines: [...CASE_STATUS_BODY_LINES],
     why: "",
     after: "",
-    statusLabel: "审核中",
+    statusLabel: "陈总正在看",
     lastSubmittedLines: [],
     completedLines: [],
     careLine: "",
@@ -108,16 +108,17 @@ Page({
 
   applyStatusOrRedirect(task: CustomerTask | null | undefined) {
     if (!task) return;
-    // Request More / new work → leave Waiting surface for Task Home.
+    // Remaining work → leave Waiting for the next unfinished task (not hub detour).
     if (customerOwesWork(task)) {
       if (this.isBusy("navigating")) return;
       this.setBusy("navigating", true);
+      const url = resolveWorkflowContinueRoute(task);
       wx.reLaunch({
-        url: TASK_HOME_ROUTE,
+        url,
         complete: () => this.setBusy("navigating", false),
         fail: () => {
           wx.redirectTo({
-            url: TASK_HOME_ROUTE,
+            url,
             complete: () => this.setBusy("navigating", false),
           });
         },

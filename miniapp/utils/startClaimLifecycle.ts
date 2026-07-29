@@ -145,10 +145,10 @@ export function mapStartClaimError(code: string): {
 }
 
 export const START_CLAIM_SUCCESS_COPY = {
-  title: "已收到您的事故说明",
+  title: "已收到",
   bodyLines: [
     "陈总会先了解事故情况。",
-    "如需 VIN、保险卡或照片，",
-    "我们会再通知您补充。",
+    "如需补充，我们会再通知您。",
+    "先不用操作。",
   ],
 } as const;

@@ -18,23 +18,14 @@
     />
 
     <view class="card">
-      <view class="status-pill {{statusTone === 'done' ? 'done' : ''}}">{{status}}</view>
       <view class="card-title">{{title}}</view>
       <view class="card-subtitle">{{message}}</view>
-
-      <view wx:if="{{submittedAt}}" class="section-label section-gap">提交时间</view>
-      <view wx:if="{{submittedAt}}" class="list-item">{{submittedAt}}</view>
-
-      <view class="section-label {{submittedAt ? 'section-gap' : ''}}">下一步</view>
       <view class="list-item">{{nextStep}}</view>
 
-      <view class="section-label section-gap">陈总会联系您</view>
-      <view class="list-item">{{brokerContactNote}}</view>
+      <view wx:if="{{showSupplement && materialsNote}}" class="section-label section-gap">还需您做</view>
+      <view wx:if="{{showSupplement && materialsNote}}" class="list-item missing">{{materialsNote}}</view>
 
-      <view class="section-label section-gap">可能还需补充</view>
-      <view class="list-item {{showSupplement ? 'missing' : ''}}">{{materialsNote}}</view>
-
-      <view wx:if="{{slice1Enabled && slice1ProgressText}}" class="list-item">{{slice1ProgressText}}</view>
+      <view wx:if="{{slice1Enabled && slice1ProgressText && showSupplement}}" class="list-item">{{slice1ProgressText}}</view>
 
       <view class="disclaimer">{{disclaimer}}</view>
     </view>
@@ -42,15 +33,15 @@
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
-      wx:if="{{submitted}}"
+      wx:if="{{submitted && showSupplement}}"
       label="{{slice1Enabled ? slice1PrimaryLabel : '补充或修改资料'}}"
       disabled="{{slice1Enabled ? (slice1WaitingForBroker || busy.navigating || busy.retrying || slice1LoadFailed) : (busy.navigating || busy.retrying)}}"
       loading="{{busy.navigating || busy.retrying}}"
-      disabledReason="{{slice1LoadFailed ? (errorState.message || '加载失败，请重试') : (slice1Enabled && slice1WaitingForBroker ? '资料已提交，等待陈总审核' : ctaDisabledReason)}}"
+      disabledReason="{{slice1LoadFailed ? (errorState.message || '一会儿再试，或联系陈总') : (slice1Enabled && slice1WaitingForBroker ? '陈总正在看，先不用操作' : ctaDisabledReason)}}"
       bindtap="onEditSupplementInfo"
     />
     <task-cta
-      wx:else
+      wx:elif="{{!submitted}}"
       label="返回我的报案"
       disabled="{{busy.navigating}}"
       loading="{{busy.navigating}}"

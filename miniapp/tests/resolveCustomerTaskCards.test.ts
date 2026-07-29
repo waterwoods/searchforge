@@ -19,7 +19,7 @@ function camryBeforeServer(): ConstitutionProjection {
     customer: {
       today: "上传保险卡",
       why: "事故经过和现场照片已经完成。",
-      after: "陈总开始审核。",
+      after: "陈总会尽快联系您。",
       trust: {
         care_line: "陈总已收到资料",
         care_note: "如有需要，我们会联系您",

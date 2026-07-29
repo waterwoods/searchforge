@@ -24,8 +24,8 @@
 
     <view class="card" wx:if="{{waitingForBroker && !submitReceiptVisible}}">
       <view class="status-pill done">已收到</view>
-      <view class="card-title">{{nextActionTitle || '资料已收到，等待陈总审核'}}</view>
-      <view class="card-subtitle">{{nextActionInstructions || '陈总已收到您的补充资料，正在审核。'}}</view>
+      <view class="card-title">{{nextActionTitle || '已收到，陈总正在看'}}</view>
+      <view class="card-subtitle">{{nextActionInstructions || '陈总已收到您的补充，正在看。'}}</view>
       <task-progress completed="{{progress.satisfied}}" total="{{progress.total || 1}}" />
     </view>
 

@@ -1,10 +1,11 @@
-"""P4 Capability 03 — Smart Claim Start (design + mock planner).
+"""Capability C03 — Smart Claim Start (Customer Trust presentation).
 
 Input: Cap 01 LookupResult + Cap 02 PrefillResult.
 Output: SmartClaimStartPlan (customer-ready Start Claim experience plan).
 
-Does not write CRM, cases, or identity.
-P4 Integration 01 wires the plan into Mini Program via service + HTTP.
+Does not write CRM, cases, or identity. Does not redesign C01/C02.
+Does not implement AMS / Notification / Timeline.
+Mini Program wires the plan via service + HTTP (flag OFF by default).
 """
 
 from services.fiqa_api.inbox_triage.smart_claim_start.contract import (

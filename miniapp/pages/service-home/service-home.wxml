@@ -10,15 +10,15 @@
   <!-- Neutral: waiting for Customer Context — never Start Claim -->
   <block wx:if="{{homePhase === 'checking'}}">
     <view class="sh-status-card">
-      <view class="sh-status-title">正在确认您的案件状态…</view>
-      <view class="sh-status-sub">请稍候，我们不会在确认前开始新的报案。</view>
+      <view class="sh-status-title">正在为您准备…</view>
+      <view class="sh-status-sub">请稍候。</view>
     </view>
   </block>
 
   <!-- Context failed: Retry / Contact — never fail-open to Start Claim -->
   <block wx:elif="{{homePhase === 'error'}}">
     <view class="sh-status-card sh-status-error">
-      <view class="sh-status-title">暂时无法确认案件状态</view>
+      <view class="sh-status-title">暂时连不上办公室</view>
       <view class="sh-status-sub">{{contextErrorMessage}}</view>
       <view class="sh-status-actions">
         <view class="sh-status-cta" bindtap="onRetryContext" hover-class="sh-card-hover">重试</view>

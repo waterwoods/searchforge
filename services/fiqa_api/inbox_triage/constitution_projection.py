@@ -46,9 +46,9 @@ STAGE_HISTORY = "history"
 _TODAY_WAIT = "先不用操作"
 _TODAY_INSURANCE_CARD = "上传保险卡"
 _WHY_INSURANCE_CARD = "事故经过和现场照片已经完成。"
-_AFTER_INSURANCE_CARD = "陈总开始审核。"
-_WHY_BROKER_REVIEW = "资料已齐，陈总正在审核。"
-_AFTER_WAIT_CONFIRM = "请等待确认。"
+_AFTER_INSURANCE_CARD = "陈总会尽快联系您。"
+_WHY_BROKER_REVIEW = "资料已齐，陈总正在看。"
+_AFTER_WAIT_CONFIRM = "如需补充，陈总会再联系您。"
 _WHY_GENERIC_ACTION = "请先完成这一步，方便我们继续处理。"
 _AFTER_GENERIC_ACTION = "完成后我们会继续处理。"
 _WHY_NEUTRAL_WAIT = "目前没有需要您操作的事项。"
@@ -66,7 +66,7 @@ _TRUST_CUSTOMER_ACTION = {
     "care_note": "如有需要，我们会联系您",
 }
 _TRUST_WAITING_BROKER = {
-    "care_line": "下一步由陈总审核",
+    "care_line": "下一步由陈总联系您",
     "care_note": "我们会联系您（如需要）",
 }
 
@@ -405,36 +405,34 @@ def _insurance_satisfied(deps: _ResolvedDeps) -> bool:
 
 
 def _has_incomplete_default_intake(deps: _ResolvedDeps) -> bool:
-    """True when required system_default intake remains (not optional photos).
+    """True when the default intake journey still has unfinished work.
 
-    Optional photos stay available on Task Home but must not block
-    waiting_broker after required defaults (story + insurance) are done.
+    Story + insurance are the hard defaults. Unfinished accident photos stay
+    inside the continuous journey so Waiting Broker is never shown while the
+    next default task remains open (P3.6 workflow continuity).
     """
     if not _has_accident_story(deps):
         return True
     if not _insurance_satisfied(deps):
         return True
+    photo_completed, photo_total, any_photo = _photo_progress(deps)
+    if not any_photo or photo_completed < photo_total:
+        return True
     return False
 
 
 def _default_today_title(deps: _ResolvedDeps) -> str | None:
-    """First incomplete default-plan task title. None when required defaults done.
+    """First incomplete default-plan task title. None when default journey done.
 
-    Order: story → insurance → optional photos (only when nothing required remains
-    and photos are still open — keeps motion without blocking broker wait).
+    Order: story → insurance → photos. Photos remain Today until done so the
+    customer is never celebrated into Waiting mid-journey.
     """
     if not _has_accident_story(deps):
         return "填写事故经过"
     if not _insurance_satisfied(deps):
         return _TODAY_INSURANCE_CARD
     photo_completed, photo_total, any_photo = _photo_progress(deps)
-    if photo_completed < photo_total or not any_photo:
-        # Optional: surface only when not already in a broker-hold wait path.
-        action = _slice1_customer_action(deps.slice1)
-        if _action_type(action) in _WAIT_BROKER_ACTION_TYPES:
-            return None
-        if _workflow_state(deps.slice1) in _SLICE1_REVIEW_READY_STATES:
-            return None
+    if not any_photo or photo_completed < photo_total:
         return "补充照片"
     return None
 
@@ -542,10 +540,14 @@ def _customer_trust(_deps: _ResolvedDeps, today: str) -> dict[str, str]:
 
 def _customer_current_stage(deps: _ResolvedDeps, today: str) -> str:
     action = _slice1_customer_action(deps.slice1)
-    if today != _TODAY_WAIT and (
-        _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES
-        or bool(_open_request_active_item(deps.slice1))
-        or _has_incomplete_default_intake(deps)
+    # Non-wait Today always means Action Needed — never stage=waiting while
+    # Constitution still names a concrete next task (e.g. 补充照片).
+    if today not in {_TODAY_WAIT, _TODAY_HISTORY}:
+        return STAGE_CUSTOMER_ACTION_NEEDED
+    if _has_incomplete_default_intake(deps):
+        return STAGE_CUSTOMER_ACTION_NEEDED
+    if _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES or bool(
+        _open_request_active_item(deps.slice1)
     ):
         return STAGE_CUSTOMER_ACTION_NEEDED
     if _is_waiting_broker(deps, action):

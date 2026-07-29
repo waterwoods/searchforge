@@ -96,8 +96,7 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
   };
   data.smartClaimEnabled = false;
   data.formTitle = "告诉陈总发生了什么";
-  data.formSubtitle =
-    "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。";
+  data.formSubtitle = "可录音转文字，也可直接打字。先说清楚事故情况即可。";
   data.busy = { submitting: false, uploading: false };
   const ctx: Record<string, any> = {
     ...page,
@@ -155,10 +154,12 @@ test("start-claim wxml asks accident Must Have and never teaches VIN-first", () 
   assert.match(wxml, /事故地点/);
   assert.match(wxml, /是否有人受伤/);
   assert.match(wxml, /提交给陈总/);
-  assert.match(wxml, /formSubtitle|如需再补充会通知您/);
+  assert.match(wxml, /formSubtitle|先说清楚事故情况即可/);
   assert.match(wxml, /missingHint/);
   assert.match(wxml, /fieldErrors/);
-  assert.match(wxml, /Today 9 am/);
+  assert.match(wxml, /今天上午 9 点/);
+  assert.equal(wxml.includes("Today 9 am"), false);
+  assert.equal(wxml.includes("VIN"), false);
   assert.match(wxml, /onTapRecord/);
   assert.match(wxml, /showRecordBtn/);
   assert.match(wxml, /smart-claim-start-panel/);

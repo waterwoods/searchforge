@@ -1,7 +1,7 @@
-"""In-memory mock customer directory for P4 Capability 01.
+"""Adapter-owned mock fixtures for C01 Customer Lookup.
 
 Keyed by person_link_key only. Read-only fixtures — never a CRM SoR.
-Swappable later with an AMS adapter that returns the same LookupResult shape.
+Consumed by MockCustomerDirectoryAdapter. Workflow must not import this module.
 """
 
 from __future__ import annotations

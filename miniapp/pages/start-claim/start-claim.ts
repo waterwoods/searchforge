@@ -129,6 +129,8 @@ Page({
   _navigatingAway: false,
   _smartPlan: null as SmartClaimStartPlan | null,
   _confirmSelections: {} as Record<string, string>,
+  /** Ambiguous CONTACT_BROKER secondary: customer chose blank claim escape. */
+  _blankEscapeActive: false,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
@@ -141,8 +143,7 @@ Page({
     smartUi: emptySmartClaimUiState(),
     smartClaimEnabled: Boolean(appConfig.smartClaimStartEnabled),
     formTitle: "告诉陈总发生了什么",
-    formSubtitle:
-      "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+    formSubtitle: "可录音转文字，也可直接打字。先说清楚事故情况即可。",
     busy: {
       submitting: false,
       uploading: false,
@@ -267,6 +268,7 @@ Page({
         this._form = createEmptyCanonicalForm();
         this._smartPlan = null;
         this._confirmSelections = {};
+        this._blankEscapeActive = false;
         const validated = validateStartClaimForm({
           ...this._form,
           reachabilityKnown: true,
@@ -286,7 +288,7 @@ Page({
           smartClaimEnabled: Boolean(appConfig.smartClaimStartEnabled),
           formTitle: "告诉陈总发生了什么",
           formSubtitle:
-            "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+            "可录音转文字，也可直接打字。先说清楚事故情况即可。",
         });
         await this.loadSmartClaimStartPlan();
       } else {
@@ -320,6 +322,7 @@ Page({
     if (!appConfig.smartClaimStartEnabled) {
       this._smartPlan = null;
       this._confirmSelections = {};
+      this._blankEscapeActive = false;
       this.setData({
         smartClaimEnabled: false,
         smartUi: emptySmartClaimUiState(),
@@ -334,15 +337,14 @@ Page({
       const plan = res && res.plan ? res.plan : null;
       this._smartPlan = plan;
       this._confirmSelections = {};
-      const smartUi = buildSmartClaimUiState(plan, this._confirmSelections);
-      const matched = smartUi.uiMode === "matched";
+      this._blankEscapeActive = false;
+      const smartUi = buildSmartClaimUiState(plan, this._confirmSelections, {
+        blankEscapeActive: false,
+      });
+      this._applySmartFormCopy(smartUi);
       this.setData({
         smartClaimEnabled: true,
         smartUi,
-        formTitle: matched || smartUi.uiMode === "blank_degrade" ? "事故事实" : "告诉陈总发生了什么",
-        formSubtitle: matched
-          ? "只需补充今天的事故情况。照片现在可以跳过，之后也可以补交。"
-          : "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
       });
       qaPathLog("BOOTSTRAP", {
         page: "pages/start-claim/start-claim",
@@ -350,15 +352,16 @@ Page({
         mode: smartUi.planMode || "legacy",
       });
     } catch {
-      // S6 / network: never dead-end — keep existing accident form.
+      // S6 / network: never dead-end — silent Pilot blank form.
       this._smartPlan = null;
       this._confirmSelections = {};
+      this._blankEscapeActive = false;
       this.setData({
         smartClaimEnabled: true,
         smartUi: emptySmartClaimUiState(),
-        formTitle: "告诉陈总发生了什么",
+        formTitle: "今天发生了什么？",
         formSubtitle:
-          "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+          "先告诉我们事故情况。身份与保单如需补充，陈总会再联系您。",
       });
       qaPathLog("BOOTSTRAP", {
         page: "pages/start-claim/start-claim",
@@ -367,8 +370,25 @@ Page({
     }
   },
 
+  _applySmartFormCopy(smartUi: ReturnType<typeof buildSmartClaimUiState>) {
+    const matched = smartUi.uiMode === "matched";
+    const blank = smartUi.uiMode === "blank_degrade";
+    // Panel already owns the story headline on matched/blank — never ask twice.
+    this.setData({
+      formTitle: matched || blank ? "" : "告诉陈总发生了什么",
+      formSubtitle: matched
+        ? "照片现在可以跳过。"
+        : blank
+          ? "先说清楚事故情况即可。身份如需补充，陈总会再联系您。"
+          : "可录音转文字，也可直接打字。先说清楚事故情况即可。",
+    });
+  },
+
   _applySmartUiFromSelections() {
-    const smartUi = buildSmartClaimUiState(this._smartPlan, this._confirmSelections);
+    const smartUi = buildSmartClaimUiState(this._smartPlan, this._confirmSelections, {
+      blankEscapeActive: this._blankEscapeActive,
+    });
+    this._applySmartFormCopy(smartUi);
     this.setData({ smartUi });
   },
 
@@ -399,7 +419,22 @@ Page({
       this.onContactBroker();
       return;
     }
-    // Matched "修改我的信息" — lightweight contact path; no identity redesign.
+    // Already escaped to blank — secondary is contact Chen.
+    if (this._blankEscapeActive || mode === "blank_degrade") {
+      this.onContactBroker();
+      return;
+    }
+    // Ambiguous gate: secondary blank escape — never trap proving identity.
+    if (mode === "contact_broker") {
+      this._blankEscapeActive = true;
+      this._applySmartUiFromSelections();
+      qaPathLog("BOOTSTRAP", {
+        page: "pages/start-claim/start-claim",
+        phase: "smart_claim_blank_escape",
+      });
+      return;
+    }
+    // Matched "信息有误？" — lightweight contact; no identity redesign.
     this.onContactBroker();
   },
 

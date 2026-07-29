@@ -24,7 +24,7 @@ function camryBeforeServer(): ConstitutionProjection {
     customer: {
       today: "上传保险卡",
       why: "事故经过和现场照片已经完成。",
-      after: "陈总开始审核。",
+      after: "陈总会尽快联系您。",
       trust: {
         care_line: "陈总已收到资料",
         care_note: "如有需要，我们会联系您",
@@ -41,10 +41,10 @@ function camryAfterServer(): ConstitutionProjection {
     current_stage: "waiting_broker",
     customer: {
       today: "先不用操作",
-      why: "资料已齐，陈总正在审核。",
+      why: "资料已齐，陈总正在看。",
       after: "请等待确认。",
       trust: {
-        care_line: "下一步由陈总审核",
+        care_line: "下一步由陈总联系您",
         care_note: "我们会联系您（如需要）",
       },
       current_stage: "waiting_broker",
@@ -158,7 +158,7 @@ test("Camry before-upload: production view prefers mocked API Constitution", () 
   assert.equal(resolved.fieldAuthority.today, "server");
   assert.equal(resolved.today, "上传保险卡");
   assert.equal(resolved.why, "事故经过和现场照片已经完成。");
-  assert.equal(resolved.after, "陈总开始审核。");
+  assert.equal(resolved.after, "陈总会尽快联系您。");
   assert.equal(resolved.careLine, "陈总已收到资料");
   assert.equal(resolved.careNote, "如有需要，我们会联系您");
   assert.equal(resolved.currentStage, "customer_action_needed");
@@ -166,7 +166,7 @@ test("Camry before-upload: production view prefers mocked API Constitution", () 
   const view = mapSlice1CustomerView(task);
   assert.equal(view.constitutionToday, "上传保险卡");
   assert.equal(view.constitutionWhy, "事故经过和现场照片已经完成。");
-  assert.equal(view.constitutionAfter, "陈总开始审核。");
+  assert.equal(view.constitutionAfter, "陈总会尽快联系您。");
   assert.equal(view.nextAction?.title, "上传保险卡");
   assert.equal(view.nextAction?.instructions, "事故经过和现场照片已经完成。");
   assert.equal(view.primaryCtaLabel, "上传保险卡");
@@ -184,9 +184,9 @@ test("Camry after-upload: Focus from server; wait CTA unchanged", () => {
   };
   const resolved = resolveCustomerConstitutionFromTask(task);
   assert.equal(resolved.today, "先不用操作");
-  assert.equal(resolved.why, "资料已齐，陈总正在审核。");
+  assert.equal(resolved.why, "资料已齐，陈总正在看。");
   assert.equal(resolved.after, "请等待确认。");
-  assert.equal(resolved.careLine, "下一步由陈总审核");
+  assert.equal(resolved.careLine, "下一步由陈总联系您");
   assert.equal(resolved.careNote, "我们会联系您（如需要）");
   assert.equal(resolved.currentStage, "waiting_broker");
   assert.equal(resolved.fieldAuthority.today, "server");
@@ -195,13 +195,13 @@ test("Camry after-upload: Focus from server; wait CTA unchanged", () => {
   assert.equal(view.waitingForBroker, true);
   assert.equal(view.constitutionToday, "先不用操作");
   assert.equal(view.nextAction?.title, "先不用操作");
-  assert.equal(view.nextAction?.instructions, "资料已齐，陈总正在审核。");
+  assert.equal(view.nextAction?.instructions, "资料已齐，陈总正在看。");
   // Cap3B wait acknowledgment CTA must remain (not Focus Today).
-  assert.equal(view.primaryCtaLabel, "资料已提交，等待陈总审核");
+  assert.equal(view.primaryCtaLabel, "已提交，陈总正在看");
 
   const vm = resolveTaskViewModel(task, null, { route: "/pages/task-home/task-home" });
   assert.equal(vm.instruction, "先不用操作");
-  assert.equal(vm.cta.label, "资料已提交，等待陈总审核");
+  assert.equal(vm.cta.label, "已提交，陈总正在看");
   assert.equal(vm.cta.disabled, true);
 });
 

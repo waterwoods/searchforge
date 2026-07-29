@@ -128,6 +128,53 @@ def empty_field(
     }
 
 
+def empty_prefill_result(
+    *,
+    lookup: dict[str, Any] | None = None,
+    reason_codes: list[str] | None = None,
+) -> PrefillResult:
+    """Complete PrefillResult with zero AUTO — safe degrade / blank path."""
+    status = str((lookup or {}).get("match_status") or "LOOKUP_UNAVAILABLE")
+    confidence = str((lookup or {}).get("lookup_confidence") or "LOW")
+    next_action = str((lookup or {}).get("next_action") or "start_blank_claim")
+    fields = [
+        empty_field(
+            key,
+            "CUSTOMER_REQUIRED" if key in (
+                "accident_time",
+                "accident_location",
+                "accident_story",
+                "damage",
+                "injury",
+            )
+            else ("UNKNOWN" if key == "email" else "BROKER_REQUIRED"),
+            value=None,
+            reason_code="prefill_degraded_zero_auto",
+        )
+        for key in START_CLAIM_FIELD_KEYS
+    ]
+    auto = [f["field_key"] for f in fields if f["classification"] == "AUTO_PREFILL"]
+    cust = [f["field_key"] for f in fields if f["classification"] == "CUSTOMER_REQUIRED"]
+    broker = [f["field_key"] for f in fields if f["classification"] == "BROKER_REQUIRED"]
+    unknown = [f["field_key"] for f in fields if f["classification"] == "UNKNOWN"]
+    out: PrefillResult = {
+        "lookup_match_status": status,
+        "lookup_confidence": confidence,
+        "lookup_next_action": next_action,
+        "fields": fields,
+        "auto_prefill_count": len(auto),
+        "customer_required_count": len(cust),
+        "broker_required_count": len(broker),
+        "unknown_count": len(unknown),
+        "customer_ask_fields": cust,
+        "auto_fields": auto,
+        "prefill_source": "lookup_unavailable",
+        "reason_codes": list(reason_codes or ["prefill_degraded_zero_auto"]),
+    }
+    assert_prefill_result_complete(out)
+    return out
+
+
 def assert_prefill_result_complete(result: dict[str, Any]) -> None:
     required = (
         "lookup_match_status",

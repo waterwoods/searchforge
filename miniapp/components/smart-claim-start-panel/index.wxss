@@ -138,3 +138,18 @@
 .scs-secondary::after {
   border: none;
 }
+
+.scs-link {
+  margin-top: 16rpx;
+  padding: 0;
+  min-height: auto;
+  background: transparent;
+  color: #4a5568;
+  font-size: 24rpx;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.scs-link::after {
+  border: none;
+}

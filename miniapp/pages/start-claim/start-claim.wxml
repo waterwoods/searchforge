@@ -2,8 +2,8 @@
   <!-- Context gate: never show Start Claim fields until server says START_NEW_CLAIM -->
   <block wx:if="{{contextPhase === 'checking' && !formAuthorized}}">
     <view class="card">
-      <view class="card-title">正在确认…</view>
-      <view class="card-subtitle">请稍候，确认后才能开始新的报案。</view>
+      <view class="card-title">正在为您准备…</view>
+      <view class="card-subtitle">请稍候。</view>
     </view>
   </block>
 
@@ -50,8 +50,8 @@
 
     <block wx:if="{{smartUi.uiMode === 'legacy' || (smartUi.showAccidentForm && smartUi.canShowAccidentBlock)}}">
       <view class="card">
-        <view class="card-title">{{formTitle}}</view>
-        <view class="card-subtitle">{{formSubtitle}}</view>
+        <view class="card-title" wx:if="{{formTitle}}">{{formTitle}}</view>
+        <view class="card-subtitle" wx:if="{{formSubtitle}}">{{formSubtitle}}</view>
 
         <view class="section-label">事故经过</view>
         <view class="voice-row">
@@ -82,7 +82,6 @@
           show-confirm-bar="{{false}}"
           disabled="{{busy.submitting || storyInputDisabled}}"
         />
-        <view class="char-count">{{charCount}} 字</view>
         <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
 
         <view class="section-label section-gap">事故时间</view>
@@ -90,7 +89,7 @@
         <input
           id="start-claim-datetime"
           class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
-          placeholder="例如：今天上午 9 点 或 Today 9 am"
+          placeholder="例如：今天上午 9 点"
           value="{{accidentDatetime}}"
           bindinput="onDatetimeInput"
           bindblur="onDatetimeBlur"

@@ -59,7 +59,7 @@ export function buildFreshSystemDefaultTask(overrides?: Partial<CustomerTask>): 
     flow: "claim_intake_form",
     case_id: caseId,
     title: "我的报案",
-    safety_copy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
+    safety_copy: "这是给办公室整理用的记录，不等于向保险公司正式报案。",
     steps: ["start", "injury", "time_location", "story", "vehicle_other_party", "evidence", "review", "done"],
     current_step: "review",
     completed_count: 4,
@@ -80,7 +80,7 @@ export function buildFreshSystemDefaultTask(overrides?: Partial<CustomerTask>): 
       customer: {
         today: "上传保险卡",
         why: "事故经过已填写，请继续上传保险卡。",
-        after: "陈总开始审核。",
+        after: "陈总会尽快联系您。",
         current_stage: "customer_action_needed",
         trust: { care_line: "陈总已收到资料", care_note: "如有需要，我们会联系您" },
         tasks: [
@@ -179,7 +179,7 @@ export function buildBrokerRequestedInsuranceTask(): CustomerTask {
       customer: {
         today: "上传保险卡",
         why: "请补一张更清晰的保险卡",
-        after: "陈总开始审核。",
+        after: "陈总会尽快联系您。",
         current_stage: "customer_action_needed",
         trust: { care_line: "陈总已收到资料", care_note: "如有需要，我们会联系您" },
         tasks: [

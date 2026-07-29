@@ -18,7 +18,7 @@
     />
 
     <view class="card">
-      <view class="card-title">请确认资料</view>
+      <view class="card-title">交给陈总前看一眼</view>
       <view class="card-subtitle">{{readyLabel}}</view>
 
       <view class="review-ready {{canSubmit ? 'ok' : 'need'}}">{{readySummary}}</view>
@@ -38,7 +38,7 @@
         </view>
       </view>
 
-      <view class="section-label section-gap">资料概要</view>
+      <view class="section-label section-gap">您刚才说的</view>
       <view class="list-item">事故经过：{{storyPreview}}</view>
       <view class="list-item">事故照片：已上传 {{photoCount}} 张</view>
 
@@ -48,7 +48,7 @@
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
     <task-cta
-      label="确认并交给陈总"
+      label="交给陈总"
       disabled="{{!canSubmit || busy.submitting || busy.navigating}}"
       loading="{{busy.submitting}}"
       disabledReason="{{submitDisabledReason}}"

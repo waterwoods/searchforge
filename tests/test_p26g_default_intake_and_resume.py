@@ -388,8 +388,11 @@ def test_e2e_fresh_claim_default_tasks_then_broker_followup(monkeypatch):
     mid = build_constitution_projection(ConstitutionInputs(case=case))
     mid_by = _by_id(mid["customer"]["tasks"])
     assert mid_by[TASK_ID_INSURANCE]["state"] == TASK_STATE_COMPLETED
-    # After required insurance is done, optional photos remain available.
+    # After insurance is done, photos remain in the continuous journey (P3.6).
     assert mid_by[TASK_ID_PHOTOS]["actionable"] is True
+    assert mid["customer"]["today"] == "补充照片"
+    assert mid["customer"]["current_stage"] == "customer_action_needed"
+    assert mid["customer"]["current_stage"] != "waiting_broker"
 
     # Broker exceptional follow-up (VIN) — defaults remain.
     case["p20_slice1_projection"] = {

@@ -19,14 +19,18 @@ if ROOT not in sys.path:
 
 os.environ.setdefault("P4_CUSTOMER_LOOKUP_MOCK", "1")
 
-from services.fiqa_api.inbox_triage.customer_lookup import lookup_customer  # noqa: E402
+from services.fiqa_api.inbox_triage.customer_lookup import (  # noqa: E402
+    list_qa_scenario_keys,
+    lookup_customer,
+)
 from services.fiqa_api.inbox_triage.customer_lookup.facade import (  # noqa: E402
     broker_header_fields_from_lookup,
-    simulate_workflow_steps,
 )
-from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import (  # noqa: E402
-    SCENARIO_KEYS,
+from services.fiqa_api.inbox_triage.workflow_v2 import (  # noqa: E402
+    simulate_main_chain_from_lookup,
 )
+
+SCENARIO_KEYS = list_qa_scenario_keys()
 
 
 def main() -> int:
@@ -36,7 +40,7 @@ def main() -> int:
         if scenario_id == "AMBIGUOUS":
             continue
         result = lookup_customer(key)
-        steps = simulate_workflow_steps(result)
+        steps = simulate_main_chain_from_lookup(result)
         header = broker_header_fields_from_lookup(result)
         ok = all(s.get("ok") is True for s in steps)
         all_ok = all_ok and ok

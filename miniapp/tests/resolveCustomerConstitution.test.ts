@@ -23,7 +23,7 @@ function camryBeforeServer(): ConstitutionProjection {
     customer: {
       today: "上传保险卡",
       why: "事故经过和现场照片已经完成。",
-      after: "陈总开始审核。",
+      after: "陈总会尽快联系您。",
       trust: {
         care_line: "陈总已收到资料",
         care_note: "如有需要，我们会联系您",
@@ -40,7 +40,7 @@ test("complete server Constitution overrides local mock logic", () => {
   });
   assert.equal(resolved.today, "上传保险卡");
   assert.equal(resolved.why, "事故经过和现场照片已经完成。");
-  assert.equal(resolved.after, "陈总开始审核。");
+  assert.equal(resolved.after, "陈总会尽快联系您。");
   assert.equal(resolved.careLine, "陈总已收到资料");
   assert.equal(resolved.careNote, "如有需要，我们会联系您");
   assert.equal(resolved.currentStage, "customer_action_needed");
@@ -58,7 +58,7 @@ test("partial server Constitution uses per-field fallback", () => {
         today: "上传保险卡",
         why: null,
         after: "",
-        trust: { care_line: "下一步由陈总审核", care_note: null },
+        trust: { care_line: "下一步由陈总联系您", care_note: null },
         current_stage: null,
       },
     },
@@ -70,7 +70,7 @@ test("partial server Constitution uses per-field fallback", () => {
   assert.equal(resolved.fieldAuthority.why, "local");
   assert.equal(resolved.after, LOCAL.after);
   assert.equal(resolved.fieldAuthority.after, "local");
-  assert.equal(resolved.careLine, "下一步由陈总审核");
+  assert.equal(resolved.careLine, "下一步由陈总联系您");
   assert.equal(resolved.fieldAuthority.careLine, "server");
   assert.equal(resolved.careNote, LOCAL.careNote);
   assert.equal(resolved.fieldAuthority.careNote, "local");

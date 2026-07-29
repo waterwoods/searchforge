@@ -78,7 +78,7 @@ function slice1PagePatch(view: Slice1CustomerView): Partial<PageData> {
     slice1Enabled: view.enabled,
     slice1WaitingForBroker: view.waitingForBroker,
     slice1PrimaryLabel: view.waitingForBroker
-      ? "资料已提交，等待陈总审核"
+      ? "先不用操作"
       : view.primaryCtaLabel || "补充陈总需要的资料",
     slice1PrimaryActionable: view.primaryActionable,
     slice1Instruction: focusInstruction,
@@ -92,8 +92,8 @@ function slice1PagePatch(view: Slice1CustomerView): Partial<PageData> {
 Page({
   behaviors: [taskPage],
   data: {
-    loadingMessage: "正在加载提交结果…",
-    title: "资料已提交",
+    loadingMessage: "正在打开…",
+    title: "已收到",
     message: "",
     status: "",
     statusTone: "done" as const,
@@ -223,61 +223,69 @@ Page({
         ? [constitution.careLine, constitution.careNote].filter(Boolean).join("。")
         : "";
 
-    const nextStep = serverToday ||
-      serverAfter ||
-      (view.enabled
-        ? view.waitingForBroker
-          ? "资料已提交，等待陈总查看"
-          : view.nextAction?.title ||
+    const owesSupplement = view.enabled
+      ? Boolean(view.primaryActionable)
+      : Boolean(
+          (task.missing_info || []).length > 0 ||
+            (dash?.missing || []).length > 0 ||
+            dash?.submitted_supplement_allowed,
+        );
+    // Calm landing when nothing is owed — office voice, not a dashboard.
+    const waitingCalm =
+      Boolean(view.enabled && view.waitingForBroker) || (submitted && !owesSupplement);
+
+    const nextStep = waitingCalm
+      ? "先不用操作"
+      : serverToday ||
+        serverAfter ||
+        (view.enabled
+          ? view.nextAction?.title ||
             view.nextAction?.instructions ||
             summary?.next_step ||
             dash?.next_action ||
-            "请按陈总要求补充资料"
-        : summary?.next_step ||
-          dash?.next_action ||
-          (submitted
-            ? "已提交，等待陈总查看"
-            : vm.cta.label || `等待${broker}查看`));
+            "请按陈总要求补充"
+          : summary?.next_step ||
+            dash?.next_action ||
+            vm.cta.label ||
+            `请按${broker}要求补充`);
 
-    const supplementHint = serverWhy ||
-      (view.enabled
-        ? view.waitingForBroker
-          ? "资料已提交，等待陈总审核"
-          : view.nextAction?.instructions ||
+    const supplementHint = waitingCalm
+      ? ""
+      : serverWhy ||
+        (view.enabled
+          ? view.nextAction?.instructions ||
             view.nextAction?.title ||
             view.primaryCtaLabel ||
             ""
-        : (task.missing_info || []).map((item) => item.label).filter(Boolean)[0] ||
-          (vm.missingItems || []).map((item) => item.label).filter(Boolean)[0] ||
-          (submitted ? "如有需要，可继续补充照片。" : ""));
+          : (task.missing_info || []).map((item) => item.label).filter(Boolean)[0] ||
+            (vm.missingItems || []).map((item) => item.label).filter(Boolean)[0] ||
+            (dash?.missing || []).map((item) => String(item || "").trim()).filter(Boolean)[0] ||
+            "");
 
-    const supplementAllowed = view.enabled
-      ? view.primaryActionable || view.waitingForBroker
-      : Boolean(
-          submitted || dash?.submitted_supplement_allowed || (task.missing_info || []).length > 0,
-        );
-
-    const brokerContactNote = serverTrust
-      ? serverTrust
-      : submitted
-        ? `${broker}会尽快查看您提交的资料，并在需要时通过微信联系您。`
-        : `如有问题，请通过微信联系${broker}。`;
-    const materialsNote = supplementHint
-      ? supplementHint
-      : `如有需要，${broker}可能请您补充更多材料，请留意微信消息。`;
+    const brokerContactNote = waitingCalm
+      ? `${broker}会尽快联系您`
+      : serverTrust
+        ? serverTrust
+        : submitted
+          ? `${broker}会尽快联系您`
+          : `如有问题，请通过微信联系${broker}。`;
+    const materialsNote = supplementHint;
 
     this.commitTaskViewModel(vm);
     this.safeSetData({
       task,
-      title: summary?.title || (submitted ? "资料已提交" : vm.title || "当前状态"),
-      message:
-        summary?.message ||
-        dash?.subtitle ||
-        (submitted ? `已成功提交，${broker}会尽快处理。` : vm.instruction || ""),
+      title: waitingCalm
+        ? "已收到"
+        : summary?.title || (submitted ? "已收到" : vm.title || "当前状态"),
+      message: waitingCalm
+        ? `${broker}会尽快联系您`
+        : summary?.message ||
+          dash?.subtitle ||
+          (submitted ? `${broker}会尽快联系您` : vm.instruction || ""),
       status: view.enabled
         ? view.waitingForBroker
           ? "已提交"
-          : "需补充材料"
+          : "需补充"
         : dash?.status || vm.statusLabel || (submitted ? "已提交" : "进行中"),
       statusTone:
         view.enabled && !view.waitingForBroker
@@ -293,14 +301,10 @@ Page({
         summary?.disclaimer ||
         dash?.warning ||
         vm.safetyCopy ||
-        "这只是资料收集，不代表已向保险公司正式报案。",
+        "这是给办公室整理用的记录，不等于向保险公司正式报案。",
       submitted,
-      submittedAt,
-      showSupplement: Boolean(
-        view.enabled
-          ? view.primaryActionable || view.waitingForBroker || submitted
-          : supplementAllowed || (submitted && supplementHint),
-      ),
+      submittedAt: waitingCalm ? "" : submittedAt,
+      showSupplement: !waitingCalm && owesSupplement,
       supplementHint,
       errorState: EMPTY_TASK_ERROR,
       slice1LoadFailed: false,
@@ -401,7 +405,7 @@ Page({
 
     if (this.data.slice1Enabled || isSlice1CustomerFlow(this.data.task)) {
       if (this.data.slice1WaitingForBroker) {
-        wx.showToast({ title: "资料已提交，等待陈总审核", icon: "none" });
+        wx.showToast({ title: "已提交，陈总正在看", icon: "none" });
         return;
       }
       if (this.data.slice1PrimaryActionable) {

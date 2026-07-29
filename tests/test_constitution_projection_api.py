@@ -296,7 +296,7 @@ def test_h5_intake_includes_customer_constitution_and_keeps_fields():
     assert "broker" not in cp
     assert cp["customer"]["today"] == "上传保险卡"
     assert cp["customer"]["why"] == "事故经过和现场照片已经完成。"
-    assert cp["customer"]["after"] == "陈总开始审核。"
+    assert cp["customer"]["after"] == "陈总会尽快联系您。"
     # Existing H5 fields unchanged in presence.
     for key in (
         "lane",

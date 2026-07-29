@@ -86,7 +86,8 @@ def build_prefill_result(lookup: LookupResult) -> PrefillResult:
     prefill = dict(lookup.get("prefill") or {})
     reasons = list(lookup.get("reason_codes") or [])
 
-    matched = status in ("MATCH_FOUND", "STALE_POLICY")
+    # Weak confidence → zero AUTO (Capability Constitution / Cap Review failure mode).
+    matched = status in ("MATCH_FOUND", "STALE_POLICY") and confidence != "LOW"
     stale = status == "STALE_POLICY"
     multi_vehicle = len(vehicles) > 1
     single_vehicle = len(vehicles) == 1

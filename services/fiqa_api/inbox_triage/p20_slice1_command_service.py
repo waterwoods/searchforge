@@ -609,7 +609,7 @@ def _projection(
             "request_item_id": None,
             # Cap 3B success copy: received + reviewing; no approval promise.
             "title": "资料已收到",
-            "instructions": "陈总正在审核中。",
+            "instructions": "陈总正在看。",
             "required_input": None,
             "status": "waiting",
             "ordering": {"position": None, "total": total},

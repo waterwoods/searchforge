@@ -80,7 +80,7 @@ def _camry_after_upload_case() -> dict:
             "title": "资料已收到",
             "required_input": None,
             "status": "waiting",
-            "instructions": "陈总正在审核中。",
+            "instructions": "陈总正在看。",
         },
         "broker_next_action": {
             "action_type": "review_customer_response",
@@ -109,7 +109,7 @@ def test_camry_before_insurance_card_upload():
     customer = projection["customer"]
     assert customer["today"] == "上传保险卡"
     assert customer["why"] == "事故经过和现场照片已经完成。"
-    assert customer["after"] == "陈总开始审核。"
+    assert customer["after"] == "陈总会尽快联系您。"
     assert customer["trust"] == {
         "care_line": "陈总已收到资料",
         "care_note": "如有需要，我们会联系您",
@@ -124,10 +124,10 @@ def test_camry_after_insurance_card_upload():
     )
     customer = projection["customer"]
     assert customer["today"] == "先不用操作"
-    assert customer["why"] == "资料已齐，陈总正在审核。"
-    assert customer["after"] == "请等待确认。"
+    assert customer["why"] == "资料已齐，陈总正在看。"
+    assert customer["after"] == "如需补充，陈总会再联系您。"
     assert customer["trust"] == {
-        "care_line": "下一步由陈总审核",
+        "care_line": "下一步由陈总联系您",
         "care_note": "我们会联系您（如需要）",
     }
     assert customer["current_stage"] == STAGE_WAITING_BROKER
@@ -191,7 +191,7 @@ def test_no_customer_action_returns_safe_waiting_state():
     assert customer["why"] == "目前没有需要您操作的事项。"
     assert customer["after"] == "有进展时我们会联系您。"
     assert customer["trust"] == {
-        "care_line": "下一步由陈总审核",
+        "care_line": "下一步由陈总联系您",
         "care_note": "我们会联系您（如需要）",
     }
     assert customer["current_stage"] == STAGE_WAITING

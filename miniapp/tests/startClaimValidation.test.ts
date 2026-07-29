@@ -96,7 +96,7 @@ test("empty/unparsed time shows friendly error", () => {
   });
   assert.equal(empty.ok, false);
   assert.match(empty.errors.accidentDatetime || "", /事故时间/);
-  assert.match(empty.errors.accidentDatetime || "", /Today 9 am/);
+  assert.match(empty.errors.accidentDatetime || "", /今天上午 9 点/);
 
   const junk = validateStartClaimForm({
     description: "追尾",

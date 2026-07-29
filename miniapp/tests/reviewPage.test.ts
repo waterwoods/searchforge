@@ -130,7 +130,7 @@ test("submit ready enables CTA from shared resolver", async () => {
   assert.equal(ctx.data.submitDisabledReason, "");
   assert.equal(ctx.data.story.includes("追尾"), true);
   assert.equal(ctx.data.photoCount, 2);
-  assert.match(String(ctx.data.readySummary), /齐全|提交/);
+  assert.match(String(ctx.data.readySummary), /交给陈总|齐全|提交/);
   assert.ok(String(ctx.data.storyPreview).length > 0);
 });
 

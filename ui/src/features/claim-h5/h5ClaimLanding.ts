@@ -36,7 +36,7 @@ const ACTIONABLE_TYPES = new Set(['provide_fact', 'provide_evidence']);
 
 /** Cap 3B customer success copy — received + reviewing; no approval promise. */
 export const CAP3B_RECEIVED_TITLE = '资料已收到';
-export const CAP3B_REVIEWING_INSTRUCTIONS = '陈总正在审核中。';
+export const CAP3B_REVIEWING_INSTRUCTIONS = '陈总正在看。';
 export const CAP3B_NO_APPROVAL_DISCLAIMER =
   '不代表已通过审核，也不代表已向保险公司正式报案。';
 

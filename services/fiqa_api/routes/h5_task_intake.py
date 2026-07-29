@@ -118,7 +118,7 @@ class CustomerContextBody(BaseModel):
 
 
 class CustomerLookupBody(BaseModel):
-    """P4 Capability 01 — read-only Customer Lookup (mock harness)."""
+    """C01 Customer Lookup — read-only (mock adapter behind Capability facade)."""
 
     session_id: str | None = Field(default=None, max_length=128)
     person_link_key: str | None = Field(default=None, max_length=256)
@@ -171,8 +171,9 @@ async def post_customer_context(body: CustomerContextBody) -> dict[str, Any]:
 @router.post("/customer/lookup")
 async def post_customer_lookup(body: CustomerLookupBody) -> dict[str, Any]:
     """
-    P4 Capability 01 — Customer Lookup (READ ONLY, mock-flagged).
+    C01 Customer Lookup (READ ONLY, mock-flagged).
 
+    HTTP edge → Capability facade → Adapter. Workflow/clients never see datasource.
     Answers only: "Who is this customer?"
     Never creates/merges/updates CRM, customer, policy, or vehicle.
     Always returns a complete LookupResult (graceful degrade when flag off).

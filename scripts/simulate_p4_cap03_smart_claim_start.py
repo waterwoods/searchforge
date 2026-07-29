@@ -113,10 +113,14 @@ def main() -> int:
             )
             and any(c["field_key"] == "vehicle" for c in by_id["S3_no_active"]["known_chips"])
         ),
-        "S4_stale_policy_confirm": (
+        "S4_stale_policy_soft_notice": (
             by_id["S4_stale_policy"]["mode"] == "MATCHED_CONFIRM_POLICY"
-            and by_id["S4_stale_policy"]["estimated_customer_inputs"] == 5
+            and by_id["S4_stale_policy"]["estimated_customer_inputs"] == 4
             and "confirm_policy" in by_id["S4_stale_policy"]["screens"]
+            and all(
+                not s.get("required_before_accident")
+                for s in by_id["S4_stale_policy"]["confirm_steps"]
+            )
         ),
         "S5_blank_degrade": (
             by_id["S5_no_mapping"]["mode"] == "BLANK_DEGRADE"
@@ -140,7 +144,11 @@ def main() -> int:
             r["adapter_boundary"] == "consumes_LookupResult_and_PrefillResult_only"
             for r in report
         ),
-        "AMBIGUOUS_contact_broker": by_id["AMBIGUOUS"]["mode"] == "CONTACT_BROKER",
+        "AMBIGUOUS_contact_broker_blank_escape": (
+            by_id["AMBIGUOUS"]["mode"] == "CONTACT_BROKER"
+            and by_id["AMBIGUOUS"]["primary_cta_zh"] == "联系陈总"
+            and "blank_claim_escape" in by_id["AMBIGUOUS"]["screens"]
+        ),
     }
     all_ok = all(r.get("ok") and r.get("no_dead_end") for r in report) and all(
         checks.values()

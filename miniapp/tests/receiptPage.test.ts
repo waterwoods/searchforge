@@ -214,7 +214,7 @@ test("Receipt page uses shared taskPage behavior", async () => {
   assert.equal(page.behaviors?.length, 1);
 });
 
-test("success render shows title, next step, and timestamp", async () => {
+test("success render shows calm three-line landing", async () => {
   const page = await loadReceiptPage();
   const task = buildTask();
   const ctx = createPageContext(page, {
@@ -224,13 +224,14 @@ test("success render shows title, next step, and timestamp", async () => {
 
   await page.onShow.call(ctx);
   assert.equal(ctx.data.submitted, true);
-  assert.equal(ctx.data.title, "资料已提交");
-  assert.equal(ctx.data.nextStep, "请耐心等待陈总回复");
-  assert.ok(String(ctx.data.submittedAt).length > 0);
+  assert.equal(ctx.data.title, "已收到");
+  assert.match(String(ctx.data.message), /陈总.*联系您/);
+  assert.equal(ctx.data.nextStep, "先不用操作");
+  assert.equal(ctx.data.showSupplement, false);
   assert.equal(ctx.data.photoCount, 2);
   assert.equal(ctx.data.statusTone, "done");
   assert.match(String(ctx.data.brokerContactNote), /陈总/);
-  assert.match(String(ctx.data.materialsNote), /补充|材料|照片/);
+  assert.equal(String(ctx.data.materialsNote || ""), "");
 });
 
 test("reload refreshes from server and does not keep stale title", async () => {
@@ -267,10 +268,12 @@ test("reload refreshes from server and does not keep stale title", async () => {
   });
 
   await page.onShow.call(ctx);
-  assert.equal(ctx.data.title, "旧标题");
+  assert.equal(ctx.data.title, "已收到");
+  assert.equal(ctx.data.nextStep, "先不用操作");
   await page.onShow.call(ctx);
-  assert.equal(ctx.data.title, "新标题");
-  assert.equal(ctx.data.nextStep, "新下一步");
+  // Waiting calm landing stays stable; photo count still refreshes from server.
+  assert.equal(ctx.data.title, "已收到");
+  assert.equal(ctx.data.nextStep, "先不用操作");
   assert.equal(ctx.data.photoCount, 3);
   assert.equal(loadCount, 2);
 });
@@ -336,7 +339,7 @@ test("Submit Result Home handler relaunches Service Home and keeps resume", asyn
   assert.equal(ctx.data.busy.navigating, false);
 });
 
-test("next-step display prefers completion summary", async () => {
+test("waiting receipt prefers calm next step over dense summary copy", async () => {
   const page = await loadReceiptPage();
   const task = buildTask({
     completion_summary: {
@@ -358,7 +361,8 @@ test("next-step display prefers completion summary", async () => {
   });
 
   await page.onShow.call(ctx);
-  assert.equal(ctx.data.nextStep, "专属下一步文案");
+  assert.equal(ctx.data.title, "已收到");
+  assert.equal(ctx.data.nextStep, "先不用操作");
 });
 
 test("submitted receipt uses unified supplement action sheet", async () => {

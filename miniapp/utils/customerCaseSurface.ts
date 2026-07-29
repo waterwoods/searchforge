@@ -8,7 +8,10 @@
 import type { CustomerTask } from "../types/task";
 import { isSubmitted } from "./taskMapping";
 import { mapSlice1CustomerView } from "./slice1Customer";
-import { resolveCustomerTaskCardsFromTask } from "./resolveCustomerTaskCards";
+import {
+  resolveCustomerTaskCardsFromTask,
+  resolveTaskHomePrimaryRoute,
+} from "./resolveCustomerTaskCards";
 
 export const TASK_HOME_ROUTE = "/pages/task-home/task-home";
 export const CASE_STATUS_ROUTE = "/pages/case-status/case-status";
@@ -17,11 +20,32 @@ export const RECEIPT_ROUTE = "/pages/receipt/receipt";
 /** Retired as primary Waiting copy — Case Status never surfaces this as the title. */
 export const LEGACY_WAIT_TODAY = "先不用操作";
 
-/** Demo Polish Sprint 2 — Waiting Broker Case Status title (durable confirmation). */
-export const CASE_STATUS_TITLE = "资料已收到，等待陈总审核";
+/** Waiting Broker Case Status title — office voice, not underwriting. */
+export const CASE_STATUS_TITLE = "已收到，陈总正在看";
 
 /** In-page Request More submit receipt when customer is truly waiting (not toast-only). */
-export const SUBMIT_RECEIPT_COPY = "补充资料已收到，陈总会继续审核。";
+export const SUBMIT_RECEIPT_COPY = "补充已收到，陈总会继续看。";
+
+/**
+ * Soften institutional waiting vocabulary for customer display only.
+ * Does not change routing or Constitution authority — presentation polish.
+ */
+export function softenOfficeWaitingVoice(text: string): string {
+  let t = String(text || "").trim();
+  if (!t) return t;
+  t = t.replace(/资料已提交，等待陈总审核/g, "已提交，陈总正在看");
+  t = t.replace(/资料已收到，等待陈总审核/g, "已收到，陈总正在看");
+  t = t.replace(/等待陈总审核/g, "陈总正在看");
+  t = t.replace(/陈总会继续审核/g, "陈总会继续看");
+  t = t.replace(/陈总正在审核中/g, "陈总正在看");
+  t = t.replace(/陈总正在审核/g, "陈总正在看");
+  t = t.replace(/陈总开始审核/g, "陈总会尽快联系您");
+  t = t.replace(/下一步由陈总审核/g, "下一步由陈总联系您");
+  t = t.replace(/完成后由陈总审核/g, "完成后陈总会联系您");
+  t = t.replace(/提交给陈总审核/g, "交给陈总");
+  t = t.replace(/审核中/g, "陈总正在看");
+  return t;
+}
 
 /** Pause mid-task — must not read as “case closed.” */
 export const DEFER_LATER_LABEL = "先离开，稍后再继续";
@@ -54,9 +78,9 @@ export function buildSubmitReceiptCopy(task?: CustomerTask | null): string {
 }
 
 export const CASE_STATUS_BODY_LINES = [
-  "资料已收到，等待陈总审核。",
-  "您这边暂时没有需要完成的事项。",
-  "如需继续补充，可添加照片或说明（不会覆盖已提交的必填资料）。",
+  "已收到，陈总正在看。",
+  "您这边先不用操作。",
+  "如需补充照片或说明，也可以继续添加。",
 ] as const;
 
 export type CustomerCaseSurface = "receipt" | "task_home" | "case_status";
@@ -76,10 +100,28 @@ export type CaseStatusViewModel = {
 /**
  * True when the customer still owes actionable work (Today / open Request More).
  * Waiting Broker is explicitly not “owes work.”
+ *
+ * Actionable cards and a concrete non-wait Today win over stale waiting stage
+ * signals — never celebrate Waiting while the next default task remains open.
  */
 export function customerOwesWork(task?: CustomerTask | null): boolean {
   if (!task) return false;
   const view = mapSlice1CustomerView(task);
+  const cards = resolveCustomerTaskCardsFromTask(task);
+  if (cards.some((row) => row.actionable)) return true;
+  const today = String(view.constitutionToday || "").trim();
+  if (today && today !== LEGACY_WAIT_TODAY) {
+    if (view.primaryActionable) return true;
+    if (view.currentStage === "customer_action_needed") return true;
+    if (view.enabled && view.nextAction) {
+      const actionType = String(view.nextAction.action_type || "").trim();
+      if (actionType === "provide_fact" || actionType === "provide_evidence") {
+        return true;
+      }
+    }
+    // Concrete Today (e.g. 补充照片) means work remains even if stage drifted.
+    if (view.currentStage !== "waiting_broker") return true;
+  }
   if (view.waitingForBroker) return false;
   if (
     view.currentStage === "waiting_broker" ||
@@ -88,18 +130,6 @@ export function customerOwesWork(task?: CustomerTask | null): boolean {
     return false;
   }
   if (view.primaryActionable) return true;
-  const cards = resolveCustomerTaskCardsFromTask(task);
-  if (cards.some((row) => row.actionable)) return true;
-  const today = String(view.constitutionToday || "").trim();
-  if (today && today !== LEGACY_WAIT_TODAY) {
-    if (view.currentStage === "customer_action_needed") return true;
-    if (view.enabled && view.nextAction) {
-      const actionType = String(view.nextAction.action_type || "").trim();
-      if (actionType === "provide_fact" || actionType === "provide_evidence") {
-        return true;
-      }
-    }
-  }
   // Legacy non-Slice1 in-progress claim: keep Task Home until submitted.
   if (!view.enabled && !isSubmitted(task)) {
     return true;
@@ -155,6 +185,19 @@ export function resolveCustomerCaseSurfaceRoute(task?: CustomerTask | null): str
   return CASE_STATUS_ROUTE;
 }
 
+/**
+ * Post-submit / Continue continuity route.
+ * When work remains, go directly to the next unfinished task page.
+ * Only when nothing remains → Case Status (Waiting). Never celebrate early.
+ */
+export function resolveWorkflowContinueRoute(task?: CustomerTask | null): string {
+  if (!task) return CASE_STATUS_ROUTE;
+  if (isSubmitted(task)) return RECEIPT_ROUTE;
+  if (!customerOwesWork(task)) return CASE_STATUS_ROUTE;
+  const nextTaskRoute = resolveTaskHomePrimaryRoute(task);
+  return nextTaskRoute || TASK_HOME_ROUTE;
+}
+
 function formatSubmittedLabel(label: string, when?: string): string {
   const title = String(label || "").trim();
   if (!title) return "";
@@ -194,7 +237,7 @@ export function buildCaseStatusViewModel(task?: CustomerTask | null): CaseStatus
 
   const why =
     String(view.constitutionWhy || "").trim() ||
-    "您这边暂时没有需要完成的事项";
+    "您这边先不用操作";
   const after =
     String(view.constitutionAfter || "").trim() ||
     "如需补充，陈总会再联系您";
@@ -202,12 +245,18 @@ export function buildCaseStatusViewModel(task?: CustomerTask | null): CaseStatus
   return {
     title: CASE_STATUS_TITLE,
     bodyLines: [...CASE_STATUS_BODY_LINES],
-    why: why === LEGACY_WAIT_TODAY ? "您这边暂时没有需要完成的事项" : why,
-    after: after === "请等待确认。" ? "如需补充，陈总会再联系您" : after,
-    statusLabel: "审核中",
+    why: softenOfficeWaitingVoice(
+      why === LEGACY_WAIT_TODAY ? "您这边先不用操作" : why,
+    ),
+    after: softenOfficeWaitingVoice(
+      after === "请等待确认。" ? "如需补充，陈总会再联系您" : after,
+    ),
+    statusLabel: "陈总正在看",
     lastSubmittedLines,
     completedLines,
-    careLine: String(view.careLine || "").trim() || "下一步由陈总审核",
+    careLine: softenOfficeWaitingVoice(
+      String(view.careLine || "").trim() || "下一步由陈总联系您",
+    ),
     careNote: String(view.careNote || "").trim() || "有进展时我们会联系您",
   };
 }

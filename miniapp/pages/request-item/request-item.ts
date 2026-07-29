@@ -23,10 +23,9 @@ import {
   DEFER_LATER_LABEL,
   HUB_RETURN_LABEL,
   HUB_VIEW_LABEL,
-  TASK_HOME_ROUTE,
   buildSubmitReceiptCopy,
   customerOwesWork,
-  resolveCustomerCaseSurfaceRoute,
+  resolveWorkflowContinueRoute,
 } from "../../utils/customerCaseSurface";
 import {
   applySlice1ProjectionToTask,
@@ -226,7 +225,7 @@ function ensureInternal(page: WechatMiniprogram.Page.Instance): PageInternal {
 
 function brokerStatusLabel(status: string): string {
   if (status === "waiting_for_customer" || status === "wait_for_customer_item") return "等待您补充";
-  if (status === "review_ready" || status === "review_customer_response") return "等待陈总审核";
+  if (status === "review_ready" || status === "review_customer_response") return "陈总正在看";
   if (status === "reviewing" || status === "create_request") return "经纪人处理中";
   return "";
 }
@@ -305,7 +304,7 @@ Page({
     submitReceiptText: "",
     deferLaterLabel: DEFER_LATER_LABEL,
     waitingPrimaryLabel: HUB_VIEW_LABEL,
-    shellSafetyCopy: "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。",
+    shellSafetyCopy: "这是给办公室整理用的记录，不等于向保险公司正式报案。",
     showWorkSurface: false,
     showFooterCta: false,
     busy: {
@@ -932,17 +931,17 @@ Page({
     });
   },
 
-  /** After Request More success: Task Home if more work, else Case Status. */
+  /** After Request More success: next unfinished task, else Case Status. */
   goContinueSurfaceAfterSuccess(task?: CustomerTask | null) {
     if (this.isBusy("navigating")) return;
     this.setBusy("navigating", true);
-    const url = resolveCustomerCaseSurfaceRoute(task) || CASE_STATUS_ROUTE;
+    const url = resolveWorkflowContinueRoute(task) || CASE_STATUS_ROUTE;
     wx.redirectTo({
       url,
       complete: () => this.setBusy("navigating", false),
       fail: () => {
         wx.reLaunch({
-          url: url === TASK_HOME_ROUTE ? TASK_HOME_ROUTE : CASE_STATUS_ROUTE,
+          url,
           complete: () => this.setBusy("navigating", false),
         });
       },

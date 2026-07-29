@@ -1,16 +1,19 @@
-"""Smart Claim Start engine — P4 Capability 03.
+"""Smart Claim Start engine — Capability C03 (Customer Trust presentation).
 
 Single responsibility:
   LookupResult + PrefillResult → customer-ready SmartClaimStartPlan.
 
-Rules (Founder principles):
+Rules (Founder principles / Gate 2 Customer Trust):
   Never ask twice.
   Never surprise the customer.
-  Never expose technical IDs.
+  Never expose technical IDs / confidence / classifier language.
   Keep one active claim.
   Customer primarily answers: What happened today?
+  Ambiguous never traps (Contact + blank escape).
+  Stale policy never implies claim is blocked.
 
 Does not write CRM, cases, or identity. Consumes Cap 01/02 outputs only.
+Does not redesign Cap 01 or Cap 02.
 """
 
 from __future__ import annotations
@@ -220,72 +223,26 @@ def _screens_for_mode(mode: StartMode) -> list[ScreenStep]:
             },
         ]
     if mode == "CONTACT_BROKER":
+        # Primary contact + secondary blank escape — never trap.
         return [
             base_entry,
             {
                 "screen_id": "contact_broker",
-                "title_zh": "请联系陈总",
-                "purpose": "Ambiguous identity — no silent start",
+                "title_zh": "需要陈总协助确认",
+                "purpose": "Ambiguous identity — contact primary, blank escape secondary",
                 "primary_cta_zh": "联系陈总",
+            },
+            {
+                "screen_id": "blank_claim_escape",
+                "title_zh": "今天发生了什么？",
+                "purpose": "Secondary blank claim so stressed customer is never trapped",
+                "primary_cta_zh": "提交给陈总",
             },
         ]
 
-    screens: list[ScreenStep] = [base_entry]
-    if mode == "MATCHED_CONFIRM_VEHICLE":
-        screens.append(
-            {
-                "screen_id": "confirm_vehicle",
-                "title_zh": "哪辆车出险？",
-                "purpose": "Disambiguate multi-vehicle before accident facts",
-                "primary_cta_zh": "确认车辆",
-            }
-        )
-    if mode == "MATCHED_CONFIRM_POLICY":
-        screens.append(
-            {
-                "screen_id": "confirm_policy",
-                "title_zh": "请确认保单信息",
-                "purpose": "Stale policy must not silently pretill as truth",
-                "primary_cta_zh": "确认后继续",
-            }
-        )
-    screens.extend(
-        [
-            {
-                "screen_id": "known_context",
-                "title_zh": "请确认以下信息",
-                "purpose": "Show known chips; edit-on-request only",
-                "primary_cta_zh": "信息无误，继续",
-            },
-            {
-                "screen_id": "accident_facts",
-                "title_zh": "今天发生了什么？",
-                "purpose": "Only new accident Must Haves",
-                "primary_cta_zh": "下一步",
-            },
-            {
-                "screen_id": "photos_optional",
-                "title_zh": "添加现场照片（可选）",
-                "purpose": "Optional evidence; never blocks Start Claim",
-                "primary_cta_zh": "跳过",
-            },
-            {
-                "screen_id": "review_submit",
-                "title_zh": "确认后提交",
-                "purpose": "Review known + accident; one submit",
-                "primary_cta_zh": "提交给陈总",
-            },
-            {
-                "screen_id": "receipt",
-                "title_zh": "已提交",
-                "purpose": "Success + Home/Continue path",
-                "primary_cta_zh": "返回首页",
-            },
-        ]
-    )
     if mode == "BLANK_DEGRADE":
-        # No known_context trust panel — go straight to accident facts.
-        screens = [
+        # Silent degrade — Pilot blank form; no identity wall / error jargon.
+        return [
             base_entry,
             {
                 "screen_id": "accident_facts",
@@ -312,6 +269,65 @@ def _screens_for_mode(mode: StartMode) -> list[ScreenStep]:
                 "primary_cta_zh": "返回首页",
             },
         ]
+
+    # MATCHED_* paths — chips are context, not a quiz gate.
+    screens: list[ScreenStep] = [base_entry]
+    if mode == "MATCHED_CONFIRM_VEHICLE":
+        screens.append(
+            {
+                "screen_id": "confirm_vehicle",
+                "title_zh": "哪辆车出险？",
+                "purpose": "One vehicle decision, then story — only multi-vehicle earns a chooser",
+                "primary_cta_zh": "继续",
+            }
+        )
+    if mode == "MATCHED_CONFIRM_POLICY":
+        screens.append(
+            {
+                "screen_id": "confirm_policy",
+                "title_zh": "保单我们会再核对",
+                "purpose": "Friendly stale notice; never blocks accident report",
+                "primary_cta_zh": "知道了，继续报案",
+            }
+        )
+    # Unambiguous MATCHED_KNOWN: no known_context gate screen — chips + story in one breath.
+    if mode != "MATCHED_KNOWN":
+        screens.append(
+            {
+                "screen_id": "known_context",
+                "title_zh": "办公室已了解您",
+                "purpose": "Known chips as context strip (not a confirm quiz)",
+                "primary_cta_zh": "继续",
+            }
+        )
+    screens.extend(
+        [
+            {
+                "screen_id": "accident_facts",
+                "title_zh": "今天发生了什么？",
+                "purpose": "Only new accident Must Haves — cursor lands here",
+                "primary_cta_zh": "下一步",
+            },
+            {
+                "screen_id": "photos_optional",
+                "title_zh": "添加现场照片（可选）",
+                "purpose": "Optional evidence; never blocks Start Claim",
+                "primary_cta_zh": "跳过",
+            },
+            {
+                "screen_id": "review_submit",
+                "title_zh": "确认后提交",
+                "purpose": "Review known + accident; one submit",
+                "primary_cta_zh": "提交给陈总",
+            },
+            {
+                "screen_id": "receipt",
+                "title_zh": "已提交",
+                "purpose": "Success + Home/Continue path",
+                "primary_cta_zh": "返回首页",
+            },
+        ]
+    )
     return screens
 
 
@@ -360,12 +376,13 @@ def _resolve_mode(lookup: LookupResult, prefill: PrefillResult) -> StartMode:
 
 
 def _estimate_inputs(mode: StartMode, confirm_steps: list[ConfirmStep]) -> int:
-    """Deliberate customer inputs: confirms + 4 Must Haves (damage/photos optional)."""
+    """Deliberate customer inputs: required confirms + 4 Must Haves (damage/photos optional)."""
     if mode == "CONTINUE_ACTIVE":
         return 1  # tap Continue
     if mode == "CONTACT_BROKER":
-        return 1  # tap Contact
-    confirms = len(confirm_steps)
+        return 1  # tap Contact (blank escape is secondary, not counted as forced)
+    # Soft notices (required_before_accident=False) do not add an input.
+    confirms = sum(1 for s in confirm_steps if s.get("required_before_accident"))
     must_haves = 4
     return confirms + must_haves
 
@@ -405,13 +422,14 @@ def build_smart_claim_start_plan(
             }
         )
     if confirm_policy:
+        # Soft notice only — customer can ALWAYS continue. Never imply blocked.
         confirm_steps.append(
             {
                 "step_id": "confirm_policy",
-                "prompt_zh": "系统显示保单可能已过期，请确认是否仍用此保单报案",
-                "options": ["确认使用此保单", "联系陈总更新保单"],
-                "required_before_accident": True,
-                "reason_code": "stale_policy_confirm",
+                "prompt_zh": "保单信息可能需要办公室再核对——您仍可先报案。",
+                "options": ["知道了，继续报案"],
+                "required_before_accident": False,
+                "reason_code": "stale_policy_soft_notice",
             }
         )
 
@@ -430,24 +448,27 @@ def build_smart_claim_start_plan(
         ]
         headline = "您已有一个正在处理的报案"
         subtitle = "请先继续当前报案。如确需新的报案，请联系陈总。"
-        confidence = "我们找到了您正在处理的报案"
+        confidence = "办公室已在处理您的报案"
         primary = "继续当前报案"
         secondary: str | None = "联系陈总"
         failure = "one_active_case_gate"
         photos = "HIDDEN_UNTIL_REQUEST_MORE"
         never_ask = list(prefill.get("auto_fields") or []) + list(MUST_HAVE_ACCIDENT_KEYS)
     elif mode == "CONTACT_BROKER":
-        questions = [
-            _question(k, "HIDDEN", "ambiguous_no_silent_start", blocks_submit=False)
-            for k in MUST_HAVE_ACCIDENT_KEYS
-        ]
-        headline = "需要陈总协助确认身份"
-        subtitle = "为避免用错保单或车辆，请先联系陈总后再报案。"
-        confidence = "暂时无法自动确认您的信息"
+        # Accident Must Haves ready for blank escape — never trap proving identity.
+        questions = _accident_questions()
+        for key in ("customer_name", "phone", "vehicle", "policy"):
+            questions.insert(
+                0,
+                _question(key, "BROKER_OWNED", "ambiguous_identity_broker", blocks_submit=False),
+            )
+        headline = "需要陈总协助确认"
+        subtitle = "我们想先跟您确认一下。您可以联系陈总，或先留下事故情况。"
+        confidence = "我们想先帮您核对清楚"
         primary = "联系陈总"
-        secondary = None
+        secondary = "仍要先报案"
         failure = "ambiguous_match_contact_broker"
-        photos = "HIDDEN_UNTIL_REQUEST_MORE"
+        photos = "AFTER_SUBMIT_OPTIONAL"
         never_ask = []
     elif mode == "BLANK_DEGRADE":
         questions = _accident_questions()
@@ -458,7 +479,7 @@ def build_smart_claim_start_plan(
                 _question(key, "BROKER_OWNED", "degrade_identity_broker", blocks_submit=False),
             )
         headline = "今天发生了什么？"
-        subtitle = "先告诉我们事故情况。身份与保单信息如需补充，陈总会再联系您。"
+        subtitle = "先告诉我们事故情况。身份与保单如需补充，陈总会再联系您。"
         confidence = "我们会先记下事故情况"
         primary = "提交给陈总"
         secondary = "联系陈总"
@@ -478,30 +499,33 @@ def build_smart_claim_start_plan(
                 ),
             )
         if confirm_policy:
+            # Soft notice — does not block submit / accident form.
             questions.insert(
                 0,
                 _question(
                     "policy",
                     "VISIBLE_CONFIRM",
-                    "stale_policy_confirm",
-                    blocks_submit=True,
+                    "stale_policy_soft_notice",
+                    blocks_submit=False,
                 ),
             )
-        # Cap 02 AUTO Prefill is presentation/classification only — never promise CRM sync.
+        # Cap 02 AUTO Prefill is presentation only — never promise CRM sync.
+        # Customer Trust copy: chips feel known; story is the work; no quiz tone.
         if mode == "MATCHED_CONFIRM_VEHICLE":
-            headline = "确认车辆后，告诉我们今天发生了什么"
-            subtitle = "请先选择出险车辆，并确认下方信息。"
-            confidence = "请确认以下信息"
+            headline = "哪辆车出险？"
+            subtitle = "选好车辆后，告诉我们今天发生了什么。"
+            confidence = "办公室已了解您"
         elif mode == "MATCHED_CONFIRM_POLICY":
-            headline = "确认保单后，告诉我们今天发生了什么"
-            subtitle = "保单信息可能需要您确认一下，然后只需补充事故事实。"
-            confidence = "请确认保单信息"
+            headline = "今天发生了什么？"
+            subtitle = "保单我们会再核对。您可以先告诉我们今天发生了什么。"
+            confidence = "办公室已了解您"
         else:
             headline = "今天发生了什么？"
-            subtitle = "请确认下方信息。您只需补充事故事实。"
-            confidence = "请确认以下信息"
+            # Trust once via chips label — do not repeat in subtitle + signal.
+            subtitle = "只需告诉我们今天的事故。"
+            confidence = "办公室已了解您"
         primary = "提交给陈总"
-        secondary = "修改我的信息"
+        secondary = "信息有误？联系陈总"
         failure = "matched_smart_start"
         photos = "AFTER_SUBMIT_OPTIONAL"
         never_ask = list(prefill.get("auto_fields") or [])

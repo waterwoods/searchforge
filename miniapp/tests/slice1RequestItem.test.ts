@@ -256,11 +256,11 @@ test("Request More submit uses 提交补充资料 and durable in-page receipt", 
   const wxml = readFileSync(join(here, "../pages/request-item/request-item.wxml"), "utf8");
   assert.match(ts, /提交补充资料/);
   assert.match(ts, /buildSubmitReceiptCopy/);
-  assert.equal(SUBMIT_RECEIPT_COPY, "补充资料已收到，陈总会继续审核。");
+  assert.equal(SUBMIT_RECEIPT_COPY, "补充已收到，陈总会继续看。");
   assert.match(ts, /setBusy\("submitting", true\)/);
   assert.match(ts, /goContinueSurfaceAfterSuccess/);
   assert.match(ts, /buildSubmitReceiptCopy/);
-  assert.match(ts, /resolveCustomerCaseSurfaceRoute/);
+  assert.match(ts, /resolveWorkflowContinueRoute/);
   assert.equal(ts.includes('submitLabel: waitingForBroker ? "返回我的资料" : "提交给陈总"'), false);
   assert.match(wxml, /waitingForBroker/);
   assert.match(wxml, /submitReceiptVisible/);
@@ -272,15 +272,14 @@ test("Request More submit uses 提交补充资料 and durable in-page receipt", 
   assert.match(wxml, /submitDisabled \|\| busy\.submitting/);
 });
 
-test("Final Request More success navigates via case surface resolver", () => {
+test("Final Request More success navigates via workflow continue resolver", () => {
   const here = dirname(__filename);
   const ts = readFileSync(join(here, "../pages/request-item/request-item.ts"), "utf8");
   assert.match(ts, /finishSubmitSuccess/);
   assert.match(ts, /goContinueSurfaceAfterSuccess/);
-  assert.match(ts, /resolveCustomerCaseSurfaceRoute/);
+  assert.match(ts, /resolveWorkflowContinueRoute/);
   assert.match(ts, /redirectTo/);
   assert.match(ts, /CASE_STATUS_ROUTE/);
-  assert.match(ts, /TASK_HOME_ROUTE/);
   assert.equal(ts.includes("goTaskHome()"), false);
 });
 
@@ -430,7 +429,7 @@ test("resolveTaskViewModel prefers Slice 1 server action", () => {
   const vm = resolveTaskViewModel(task, null, { route: "/pages/task-home/task-home" });
   assert.equal(vm.cta.target, REQUEST_ITEM_ROUTE);
   assert.equal(vm.missingItems.every((row) => row.actionable === false), true);
-  assert.match(vm.statusLabel, /补充|审核/);
+  assert.match(vm.statusLabel, /补充|陈总正在看/);
 });
 
 test("extractSlice1Projection reads additive fields", () => {

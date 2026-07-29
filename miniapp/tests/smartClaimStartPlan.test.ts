@@ -21,8 +21,8 @@ function matchedPlan(overrides?: Partial<SmartClaimStartPlan>): SmartClaimStartP
   return {
     mode: "MATCHED_KNOWN",
     headline_zh: "今天发生了什么？",
-    subtitle_zh: "请确认下方信息。您只需补充事故事实。",
-    confidence_signal: "请确认以下信息",
+    subtitle_zh: "办公室已了解您。只需告诉我们今天的事故。",
+    confidence_signal: "办公室已了解您",
     known_chips: [
       { field_key: "customer_name", label_zh: "姓名", value: "陈明" },
       { field_key: "phone", label_zh: "电话", value: "尾号 1234" },
@@ -34,6 +34,7 @@ function matchedPlan(overrides?: Partial<SmartClaimStartPlan>): SmartClaimStartP
       { field_key: "accident_story", visibility: "VISIBLE_REQUIRED", label_zh: "事故经过" },
     ],
     primary_cta_zh: "提交给陈总",
+    secondary_cta_zh: "信息有误？联系陈总",
     ...overrides,
   };
 }
@@ -46,14 +47,17 @@ test("flag-off empty UI keeps legacy accident form path", () => {
   assert.equal(ui.showKnownSection, false);
 });
 
-test("S3 matched path shows chips and accident block only", () => {
+test("S3 matched path shows chips and accident block immediately (no quiz)", () => {
   const ui = buildSmartClaimUiState(matchedPlan());
   assert.equal(ui.uiMode, "matched");
   assert.equal(ui.showKnownSection, true);
   assert.equal(ui.knownChips.length, 4);
   assert.equal(ui.canShowAccidentBlock, true);
-  assert.match(ui.confidenceSignal, /确认以下信息/);
-  assert.equal(ui.whyAskTime.includes("事故顺序"), true);
+  // Chips label already says 办公室已了解您 — do not repeat in signal/subtitle.
+  assert.equal(ui.confidenceSignal, "");
+  assert.equal(ui.subtitleZh.includes("办公室已了解您"), false);
+  assert.equal(ui.confirmSteps.length, 0);
+  assert.equal(ui.whyAskTime, "");
 });
 
 test("S1 continue gate hides accident form and blocks duplicate create path", () => {
@@ -92,28 +96,45 @@ test("S2 vehicle confirm blocks accident until selected", () => {
   assert.equal(after.canShowAccidentBlock, true);
 });
 
-test("S4 stale policy confirm; contact option routes to broker UI mode", () => {
+test("S4 stale soft notice never traps — accident available immediately", () => {
   const plan = matchedPlan({
     mode: "MATCHED_CONFIRM_POLICY",
+    headline_zh: "今天发生了什么？",
+    subtitle_zh: "保单我们会再核对。您可以先告诉我们今天发生了什么。",
     confirm_steps: [
       {
         step_id: "confirm_policy",
-        prompt_zh: "保单可能已过期",
-        options: ["确认使用此保单", "联系陈总更新保单"],
-        required_before_accident: true,
+        prompt_zh: "保单信息可能需要办公室再核对——您仍可先报案。",
+        options: ["知道了，继续报案"],
+        required_before_accident: false,
       },
     ],
   });
-  const confirm = buildSmartClaimUiState(plan, {
-    confirm_policy: "确认使用此保单",
+  const ui = buildSmartClaimUiState(plan, {});
+  assert.equal(ui.uiMode, "matched");
+  assert.equal(ui.canShowAccidentBlock, true);
+  assert.equal(ui.showAccidentForm, true);
+  assert.equal(ui.confirmsComplete, true);
+});
+
+test("Ambiguous offers Contact + blank escape; escape shows accident form", () => {
+  const plan = matchedPlan({
+    mode: "CONTACT_BROKER",
+    headline_zh: "需要陈总协助确认",
+    primary_cta_zh: "联系陈总",
+    secondary_cta_zh: "仍要先报案",
+    known_chips: [],
+    confirm_steps: [],
   });
-  assert.equal(confirm.uiMode, "matched");
-  assert.equal(confirm.canShowAccidentBlock, true);
-  const broker = buildSmartClaimUiState(plan, {
-    confirm_policy: "联系陈总更新保单",
-  });
-  assert.equal(broker.uiMode, "contact_broker");
-  assert.equal(broker.showAccidentForm, false);
+  const gate = buildSmartClaimUiState(plan);
+  assert.equal(gate.uiMode, "contact_broker");
+  assert.equal(gate.secondaryCtaZh, "仍要先报案");
+  assert.equal(gate.showAccidentForm, false);
+  const escaped = buildSmartClaimUiState(plan, {}, { blankEscapeActive: true });
+  assert.equal(escaped.uiMode, "blank_degrade");
+  assert.equal(escaped.showAccidentForm, true);
+  assert.equal(escaped.canShowAccidentBlock, true);
+  assert.equal(escaped.blankEscapeActive, true);
 });
 
 test("S5/S6 blank degrade has no identity chips", () => {
@@ -164,7 +185,7 @@ test("smart-claim-start-panel has four component gate files", () => {
   assert.equal(json.component, true);
 });
 
-test("start-claim registers smart-claim-start-panel and keeps accident fields", () => {
+test("start-claim panel uses trust copy and blank escape CTA", () => {
   const json = JSON.parse(
     readFileSync(join(miniappRoot, "pages/start-claim/start-claim.json"), "utf8"),
   );
@@ -182,7 +203,9 @@ test("start-claim registers smart-claim-start-panel and keeps accident fields", 
     join(miniappRoot, "components/smart-claim-start-panel/index.wxml"),
     "utf8",
   );
-  assert.match(panelWxml, /请确认以下信息/);
+  assert.match(panelWxml, /办公室已了解您/);
+  assert.match(panelWxml, /secondaryCtaZh/);
+  assert.equal(panelWxml.includes("请确认以下信息"), false);
   assert.equal(wxml.includes("openid"), false);
   assert.equal(wxml.includes("person_link_key"), false);
   assert.equal(wxml.includes("case_id"), false);

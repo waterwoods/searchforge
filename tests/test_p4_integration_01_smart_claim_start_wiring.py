@@ -55,10 +55,12 @@ def test_s3_matched_minimal_inputs():
     assert "accident_story" in plan["never_ask_again"] or "customer_name" in plan["never_ask_again"]
 
 
-def test_s4_stale_policy_confirm():
+def test_s4_stale_policy_soft_notice():
     plan = build_smart_claim_start_response(mock_scenario="S4")["plan"]
     assert plan["mode"] == "MATCHED_CONFIRM_POLICY"
-    assert any(s["step_id"] == "confirm_policy" for s in plan["confirm_steps"])
+    step = next(s for s in plan["confirm_steps"] if s["step_id"] == "confirm_policy")
+    assert step["required_before_accident"] is False
+    assert plan["estimated_customer_inputs"] == 4
 
 
 def test_s5_s6_blank_degrade():

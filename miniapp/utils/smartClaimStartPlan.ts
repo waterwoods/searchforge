@@ -1,5 +1,5 @@
 /**
- * Pure helpers for P4 Integration 01 Smart Claim Start presentation.
+ * Pure helpers for C03 Smart Claim Start presentation (Customer Trust).
  * Cap 03 plan is SSOT for mode/chips/confirms; page owns form draft.
  */
 
@@ -35,10 +35,12 @@ export type SmartClaimUiState = {
   confirmSelections: Record<string, string>;
   confirmsComplete: boolean;
   canShowAccidentBlock: boolean;
+  /** Ambiguous secondary escape: customer chose blank claim */
+  blankEscapeActive: boolean;
 };
 
-const WHY_ASK_TIME = "用于帮助确认事故顺序。";
-const WHY_ASK_PHOTOS = "现在可以跳过，之后也可以补交。";
+const WHY_ASK_TIME = "";
+const WHY_ASK_PHOTOS = "照片现在可以跳过。";
 
 const BANNED_DISPLAY_FRAGMENTS = [
   "openid",
@@ -50,6 +52,11 @@ const BANNED_DISPLAY_FRAGMENTS = [
   "mock_cust",
   "vehicle_ref",
   "case_id",
+  "confidence",
+  "lookup_score",
+  "classifier",
+  "adapter",
+  "match_status",
 ];
 
 export function sanitizeChipValue(value: unknown): string {
@@ -96,17 +103,8 @@ export function confirmsAreComplete(
     if (!step.required_before_accident) continue;
     const chosen = String(selections[step.step_id] || "").trim();
     if (!chosen) return false;
-    // Stale-policy "联系顾问" is a contact path, not accident progress.
-    if (step.step_id === "confirm_policy" && /联系/.test(chosen)) {
-      return false;
-    }
   }
   return true;
-}
-
-export function policyConfirmWantsBroker(selections: Record<string, string>): boolean {
-  const chosen = String(selections.confirm_policy || "").trim();
-  return Boolean(chosen) && /联系/.test(chosen);
 }
 
 export function emptySmartClaimUiState(): SmartClaimUiState {
@@ -128,12 +126,14 @@ export function emptySmartClaimUiState(): SmartClaimUiState {
     confirmSelections: {},
     confirmsComplete: true,
     canShowAccidentBlock: true,
+    blankEscapeActive: false,
   };
 }
 
 export function buildSmartClaimUiState(
   plan: SmartClaimStartPlan | null | undefined,
   confirmSelections?: Record<string, string>,
+  options?: { blankEscapeActive?: boolean },
 ): SmartClaimUiState {
   if (!plan || !plan.mode) {
     return emptySmartClaimUiState();
@@ -144,7 +144,7 @@ export function buildSmartClaimUiState(
   const confirmSteps = Array.isArray(plan.confirm_steps) ? plan.confirm_steps : [];
   const chips = sanitizeChips(plan.known_chips);
   const confirmsComplete = confirmsAreComplete(confirmSteps, selections);
-  const wantsBroker = policyConfirmWantsBroker(selections);
+  const blankEscapeActive = Boolean(options?.blankEscapeActive);
 
   if (mode === "CONTINUE_ACTIVE") {
     return {
@@ -164,42 +164,71 @@ export function buildSmartClaimUiState(
     };
   }
 
-  if (mode === "CONTACT_BROKER" || wantsBroker) {
+  // Ambiguous: Contact Chen primary; blank escape secondary — never trapped.
+  if (mode === "CONTACT_BROKER") {
+    if (blankEscapeActive) {
+      return {
+        ...emptySmartClaimUiState(),
+        uiMode: "blank_degrade",
+        planMode: mode,
+        headlineZh: "今天发生了什么？",
+        subtitleZh: "先告诉我们事故情况。身份如需补充，陈总会再联系您。",
+        confidenceSignal: "我们会先记下事故情况",
+        showAccidentForm: true,
+        primaryCtaZh: "提交给陈总",
+        secondaryCtaZh: "联系陈总",
+        confirmsComplete: true,
+        canShowAccidentBlock: true,
+        blankEscapeActive: true,
+        whyAskTime: WHY_ASK_TIME,
+        whyAskPhotos: WHY_ASK_PHOTOS,
+      };
+    }
     return {
       ...emptySmartClaimUiState(),
       uiMode: "contact_broker",
-      planMode: mode || "CONTACT_BROKER",
-      headlineZh: wantsBroker
-        ? "请联系陈总更新保单"
-        : plan.headline_zh || "需要陈总协助确认身份",
-      subtitleZh: wantsBroker
-        ? "确认后再继续报案，可避免用错保单。"
-        : plan.subtitle_zh || "请先联系陈总后再报案。",
+      planMode: mode,
+      headlineZh: plan.headline_zh || "需要陈总协助确认",
+      subtitleZh: plan.subtitle_zh || "您可以联系陈总，或先留下事故情况。",
       confidenceSignal: plan.confidence_signal || "",
       showAccidentForm: false,
-      primaryCtaZh: "联系陈总",
-      secondaryCtaZh: "",
+      primaryCtaZh: plan.primary_cta_zh || "联系陈总",
+      secondaryCtaZh: plan.secondary_cta_zh || "仍要先报案",
       confirmSelections: selections,
-      confirmsComplete: false,
+      confirmsComplete: true,
       canShowAccidentBlock: false,
+      blankEscapeActive: false,
     };
   }
 
   const matched = mode.startsWith("MATCHED_");
   const blank = mode === "BLANK_DEGRADE";
   const showConfirm = confirmSteps.length > 0;
+  // Soft notices (required_before_accident=false) never gate the accident block.
   const canShowAccident = !showConfirm || confirmsComplete;
+  const showKnown = chips.length > 0;
+  // Say “办公室已了解您” once — chips label owns it when present.
+  const rawSignal = String(plan.confidence_signal || "").trim();
+  const confidenceSignal =
+    showKnown && /办公室已了解您/.test(rawSignal) ? "" : rawSignal;
+  let subtitleZh = String(plan.subtitle_zh || "").trim();
+  if (showKnown) {
+    subtitleZh = subtitleZh
+      .replace(/^办公室已了解您[。．]?\s*/u, "")
+      .replace(/办公室已了解您[。．]?\s*/gu, "")
+      .trim();
+  }
 
   return {
     uiMode: matched ? "matched" : blank ? "blank_degrade" : "legacy",
     planMode: mode,
     headlineZh: plan.headline_zh || "今天发生了什么？",
-    subtitleZh: plan.subtitle_zh || "",
-    confidenceSignal: plan.confidence_signal || "",
+    subtitleZh,
+    confidenceSignal,
     knownChips: chips,
     confirmSteps,
     showAccidentForm: true,
-    showKnownSection: chips.length > 0,
+    showKnownSection: showKnown,
     showConfirmSection: showConfirm,
     primaryCtaZh: plan.primary_cta_zh || "提交给陈总",
     secondaryCtaZh: String(plan.secondary_cta_zh || ""),
@@ -208,6 +237,7 @@ export function buildSmartClaimUiState(
     confirmSelections: selections,
     confirmsComplete,
     canShowAccidentBlock: canShowAccident,
+    blankEscapeActive: false,
   };
 }
 

@@ -20,7 +20,7 @@ export { SERVICE_HOME_ROUTE };
 
 /** Keep Start Claim free of heavy task-view imports (injection / Home path). */
 export const START_CLAIM_SAFETY_COPY =
-  "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。";
+  "这是给办公室整理用的记录，不等于向保险公司正式报案。";
 
 export const START_CLAIM_MISSING_HINT =
   "请先填写：事故经过、事故时间、事故地点、是否受伤";

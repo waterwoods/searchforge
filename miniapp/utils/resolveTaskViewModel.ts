@@ -26,7 +26,7 @@ import type {
 } from "../types/task";
 
 export const DEFAULT_SAFETY_COPY =
-  "此记录用于办公室整理事故信息，不代表已向保险公司正式报案。";
+  "这是给办公室整理用的记录，不等于向保险公司正式报案。";
 
 /** Legacy hub titles from older contracts — remap to Pilot SSOT. */
 const LEGACY_HUB_TITLES = new Set(["我的事故资料", "事故资料"]);
@@ -394,14 +394,14 @@ export function resolveTaskViewModel(
       progress,
       cta: normalizeTaskCta({
         label: slice1.waitingForBroker
-          ? "资料已提交，等待陈总审核"
+          ? "已提交，陈总正在看"
           : normalizeUiString(slice1.primaryCtaLabel, "补充陈总需要的资料"),
         actionType: slice1.waitingForBroker ? "view_status" : "go_to_section",
         target: slice1.waitingForBroker ? "/pages/receipt/receipt" : REQUEST_ITEM_ROUTE,
         disabled: slice1.waitingForBroker || disabledByState || disabledByError || !slice1.primaryActionable,
         loading: busy.submitting,
         disabledReason: slice1.waitingForBroker
-          ? "资料已提交，等待陈总审核"
+          ? "已提交，陈总正在看"
           : disabledByError
             ? "请先处理当前错误"
             : "",
