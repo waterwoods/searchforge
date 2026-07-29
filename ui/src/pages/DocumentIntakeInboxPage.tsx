@@ -536,15 +536,17 @@ function BrokerCaseDetail({
   const attachments = caseItem.case_attachments ?? [];
   const isP20Intake = Boolean(caseItem.p20_case_intake_projection || caseItem.case_intake_projection);
 
+  const isClaimDetail = isClaimGuidedCase(caseItem);
+
   if (!hasFullPacket) {
     return (
       <div>
+        {/* P3.7 claim read-order: Header → Brief → Request More → supporting → terminal */}
         <BrokerHeader caseItem={caseItem} />
         <InternalCaseIdMeta caseItem={caseItem} />
         <Space style={{ marginBottom: 12 }} wrap>
           <ClosedHistoryBadge caseRecord={caseItem} />
         </Space>
-        <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
         {!isP20Intake ? (
           <>
             <Space style={{ marginBottom: 12 }} wrap>
@@ -557,6 +559,14 @@ function BrokerCaseDetail({
         {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
           <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
         ) : null}
+
+        {isClaimDetail ? (
+          <ClaimCaseBriefPanel
+            brief={caseItem.claim_case_brief}
+            timeline={caseItem.claim_timeline}
+          />
+        ) : null}
+
         <MissingInformationChecklistPanel
           key={`intake-${caseItem.case_id}`}
           caseRecord={caseItem}
@@ -576,12 +586,9 @@ function BrokerCaseDetail({
         {!isP20Intake && readiness === 'NEED_INFO' && missingFields.length > 0 ? (
           <MissingItemsCard fields={missingFields} />
         ) : null}
-        {isClaimGuidedCase(caseItem) ? (
+
+        {isClaimDetail ? (
           <>
-            <ClaimCaseBriefPanel
-              brief={caseItem.claim_case_brief}
-              timeline={caseItem.claim_timeline}
-            />
             <ClaimAccidentBasicsCard caseItem={caseItem} collapsed />
             <ClaimEvidenceChecklist summary={resolveClaimEvidenceSummary(caseItem)} defaultCollapsed />
           </>
@@ -591,13 +598,13 @@ function BrokerCaseDetail({
             <PacketField label="Name" value={resolveCustomerDisplayName(caseItem)} />
             <PacketField label="Source" value="WeCom" />
           </Card>
-        ) : Object.keys(knownFacts).length > 0 && !isClaimGuidedCase(caseItem) ? (
+        ) : Object.keys(knownFacts).length > 0 && !isClaimDetail ? (
           <Card size="small" title="已知信息" style={{ marginBottom: 12 }} styles={{ body: { padding: '12px 16px' } }}>
             {Object.entries(knownFacts).map(([k, v]) => (
               <PacketField key={k} label={humanizeStructuredField(k)} value={String(v)} />
             ))}
           </Card>
-        ) : (
+        ) : !isClaimDetail ? (
           <Alert
             type="warning"
             showIcon
@@ -614,12 +621,13 @@ function BrokerCaseDetail({
               </>
             }
           />
-        )}
+        ) : null}
         <CaseAttachmentsPanel
           caseId={caseItem.case_id}
           attachments={attachments}
           perfSession={perfSession}
         />
+
         {showConfirm && onConfirm ? (
           <Button
             type="primary"
@@ -658,7 +666,8 @@ function BrokerCaseDetail({
             Copy Report (partial)
           </Button>
         ) : null}
-        <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 16 }}>
+        <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
+        <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
           删除测试案件
         </Button>
       </div>
@@ -670,12 +679,12 @@ function BrokerCaseDetail({
 
   return (
     <div>
+      {/* Packet path (Add Car / Policy Review): Close stays at bottom — no claim brief reorder needed */}
       <BrokerHeader caseItem={caseItem} />
       <InternalCaseIdMeta caseItem={caseItem} />
       <Space style={{ marginBottom: 12 }} wrap>
         <ClosedHistoryBadge caseRecord={caseItem} />
       </Space>
-      <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
       {!isP20Intake ? (
         <>
           <Space style={{ marginBottom: 12 }} wrap>
@@ -687,6 +696,12 @@ function BrokerCaseDetail({
       ) : null}
       {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
         <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
+      ) : null}
+      {isClaimDetail ? (
+        <ClaimCaseBriefPanel
+          brief={caseItem.claim_case_brief}
+          timeline={caseItem.claim_timeline}
+        />
       ) : null}
       <MissingInformationChecklistPanel
         key={`intake-${caseItem.case_id}`}
@@ -771,6 +786,13 @@ function BrokerCaseDetail({
         <Alert type="warning" showIcon message="Warnings" description={blob!.warnings!.join('; ')} style={{ marginBottom: 12 }} />
       )}
 
+      {isClaimDetail ? (
+        <>
+          <ClaimAccidentBasicsCard caseItem={caseItem} collapsed />
+          <ClaimEvidenceChecklist summary={resolveClaimEvidenceSummary(caseItem)} defaultCollapsed />
+        </>
+      ) : null}
+
       <CaseAttachmentsPanel
         caseId={caseItem.case_id}
         attachments={attachments}
@@ -816,6 +838,7 @@ function BrokerCaseDetail({
             Copy Portal Format
           </Button>
         ) : null}
+        <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
         <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
           删除测试案件
         </Button>
