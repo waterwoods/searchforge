@@ -209,7 +209,7 @@ def test_06_exclude_add_vehicle_attachments():
 def test_07_enrichment_includes_claim_evidence_summary():
     case = enrich_claim_for_workbench(_claim_case())
     assert case["claim_evidence_summary"] is not None
-    assert case["display_title"] == "Claim · 理赔资料"
+    assert case["display_title"] == "理赔资料"
     assert case["claim_summary"] is not None
     assert case["workbench_visible"] is True
 

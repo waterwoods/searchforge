@@ -47,7 +47,12 @@ function resolveHttpDetail(err: unknown): string {
     return mapDemoInviteError(detail || (err as Error)?.message);
 }
 
-export function ChenDemoInvitePanel() {
+export type ChenDemoInvitePanelProps = {
+    /** Fired after a demo invite is generated — Workbench may hide unrelated TEST noise. */
+    onInviteGenerated?: () => void;
+};
+
+export function ChenDemoInvitePanel({ onInviteGenerated }: ChenDemoInvitePanelProps = {}) {
     const featureOn = isChenDemoInviteUiEnabled();
     const [authorized, setAuthorized] = useState<boolean | null>(null);
     const [catalog, setCatalog] = useState<DemoInviteScenario[]>([]);
@@ -59,6 +64,8 @@ export function ChenDemoInvitePanel() {
     const [entry, setEntry] = useState<DemoInviteEntryPayload | null>(null);
     const [founderStatus, setFounderStatus] = useState<FounderQaConsoleStatus | null>(null);
     const [resetSessionId, setResetSessionId] = useState('');
+    /** Collapse after invite so Workbench stays primary. */
+    const [collapsed, setCollapsed] = useState(false);
 
     const activeCase = founderStatus?.active_case;
     const hasActiveCase = Boolean(activeCase?.has_active_case && activeCase?.case_id);
@@ -159,6 +166,8 @@ export function ChenDemoInvitePanel() {
             setIssued(next);
             setInviteStatus('active');
             setEntry(buildDemoInviteEntryPayload(next));
+            setCollapsed(true);
+            onInviteGenerated?.();
             message.success('演示入口已生成');
         } catch (e) {
             setError(resolveHttpDetail(e));
@@ -263,23 +272,50 @@ export function ChenDemoInvitePanel() {
                 ? 'warning'
                 : 'processing';
 
+    const canCollapse = Boolean(issued);
+    const showBody = !collapsed || !canCollapse;
+
     return (
         <Card
             size="small"
             title={
-                <Space wrap>
+                <Space wrap size={6}>
                     <span>陈总演示工具</span>
-                    <Tag color="orange">演示数据</Tag>
-                    <Tag>QA only</Tag>
+                    <Tag style={{ marginInlineEnd: 0, fontSize: 11, color: '#8c8c8c', borderColor: '#d9d9d9' }}>
+                        演示
+                    </Tag>
+                    <Tag style={{ marginInlineEnd: 0, fontSize: 11, color: '#8c8c8c', borderColor: '#d9d9d9' }}>
+                        QA
+                    </Tag>
+                    {issued && inviteStatus === 'active' ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                            已生成 ·{' '}
+                            {CHEN_DEMO_SCENARIO_UI[issued.scenario_id]?.customer ||
+                                issued.customer_display_name}
+                        </Text>
+                    ) : null}
                 </Space>
+            }
+            extra={
+                canCollapse ? (
+                    <Button type="link" size="small" onClick={() => setCollapsed((v) => !v)}>
+                        {collapsed ? '展开' : '收起'}
+                    </Button>
+                ) : null
             }
             style={{
                 marginBottom: 16,
                 borderStyle: 'dashed',
-                borderColor: '#fa8c16',
-                background: '#fffbe6',
+                borderColor: '#d9d9d9',
+                background: '#fafafa',
             }}
         >
+            {!showBody ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                    演示入口已就绪。收起以免干扰 Workbench；需要时可展开。
+                </Text>
+            ) : null}
+            {showBody ? (
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 12 }}>
                     生成受控演示入口。真实微信身份不变；仅临时 mock 客户展示。非客户管理系统。
@@ -314,8 +350,15 @@ export function ChenDemoInvitePanel() {
                                 return (
                                     <Radio key={id} value={id}>
                                         {meta?.title || row?.label || id}
-                                        <Tag style={{ marginLeft: 8 }} color="orange">
-                                            演示数据
+                                        <Tag
+                                            style={{
+                                                marginLeft: 8,
+                                                fontSize: 11,
+                                                color: '#8c8c8c',
+                                                borderColor: '#d9d9d9',
+                                            }}
+                                        >
+                                            演示
                                         </Tag>
                                     </Radio>
                                 );
@@ -351,10 +394,12 @@ export function ChenDemoInvitePanel() {
                             <Space wrap>
                                 <Tag color={statusColor}>
                                     {inviteStatus === 'active'
-                                        ? 'active'
+                                        ? '有效'
                                         : inviteStatus === 'revoked'
-                                          ? 'revoked'
-                                          : inviteStatus}
+                                          ? '已撤销'
+                                          : inviteStatus === 'expired'
+                                            ? '已过期'
+                                            : inviteStatus}
                                 </Tag>
                                 <Text>
                                     {CHEN_DEMO_SCENARIO_UI[issued.scenario_id]?.customer ||
@@ -418,6 +463,7 @@ export function ChenDemoInvitePanel() {
                     />
                 </div>
             </Space>
+            ) : null}
         </Card>
     );
 }

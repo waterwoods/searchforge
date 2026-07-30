@@ -75,12 +75,12 @@ export function resolveClaimSummary(c: SavedCase): ClaimSummary {
 export function buildClaimListSummary(c: SavedCase): string {
   const summary = resolveClaimSummary(c);
   const parts = [
-    summary.accident_datetime,
+    formatClaimAccidentDateTime(summary.accident_datetime),
     summary.accident_location,
     summary.accident_description,
-  ].filter((v): v is string => Boolean((v || '').trim()));
+  ].filter((v): v is string => Boolean((v || '').trim()) && v !== '—');
   if (parts.length) return parts.join(' · ');
-  return (c.display_title || '').trim() || 'Claim intake';
+  return (c.display_title || '').trim() || '理赔收件';
 }
 
 export function claimDisplayStatus(c: SavedCase): string {
@@ -148,7 +148,41 @@ const TIMELINE_TYPE_LABELS: Record<string, string> = {
   customer_voice_stub: '语音消息',
   basics_complete: '基本信息齐全',
   broker_done: '陈总已确认',
+  evidence_uploaded: '已上传证据',
+  evidence_received: '已收到证据',
+  h5_step_complete: '客户已补充',
+  request_sent: '已发出补充请求',
+  field_saved: '客户已填写',
 };
+
+function formatTimelineWhen(iso?: string | null): string {
+  const raw = String(iso || '').trim();
+  if (!raw) return '';
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) return '';
+  try {
+    return new Date(t).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '';
+  }
+}
+
+/** Broker-facing accident datetime — local readable, never raw ISO UTC. */
+export function formatClaimAccidentDateTime(raw?: string | null): string {
+  const text = String(raw || '').trim();
+  if (!text) return '—';
+  const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+  const t = Date.parse(normalized);
+  if (!Number.isNaN(t)) {
+    try {
+      return new Date(t).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+      /* fall through */
+    }
+  }
+  // Already human-entered local text (keep); strip trailing Z/UTC markers if present.
+  return text.replace(/Z$/i, '').replace(/\+00:00$/, '').trim() || '—';
+}
 
 export function formatClaimTimelinePreview(
   events: ClaimTimelineEvent[],
@@ -159,12 +193,15 @@ export function formatClaimTimelinePreview(
   );
   const recent = sorted.slice(-limit).reverse();
   return recent.map((event, index) => {
-    const typeLabel = TIMELINE_TYPE_LABELS[event.event_type] || event.event_type || '记录';
+    const typeKey = String(event.event_type || '').trim();
+    const typeLabel = TIMELINE_TYPE_LABELS[typeKey] || (typeKey ? '案件记录' : '记录');
     const text = (event.text || '').trim();
     const preview = text ? `：${text.slice(0, 48)}${text.length > 48 ? '…' : ''}` : '';
+    const when = formatTimelineWhen(event.created_at);
+    const whenSuffix = when ? ` · ${when}` : '';
     return {
       key: event.event_id || `evt-${index}`,
-      label: `${typeLabel}${preview}`,
+      label: `${typeLabel}${preview}${whenSuffix}`,
     };
   });
 }

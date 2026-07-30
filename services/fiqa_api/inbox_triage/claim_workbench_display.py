@@ -84,7 +84,7 @@ CLAIM_WORKBENCH_VISIBLE_PHASES: frozenset[str] = frozenset(
     }
 )
 
-CLAIM_DISPLAY_TITLE = "Claim · 理赔资料"
+CLAIM_DISPLAY_TITLE = "理赔资料"
 
 _FORBIDDEN_DISPLAY_PHRASES = (
     "claim filed",
@@ -101,6 +101,23 @@ def _str_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _format_accident_datetime_display(raw: str | None) -> str | None:
+    """Presentation-only local-readable accident time (does not alter stored value)."""
+    text = _str_or_none(raw)
+    if not text:
+        return None
+    candidates = (text, text.replace("Z", "+00:00"), text.replace(" ", "T"))
+    for candidate in candidates:
+        try:
+            dt = datetime.fromisoformat(candidate)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone()
+            return dt.strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            continue
+    return text.replace("Z", "").replace("+00:00", "").strip() or None
 
 
 def _known_facts(case: dict[str, Any]) -> dict[str, Any]:
@@ -127,16 +144,16 @@ def build_claim_display_status(case: dict[str, Any]) -> str:
     """Broker-safe status copy — intake only, never implies carrier filing."""
     phase = derive_claim_phase(case)
     if phase == CLAIM_PHASE_BROKER_DONE:
-        return "Claim · 已确认 / 已交接"
+        return "理赔 · 已确认 / 已交接"
     if phase == CLAIM_PHASE_MANUAL_HANDLE:
-        return "Claim · Broker Review · Manual handle"
+        return "理赔 · 需人工处理"
     if phase in (CLAIM_PHASE_BROKER_REVIEW, CLAIM_PHASE_INTAKE_READY_FOR_BROKER):
-        return "Claim · Broker Review"
+        return "理赔 · 等待经纪人"
     if phase in (CLAIM_PHASE_SUMMARY_READY, CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE):
-        return "Claim · 记录中 · Broker Review pending"
+        return "理赔 · 记录中 · 待审核"
     if phase in (CLAIM_PHASE_STARTED, CLAIM_PHASE_ACCIDENT_BASICS_IN_PROGRESS):
-        return "Claim · 记录中"
-    return "Claim intake in progress · Broker review pending"
+        return "理赔 · 记录中"
+    return "理赔收件进行中 · 待审核"
 
 
 def build_wecom_media_intake_display_status(case: dict[str, Any]) -> str:
@@ -661,12 +678,13 @@ def _build_brief_summary(
     photo_count: int,
 ) -> str:
     facts = _known_facts(case)
-    dt = _str_or_none(key_facts.get("accident_datetime") or facts.get("accident_datetime"))
+    dt_raw = _str_or_none(key_facts.get("accident_datetime") or facts.get("accident_datetime"))
+    dt = _format_accident_datetime_display(dt_raw) or dt_raw
     loc = _str_or_none(key_facts.get("accident_location") or facts.get("accident_location"))
     desc = _str_or_none(key_facts.get("accident_description") or facts.get("accident_description"))
     injury = key_facts.get("injury_status", "unknown")
 
-    has_basics = bool(dt and loc and desc)
+    has_basics = bool(dt_raw and loc and desc)
     if not has_basics:
         return f"客户已发起理赔记录。先看事故经过：时间、地点或经过仍需补充。已收到 {photo_count} 张照片。"
 

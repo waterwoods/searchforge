@@ -558,7 +558,12 @@ function BrokerCaseDetail({
           </>
         ) : null}
         {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
-          <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
+          <Tag style={{ marginBottom: 8, color: '#8c8c8c', borderColor: '#d9d9d9' }}>
+            {String(caseItem.demo_name || '').trim() === 'chen_known_customer_demo' ||
+            String(caseItem.known_facts?.qa_label || '').startsWith('演示')
+              ? '演示'
+              : 'TEST / QA'}
+          </Tag>
         ) : null}
 
         {isClaimDetail ? (
@@ -696,7 +701,12 @@ function BrokerCaseDetail({
         </>
       ) : null}
       {!isP20Intake && (caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test) ? (
-        <Tag color="orange" style={{ marginBottom: 8 }}>TEST / QA</Tag>
+        <Tag style={{ marginBottom: 8, color: '#8c8c8c', borderColor: '#d9d9d9' }}>
+          {String(caseItem.demo_name || '').trim() === 'chen_known_customer_demo' ||
+          String(caseItem.known_facts?.qa_label || '').startsWith('演示')
+            ? '演示'
+            : 'TEST / QA'}
+        </Tag>
       ) : null}
       {isClaimDetail ? (
         <ClaimCaseBriefPanel
@@ -1094,8 +1104,20 @@ export default function DocumentIntakeInboxPage() {
               <Text type="secondary" style={{ fontSize: 12 }}>{row.qa_label}</Text>
             ) : null}
             {row.is_test ? (
-              <Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: '18px', paddingInline: 4 }}>
-                TEST
+              <Tag
+                style={{
+                  marginInlineEnd: 0,
+                  fontSize: 11,
+                  lineHeight: '18px',
+                  paddingInline: 4,
+                  color: '#8c8c8c',
+                  borderColor: '#d9d9d9',
+                }}
+              >
+                {String(row.raw.demo_name || '').trim() === 'chen_known_customer_demo' ||
+                String(row.qa_label || '').startsWith('演示')
+                  ? '演示'
+                  : 'TEST'}
               </Tag>
             ) : null}
           </Space>
@@ -1179,7 +1201,7 @@ export default function DocumentIntakeInboxPage() {
         </Paragraph>
       </div>
 
-      <ChenDemoInvitePanel />
+      <ChenDemoInvitePanel onInviteGenerated={() => setTestFilter('hide')} />
 
       <Card
         style={{ borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}

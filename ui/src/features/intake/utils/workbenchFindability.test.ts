@@ -8,6 +8,7 @@ import type { SavedCase } from '@/api/inboxTriage';
 import {
   defaultTestFilterForEnv,
   formatRelativeUpdated,
+  isChenDemoCase,
   matchesWorkbenchFilters,
   matchesWorkbenchSearch,
   resolveCaseRef,
@@ -144,6 +145,19 @@ test('TEST filter hide/show/only', () => {
   assert.equal(matchesWorkbenchFilters(testCase, { status: 'all', testFilter: 'show' }), true);
   assert.equal(matchesWorkbenchFilters(realCase, { status: 'all', testFilter: 'only' }), false);
   assert.equal(matchesWorkbenchFilters(testCase, { status: 'all', testFilter: 'only' }), true);
+});
+
+test('hide TEST keeps Chen demo case visible', () => {
+  const demoCase = caseRow({
+    case_id: 'case_chen',
+    workbench_test: true,
+    demo_name: 'chen_known_customer_demo',
+    known_facts: { qa_label: '演示·陈明' },
+  });
+  const noise = caseRow({ case_id: 'case_noise', workbench_test: true });
+  assert.equal(isChenDemoCase(demoCase), true);
+  assert.equal(matchesWorkbenchFilters(demoCase, { status: 'all', testFilter: 'hide' }), true);
+  assert.equal(matchesWorkbenchFilters(noise, { status: 'all', testFilter: 'hide' }), false);
 });
 
 test('production default hides TEST; qa/local show', () => {

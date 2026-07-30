@@ -304,6 +304,8 @@ export type MissingInformationChecklistItem = {
     request_mode?: string;
     mvp_sendable?: boolean;
     is_authoritative_fact?: boolean;
+    /** True only when fact is genuinely absent / needs correction (not supplied). */
+    is_gap?: boolean;
 };
 
 export type CaseIntakeRequestDraftItem = {

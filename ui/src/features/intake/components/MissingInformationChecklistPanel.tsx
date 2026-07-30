@@ -980,13 +980,19 @@ export function MissingInformationChecklistPanel({
           </Paragraph>
           {(() => {
             const checklist = projection.missing_information_checklist || [];
-            const mustHaveGaps = checklist.filter(
-              (item) =>
-                (item.business_class === 'must_have' || item.severity === 'critical')
-                && item.status !== 'confirmed'
-                && item.status !== 'not_applicable'
-                && item.item_type !== 'vin',
-            );
+            // Gap SSOT: only genuinely absent facts (missing/unknown/needs_correction).
+            // Supplied_unconfirmed accident facts must not appear under「事故信息仍缺」.
+            const mustHaveGaps = checklist.filter((item) => {
+              const isMustHave =
+                item.business_class === 'must_have' || item.severity === 'critical';
+              if (!isMustHave || item.item_type === 'vin') return false;
+              if (typeof item.is_gap === 'boolean') return item.is_gap;
+              return (
+                item.status === 'missing'
+                || item.status === 'unknown'
+                || item.status === 'needs_correction'
+              );
+            });
             const requestMoreCandidates = checklist.filter(
               (item) =>
                 item.business_class === 'request_more'

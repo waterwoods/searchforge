@@ -38,40 +38,40 @@ BUSINESS_CLASS_REQUEST_MORE = "request_more"
 CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
     {
         "field_key": "accident_description",
-        "label": "Accident description",
-        "customer_label": "What happened",
+        "label": "事故经过",
+        "customer_label": "事故经过",
         "item_type": "free_text",
         "business_class": BUSINESS_CLASS_MUST_HAVE,
         "severity": "critical",
     },
     {
         "field_key": "accident_datetime",
-        "label": "Accident date",
-        "customer_label": "When it happened",
+        "label": "事故时间",
+        "customer_label": "事故时间",
         "item_type": "free_text",
         "business_class": BUSINESS_CLASS_MUST_HAVE,
         "severity": "critical",
     },
     {
         "field_key": "accident_location",
-        "label": "Accident location",
-        "customer_label": "Where it happened",
+        "label": "事故地点",
+        "customer_label": "事故地点",
         "item_type": "free_text",
         "business_class": BUSINESS_CLASS_MUST_HAVE,
         "severity": "critical",
     },
     {
         "field_key": "injury_status",
-        "label": "Anyone injured?",
-        "customer_label": "Was anyone injured?",
+        "label": "是否有人受伤",
+        "customer_label": "是否有人受伤",
         "item_type": "free_text",
         "business_class": BUSINESS_CLASS_MUST_HAVE,
         "severity": "critical",
     },
     {
         "field_key": "photo_evidence",
-        "label": "Photos (optional)",
-        "customer_label": "Accident / vehicle photos",
+        "label": "照片（可选）",
+        "customer_label": "事故 / 车辆照片",
         "item_type": "photo_evidence",
         "business_class": BUSINESS_CLASS_NICE_TO_HAVE,
         "severity": "optional",
@@ -79,14 +79,14 @@ CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
     {
         "field_key": "vin",
         "label": "VIN",
-        "customer_label": "Vehicle VIN",
+        "customer_label": "车辆 VIN",
         "item_type": "vin",
         "business_class": BUSINESS_CLASS_REQUEST_MORE,
         "severity": "optional",
     },
     {
         "field_key": "vehicle_information",
-        "label": "Vehicle information",
+        "label": "车辆信息",
         "customer_label": "车辆信息",
         "item_type": "vehicle_information",
         "business_class": BUSINESS_CLASS_REQUEST_MORE,
@@ -94,8 +94,8 @@ CHECKLIST_FIELDS: tuple[dict[str, str], ...] = (
     },
     {
         "field_key": "policy_or_insurance_card",
-        "label": "Insurance card",
-        "customer_label": "Insurance card photo",
+        "label": "保险卡",
+        "customer_label": "保险卡照片",
         "item_type": "policy_or_insurance_card",
         "business_class": BUSINESS_CLASS_REQUEST_MORE,
         "severity": "optional",
@@ -246,12 +246,31 @@ def seed_fact_records_from_case(case: dict[str, Any] | None) -> dict[str, dict[s
     return out
 
 
+def fact_status_is_gap(status: str | None) -> bool:
+    """True when the fact is genuinely absent or needs customer correction/follow-up.
+
+    Supplied (even unconfirmed) and confirmed facts are not gaps — they must not
+    appear under「仍缺信息」 / accident-gaps alerts.
+    """
+    normalized = _normalize_status(status) or FACT_STATUS_MISSING
+    return normalized in {
+        FACT_STATUS_MISSING,
+        FACT_STATUS_UNKNOWN,
+        FACT_STATUS_NEEDS_CORRECTION,
+    }
+
+
 def merge_fact_records(
     existing: dict[str, Any] | None,
     *,
     case: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Merge stored fact records with deterministic seed without demoting confirmed facts."""
+    """Merge stored fact records with deterministic seed without demoting confirmed facts.
+
+    Case ``known_facts`` (seed) remains the presence SSOT when the aggregate still
+    says missing/empty after a later customer patch — prevents Brief vs checklist
+    contradiction.
+    """
     seeded = seed_fact_records_from_case(case)
     stored = existing if isinstance(existing, dict) else {}
     merged: dict[str, dict[str, Any]] = {}
@@ -260,21 +279,30 @@ def merge_fact_records(
         raw = stored.get(key)
         if isinstance(raw, dict):
             status = _normalize_status(raw.get("status"))
-            if status:
-                base["status"] = status
-            if "value" in raw:
-                base["value"] = raw.get("value")
-            if "previous_value" in raw:
-                base["previous_value"] = raw.get("previous_value")
-            if raw.get("reason") is not None:
-                base["reason"] = _str(raw.get("reason"))
-            if raw.get("source"):
-                base["source"] = _str(raw.get("source"))
-            # Never classify an existing confirmed value as missing.
-            if status == FACT_STATUS_CONFIRMED and not _str(base.get("value")):
-                base["value"] = _str(seeded.get(key, {}).get("value")) or base.get("value")
-            if status == FACT_STATUS_CONFIRMED:
-                base["status"] = FACT_STATUS_CONFIRMED
+            stored_value = raw.get("value") if "value" in raw else None
+            seed_value = _str(base.get("value"))
+            stale_empty_gap = (
+                (status is None or status in {FACT_STATUS_MISSING, FACT_STATUS_UNKNOWN})
+                and not _str(stored_value)
+                and bool(seed_value)
+            )
+            if not stale_empty_gap:
+                if status:
+                    base["status"] = status
+                if "value" in raw:
+                    base["value"] = raw.get("value")
+                if "previous_value" in raw:
+                    base["previous_value"] = raw.get("previous_value")
+                if raw.get("reason") is not None:
+                    base["reason"] = _str(raw.get("reason"))
+                if raw.get("source"):
+                    base["source"] = _str(raw.get("source"))
+                # Never classify an existing confirmed value as missing.
+                if status == FACT_STATUS_CONFIRMED and not _str(base.get("value")):
+                    base["value"] = seed_value or base.get("value")
+                if status == FACT_STATUS_CONFIRMED:
+                    base["status"] = FACT_STATUS_CONFIRMED
+            # else: keep seed (supplied_unconfirmed + case value)
         base["field_key"] = key
         merged[key] = base
     return merged
@@ -320,6 +348,7 @@ def derive_missing_information_checklist(
             and mvp_sendable
             and business_class == BUSINESS_CLASS_REQUEST_MORE
         )
+        is_gap = fact_status_is_gap(status)
         items.append(
             {
                 "field_key": key,
@@ -335,6 +364,7 @@ def derive_missing_information_checklist(
                 "suggested_for_request": suggest_for_request,
                 "request_mode": request_mode,
                 "mvp_sendable": mvp_sendable,
+                "is_gap": is_gap,
                 "is_authoritative_fact": status
                 in {
                     FACT_STATUS_CONFIRMED,

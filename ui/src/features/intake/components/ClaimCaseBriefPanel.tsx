@@ -4,6 +4,7 @@
 import { Card, Tag, Typography } from 'antd';
 import type { ClaimCaseBrief, ClaimTimelineEvent } from '@/api/inboxTriage';
 import {
+  formatClaimAccidentDateTime,
   formatClaimInjuryStatus,
   formatClaimPoliceStatus,
   formatClaimTimelinePreview,
@@ -113,7 +114,7 @@ export function ClaimCaseBriefPanel({
         <Text type="secondary" style={{ fontSize: 12 }}>
           时间
         </Text>
-        <Text style={{ fontSize: 13 }}>{keyFacts.accident_datetime || '—'}</Text>
+        <Text style={{ fontSize: 13 }}>{formatClaimAccidentDateTime(keyFacts.accident_datetime)}</Text>
         <Text type="secondary" style={{ fontSize: 12 }}>
           地点
         </Text>

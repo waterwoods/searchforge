@@ -129,6 +129,14 @@ export function resolveIsTestCase(caseItem: SavedCase): boolean {
   return Boolean(caseItem.workbench_test || caseItem.p20_case_intake_projection?.is_test);
 }
 
+/** Chen known-customer demo cases — keep visible when hiding unrelated TEST noise. */
+export function isChenDemoCase(caseItem: SavedCase): boolean {
+  const demoName = String(caseItem.demo_name || '').trim();
+  if (demoName === 'chen_known_customer_demo') return true;
+  const qa = resolveQaLabel(caseItem) || '';
+  return qa.startsWith('演示·') || qa.startsWith('演示');
+}
+
 export function resolveVehicleContext(caseItem: SavedCase): string {
   const fromList = String(getWorkbenchList(caseItem).vehicle_summary || '').trim();
   if (fromList) return fromList;
@@ -211,7 +219,9 @@ export function matchesWorkbenchFilters(
   opts: { status: WorkbenchStatusFilter; testFilter: WorkbenchTestFilter },
 ): boolean {
   const isTest = resolveIsTestCase(caseItem);
-  if (opts.testFilter === 'hide' && isTest) return false;
+  const keepDemo = isChenDemoCase(caseItem);
+  // Hide unrelated TEST noise during demo; keep Chen demo cases findable.
+  if (opts.testFilter === 'hide' && isTest && !keepDemo) return false;
   if (opts.testFilter === 'only' && !isTest) return false;
   if (opts.status === 'all') return true;
   return resolveFilterBucket(caseItem) === opts.status;

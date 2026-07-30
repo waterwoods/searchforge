@@ -134,7 +134,10 @@ export function maskDemoInviteToken(token: string): string {
 export function formatDemoInviteExpiry(expiresAtSec: number): string {
     if (!expiresAtSec) return '—';
     try {
-        return new Date(expiresAtSec * 1000).toLocaleString();
+        return new Date(expiresAtSec * 1000).toLocaleString('zh-CN', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+        });
     } catch {
         return String(expiresAtSec);
     }

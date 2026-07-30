@@ -200,9 +200,9 @@ def test_enrich_claim_for_workbench_sets_display_title():
             ],
         }
     )
-    assert case["display_title"] == "Claim · 理赔资料"
+    assert case["display_title"] == "理赔资料"
     assert case["workbench_visible"] is True
-    assert build_claim_display_status(case) == "Claim · 记录中 · Broker Review pending"
+    assert build_claim_display_status(case) == "理赔 · 记录中 · 待审核"
 
 
 def test_enrich_cases_for_workbench_marks_claim_lane_explicit():

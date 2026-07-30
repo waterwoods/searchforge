@@ -141,17 +141,17 @@ export function NewClaimEntryButton({
           >
             <Input placeholder="Founder-iPhone" maxLength={80} />
           </Form.Item>
-          <Form.Item name="accident_description" label="Accident description (what happened)">
-            <Input.TextArea rows={3} placeholder="Short story of the accident" maxLength={2000} />
+          <Form.Item name="accident_description" label="事故经过">
+            <Input.TextArea rows={3} placeholder="简要说明事故经过" maxLength={2000} />
           </Form.Item>
-          <Form.Item name="accident_datetime" label="Accident date / time">
-            <Input placeholder="Optional seed" maxLength={120} />
+          <Form.Item name="accident_datetime" label="事故时间">
+            <Input placeholder="可选" maxLength={120} />
           </Form.Item>
-          <Form.Item name="accident_location" label="Accident location">
-            <Input placeholder="Optional seed" maxLength={500} />
+          <Form.Item name="accident_location" label="事故地点">
+            <Input placeholder="可选" maxLength={500} />
           </Form.Item>
-          <Form.Item name="injury_status" label="Anyone injured? (yes / no / unknown)">
-            <Input placeholder="Optional seed" maxLength={32} />
+          <Form.Item name="injury_status" label="是否有人受伤（是 / 否 / 未知）">
+            <Input placeholder="可选" maxLength={32} />
           </Form.Item>
           <Form.Item name="customer_name" label="Customer name (optional)">
             <Input placeholder="Optional — QA can use placeholder" maxLength={120} />
@@ -159,8 +159,8 @@ export function NewClaimEntryButton({
           <Form.Item name="customer_phone" label="Customer phone (optional)">
             <Input placeholder="Optional" maxLength={40} />
           </Form.Item>
-          <Form.Item name="vin" label="VIN if already known (Request More — optional)">
-            <Input placeholder="Leave blank — request later if needed" maxLength={32} />
+          <Form.Item name="vin" label="VIN（如已知，可选）">
+            <Input placeholder="可留空，稍后请客户补充" maxLength={32} />
           </Form.Item>
           <Form.Item name="contact_note" label="Internal note (optional)">
             <Input.TextArea rows={2} maxLength={200} />
