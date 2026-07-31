@@ -4,7 +4,11 @@
  */
 import { Alert, Button, Card, Tag, Typography } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
-import type { ClaimCaseBrief, ClaimTimelineEvent } from '@/api/inboxTriage';
+import type { ClaimCaseBrief, ClaimTimelineEvent, SavedCase } from '@/api/inboxTriage';
+import {
+  CLAIM_PRIMARY_STATUS,
+  resolveClaimPrimaryStatus,
+} from '@/features/intake/utils/claimPrimaryStatus';
 import {
   formatClaimAccidentDateTime,
   formatClaimInjuryStatus,
@@ -18,6 +22,8 @@ const { Text, Paragraph } = Typography;
 export type ClaimCaseBriefPanelProps = {
   brief?: ClaimCaseBrief | null;
   timeline?: ClaimTimelineEvent[] | null;
+  /** Optional case row — gates accept / office banners to one primary status. */
+  caseRecord?: SavedCase | null;
   /** Optional office next-step override (e.g. broker_next_step). */
   nextAction?: string | null;
   /** Happy Path Loop 1 — broker accepts Cap2 Must Haves as office-ready. */
@@ -63,6 +69,7 @@ function highlightColor(level: string): string {
 export function ClaimCaseBriefPanel({
   brief: briefProp,
   timeline,
+  caseRecord,
   nextAction,
   onAcceptOfficeMaterials,
   acceptOfficeMaterialsSaving,
@@ -85,12 +92,39 @@ export function ClaimCaseBriefPanel({
 
   const keyFacts = brief.key_facts ?? {};
   const evidence = brief.evidence_received ?? {};
-  const canAccept = Boolean(brief.can_accept_office_materials && onAcceptOfficeMaterials);
+  const primary = caseRecord
+    ? resolveClaimPrimaryStatus({
+        ...caseRecord,
+        claim_case_brief: caseRecord.claim_case_brief || brief,
+        office_materials_accepted_at:
+          caseRecord.office_materials_accepted_at || brief.office_materials_accepted_at,
+        service_lane: caseRecord.service_lane || 'claim',
+      } as SavedCase)
+    : null;
+  // Accept banner only when primary status is Cap2-ready — never beside Request More review.
+  const canAccept = Boolean(
+    brief.can_accept_office_materials
+    && onAcceptOfficeMaterials
+    && (!primary || primary.key === 'suggest_accept'),
+  );
   const suggestion =
-    String(brief.office_materials_ready_suggestion || '').trim() || '建议确认资料已齐';
+    String(brief.office_materials_ready_suggestion || '').trim()
+    || CLAIM_PRIMARY_STATUS.suggestAccept;
   const acceptedAt = String(brief.office_materials_accepted_at || '').trim();
+  const showOfficeProcessingBanner = Boolean(
+    acceptedAt
+    && !canAccept
+    && (!primary || primary.key === 'office_processing'),
+  );
   // Cap2-ready / office-accepted: optional gaps must not read as「资料不齐」.
-  const officeReady = Boolean(canAccept || acceptedAt);
+  const officeReady = Boolean(
+    canAccept
+    || showOfficeProcessingBanner
+    || primary?.key === 'suggest_accept'
+    || primary?.key === 'office_processing'
+    || primary?.key === 'waiting_office_review'
+    || primary?.key === 'waiting_customer',
+  );
   const missing = (brief.missing_info ?? [])
     .filter((item) => !officeReady || item.severity === 'optional')
     .slice(0, 5);
@@ -121,6 +155,7 @@ export function ClaimCaseBriefPanel({
   const otherPartyInfo = String(keyFacts.other_party_info || '').trim() || '暂未提供';
   const resolvedNext =
     String(nextAction || '').trim()
+    || (primary ? primary.label : '')
     || String(brief.next_best_question || '').trim();
 
   return (
@@ -161,7 +196,7 @@ export function ClaimCaseBriefPanel({
           </Button>
         </div>
       ) : null}
-      {acceptedAt && !canAccept ? (
+      {showOfficeProcessingBanner ? (
         <Alert
           type="success"
           showIcon

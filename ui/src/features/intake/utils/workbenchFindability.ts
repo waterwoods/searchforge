@@ -5,6 +5,8 @@
 
 import type { SavedCase } from '@/api/inboxTriage';
 import { resolveWorkbenchClientEnv } from '@/config/workbenchEnv';
+import { isClaimGuidedCase } from '@/features/intake/utils/claimWorkbenchDisplay';
+import { resolveClaimPrimaryStatus } from '@/features/intake/utils/claimPrimaryStatus';
 import { shortCaseId } from './caseIdDisplay';
 
 export type WorkbenchListProjection = {
@@ -146,57 +148,22 @@ export function resolveVehicleContext(caseItem: SavedCase): string {
   return String(caseItem.primary_vehicle_summary || '').trim();
 }
 
-function slice1WorkflowState(caseItem: SavedCase): string {
-  const slice1 = (caseItem as SavedCase & { p20_slice1_projection?: { workflow_state?: string } })
-    .p20_slice1_projection;
-  return String(slice1?.workflow_state || '').trim().toLowerCase();
-}
-
-function hasOpenCustomerRequestMore(caseItem: SavedCase): boolean {
-  const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
-  if (waiting === 'client') return true;
-  const ws = slice1WorkflowState(caseItem);
-  if (['broker_more_requested', 'customer_continuing'].includes(ws)) return true;
-  const display = String(caseItem.display_status || '').trim();
-  return display === '等待客户' || display.includes('等待客户');
-}
-
-/** Cap2 Must Haves present — aligns queue/header with Brief accept CTA (Chen demo). */
-function cap2MustHavesPresentForOffice(caseItem: SavedCase): boolean {
-  const brief = (caseItem as SavedCase & { claim_case_brief?: { can_accept_office_materials?: boolean } })
-    .claim_case_brief;
-  if (brief && typeof brief.can_accept_office_materials === 'boolean') {
-    return Boolean(brief.can_accept_office_materials);
-  }
-  const facts = (caseItem.known_facts || {}) as Record<string, unknown>;
-  const filled = (key: string) => Boolean(String(facts[key] ?? '').trim());
-  return (
-    filled('accident_description')
-    && filled('accident_datetime')
-    && filled('accident_location')
-    && filled('injury_status')
-  );
-}
-
 export function resolveCurrentActionLabel(caseItem: SavedCase): string {
-  // Broker Workbench list: prefer broker next action (what to do without opening).
-  const idle = new Set(['暂无动作', '无动作', '—', '-']);
-  // Open Request More / waiting client beats office-processing and accept suggestion.
-  if (hasOpenCustomerRequestMore(caseItem)) {
-    const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
-    if (waiting === 'client') return '等待客户补充';
-    return '等待客户';
+  // Claim cases: one shared primary-status precedence (queue ≡ header ≡ Brief).
+  if (isClaimGuidedCase(caseItem)) {
+    return resolveClaimPrimaryStatus(caseItem).label;
   }
+
+  // Non-claim Workbench list: prefer broker next action (what to do without opening).
+  const idle = new Set(['暂无动作', '无动作', '—', '-']);
+  const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
+  if (waiting === 'client') return '等待客户补充';
   const display = String(caseItem.display_status || '').trim();
   if (display === '办公室处理中' || display.includes('办公室处理中')) {
     return '办公室处理中';
   }
   if (caseItem.office_materials_accepted_at) {
     return '办公室处理中';
-  }
-  // Cap2 complete — never show stale「客户补充中…Request More」over accept CTA.
-  if (cap2MustHavesPresentForOffice(caseItem)) {
-    return '建议确认资料已齐';
   }
   const broker = String(getWorkbenchList(caseItem).broker_next_action_label || '').trim();
   if (broker && !idle.has(broker)) return broker;
@@ -205,7 +172,6 @@ export function resolveCurrentActionLabel(caseItem: SavedCase): string {
   if (display && !['BROKER_REVIEW', 'READY', 'NEED_INFO', 'DONE', 'HOLDING'].includes(display.toUpperCase())) {
     return display;
   }
-  const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
   if (waiting === 'broker') return '等待办公室审核';
   return '打开案件核对';
 }

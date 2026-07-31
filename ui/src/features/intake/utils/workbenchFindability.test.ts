@@ -101,6 +101,7 @@ test('list action prefers broker_next_action_label', () => {
 test('office-processing display_status wins queue label', () => {
   const c = caseRow({
     case_id: 'case_office',
+    service_lane: 'claim',
     display_status: '办公室处理中',
     office_materials_accepted_at: '2026-07-31T18:00:00Z',
     workbench_list: {
@@ -113,6 +114,7 @@ test('office-processing display_status wins queue label', () => {
 test('waiting client overrides office-processing stamp', () => {
   const c = caseRow({
     case_id: 'case_rm',
+    service_lane: 'claim',
     display_status: '办公室处理中',
     waiting_on: 'client',
     office_materials_accepted_at: '2026-07-31T18:00:00Z',
@@ -123,6 +125,7 @@ test('waiting client overrides office-processing stamp', () => {
 test('Cap2-complete overrides stale Request More queue label', () => {
   const c = caseRow({
     case_id: 'case_cap2',
+    service_lane: 'claim',
     display_status: '理赔 · 记录中',
     known_facts: {
       accident_description: '刮蹭',
@@ -135,6 +138,28 @@ test('Cap2-complete overrides stale Request More queue label', () => {
     },
   });
   assert.equal(resolveCurrentActionLabel(c), '建议确认资料已齐');
+});
+
+test('Request More awaiting review beats Cap2-complete accept suggestion', () => {
+  const c = caseRow({
+    case_id: 'case_dual',
+    service_lane: 'claim',
+    known_facts: {
+      accident_description: '刮蹭',
+      accident_datetime: '今天',
+      accident_location: 'Irvine',
+      injury_status: 'no',
+    },
+    claim_case_brief: { can_accept_office_materials: true },
+    p20_slice1_projection: {
+      workflow_state: 'broker_review_ready',
+      open_request: {
+        progress: { total: 1, satisfied: 1 },
+        items: [{ status: 'satisfied', item_type: 'vin', label: 'VIN' }],
+      },
+    },
+  } as Partial<SavedCase> & { case_id: string });
+  assert.equal(resolveCurrentActionLabel(c), '等待办公室审核');
 });
 
 test('broker-confirmed name wins and phone last four remains available', () => {

@@ -1717,6 +1717,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                 <ClaimCaseBriefPanel
                                     brief={currentCase.claim_case_brief}
                                     timeline={currentCase.claim_timeline}
+                                    caseRecord={currentCase}
                                     nextAction={
                                         currentCase.office_broker_next_step
                                         || currentCase.broker_next_step

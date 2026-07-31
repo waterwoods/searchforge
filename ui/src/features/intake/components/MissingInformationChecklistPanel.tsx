@@ -42,9 +42,13 @@ import {
   resolveSlice1CustomerResponse,
 } from '@/features/intake/components/StructuredRequestMorePanel';
 import {
-  CLAIM_PILOT_STATUS,
   CLAIM_REQUEST_MORE_COPY,
 } from '@/features/intake/utils/claimPilotCopy';
+import {
+  CLAIM_PRIMARY_STATUS,
+  requestMoreOwnsPrimaryStatus,
+} from '@/features/intake/utils/claimPrimaryStatus';
+import { isClaimGuidedCase } from '@/features/intake/utils/claimWorkbenchDisplay';
 
 const AUTOSAVE_DEBOUNCE_MS = 600;
 /** Gentle while-open poll — avoid version churn / flicker. */
@@ -245,9 +249,10 @@ export function resolveAccessReviewState(
     reviewReady,
     satisfied,
     total,
+    // Align Request More chrome with Claim primary-status vocabulary.
     simpleStatus: reviewReady
-      ? CLAIM_PILOT_STATUS.waitingBroker
-      : CLAIM_PILOT_STATUS.waitingCustomer,
+      ? CLAIM_PRIMARY_STATUS.waitingOfficeReview
+      : CLAIM_PRIMARY_STATUS.waitingCustomer,
     submittedVin,
   };
 }
@@ -363,15 +368,15 @@ function CustomerAccessReadyCard({
       <Space direction="vertical" size={10} style={{ width: '100%' }}>
         <Tag color={review.reviewReady ? 'success' : 'processing'}>
           {review.reviewReady
-            ? CLAIM_REQUEST_MORE_COPY.chipWaitingBroker
-            : CLAIM_REQUEST_MORE_COPY.chipWaitingCustomer}
+            ? CLAIM_PRIMARY_STATUS.waitingOfficeReview
+            : CLAIM_PRIMARY_STATUS.waitingCustomer}
         </Tag>
         <Title level={4} style={{ margin: 0 }}>
           {review.reviewReady
-            ? CLAIM_REQUEST_MORE_COPY.waitingBrokerTitle
+            ? CLAIM_PRIMARY_STATUS.waitingOfficeReview
             : boundMiniProgram
               ? CLAIM_REQUEST_MORE_COPY.sentToMiniProgram
-              : CLAIM_REQUEST_MORE_COPY.waitingCustomerTitle}
+              : CLAIM_PRIMARY_STATUS.waitingCustomer}
         </Title>
         <Text type="secondary">
           {review.reviewReady
@@ -926,7 +931,11 @@ export function MissingInformationChecklistPanel({
     }
   };
 
-  const showAccessCard = requestSent && accessCard && !editing;
+  // Claim: Request More status card may own primary chrome only when primary is
+  // waiting-customer or waiting-office-review — never beside「建议确认资料已齐」.
+  const claimPrimaryOwnsAccess =
+    !isClaimGuidedCase(caseRecord) || requestMoreOwnsPrimaryStatus(caseRecord);
+  const showAccessCard = requestSent && accessCard && !editing && claimPrimaryOwnsAccess;
   const showDraftEditor = !showAccessCard;
   const saveStatusLabel =
     saveStatus === 'saving'

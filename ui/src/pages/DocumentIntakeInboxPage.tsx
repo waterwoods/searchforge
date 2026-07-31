@@ -575,6 +575,7 @@ function BrokerCaseDetail({
           <ClaimCaseBriefPanel
             brief={caseItem.claim_case_brief}
             timeline={caseItem.claim_timeline}
+            caseRecord={caseItem}
             onAcceptOfficeMaterials={onAcceptOfficeMaterials}
             acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
           />
@@ -719,6 +720,7 @@ function BrokerCaseDetail({
         <ClaimCaseBriefPanel
           brief={caseItem.claim_case_brief}
           timeline={caseItem.claim_timeline}
+          caseRecord={caseItem}
           onAcceptOfficeMaterials={onAcceptOfficeMaterials}
           acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
         />

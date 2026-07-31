@@ -286,7 +286,7 @@ const accessCard: CustomerAccessCard = {
   assert.equal(ready.submittedVin, '1HGCM82633A004352');
   assert.equal(ready.satisfied, 1);
   assert.equal(ready.total, 1);
-  assert.equal(ready.simpleStatus, '等待经纪人');
+  assert.equal(ready.simpleStatus, '等待办公室审核');
 }
 
 {
