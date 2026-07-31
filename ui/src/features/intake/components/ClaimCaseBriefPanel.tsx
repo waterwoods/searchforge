@@ -85,14 +85,25 @@ export function ClaimCaseBriefPanel({
 
   const keyFacts = brief.key_facts ?? {};
   const evidence = brief.evidence_received ?? {};
-  const missing = (brief.missing_info ?? []).slice(0, 5);
-  const highlights = (brief.highlights ?? []).slice(0, 5);
-  const timelinePreview = formatClaimTimelinePreview(timeline ?? [], 3);
-  const photoCount = evidence.photo_count ?? 0;
   const canAccept = Boolean(brief.can_accept_office_materials && onAcceptOfficeMaterials);
   const suggestion =
     String(brief.office_materials_ready_suggestion || '').trim() || '建议确认资料已齐';
   const acceptedAt = String(brief.office_materials_accepted_at || '').trim();
+  // Cap2-ready / office-accepted: optional gaps must not read as「资料不齐」.
+  const officeReady = Boolean(canAccept || acceptedAt);
+  const missing = (brief.missing_info ?? [])
+    .filter((item) => !officeReady || item.severity === 'optional')
+    .slice(0, 5);
+  const highlights = (brief.highlights ?? [])
+    .filter((item) => {
+      if (!officeReady) return true;
+      if (item.level === 'missing') return false;
+      const label = String(item.label || '');
+      return !label.includes('还缺');
+    })
+    .slice(0, 5);
+  const timelinePreview = formatClaimTimelinePreview(timeline ?? [], 3);
+  const photoCount = evidence.photo_count ?? 0;
   const claimVehicle = keyFacts.claim_vehicle;
   const vehicleSummary =
     String(claimVehicle?.summary || keyFacts.own_vehicle_info || '').trim() || '暂未提供';
@@ -122,24 +133,33 @@ export function ClaimCaseBriefPanel({
       <Paragraph style={{ fontSize: 14, marginBottom: 12 }}>{brief.summary}</Paragraph>
 
       {canAccept ? (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message={suggestion}
-          description="事故必填项已齐。确认后进入办公室处理；不会结束案件。"
-          action={
-            <Button
-              type="primary"
-              size="small"
-              icon={<CheckCircleOutlined />}
-              loading={Boolean(acceptOfficeMaterialsSaving)}
-              onClick={() => onAcceptOfficeMaterials?.()}
-            >
-              确认资料已齐
-            </Button>
-          }
-        />
+        <div
+          data-testid="office-materials-accept-banner"
+          style={{
+            marginBottom: 12,
+            padding: '12px 14px',
+            background: '#e6f4ff',
+            border: '1px solid #91caff',
+            borderRadius: 8,
+          }}
+        >
+          <Text strong style={{ display: 'block', fontSize: 14, color: '#0958d9', marginBottom: 4 }}>
+            {suggestion}
+          </Text>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 10 }}>
+            事故必填项已齐。确认后进入办公室处理；不会结束案件。
+          </Text>
+          <Button
+            type="primary"
+            size="middle"
+            icon={<CheckCircleOutlined />}
+            loading={Boolean(acceptOfficeMaterialsSaving)}
+            onClick={() => onAcceptOfficeMaterials?.()}
+            block
+          >
+            确认资料已齐
+          </Button>
+        </div>
       ) : null}
       {acceptedAt && !canAccept ? (
         <Alert
@@ -253,7 +273,7 @@ export function ClaimCaseBriefPanel({
       {missing.length > 0 ? (
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-            仍缺信息
+            {officeReady ? '可选补充（不挡办公室处理）' : '仍缺信息'}
           </Text>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {missing.map((item) => (

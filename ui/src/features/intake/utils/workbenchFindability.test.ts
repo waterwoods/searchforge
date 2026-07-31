@@ -120,6 +120,23 @@ test('waiting client overrides office-processing stamp', () => {
   assert.equal(resolveCurrentActionLabel(c), '等待客户补充');
 });
 
+test('Cap2-complete overrides stale Request More queue label', () => {
+  const c = caseRow({
+    case_id: 'case_cap2',
+    display_status: '理赔 · 记录中',
+    known_facts: {
+      accident_description: '刮蹭',
+      accident_datetime: '今天',
+      accident_location: 'Irvine',
+      injury_status: 'no',
+    },
+    workbench_list: {
+      broker_next_action_label: '客户补充中，必要时再 Request More',
+    },
+  });
+  assert.equal(resolveCurrentActionLabel(c), '建议确认资料已齐');
+});
+
 test('broker-confirmed name wins and phone last four remains available', () => {
   const c = caseRow({
     case_id: 'case_abc',

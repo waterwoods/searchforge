@@ -367,7 +367,7 @@ export function CaseAttachmentsPanel({ caseId, attachments, perfSession }: Props
       title={
         <Space size={6}>
           <PaperClipOutlined />
-          <span>Uploaded Documents / Attachments ({promoted.length})</span>
+          <span>已上传附件（{promoted.length}）</span>
         </Space>
       }
       style={{ marginBottom: 12 }}
@@ -375,9 +375,9 @@ export function CaseAttachmentsPanel({ caseId, attachments, perfSession }: Props
     >
       {items.length === 0 ? (
         <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
-          No uploaded documents yet.
+          暂无上传附件。
           <br />
-          Customer can send photos through WeCom.
+          客户可通过小程序继续补充照片。
         </Paragraph>
       ) : (
         <>

@@ -304,8 +304,9 @@ export function rowsFromProjection(projection: CaseIntakeProjection): DraftEditR
   return checklist.map((item) => {
     const key = item.field_key;
     const sendable = isMvpSendableChecklistRow(item);
-    const defaultSelected =
-      sendable && (selectedKeys.size > 0 ? selectedKeys.has(key) : Boolean(item.suggested_for_request));
+    // Only restore an explicit saved draft selection — never auto-check suggested
+    // optional items when Cap2 Must Haves are already complete (Chen demo P1).
+    const defaultSelected = sendable && selectedKeys.size > 0 && selectedKeys.has(key);
     return {
       field_key: key,
       item_type: item.item_type,

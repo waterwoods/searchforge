@@ -470,7 +470,7 @@ function ClaimAccidentBasicsCard({ caseItem, collapsed = true }: { caseItem: Sav
           }}
           style={{ cursor: 'pointer', userSelect: 'none' }}
         >
-          Accident Basics（详情）
+          事故基本信息（详情）
         </span>
       }
       style={{ marginBottom: 12, opacity: 0.9 }}
@@ -479,9 +479,9 @@ function ClaimAccidentBasicsCard({ caseItem, collapsed = true }: { caseItem: Sav
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
         {claimDisplayStatus(caseItem)}
       </Text>
-      <PacketField label="Time" value={summary.accident_datetime ?? undefined} />
-      <PacketField label="Location" value={summary.accident_location ?? undefined} />
-      <PacketField label="Description" value={summary.accident_description ?? undefined} />
+      <PacketField label="时间" value={summary.accident_datetime ?? undefined} />
+      <PacketField label="地点" value={summary.accident_location ?? undefined} />
+      <PacketField label="经过" value={summary.accident_description ?? undefined} />
       <Alert
         type="info"
         showIcon
