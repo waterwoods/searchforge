@@ -20,6 +20,11 @@ import {
   type Slice1CustomerView,
 } from "../../utils/slice1Customer";
 import { resolveCustomerConstitutionFromTask } from "../../utils/resolveCustomerConstitution";
+import {
+  OFFICE_PROCESSING_AFTER,
+  OFFICE_PROCESSING_TITLE,
+  isOfficeProcessingSurface,
+} from "../../utils/customerCaseSurface";
 import type { Slice1RequestItem } from "../../types/task";
 import { reLaunchStartClaimHome } from "../../utils/startClaimEntry";
 
@@ -37,6 +42,8 @@ type PageData = {
   submitted: boolean;
   submittedAt: string;
   showSupplement: boolean;
+  /** False after office-materials accept — no primary customer task CTA. */
+  showPrimaryTaskCta: boolean;
   supplementHint: string;
   task: CustomerTask | null;
   taskViewModel: typeof EMPTY_TASK_VIEW_MODEL;
@@ -105,6 +112,7 @@ Page({
     submitted: false,
     submittedAt: "",
     showSupplement: false,
+    showPrimaryTaskCta: true,
     supplementHint: "",
     task: null as CustomerTask | null,
     taskViewModel: EMPTY_TASK_VIEW_MODEL,
@@ -211,6 +219,7 @@ Page({
 
     // Prefer server Constitution Focus/Trust only; otherwise keep prior receipt copy.
     const constitution = resolveCustomerConstitutionFromTask(task);
+    const officeProcessing = isOfficeProcessingSurface(task);
     const serverToday =
       constitution.fieldAuthority.today === "server" ? constitution.today : "";
     const serverAfter =
@@ -223,66 +232,86 @@ Page({
         ? [constitution.careLine, constitution.careNote].filter(Boolean).join("。")
         : "";
 
-    const nextStep = serverToday ||
-      serverAfter ||
-      (view.enabled
-        ? view.waitingForBroker
-          ? "资料已提交，等待陈总查看"
-          : view.nextAction?.title ||
-            view.nextAction?.instructions ||
-            summary?.next_step ||
+    const nextStep = officeProcessing
+      ? OFFICE_PROCESSING_AFTER
+      : serverToday ||
+        serverAfter ||
+        (view.enabled
+          ? view.waitingForBroker
+            ? "资料已提交，等待陈总查看"
+            : view.nextAction?.title ||
+              view.nextAction?.instructions ||
+              summary?.next_step ||
+              dash?.next_action ||
+              "请按陈总要求补充资料"
+          : summary?.next_step ||
             dash?.next_action ||
-            "请按陈总要求补充资料"
-        : summary?.next_step ||
-          dash?.next_action ||
-          (submitted
-            ? "已提交，等待陈总查看"
-            : vm.cta.label || `等待${broker}查看`));
+            (submitted
+              ? "已提交，等待陈总查看"
+              : vm.cta.label || `等待${broker}查看`));
 
-    const supplementHint = serverWhy ||
-      (view.enabled
-        ? view.waitingForBroker
-          ? "资料已提交，等待陈总审核"
-          : view.nextAction?.instructions ||
-            view.nextAction?.title ||
-            view.primaryCtaLabel ||
-            ""
-        : (task.missing_info || []).map((item) => item.label).filter(Boolean)[0] ||
-          (vm.missingItems || []).map((item) => item.label).filter(Boolean)[0] ||
-          (submitted ? "如有需要，可继续补充照片。" : ""));
+    const supplementHint = officeProcessing
+      ? OFFICE_PROCESSING_AFTER
+      : serverWhy ||
+        (view.enabled
+          ? view.waitingForBroker
+            ? "资料已提交，等待陈总审核"
+            : view.nextAction?.instructions ||
+              view.nextAction?.title ||
+              view.primaryCtaLabel ||
+              ""
+          : (task.missing_info || []).map((item) => item.label).filter(Boolean)[0] ||
+            (vm.missingItems || []).map((item) => item.label).filter(Boolean)[0] ||
+            (submitted ? "如有需要，可继续补充照片。" : ""));
 
-    const supplementAllowed = view.enabled
-      ? view.primaryActionable || view.waitingForBroker
-      : Boolean(
-          submitted || dash?.submitted_supplement_allowed || (task.missing_info || []).length > 0,
-        );
+    const supplementAllowed = officeProcessing
+      ? false
+      : view.enabled
+        ? view.primaryActionable || view.waitingForBroker
+        : Boolean(
+            submitted || dash?.submitted_supplement_allowed || (task.missing_info || []).length > 0,
+          );
 
-    const brokerContactNote = serverTrust
-      ? serverTrust
-      : submitted
-        ? `${broker}会尽快查看您提交的资料，并在需要时通过微信联系您。`
-        : `如有问题，请通过微信联系${broker}。`;
+    const brokerContactNote = officeProcessing
+      ? OFFICE_PROCESSING_AFTER
+      : serverTrust
+        ? serverTrust
+        : submitted
+          ? `${broker}会尽快查看您提交的资料，并在需要时通过微信联系您。`
+          : `如有问题，请通过微信联系${broker}。`;
     const materialsNote = supplementHint
       ? supplementHint
       : `如有需要，${broker}可能请您补充更多材料，请留意微信消息。`;
 
+    const slice1Patch = slice1PagePatch(view);
+    if (officeProcessing) {
+      slice1Patch.slice1PrimaryLabel = OFFICE_PROCESSING_TITLE;
+      slice1Patch.slice1PrimaryActionable = false;
+      slice1Patch.slice1WaitingForBroker = true;
+    }
+
     this.commitTaskViewModel(vm);
     this.safeSetData({
       task,
-      title: summary?.title || (submitted ? "资料已提交" : vm.title || "当前状态"),
-      message:
-        summary?.message ||
-        dash?.subtitle ||
-        (submitted ? `已成功提交，${broker}会尽快处理。` : vm.instruction || ""),
-      status: view.enabled
-        ? view.waitingForBroker
-          ? "已提交"
-          : "需补充材料"
-        : dash?.status || vm.statusLabel || (submitted ? "已提交" : "进行中"),
+      title: officeProcessing
+        ? OFFICE_PROCESSING_TITLE
+        : summary?.title || (submitted ? "资料已提交" : vm.title || "当前状态"),
+      message: officeProcessing
+        ? OFFICE_PROCESSING_AFTER
+        : summary?.message ||
+          dash?.subtitle ||
+          (submitted ? `已成功提交，${broker}会尽快处理。` : vm.instruction || ""),
+      status: officeProcessing
+        ? "办公室处理中"
+        : view.enabled
+          ? view.waitingForBroker
+            ? "已提交"
+            : "需补充材料"
+          : dash?.status || vm.statusLabel || (submitted ? "已提交" : "进行中"),
       statusTone:
-        view.enabled && !view.waitingForBroker
+        view.enabled && !view.waitingForBroker && !officeProcessing
           ? "active"
-          : submitted || vm.statusTone === "done"
+          : submitted || vm.statusTone === "done" || officeProcessing
             ? "done"
             : "active",
       photoCount: photoCount(task),
@@ -296,15 +325,19 @@ Page({
         "这只是资料收集，不代表已向保险公司正式报案。",
       submitted,
       submittedAt,
+      // Office-processing: no primary task CTA (footer hides via !showSupplement + wait).
       showSupplement: Boolean(
-        view.enabled
-          ? view.primaryActionable || view.waitingForBroker || submitted
-          : supplementAllowed || (submitted && supplementHint),
+        officeProcessing
+          ? false
+          : view.enabled
+            ? view.primaryActionable || view.waitingForBroker || submitted
+            : supplementAllowed || (submitted && supplementHint),
       ),
+      showPrimaryTaskCta: Boolean(submitted && !officeProcessing),
       supplementHint,
       errorState: EMPTY_TASK_ERROR,
       slice1LoadFailed: false,
-      ...slice1PagePatch(view),
+      ...slice1Patch,
     });
   },
 

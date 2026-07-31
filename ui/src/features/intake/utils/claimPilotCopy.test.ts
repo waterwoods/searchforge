@@ -12,11 +12,13 @@ import {
 
 assert.equal(CLAIM_PILOT_STATUS.waitingCustomer, '等待客户');
 assert.equal(CLAIM_PILOT_STATUS.waitingBroker, '等待经纪人');
+assert.equal(CLAIM_PILOT_STATUS.officeProcessing, '办公室处理中');
 assert.equal(CLAIM_PILOT_STATUS.completed, '已完成');
 assert.equal(CLAIM_PILOT_STATUS.needMaterials, '需补充材料');
 
 assert.equal(normalizeClaimPilotStatus('Waiting for customer'), CLAIM_PILOT_STATUS.waitingCustomer);
 assert.equal(normalizeClaimPilotStatus('Customer is working'), CLAIM_PILOT_STATUS.waitingCustomer);
+assert.equal(normalizeClaimPilotStatus('办公室处理中'), CLAIM_PILOT_STATUS.officeProcessing);
 assert.equal(normalizeClaimPilotStatus('Ready for Review'), CLAIM_PILOT_STATUS.waitingBroker);
 assert.equal(normalizeClaimPilotStatus('等待审核'), CLAIM_PILOT_STATUS.waitingBroker);
 assert.equal(normalizeClaimPilotStatus('已完成'), CLAIM_PILOT_STATUS.completed);

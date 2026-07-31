@@ -140,6 +140,33 @@ def is_claim_broker_done(case: dict[str, Any]) -> bool:
     return derive_claim_phase(case) == CLAIM_PHASE_BROKER_DONE
 
 
+def _claim_has_open_customer_request_more(case: dict[str, Any]) -> bool:
+    """Open Request More overrides passive office-processing queue label."""
+    for key in ("p20_slice1_projection", "slice1_projection"):
+        proj = case.get(key)
+        if not isinstance(proj, dict):
+            continue
+        action = proj.get("customer_next_action")
+        if isinstance(action, dict):
+            at = str(action.get("action_type") or "").strip().lower()
+            if at in {"provide_fact", "provide_evidence"}:
+                return True
+        state = str(proj.get("workflow_state") or "").strip().lower()
+        if state in {"broker_more_requested", "customer_continuing"}:
+            return True
+        open_req = proj.get("open_request")
+        if isinstance(open_req, dict):
+            items = open_req.get("items")
+            if isinstance(items, list):
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    st = str(item.get("status") or "").strip().lower()
+                    if st in {"", "active", "queued", "in_progress"}:
+                        return True
+    return False
+
+
 def build_claim_display_status(case: dict[str, Any]) -> str:
     """Broker-safe status copy — intake only, never implies carrier filing."""
     phase = derive_claim_phase(case)
@@ -147,6 +174,11 @@ def build_claim_display_status(case: dict[str, Any]) -> str:
         return "理赔 · 已确认 / 已交接"
     if phase == CLAIM_PHASE_MANUAL_HANDLE:
         return "理赔 · 需人工处理"
+    # Happy Path Loop 2 — open Request More beats passive office-processing label.
+    if _claim_has_open_customer_request_more(case):
+        return "等待客户"
+    if str(case.get("office_materials_accepted_at") or "").strip():
+        return "办公室处理中"
     if phase in (CLAIM_PHASE_BROKER_REVIEW, CLAIM_PHASE_INTAKE_READY_FOR_BROKER):
         return "理赔 · 等待经纪人"
     if phase in (CLAIM_PHASE_SUMMARY_READY, CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE):

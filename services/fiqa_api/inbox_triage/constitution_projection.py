@@ -49,6 +49,9 @@ _WHY_INSURANCE_CARD = "事故经过和现场照片已经完成。"
 _AFTER_INSURANCE_CARD = "陈总开始审核。"
 _WHY_BROKER_REVIEW = "资料已齐，陈总正在审核。"
 _AFTER_WAIT_CONFIRM = "请等待确认。"
+# Happy Path Loop 2 — broker office-materials accept (passive waiting only).
+_WHY_OFFICE_PROCESSING = "资料已齐，等待办公室处理"
+_AFTER_OFFICE_PROCESSING = "办公室已收到您的资料，将继续处理。如需补充，我们会再通知您。"
 _WHY_GENERIC_ACTION = "请先完成这一步，方便我们继续处理。"
 _AFTER_GENERIC_ACTION = "完成后我们会继续处理。"
 _WHY_NEUTRAL_WAIT = "目前没有需要您操作的事项。"
@@ -68,6 +71,10 @@ _TRUST_CUSTOMER_ACTION = {
 _TRUST_WAITING_BROKER = {
     "care_line": "下一步由陈总审核",
     "care_note": "我们会联系您（如需要）",
+}
+_TRUST_OFFICE_PROCESSING = {
+    "care_line": "办公室处理中",
+    "care_note": "如需补充，我们会再通知您",
 }
 
 _CUSTOMER_WORK_ACTION_TYPES = frozenset({"provide_evidence", "provide_fact"})
@@ -439,11 +446,48 @@ def _default_today_title(deps: _ResolvedDeps) -> str | None:
     return None
 
 
-def _is_waiting_broker(deps: _ResolvedDeps, action: Mapping[str, Any] | None) -> bool:
-    # P26G: default intake incompleteness must never collapse to "waiting broker".
-    if _has_incomplete_default_intake(deps):
+def _office_materials_accepted(deps: _ResolvedDeps) -> bool:
+    """Sole Broker acceptance stamp for Happy Path office-ready (Loop 1/2)."""
+    return bool(str(deps.case.get("office_materials_accepted_at") or "").strip())
+
+
+def _customer_has_open_request_more(deps: _ResolvedDeps) -> bool:
+    """Open Request More / customer work overrides passive office-processing UI."""
+    action = _slice1_customer_action(deps.slice1)
+    if _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES:
+        return True
+    if _open_request_active_item(deps.slice1) is not None:
+        return True
+    state = _workflow_state(deps.slice1)
+    if state in {"broker_more_requested", "customer_continuing"}:
+        return True
+    return False
+
+
+def _is_office_processing(deps: _ResolvedDeps, action: Mapping[str, Any] | None) -> bool:
+    """Passive office-processing: stamp set, and customer does not owe Request More work.
+
+    Cap2 Must Haves already gated the accept stamp — optional defaults (insurance /
+    photos) must not keep the customer on a primary task CTA after accept.
+    """
+    if not _office_materials_accepted(deps):
+        return False
+    if _customer_has_open_request_more(deps):
         return False
     if _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES:
+        return False
+    return True
+
+
+def _is_waiting_broker(deps: _ResolvedDeps, action: Mapping[str, Any] | None) -> bool:
+    # Open Request More / customer work still wins over any wait state.
+    if _action_type(action) in _CUSTOMER_WORK_ACTION_TYPES:
+        return False
+    # Happy Path Loop 2 — office accept overrides optional default-intake gaps.
+    if _office_materials_accepted(deps) and not _customer_has_open_request_more(deps):
+        return True
+    # P26G: default intake incompleteness must never collapse to "waiting broker".
+    if _has_incomplete_default_intake(deps):
         return False
     if _action_type(action) in _WAIT_BROKER_ACTION_TYPES:
         return True
@@ -460,7 +504,7 @@ def _is_waiting_broker(deps: _ResolvedDeps, action: Mapping[str, Any] | None) ->
 
 
 def _customer_today(deps: _ResolvedDeps) -> str:
-    """Precedence: Slice1 action → open active item → default intake → phase wait."""
+    """Precedence: Slice1 action → open active item → office wait → default intake."""
     action = _slice1_customer_action(deps.slice1)
     action_type = _action_type(action)
 
@@ -478,6 +522,10 @@ def _customer_today(deps: _ResolvedDeps) -> str:
             label = str(active_item.get("label") or active_item.get("title") or "").strip()
             if label:
                 return label
+
+    # 2.5 Happy Path — office accept: no customer Today task (before optional defaults).
+    if _office_materials_accepted(deps) and not _customer_has_open_request_more(deps):
+        return _TODAY_WAIT
 
     # 3. P26G — system_default intake plan (no broker request required)
     default_today = _default_today_title(deps)
@@ -511,6 +559,8 @@ def _customer_why(deps: _ResolvedDeps, today: str) -> str:
             return _WHY_INSURANCE_AFTER_STORY
         return _WHY_INSURANCE_DEFAULT
     if today == _TODAY_WAIT or _is_waiting_broker(deps, action):
+        if _is_office_processing(deps, action):
+            return _WHY_OFFICE_PROCESSING
         if _is_waiting_broker(deps, action):
             return _WHY_BROKER_REVIEW
         return _WHY_NEUTRAL_WAIT
@@ -527,16 +577,21 @@ def _customer_after(deps: _ResolvedDeps, today: str) -> str:
             return _AFTER_INSURANCE_CARD
         return _AFTER_INSURANCE_DEFAULT
     if today == _TODAY_WAIT or _is_waiting_broker(deps, action):
+        if _is_office_processing(deps, action):
+            return _AFTER_OFFICE_PROCESSING
         if _is_waiting_broker(deps, action):
             return _AFTER_WAIT_CONFIRM
         return _AFTER_NEUTRAL_WAIT
     return _AFTER_GENERIC_ACTION
 
 
-def _customer_trust(_deps: _ResolvedDeps, today: str) -> dict[str, str]:
+def _customer_trust(deps: _ResolvedDeps, today: str) -> dict[str, str]:
     # Quiet Human Trust: who is caring for the case while customer acts vs waits.
+    action = _slice1_customer_action(deps.slice1)
     if today != _TODAY_WAIT:
         return dict(_TRUST_CUSTOMER_ACTION)
+    if _is_office_processing(deps, action):
+        return dict(_TRUST_OFFICE_PROCESSING)
     return dict(_TRUST_WAITING_BROKER)
 
 
@@ -956,6 +1011,7 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
     insurance_is_today = _is_insurance_card_task(
         today=today, action=action, active_item=active_item
     )
+    office_processing = bool(customer.get("office_processing"))
 
     tasks: list[dict[str, Any]] = []
     # Bind default plan SSOT so Task Home never invents a parallel checklist.
@@ -1128,7 +1184,7 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
         )
 
     # Ensure exactly one is_today when customer owes work.
-    if stage == STAGE_CUSTOMER_ACTION_NEEDED:
+    if stage == STAGE_CUSTOMER_ACTION_NEEDED and not office_processing:
         today_marks = [t for t in tasks if t.get("is_today")]
         if not today_marks:
             for task in tasks:
@@ -1151,6 +1207,16 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
                         task["is_today"] = False
                     seen = True
 
+    # Happy Path Loop 2 — no primary customer task CTA after office acceptance.
+    if office_processing:
+        for task in tasks:
+            task["actionable"] = False
+            task["is_today"] = False
+            task["route"] = None
+            task["primary_action"] = None
+            if task.get("state") in {TASK_STATE_PENDING, TASK_STATE_IN_PROGRESS, TASK_STATE_BLOCKED}:
+                task["state"] = TASK_STATE_WAITING_BROKER
+
     return tasks
 
 
@@ -1168,12 +1234,15 @@ def _customer_projection(deps: _ResolvedDeps) -> dict[str, Any]:
             "case_closed_read_only": True,
         }
     today = _customer_today(deps)
+    action = _slice1_customer_action(deps.slice1)
     customer = {
         "today": today,
         "why": _customer_why(deps, today),
         "after": _customer_after(deps, today),
         "trust": _customer_trust(deps, today),
         "current_stage": _customer_current_stage(deps, today),
+        "office_materials_accepted": _office_materials_accepted(deps),
+        "office_processing": _is_office_processing(deps, action),
     }
     customer["tasks"] = _customer_tasks(deps, customer)
     return customer

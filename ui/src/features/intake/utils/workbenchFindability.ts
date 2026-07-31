@@ -149,16 +149,32 @@ export function resolveVehicleContext(caseItem: SavedCase): string {
 export function resolveCurrentActionLabel(caseItem: SavedCase): string {
   // Broker Workbench list: prefer broker next action (what to do without opening).
   const idle = new Set(['暂无动作', '无动作', '—', '-']);
+  // Happy Path Loop 2 — open Request More / waiting client beats office-processing.
+  const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
+  if (waiting === 'client') return '等待客户补充';
+  const display = String(caseItem.display_status || '').trim();
+  if (display === '办公室处理中' || display.includes('办公室处理中')) {
+    return '办公室处理中';
+  }
+  if (display === '等待客户' || display.includes('等待客户')) {
+    return '等待客户';
+  }
+  if (caseItem.office_materials_accepted_at && !waiting) {
+    // Stamp is sole acceptance SoT when display enrichment is stale.
+    const slice1 = (caseItem as SavedCase & { p20_slice1_projection?: { workflow_state?: string } })
+      .p20_slice1_projection;
+    const ws = String(slice1?.workflow_state || '').trim().toLowerCase();
+    if (!['broker_more_requested', 'customer_continuing'].includes(ws)) {
+      return '办公室处理中';
+    }
+  }
   const broker = String(getWorkbenchList(caseItem).broker_next_action_label || '').trim();
   if (broker && !idle.has(broker)) return broker;
   const fromList = String(getWorkbenchList(caseItem).customer_current_action_label || '').trim();
   if (fromList && !idle.has(fromList)) return fromList;
-  const display = String(caseItem.display_status || '').trim();
   if (display && !['BROKER_REVIEW', 'READY', 'NEED_INFO', 'DONE', 'HOLDING'].includes(display.toUpperCase())) {
     return display;
   }
-  const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
-  if (waiting === 'client') return '等待客户补充';
   if (waiting === 'broker') return '等待办公室审核';
   return '打开案件核对';
 }

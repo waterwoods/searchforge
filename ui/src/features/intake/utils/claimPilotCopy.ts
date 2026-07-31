@@ -3,10 +3,11 @@
  * Chinese-first office language. Do not invent parallel status phrases.
  */
 
-/** Frozen status chips — use exactly these four strings in claim pilot UI. */
+/** Frozen status chips — use exactly these strings in claim pilot UI. */
 export const CLAIM_PILOT_STATUS = {
   waitingCustomer: '等待客户',
   waitingBroker: '等待经纪人',
+  officeProcessing: '办公室处理中',
   completed: '已完成',
   needMaterials: '需补充材料',
 } as const;
@@ -21,6 +22,13 @@ const WAITING_CUSTOMER_MARKERS = [
   'broker_more_requested',
   'request more',
   '等待客户',
+];
+
+/** Happy Path Loop 2 — exact queue label; must not collapse into waitingBroker. */
+const OFFICE_PROCESSING_MARKERS = [
+  '办公室处理中',
+  'office processing',
+  'office_processing',
 ];
 
 const WAITING_BROKER_MARKERS = [
@@ -65,11 +73,15 @@ export function normalizeClaimPilotStatus(raw?: string | null): ClaimPilotStatus
   if (!text) return null;
   const lower = text.toLowerCase();
 
-  if (WAITING_BROKER_MARKERS.some((m) => lower.includes(m.toLowerCase()) || text.includes(m))) {
-    return CLAIM_PILOT_STATUS.waitingBroker;
+  // Exact office-processing label before broader "等待审核" broker markers.
+  if (OFFICE_PROCESSING_MARKERS.some((m) => lower.includes(m.toLowerCase()) || text.includes(m))) {
+    return CLAIM_PILOT_STATUS.officeProcessing;
   }
   if (WAITING_CUSTOMER_MARKERS.some((m) => lower.includes(m.toLowerCase()) || text.includes(m))) {
     return CLAIM_PILOT_STATUS.waitingCustomer;
+  }
+  if (WAITING_BROKER_MARKERS.some((m) => lower.includes(m.toLowerCase()) || text.includes(m))) {
+    return CLAIM_PILOT_STATUS.waitingBroker;
   }
   if (COMPLETED_MARKERS.some((m) => lower.includes(m.toLowerCase()) || text.includes(m))) {
     return CLAIM_PILOT_STATUS.completed;

@@ -218,6 +218,10 @@ export type CustomerConstitutionProjection = {
   after?: string | null;
   trust?: CustomerConstitutionTrust | null;
   current_stage?: string | null;
+  /** Happy Path Loop 2 — broker stamped office_materials_accepted_at. */
+  office_materials_accepted?: boolean | null;
+  /** Passive office-processing UI (stamp set, no open Request More). */
+  office_processing?: boolean | null;
   /** P26A — Constitution-first Task Home cards. */
   tasks?: CustomerConstitutionTaskCard[] | null;
 };

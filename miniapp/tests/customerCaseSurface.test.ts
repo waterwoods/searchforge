@@ -9,6 +9,8 @@ import {
   CASE_STATUS_TITLE,
   DEFER_LATER_LABEL,
   LEGACY_WAIT_TODAY,
+  OFFICE_PROCESSING_AFTER,
+  OFFICE_PROCESSING_TITLE,
   SUBMIT_RECEIPT_COPY,
   TASK_HOME_ROUTE,
   RECEIPT_ROUTE,
@@ -18,6 +20,7 @@ import {
   canVoluntarySupplement,
   customerOwesWork,
   isCustomerCaseClosedReadOnly,
+  isOfficeProcessingSurface,
   isWaitingBrokerSurface,
   resolveCustomerCaseSurface,
   resolveCustomerCaseSurfaceRoute,
@@ -124,6 +127,39 @@ function actionableProjection(): Slice1Projection {
     broker_next_action: null,
   };
 }
+
+test("Office processing → Case Status copy; no Task Home / no owed work", () => {
+  const task = {
+    ...applySlice1ProjectionToTask(baseTask(), waitingProjection()),
+    constitution_projection: {
+      current_stage: "waiting_broker",
+      customer: {
+        today: LEGACY_WAIT_TODAY,
+        why: OFFICE_PROCESSING_TITLE,
+        after: OFFICE_PROCESSING_AFTER,
+        current_stage: "waiting_broker",
+        office_materials_accepted: true,
+        office_processing: true,
+        trust: { care_line: "办公室处理中", care_note: "如需补充，我们会再通知您" },
+        tasks: [
+          {
+            task_id: "insurance",
+            title: "保险卡",
+            state: "waiting_broker",
+            actionable: false,
+          },
+        ],
+      },
+    },
+  };
+  assert.equal(isOfficeProcessingSurface(task), true);
+  assert.equal(customerOwesWork(task), false);
+  assert.equal(resolveCustomerCaseSurface(task), "case_status");
+  const vm = buildCaseStatusViewModel(task);
+  assert.equal(vm.title, OFFICE_PROCESSING_TITLE);
+  assert.equal(vm.after, OFFICE_PROCESSING_AFTER);
+  assert.equal(vm.statusLabel, "办公室处理中");
+});
 
 test("Waiting Broker → case_status route; no Task Home", () => {
   const task = {

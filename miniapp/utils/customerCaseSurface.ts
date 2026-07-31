@@ -20,6 +20,15 @@ export const LEGACY_WAIT_TODAY = "先不用操作";
 /** Demo Polish Sprint 2 — Waiting Broker Case Status title (durable confirmation). */
 export const CASE_STATUS_TITLE = "资料已收到，等待陈总审核";
 
+/** Happy Path Loop 2 — after broker office-materials accept (passive wait). */
+export const OFFICE_PROCESSING_TITLE = "资料已齐，等待办公室处理";
+export const OFFICE_PROCESSING_AFTER =
+  "办公室已收到您的资料，将继续处理。如需补充，我们会再通知您。";
+export const OFFICE_PROCESSING_BODY_LINES = [
+  OFFICE_PROCESSING_TITLE,
+  OFFICE_PROCESSING_AFTER,
+] as const;
+
 /** In-page Request More submit receipt when customer is truly waiting (not toast-only). */
 export const SUBMIT_RECEIPT_COPY = "补充资料已收到，陈总会继续审核。";
 
@@ -112,6 +121,19 @@ export function isWaitingBrokerSurface(task?: CustomerTask | null): boolean {
   return !customerOwesWork(task);
 }
 
+/** True when Constitution marks passive office-processing (stamp, no open Request More). */
+export function isOfficeProcessingSurface(task?: CustomerTask | null): boolean {
+  if (!task) return false;
+  const customer = task.constitution_projection?.customer;
+  if (customer && typeof customer === "object") {
+    if (customer.office_processing === true) return true;
+    const why = String(customer.why || "").trim();
+    if (why === OFFICE_PROCESSING_TITLE) return true;
+  }
+  const view = mapSlice1CustomerView(task);
+  return String(view.constitutionWhy || "").trim() === OFFICE_PROCESSING_TITLE;
+}
+
 /** Closed / History cases stay read-only — no voluntary append. */
 export function isCustomerCaseClosedReadOnly(task?: CustomerTask | null): boolean {
   if (!task) return false;
@@ -192,22 +214,35 @@ export function buildCaseStatusViewModel(task?: CustomerTask | null): CaseStatus
     lastSubmittedLines.push(formatSubmittedLabel(received[received.length - 1], lastStamp));
   }
 
+  const officeProcessing = isOfficeProcessingSurface(task);
   const why =
     String(view.constitutionWhy || "").trim() ||
-    "您这边暂时没有需要完成的事项";
+    (officeProcessing
+      ? OFFICE_PROCESSING_TITLE
+      : "您这边暂时没有需要完成的事项");
   const after =
     String(view.constitutionAfter || "").trim() ||
-    "如需补充，陈总会再联系您";
+    (officeProcessing
+      ? OFFICE_PROCESSING_AFTER
+      : "如需补充，陈总会再联系您");
 
   return {
-    title: CASE_STATUS_TITLE,
-    bodyLines: [...CASE_STATUS_BODY_LINES],
+    title: officeProcessing ? OFFICE_PROCESSING_TITLE : CASE_STATUS_TITLE,
+    bodyLines: officeProcessing
+      ? [...OFFICE_PROCESSING_BODY_LINES]
+      : [...CASE_STATUS_BODY_LINES],
     why: why === LEGACY_WAIT_TODAY ? "您这边暂时没有需要完成的事项" : why,
     after: after === "请等待确认。" ? "如需补充，陈总会再联系您" : after,
-    statusLabel: "审核中",
+    statusLabel: officeProcessing ? "办公室处理中" : "审核中",
     lastSubmittedLines,
     completedLines,
-    careLine: String(view.careLine || "").trim() || "下一步由陈总审核",
-    careNote: String(view.careNote || "").trim() || "有进展时我们会联系您",
+    careLine:
+      String(view.careLine || "").trim() ||
+      (officeProcessing ? "办公室处理中" : "下一步由陈总审核"),
+    careNote:
+      String(view.careNote || "").trim() ||
+      (officeProcessing
+        ? "如需补充，我们会再通知您"
+        : "有进展时我们会联系您"),
   };
 }

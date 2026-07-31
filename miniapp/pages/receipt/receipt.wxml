@@ -41,8 +41,9 @@
   </task-shell>
 
   <view class="footer-cta" wx:if="{{!busy.loading}}">
+    <!-- Happy Path Loop 2: office-processing hides primary task CTA (secondary actions remain). -->
     <task-cta
-      wx:if="{{submitted}}"
+      wx:if="{{submitted && showPrimaryTaskCta}}"
       label="{{slice1Enabled ? slice1PrimaryLabel : '补充或修改资料'}}"
       disabled="{{slice1Enabled ? (slice1WaitingForBroker || busy.navigating || busy.retrying || slice1LoadFailed) : (busy.navigating || busy.retrying)}}"
       loading="{{busy.navigating || busy.retrying}}"
@@ -50,7 +51,7 @@
       bindtap="onEditSupplementInfo"
     />
     <task-cta
-      wx:else
+      wx:elif="{{!submitted}}"
       label="返回我的报案"
       disabled="{{busy.navigating}}"
       loading="{{busy.navigating}}"

@@ -76,17 +76,40 @@ def _claim_stub(known_facts: dict | None = None, **extra) -> dict:
         "guided_workflow_state": "collecting_text",
         "extracted_contact_name": "测试客户",
         "extracted_contact_phone": "9495550100",
+        # Slice1 Request More enabled for Founder QA regression.
+        "slice1_capability_version": 1,
+        "entry_channel": "mini_program",
+        "created_by_actor": "customer",
+        "identity_binding_state": "linked",
+        "person_link_source": "wechat",
+        "person_link_key": "plk_happy_path_qa",
     }
     stub.update(extra)
     return stub
 
 
 def _claim_case(*, known_facts: dict | None = None, **extra) -> dict:
-    return save_case(
+    saved = save_case(
         "[客户] claim happy path",
         _claim_stub(known_facts=known_facts, **extra),
         service_lane=SERVICE_LANE_CLAIM,
     )
+    # save_case may drop Slice1 enablement keys — re-stamp for Request More QA.
+    from services.fiqa_api.inbox_triage.case_store import (
+        _load_case_for_mutation,
+        _persist_case_after_update,
+    )
+
+    row = _load_case_for_mutation(saved["case_id"])
+    if row is not None:
+        row["slice1_capability_version"] = int(row.get("slice1_capability_version") or 1) or 1
+        row.setdefault("entry_channel", "mini_program")
+        row.setdefault("person_link_key", "plk_happy_path_qa")
+        _persist_case_after_update(saved["case_id"], row)
+        refreshed = get_case_by_id(saved["case_id"])
+        if refreshed is not None:
+            return refreshed
+    return saved
 
 
 def test_cap2_must_have_keys_match_business_contract():
@@ -227,3 +250,230 @@ def test_seed_fact_records_still_cap2_engine():
     records = seed_fact_records_from_case({"known_facts": _complete_known_facts()})
     checklist = derive_missing_information_checklist(records)
     assert cap2_must_have_gaps_empty({"known_facts": _complete_known_facts()}, checklist=checklist)
+
+
+# --- Automated Loop 1 Founder QA -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "injury_raw,expected",
+    [
+        ("yes", "yes"),
+        ("no", "no"),
+        ("unknown", "unknown"),
+        ("是", "yes"),
+        ("否", "no"),
+        ("未知", "unknown"),
+    ],
+)
+def test_founder_qa_injury_normalized_yes_no_unknown(injury_raw, expected):
+    facts = _complete_known_facts()
+    facts["injury_status"] = injury_raw
+    case = _claim_case(known_facts=facts)
+    brief = build_claim_case_brief(case)
+    assert brief["key_facts"]["injury_status"] == expected
+    if expected in ("yes", "no"):
+        assert brief["can_accept_office_materials"] is True
+        assert not any(item.get("key") == "injury_status" for item in brief["missing_info"])
+    else:
+        # Cap2 treats literal "unknown" value as supplied_unconfirmed (not is_gap);
+        # Brief still surfaces injury as unknown for broker scan.
+        assert brief["key_facts"]["injury_status"] == "unknown"
+
+
+def test_founder_qa_all_four_must_haves_present_optional_absent():
+    case = _claim_case()
+    # Optional photo / VIN / insurance card intentionally absent.
+    assert not (case.get("case_attachments") or [])
+    facts = case.get("known_facts") or {}
+    assert not facts.get("vin")
+    assert not facts.get("policy_or_insurance_card")
+    checklist = derive_missing_information_checklist(None, case=case)
+    must_gaps = [
+        i for i in checklist if i["business_class"] == BUSINESS_CLASS_MUST_HAVE and i["is_gap"]
+    ]
+    assert must_gaps == []
+    brief = build_claim_case_brief(case)
+    assert brief["can_accept_office_materials"] is True
+    # VIN / insurance remain Request More class — not Must Have blockers.
+    rm = [i for i in checklist if i["field_key"] in ("vin", "policy_or_insurance_card")]
+    assert all(i["business_class"] != BUSINESS_CLASS_MUST_HAVE for i in rm)
+
+
+@pytest.mark.parametrize("missing_key", sorted(CAP2_MUST_HAVE_OFFICE_KEYS))
+def test_founder_qa_one_must_have_missing_blocks_accept(missing_key):
+    facts = _complete_known_facts()
+    facts.pop(missing_key, None)
+    case = _claim_case(known_facts=facts)
+    assert office_materials_accept_eligible(case) is False
+    with pytest.raises(OfficeMaterialsAcceptError, match="must_have_gaps"):
+        accept_office_materials(case["case_id"])
+
+
+def test_founder_qa_accept_persists_after_reload_and_idempotent():
+    case = _claim_case()
+    first = accept_office_materials(case["case_id"])
+    stamp = first["office_materials_accepted_at"]
+    reloaded = get_case_by_id(case["case_id"])
+    assert reloaded is not None
+    assert reloaded.get("office_materials_accepted_at") == stamp
+    events = [
+        e
+        for e in (reloaded.get("claim_timeline") or [])
+        if e.get("event_type") == EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED
+    ]
+    assert len(events) == 1
+
+    again = accept_office_materials(case["case_id"])
+    assert again["already_accepted"] is True
+    reloaded2 = get_case_by_id(case["case_id"])
+    events2 = [
+        e
+        for e in (reloaded2.get("claim_timeline") or [])
+        if e.get("event_type") == EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED
+    ]
+    assert len(events2) == 1
+    assert reloaded2.get("claim_phase") != "broker_done"
+    assert not reloaded2.get("broker_confirmed_at")
+    assert not reloaded2.get("case_history_state")
+
+
+def test_founder_qa_closed_history_rejects_accept():
+    from services.fiqa_api.inbox_triage.case_close import close_case
+
+    case = _claim_case()
+    close_case(case["case_id"], actor="founder_qa")
+    with pytest.raises(OfficeMaterialsAcceptError, match="case_closed"):
+        accept_office_materials(case["case_id"])
+
+
+def test_founder_qa_request_more_still_available_after_office_accept():
+    """Office accept must not block Request More (Close/History remain separate)."""
+    from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+        InMemorySlice1Store,
+        P20Slice1CommandService,
+        STATE_BROKER_MORE_REQUESTED,
+    )
+
+    case = _claim_case()
+    accepted = accept_office_materials(case["case_id"])
+    stamp = accepted["office_materials_accepted_at"]
+    row = get_case_by_id(case["case_id"])
+    assert row is not None
+    assert row.get("office_materials_accepted_at") == stamp
+
+    store = InMemorySlice1Store({row["case_id"]: dict(row)})
+    svc = P20Slice1CommandService(store)
+    result = svc.accept_request_more(
+        case_id=row["case_id"],
+        broker_id="office:founder_qa",
+        command_id="cmd-hp-rm-1",
+        idempotency_key="idem-hp-rm-1",
+        expected_case_version=0,
+        requested_items=[
+            {
+                "request_item_id": "item_vin_hp",
+                "item_type": "vin",
+                "label": "VIN",
+                "instructions": "请补充 VIN",
+                "required": True,
+                "position": 1,
+            }
+        ],
+        reason="Need VIN after office accept",
+        request_id="req_hp_rm_1",
+    )
+    assert result["outcome"] == "accepted"
+    assert store.aggregates[row["case_id"]].workflow_state == STATE_BROKER_MORE_REQUESTED
+    # Stamp untouched; not Close / broker_done.
+    assert store.cases[row["case_id"]].get("office_materials_accepted_at") == stamp
+    assert store.cases[row["case_id"]].get("claim_phase") != "broker_done"
+    assert store.cases[row["case_id"]].get("case_history_state") != "history"
+
+
+# --- Happy Path Loop 2 — customer + broker office-processing presentation ---
+
+
+def test_loop2_office_processing_customer_copy_and_broker_label():
+    from services.fiqa_api.inbox_triage.claim_workbench_display import (
+        build_claim_display_status,
+    )
+    from services.fiqa_api.inbox_triage.constitution_projection import (
+        STAGE_WAITING_BROKER,
+        ConstitutionInputs,
+        build_constitution_projection,
+    )
+
+    case = _claim_case()
+    accept_office_materials(case["case_id"])
+    row = get_case_by_id(case["case_id"])
+    assert row is not None
+
+    assert build_claim_display_status(row) == "办公室处理中"
+
+    proj = build_constitution_projection(ConstitutionInputs(case=row))
+    customer = proj["customer"]
+    assert customer["office_materials_accepted"] is True
+    assert customer["office_processing"] is True
+    assert customer["current_stage"] == STAGE_WAITING_BROKER
+    assert customer["today"] == "先不用操作"
+    assert customer["why"] == "资料已齐，等待办公室处理"
+    assert customer["after"] == (
+        "办公室已收到您的资料，将继续处理。如需补充，我们会再通知您。"
+    )
+    assert not any(t.get("actionable") for t in (customer.get("tasks") or []))
+
+
+def test_loop2_open_request_more_overrides_office_processing():
+    from services.fiqa_api.inbox_triage.claim_workbench_display import (
+        build_claim_display_status,
+    )
+    from services.fiqa_api.inbox_triage.constitution_projection import (
+        STAGE_CUSTOMER_ACTION_NEEDED,
+        ConstitutionInputs,
+        build_constitution_projection,
+    )
+    from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+        InMemorySlice1Store,
+        P20Slice1CommandService,
+    )
+
+    case = _claim_case()
+    accept_office_materials(case["case_id"])
+    row = get_case_by_id(case["case_id"])
+    assert row is not None
+
+    store = InMemorySlice1Store({row["case_id"]: dict(row)})
+    svc = P20Slice1CommandService(store)
+    result = svc.accept_request_more(
+        case_id=row["case_id"],
+        broker_id="office:loop2",
+        command_id="cmd-hp-l2-rm",
+        idempotency_key="idem-hp-l2-rm",
+        expected_case_version=0,
+        requested_items=[
+            {
+                "request_item_id": "item_vin_l2",
+                "item_type": "vin",
+                "label": "VIN",
+                "instructions": "请补充 VIN",
+                "required": True,
+                "position": 1,
+            }
+        ],
+        reason="Need VIN",
+        request_id="req_hp_l2_rm",
+    )
+    assert result["outcome"] == "accepted"
+    updated = dict(store.cases[row["case_id"]])
+    updated["p20_slice1_projection"] = result["customer_projection"]
+
+    assert build_claim_display_status(updated) == "等待客户"
+
+    proj = build_constitution_projection(ConstitutionInputs(case=updated))
+    customer = proj["customer"]
+    assert customer["office_materials_accepted"] is True
+    assert customer["office_processing"] is False
+    assert customer["current_stage"] == STAGE_CUSTOMER_ACTION_NEEDED
+    assert customer["why"] != "资料已齐，等待办公室处理"
+    assert customer["today"] not in {"先不用操作", ""}

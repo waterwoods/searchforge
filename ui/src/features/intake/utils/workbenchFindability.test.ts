@@ -98,6 +98,28 @@ test('list action prefers broker_next_action_label', () => {
   assert.equal(resolveCurrentActionLabel(c), '等待办公室审核');
 });
 
+test('office-processing display_status wins queue label', () => {
+  const c = caseRow({
+    case_id: 'case_office',
+    display_status: '办公室处理中',
+    office_materials_accepted_at: '2026-07-31T18:00:00Z',
+    workbench_list: {
+      broker_next_action_label: '打开核对',
+    },
+  });
+  assert.equal(resolveCurrentActionLabel(c), '办公室处理中');
+});
+
+test('waiting client overrides office-processing stamp', () => {
+  const c = caseRow({
+    case_id: 'case_rm',
+    display_status: '办公室处理中',
+    waiting_on: 'client',
+    office_materials_accepted_at: '2026-07-31T18:00:00Z',
+  });
+  assert.equal(resolveCurrentActionLabel(c), '等待客户补充');
+});
+
 test('broker-confirmed name wins and phone last four remains available', () => {
   const c = caseRow({
     case_id: 'case_abc',
