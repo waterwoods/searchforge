@@ -612,6 +612,17 @@ def _resolve_injury_status(case: dict[str, Any]) -> InjuryStatus:
     stored = str(facts.get("injury_status") or "").strip().lower()
     if stored in ("yes", "no", "unknown"):
         return stored  # type: ignore[return-value]
+    # Broker QA/manual intake may carry the same Chinese yes/no values already
+    # accepted by the Claim workflow kernel. Reuse that normalizer so Cap2
+    # completeness and the Brief never disagree about a supplied Must Have.
+    if stored:
+        from services.fiqa_api.wecom.claim_state import normalize_claim_yes_no
+
+        normalized = normalize_claim_yes_no(stored)
+        if normalized in ("yes", "no"):
+            return normalized
+        if stored in ("未知", "不确定", "unsure"):
+            return "unknown"
     corpus = _scan_timeline_text(case)
     if not corpus:
         return "unknown"

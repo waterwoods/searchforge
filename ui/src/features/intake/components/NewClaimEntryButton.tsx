@@ -3,7 +3,7 @@
  * Must not imply a bound customer can open a second Active Case.
  */
 import { useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Form, Input, Modal, Space, message } from 'antd';
+import { Alert, Button, Checkbox, Form, Input, Modal, Select, Space, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { createClaimCase, getSavedCase, type SavedCase } from '@/api/inboxTriage';
 import { isQaToolsEnabled } from '@/config/productSurface';
@@ -151,7 +151,15 @@ export function NewClaimEntryButton({
             <Input placeholder="可选" maxLength={500} />
           </Form.Item>
           <Form.Item name="injury_status" label="是否有人受伤（是 / 否 / 未知）">
-            <Input placeholder="可选" maxLength={32} />
+            <Select
+              allowClear
+              placeholder="请选择"
+              options={[
+                { label: '是', value: 'yes' },
+                { label: '否', value: 'no' },
+                { label: '未知', value: 'unknown' },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="customer_name" label="Customer name (optional)">
             <Input placeholder="Optional — QA can use placeholder" maxLength={120} />

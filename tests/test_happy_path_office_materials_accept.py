@@ -124,6 +124,19 @@ def test_brief_suggests_ready_when_cap2_complete():
     assert office_materials_accept_eligible(case) is True
 
 
+def test_brief_normalizes_chinese_injury_value_without_completeness_contradiction():
+    facts = _complete_known_facts()
+    facts["injury_status"] = "否"
+    case = _claim_case(known_facts=facts)
+
+    brief = build_claim_case_brief(case)
+
+    assert brief["key_facts"]["injury_status"] == "no"
+    assert brief["can_accept_office_materials"] is True
+    assert not any(item.get("key") == "injury_status" for item in brief["missing_info"])
+    assert not any("还缺受伤情况" in item.get("label", "") for item in brief["highlights"])
+
+
 def test_brief_no_suggest_when_must_have_gap():
     case = _claim_case(
         known_facts={
