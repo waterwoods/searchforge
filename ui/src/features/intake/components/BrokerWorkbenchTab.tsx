@@ -34,6 +34,7 @@ import {
     WarningOutlined,
 } from '@ant-design/icons';
 import {
+    acceptOfficeMaterials,
     addSavedCaseNote,
     appendFollowUpMessage,
     confirmCaseByBroker,
@@ -203,6 +204,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     const [recentLoading, setRecentLoading] = useState(true);
     const [statusSaving, setStatusSaving] = useState(false);
     const [confirmSaving, setConfirmSaving] = useState(false);
+    const [acceptOfficeMaterialsSaving, setAcceptOfficeMaterialsSaving] = useState(false);
     const [noteSaving, setNoteSaving] = useState(false);
     const [followUpSaving, setFollowUpSaving] = useState(false);
     const [appendMessageDraft, setAppendMessageDraft] = useState('');
@@ -673,6 +675,35 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
             message.error(msg);
         } finally {
             setConfirmSaving(false);
+        }
+    };
+
+    const handleAcceptOfficeMaterials = async () => {
+        if (!currentCase?.case_id) return;
+        setAcceptOfficeMaterialsSaving(true);
+        try {
+            const updated = await acceptOfficeMaterials(currentCase.case_id);
+            setCurrentCase(updated);
+            setRecentCases((cases) =>
+                orderCasesForWorkbench([
+                    updated,
+                    ...cases.filter((item) => item.case_id !== updated.case_id),
+                ]),
+            );
+            if (updated.already_accepted) {
+                message.info('该案件此前已确认资料已齐');
+            } else {
+                message.success('已确认资料已齐，等待办公室处理');
+            }
+        } catch (e: unknown) {
+            const msg =
+                (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data
+                    ?.detail
+                ?? (e as { message?: string })?.message
+                ?? '无法确认资料已齐';
+            message.error(String(msg));
+        } finally {
+            setAcceptOfficeMaterialsSaving(false);
         }
     };
 
@@ -1691,6 +1722,8 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                         || currentCase.broker_next_step
                                         || null
                                     }
+                                    onAcceptOfficeMaterials={() => void handleAcceptOfficeMaterials()}
+                                    acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
                                 />
                             ) : currentCase.case_id ? (
                                 <BrokerCaseWorkspacePanel

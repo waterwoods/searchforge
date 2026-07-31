@@ -147,6 +147,10 @@ export type ClaimCaseBrief = {
     source_event_ids?: string[];
     brief_updated_at?: string;
     brief_version?: number;
+    /** Happy Path Loop 1 — Cap2 Must Have suggestion (null when not eligible). */
+    office_materials_ready_suggestion?: string | null;
+    can_accept_office_materials?: boolean;
+    office_materials_accepted_at?: string | null;
 };
 
 export type Slice1RequestItemType =
@@ -892,6 +896,8 @@ export interface SavedCase extends TriageResult {
      * Case. Immutable once set (mirrors formal_submitted_at).
      */
     broker_confirmed_at?: string | null;
+    /** Happy Path Loop 1 — broker accepted Cap2 Must Haves as office-ready. */
+    office_materials_accepted_at?: string | null;
 }
 
 /** Soft-route intent from quick-start button (add_car, remove_car, claim_intake, cancellation_warning, missing_document, talk_to_agent) */
@@ -1379,6 +1385,30 @@ export async function markClaimBrokerDone(
             end_card_send_reason?: string;
         }
     >(`/api/inbox/cases/${caseId}/broker-done`, {});
+    return response.data;
+}
+
+/**
+ * Happy Path Loop 1 — broker confirms Cap2 Must Haves are office-ready.
+ * Stamps office_materials_accepted_at + idempotent timeline event.
+ * Does not call broker_done / Done Card / Close.
+ */
+export async function acceptOfficeMaterials(
+    caseId: string,
+): Promise<
+    SavedCase & {
+        already_accepted?: boolean;
+        event_appended?: boolean;
+        office_materials_accepted_at?: string | null;
+    }
+> {
+    const response = await request.post<
+        SavedCase & {
+            already_accepted?: boolean;
+            event_appended?: boolean;
+            office_materials_accepted_at?: string | null;
+        }
+    >(`/api/inbox/cases/${caseId}/accept-office-materials`, {});
     return response.data;
 }
 

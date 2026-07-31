@@ -407,6 +407,13 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
         v = normalized.get("broker_confirmed_at")
         normalized["broker_confirmed_at"] = str(v).strip() if v else None
 
+    # Happy Path Loop 1 — Cap2 Must Have office-ready stamp (additive, nullable).
+    if "office_materials_accepted_at" not in normalized:
+        normalized["office_materials_accepted_at"] = None
+    else:
+        v = normalized.get("office_materials_accepted_at")
+        normalized["office_materials_accepted_at"] = str(v).strip() if v else None
+
     # Track B0.2/B0.3 — WeCom channel identity binding (contract §4.1). Narrow,
     # additive fields only; not used by the phone-based resolver.
     if "wecom_external_userid" not in normalized:
@@ -1531,6 +1538,10 @@ def _claim_timeline_is_duplicate(timeline: list[dict[str, Any]], event: dict[str
         for existing in timeline:
             if str(existing.get("event_type") or "").strip() == "broker_done":
                 return True
+    if event_type == "broker_office_materials_accepted":
+        for existing in timeline:
+            if str(existing.get("event_type") or "").strip() == "broker_office_materials_accepted":
+                return True
     return False
 
 
@@ -2090,6 +2101,120 @@ def update_claim_collision_pending(
 
 class ClaimBrokerDoneError(ValueError):
     """Raised when broker_done is blocked for this case (P19H-3f-2)."""
+
+
+class OfficeMaterialsAcceptError(ValueError):
+    """Raised when Happy Path office-materials accept is blocked."""
+
+
+def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
+    """Happy Path Loop 1 — broker confirms Cap2 Must Haves are office-ready.
+
+    Stamps ``office_materials_accepted_at`` and appends one idempotent
+    ``broker_office_materials_accepted`` timeline event.
+
+    Does **not** call broker_done, Done Card, Close, or History.
+    Completeness gate: Cap2 Must Have gaps only (``cap2_must_have_gaps_empty``).
+    """
+    from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
+    from services.fiqa_api.inbox_triage.p20_missing_information import (
+        EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED,
+        cap2_must_have_gaps_empty,
+    )
+    from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
+
+    cid = (case_id or "").strip()
+    if not cid:
+        return {
+            "outcome": "case_not_found",
+            "case": None,
+            "already_accepted": False,
+            "event_appended": False,
+        }
+
+    _require_case_storage_path()
+    case = _load_case_for_mutation(cid)
+    if case is None:
+        return {
+            "outcome": "case_not_found",
+            "case": None,
+            "already_accepted": False,
+            "event_appended": False,
+        }
+
+    lane = str(case.get("service_lane") or "").strip().lower()
+    if lane != SERVICE_LANE_CLAIM:
+        raise OfficeMaterialsAcceptError(
+            f"office_materials_accept_blocked_not_claim_lane:{lane or 'unknown'}"
+        )
+    if case_is_closed_history(case):
+        raise OfficeMaterialsAcceptError("office_materials_accept_blocked_case_closed")
+
+    already = str(case.get("office_materials_accepted_at") or "").strip()
+    if already:
+        return {
+            "outcome": "office_materials_accepted",
+            "case": case,
+            "already_accepted": True,
+            "event_appended": False,
+            "office_materials_accepted_at": already,
+        }
+
+    # Prefer live Cap2 checklist when available (same engine as Missing Information).
+    try:
+        from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
+            default_case_intake_service,
+        )
+
+        intake_projection = default_case_intake_service().fetch_projection(cid)
+        if isinstance(intake_projection, dict):
+            case["p20_case_intake_projection"] = intake_projection
+            case["missing_information_checklist"] = intake_projection.get(
+                "missing_information_checklist"
+            )
+    except Exception:
+        pass
+
+    if not cap2_must_have_gaps_empty(case):
+        raise OfficeMaterialsAcceptError("office_materials_accept_blocked_must_have_gaps")
+
+    now = _utc_now_iso()
+    case["office_materials_accepted_at"] = now
+    case["updated_at"] = now
+
+    timeline = _claim_timeline_from_case(case)
+    accept_event = build_claim_timeline_event(
+        event_type=EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED,
+        source_channel="workbench",
+        actor="broker",
+        text="资料已齐，等待办公室处理",
+        metadata={"source": (source or "workbench").strip() or "workbench"},
+        created_at=now,
+    )
+    event_appended = False
+    if not _claim_timeline_is_duplicate(timeline, accept_event):
+        timeline.append(accept_event)
+        case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
+        event_appended = True
+
+    if not _persist_case_after_update(cid, case):
+        return {
+            "outcome": "case_not_found",
+            "case": None,
+            "already_accepted": False,
+            "event_appended": False,
+        }
+
+    refreshed = _load_case_for_mutation(cid) or case
+    return {
+        "outcome": "office_materials_accepted",
+        "case": refreshed,
+        "already_accepted": False,
+        "event_appended": event_appended,
+        "office_materials_accepted_at": str(
+            refreshed.get("office_materials_accepted_at") or now
+        ).strip(),
+    }
 
 
 def _claim_end_card_state(case: dict[str, Any]) -> dict[str, Any]:

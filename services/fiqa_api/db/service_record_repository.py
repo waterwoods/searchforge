@@ -342,6 +342,9 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
     if "broker_confirmed_at" in extra:
         v = extra.get("broker_confirmed_at")
         case["broker_confirmed_at"] = str(v).strip() if v else None
+    if "office_materials_accepted_at" in extra:
+        v = extra.get("office_materials_accepted_at")
+        case["office_materials_accepted_at"] = str(v).strip() if v else None
     if isinstance(extra.get("claim_timeline"), list):
         case["claim_timeline"] = [e for e in extra.get("claim_timeline") or [] if isinstance(e, dict)]
     if isinstance(extra.get("claim_collision_pending"), dict):
@@ -406,6 +409,7 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "harness_cleanup_eligible",
         "exclude_from_production_metrics",
         "broker_confirmed_at",
+        "office_materials_accepted_at",
         "claim_mentioned_at",
         "claim_timeline",
         "claim_collision_pending",

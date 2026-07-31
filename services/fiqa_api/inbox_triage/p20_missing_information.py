@@ -308,6 +308,83 @@ def merge_fact_records(
     return merged
 
 
+# Happy Path Loop 1 — Cap2 Must Have keys that gate "资料已齐" (Business Contract).
+# Exactly the Cap2 must_have checklist fields; do not invent a parallel engine.
+CAP2_MUST_HAVE_OFFICE_KEYS: frozenset[str] = frozenset(
+    meta["field_key"]
+    for meta in CHECKLIST_FIELDS
+    if meta.get("business_class") == BUSINESS_CLASS_MUST_HAVE
+)
+
+OFFICE_MATERIALS_READY_SUGGESTION: str = "建议确认资料已齐"
+OFFICE_MATERIALS_ACCEPT_CTA: str = "确认资料已齐"
+EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED: str = "broker_office_materials_accepted"
+
+
+def _checklist_from_case(case: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    if not isinstance(case, dict):
+        return None
+    raw = case.get("missing_information_checklist")
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    for proj_key in ("p20_case_intake_projection", "case_intake_projection"):
+        proj = case.get(proj_key)
+        if not isinstance(proj, dict):
+            continue
+        nested = proj.get("missing_information_checklist")
+        if isinstance(nested, list):
+            return [item for item in nested if isinstance(item, dict)]
+    return None
+
+
+def cap2_must_have_gaps_empty(
+    case: dict[str, Any] | None = None,
+    *,
+    fact_records: dict[str, Any] | None = None,
+    checklist: list[dict[str, Any]] | None = None,
+) -> bool:
+    """True when Cap2 Must Have fields have no gaps — sole Happy Path completeness gate.
+
+    Uses ``derive_missing_information_checklist`` / Cap2 checklist rows only.
+    Does not consult claim_state CLAIM_REQUIRED_FIELDS or Brief legacy missing_info.
+    """
+    items = checklist if isinstance(checklist, list) else _checklist_from_case(case)
+    if items is None:
+        stored = fact_records
+        if stored is None and isinstance(case, dict):
+            raw_fr = case.get("fact_records")
+            stored = raw_fr if isinstance(raw_fr, dict) else None
+        items = derive_missing_information_checklist(stored, case=case)
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = _str(item.get("field_key"))
+        if key not in CAP2_MUST_HAVE_OFFICE_KEYS:
+            continue
+        business_class = _str(item.get("business_class")) or BUSINESS_CLASS_REQUEST_MORE
+        if business_class != BUSINESS_CLASS_MUST_HAVE:
+            continue
+        if fact_status_is_gap(item.get("status")):
+            return False
+    return True
+
+
+def office_materials_accept_eligible(case: dict[str, Any] | None) -> bool:
+    """Suggestion + CTA eligible: Cap2 Must Haves complete, not yet accepted, not History."""
+    if not isinstance(case, dict):
+        return False
+    if str(case.get("office_materials_accepted_at") or "").strip():
+        return False
+    try:
+        from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
+
+        if case_is_closed_history(case):
+            return False
+    except Exception:
+        pass
+    return cap2_must_have_gaps_empty(case)
+
+
 def derive_missing_information_checklist(
     fact_records: dict[str, Any] | None,
     *,

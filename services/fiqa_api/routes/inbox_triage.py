@@ -35,6 +35,8 @@ from services.fiqa_api.inbox_triage.case_store import (
     CASE_STATUS_VALUES,
     CASE_WAITING_ON_VALUES,
     ClaimBrokerDoneError,
+    OfficeMaterialsAcceptError,
+    accept_office_materials,
     add_attachment_to_case,
     add_case_note,
     append_follow_up_message,
@@ -2011,6 +2013,21 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
                 case["admin_lifecycle"] = intake_projection.get("admin_lifecycle")
             if intake_projection.get("is_test"):
                 case["workbench_test"] = True
+            # Rebuild Claim Brief after Cap2 checklist attach so Happy Path
+            # suggestion uses Cap2 Must Have gaps (sole completeness source).
+            if str(case.get("service_lane") or "").strip().lower() == "claim":
+                try:
+                    from services.fiqa_api.inbox_triage.claim_workbench_display import (
+                        build_claim_case_brief,
+                    )
+
+                    case["claim_case_brief"] = build_claim_case_brief(case)
+                except Exception as brief_exc:
+                    logger.warning(
+                        "Claim brief Cap2 refresh failed for case %s: %s",
+                        cid,
+                        brief_exc,
+                    )
     except Exception as exc:
         logger.warning("Case intake projection refresh failed for case %s: %s", cid, exc)
     try:
@@ -2526,6 +2543,56 @@ async def post_case_broker_done(case_id: str, http_request: Request) -> dict[str
     updated["end_card_send_skipped"] = result.get("send_skipped", True)
     if result.get("end_card_send_reason"):
         updated["end_card_send_reason"] = result.get("end_card_send_reason")
+    return updated
+
+
+@router.post("/cases/{case_id}/accept-office-materials")
+async def post_accept_office_materials(case_id: str, http_request: Request) -> dict[str, Any]:
+    """Happy Path Loop 1 — broker confirms Cap2 Must Haves are office-ready.
+
+    Stamps ``office_materials_accepted_at`` and one idempotent
+    ``broker_office_materials_accepted`` timeline event.
+
+    Does not invoke broker_done, Done Card, Close, or History.
+    """
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    try:
+        result = accept_office_materials(case_id, source="workbench")
+    except OfficeMaterialsAcceptError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result.get("outcome") == "case_not_found" or result.get("case") is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    updated = dict(result["case"])
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench([updated])
+        updated = enriched[0] if enriched else updated
+    except Exception:
+        pass
+    try:
+        from services.fiqa_api.inbox_triage.claim_workbench_display import build_claim_case_brief
+        from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
+            default_case_intake_service,
+        )
+
+        intake_projection = default_case_intake_service().fetch_projection(case_id)
+        if isinstance(intake_projection, dict):
+            updated["p20_case_intake_projection"] = intake_projection
+            updated["missing_information_checklist"] = intake_projection.get(
+                "missing_information_checklist"
+            )
+        updated["claim_case_brief"] = build_claim_case_brief(updated)
+    except Exception:
+        pass
+    updated["already_accepted"] = bool(result.get("already_accepted"))
+    updated["event_appended"] = bool(result.get("event_appended"))
+    updated["office_materials_accepted_at"] = result.get("office_materials_accepted_at") or updated.get(
+        "office_materials_accepted_at"
+    )
     return updated
 
 

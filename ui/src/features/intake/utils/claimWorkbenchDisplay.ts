@@ -148,6 +148,7 @@ const TIMELINE_TYPE_LABELS: Record<string, string> = {
   customer_voice_stub: '语音消息',
   basics_complete: '基本信息齐全',
   broker_done: '陈总已确认',
+  broker_office_materials_accepted: '资料已齐',
   evidence_uploaded: '已上传证据',
   evidence_received: '已收到证据',
   h5_step_complete: '客户已补充',

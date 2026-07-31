@@ -31,6 +31,7 @@ import {
   SearchOutlined,
 } from '@ant-design/icons';
 import {
+  acceptOfficeMaterials,
   confirmCaseByBroker,
   deleteTestCase,
   getSavedCase,
@@ -499,12 +500,14 @@ function BrokerCaseDetail({
   onDelete,
   onConfirm,
   onClaimBrokerDone,
+  onAcceptOfficeMaterials,
   onCaseChange,
   onRefreshCase,
   projectionLoading,
   projectionLoadError,
   confirmSaving,
   claimBrokerDoneSaving,
+  acceptOfficeMaterialsSaving,
   perfSession,
 }: {
   caseItem: SavedCase;
@@ -514,12 +517,14 @@ function BrokerCaseDetail({
   onDelete: () => void;
   onConfirm?: () => void;
   onClaimBrokerDone?: () => void;
+  onAcceptOfficeMaterials?: () => void;
   onCaseChange?: (updated: SavedCase) => void;
   onRefreshCase?: () => Promise<SavedCase | null>;
   projectionLoading?: boolean;
   projectionLoadError?: string | null;
   confirmSaving?: boolean;
   claimBrokerDoneSaving?: boolean;
+  acceptOfficeMaterialsSaving?: boolean;
   perfSession?: WorkbenchPerfSession | null;
 }) {
   const hasFullPacket = Boolean(blob?.packet && Object.keys(blob.packet).length > 0);
@@ -570,6 +575,8 @@ function BrokerCaseDetail({
           <ClaimCaseBriefPanel
             brief={caseItem.claim_case_brief}
             timeline={caseItem.claim_timeline}
+            onAcceptOfficeMaterials={onAcceptOfficeMaterials}
+            acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
           />
         ) : null}
 
@@ -712,6 +719,8 @@ function BrokerCaseDetail({
         <ClaimCaseBriefPanel
           brief={caseItem.claim_case_brief}
           timeline={caseItem.claim_timeline}
+          onAcceptOfficeMaterials={onAcceptOfficeMaterials}
+          acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
         />
       ) : null}
       <MissingInformationChecklistPanel
@@ -882,6 +891,7 @@ export default function DocumentIntakeInboxPage() {
   const [drawerPerfSession, setDrawerPerfSession] = useState<WorkbenchPerfSession | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
+  const [acceptOfficeMaterialsSaving, setAcceptOfficeMaterialsSaving] = useState(false);
   const [claimBrokerDoneSaving, setClaimBrokerDoneSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<WorkbenchStatusFilter>('all');
@@ -1036,6 +1046,28 @@ export default function DocumentIntakeInboxPage() {
       messageApi.error('无法标记陈总确认');
     } finally {
       setClaimBrokerDoneSaving(false);
+    }
+  };
+
+  const handleAcceptOfficeMaterials = async () => {
+    if (!detail?.case_id) return;
+    setAcceptOfficeMaterialsSaving(true);
+    try {
+      const updated = await acceptOfficeMaterials(detail.case_id);
+      syncDrawerCase(updated);
+      if (updated.already_accepted) {
+        messageApi.info('该案件此前已确认资料已齐');
+      } else {
+        messageApi.success('已确认资料已齐，等待办公室处理');
+      }
+      await loadQueue();
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? '无法确认资料已齐';
+      messageApi.error(String(msg));
+    } finally {
+      setAcceptOfficeMaterialsSaving(false);
     }
   };
 
@@ -1320,12 +1352,14 @@ export default function DocumentIntakeInboxPage() {
             onDelete={() => confirmDeleteCase(detail.case_id)}
             onConfirm={() => void handleConfirmCase()}
             onClaimBrokerDone={() => void handleClaimBrokerDone()}
+            onAcceptOfficeMaterials={() => void handleAcceptOfficeMaterials()}
               onCaseChange={syncDrawerCase}
               onRefreshCase={refreshDrawerCase}
               projectionLoading={drawerLoadPresentation.projectionLoading}
               projectionLoadError={detailLoadError}
             confirmSaving={confirmSaving}
             claimBrokerDoneSaving={claimBrokerDoneSaving}
+            acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
           />
           </>
         ) : drawerLoadPresentation.showSkeleton ? (

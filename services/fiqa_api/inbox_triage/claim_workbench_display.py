@@ -945,6 +945,18 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
             "该客户有多份未完成事故记录；系统已按最近活跃事故继续整理，请核对是否重复。",
         )
 
+    # Happy Path Loop 1 — Cap2 Must Have gaps are the only completeness source.
+    from services.fiqa_api.inbox_triage.p20_missing_information import (
+        OFFICE_MATERIALS_READY_SUGGESTION,
+        office_materials_accept_eligible,
+    )
+
+    accepted_at = _str_or_none(case.get("office_materials_accepted_at"))
+    can_accept = office_materials_accept_eligible(case)
+    office_suggestion = OFFICE_MATERIALS_READY_SUGGESTION if can_accept else None
+    if can_accept:
+        next_question = OFFICE_MATERIALS_READY_SUGGESTION
+
     return {
         "summary": _build_brief_summary(case, key_facts=key_facts, photo_count=photo_count),
         "customer": {
@@ -970,6 +982,9 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
         "source_event_ids": _source_event_ids(case),
         "brief_updated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "brief_version": 1,
+        "office_materials_ready_suggestion": office_suggestion,
+        "can_accept_office_materials": can_accept,
+        "office_materials_accepted_at": accepted_at,
     }
 
 
@@ -990,6 +1005,9 @@ def enrich_claim_for_workbench(case: dict[str, Any]) -> dict[str, Any]:
     row["claim_evidence_summary"] = build_claim_evidence_summary(case)
     row["claim_timeline"] = _claim_timeline_events(case)
     row["claim_case_brief"] = build_claim_case_brief(case)
+    accepted_at = _str_or_none(case.get("office_materials_accepted_at"))
+    if accepted_at:
+        row["office_materials_accepted_at"] = accepted_at
     slice1_projection = case.get("p20_slice1_projection")
     if isinstance(slice1_projection, dict):
         row["slice1_projection"] = dict(slice1_projection)
