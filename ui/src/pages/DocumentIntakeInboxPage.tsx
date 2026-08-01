@@ -32,6 +32,7 @@ import {
 } from '@ant-design/icons';
 import {
   acceptOfficeMaterials,
+  acknowledgeSupplementReview,
   confirmCaseByBroker,
   deleteTestCase,
   getSavedCase,
@@ -40,6 +41,7 @@ import {
   patchCaseWorkbench,
   type SavedCase,
 } from '@/api/inboxTriage';
+import { resolveClaimPrimaryStatus } from '@/features/intake/utils/claimPrimaryStatus';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
 import { BrokerHeader } from '@/features/intake/components/BrokerHeader';
 import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmentsPanel';
@@ -501,6 +503,7 @@ function BrokerCaseDetail({
   onConfirm,
   onClaimBrokerDone,
   onAcceptOfficeMaterials,
+  onAcknowledgeSupplementReview,
   onCaseChange,
   onRefreshCase,
   projectionLoading,
@@ -508,6 +511,7 @@ function BrokerCaseDetail({
   confirmSaving,
   claimBrokerDoneSaving,
   acceptOfficeMaterialsSaving,
+  acknowledgeSupplementReviewSaving,
   perfSession,
 }: {
   caseItem: SavedCase;
@@ -518,6 +522,7 @@ function BrokerCaseDetail({
   onConfirm?: () => void;
   onClaimBrokerDone?: () => void;
   onAcceptOfficeMaterials?: () => void;
+  onAcknowledgeSupplementReview?: () => void;
   onCaseChange?: (updated: SavedCase) => void;
   onRefreshCase?: () => Promise<SavedCase | null>;
   projectionLoading?: boolean;
@@ -525,6 +530,7 @@ function BrokerCaseDetail({
   confirmSaving?: boolean;
   claimBrokerDoneSaving?: boolean;
   acceptOfficeMaterialsSaving?: boolean;
+  acknowledgeSupplementReviewSaving?: boolean;
   perfSession?: WorkbenchPerfSession | null;
 }) {
   const hasFullPacket = Boolean(blob?.packet && Object.keys(blob.packet).length > 0);
@@ -532,9 +538,13 @@ function BrokerCaseDetail({
   const missingFields = caseItem.still_needed_fields ?? [];
   const knownFacts = caseItem.known_facts ?? {};
   const closedHistory = isCaseClosedHistory(caseItem);
+  const waitingOfficeReview =
+    isClaimGuidedCase(caseItem)
+    && resolveClaimPrimaryStatus(caseItem).key === 'waiting_office_review';
   const showConfirm = !closedHistory && isAddCarReadyForBroker(caseItem) && !caseItem.broker_confirmed_at;
   const showClaimBrokerDone =
     !closedHistory
+    && !waitingOfficeReview
     && isClaimGuidedCase(caseItem)
     && !isClaimBrokerDone(caseItem)
     && Boolean(onClaimBrokerDone);
@@ -578,6 +588,8 @@ function BrokerCaseDetail({
             caseRecord={caseItem}
             onAcceptOfficeMaterials={onAcceptOfficeMaterials}
             acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
+            onAcknowledgeSupplementReview={onAcknowledgeSupplementReview}
+            acknowledgeSupplementReviewSaving={acknowledgeSupplementReviewSaving}
           />
         ) : null}
 
@@ -680,10 +692,14 @@ function BrokerCaseDetail({
             Copy Report (partial)
           </Button>
         ) : null}
-        <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
-        <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
-          删除测试案件
-        </Button>
+        {!waitingOfficeReview ? (
+          <>
+            <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
+            <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
+              删除测试案件
+            </Button>
+          </>
+        ) : null}
       </div>
     );
   }
@@ -723,6 +739,8 @@ function BrokerCaseDetail({
           caseRecord={caseItem}
           onAcceptOfficeMaterials={onAcceptOfficeMaterials}
           acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
+          onAcknowledgeSupplementReview={onAcknowledgeSupplementReview}
+          acknowledgeSupplementReviewSaving={acknowledgeSupplementReviewSaving}
         />
       ) : null}
       <MissingInformationChecklistPanel
@@ -860,10 +878,14 @@ function BrokerCaseDetail({
             Copy Portal Format
           </Button>
         ) : null}
-        <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
-        <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
-          删除测试案件
-        </Button>
+        {!waitingOfficeReview ? (
+          <>
+            <CloseCaseButton caseRecord={caseItem} onClosed={(updated) => onCaseChange?.(updated)} block />
+            <Button danger icon={<DeleteOutlined />} onClick={onDelete} block style={{ marginTop: 8 }}>
+              删除测试案件
+            </Button>
+          </>
+        ) : null}
       </Space>
     </div>
   );
@@ -894,6 +916,7 @@ export default function DocumentIntakeInboxPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [acceptOfficeMaterialsSaving, setAcceptOfficeMaterialsSaving] = useState(false);
+  const [acknowledgeSupplementReviewSaving, setAcknowledgeSupplementReviewSaving] = useState(false);
   const [claimBrokerDoneSaving, setClaimBrokerDoneSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<WorkbenchStatusFilter>('all');
@@ -1070,6 +1093,28 @@ export default function DocumentIntakeInboxPage() {
       messageApi.error(String(msg));
     } finally {
       setAcceptOfficeMaterialsSaving(false);
+    }
+  };
+
+  const handleAcknowledgeSupplementReview = async () => {
+    if (!detail?.case_id) return;
+    setAcknowledgeSupplementReviewSaving(true);
+    try {
+      const updated = await acknowledgeSupplementReview(detail.case_id);
+      syncDrawerCase(updated);
+      if (updated.already_acknowledged) {
+        messageApi.info('该补充资料此前已核对');
+      } else {
+        messageApi.success('已核对补充资料');
+      }
+      await loadQueue();
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? '无法核对补充资料';
+      messageApi.error(String(msg));
+    } finally {
+      setAcknowledgeSupplementReviewSaving(false);
     }
   };
 
@@ -1355,6 +1400,7 @@ export default function DocumentIntakeInboxPage() {
             onConfirm={() => void handleConfirmCase()}
             onClaimBrokerDone={() => void handleClaimBrokerDone()}
             onAcceptOfficeMaterials={() => void handleAcceptOfficeMaterials()}
+            onAcknowledgeSupplementReview={() => void handleAcknowledgeSupplementReview()}
               onCaseChange={syncDrawerCase}
               onRefreshCase={refreshDrawerCase}
               projectionLoading={drawerLoadPresentation.projectionLoading}
@@ -1362,6 +1408,7 @@ export default function DocumentIntakeInboxPage() {
             confirmSaving={confirmSaving}
             claimBrokerDoneSaving={claimBrokerDoneSaving}
             acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
+            acknowledgeSupplementReviewSaving={acknowledgeSupplementReviewSaving}
           />
           </>
         ) : drawerLoadPresentation.showSkeleton ? (

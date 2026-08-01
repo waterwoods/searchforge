@@ -35,6 +35,7 @@ import {
 } from '@ant-design/icons';
 import {
     acceptOfficeMaterials,
+    acknowledgeSupplementReview,
     addSavedCaseNote,
     appendFollowUpMessage,
     confirmCaseByBroker,
@@ -133,6 +134,7 @@ import { CaseAttachmentsPanel } from '@/features/intake/components/CaseAttachmen
 import { StructuredRequestMorePanel } from '@/features/intake/components/StructuredRequestMorePanel';
 import { CloseCaseButton, ClosedHistoryBadge } from '@/features/intake/components/CloseCaseButton';
 import { isCaseClosedHistory } from '@/features/intake/utils/caseLifecycle';
+import { resolveClaimPrimaryStatus } from '@/features/intake/utils/claimPrimaryStatus';
 import { addCarNextOwnerLine } from '@/components/intake/AddCarRecordSummaryRail';
 
 const { TextArea } = Input;
@@ -205,6 +207,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
     const [statusSaving, setStatusSaving] = useState(false);
     const [confirmSaving, setConfirmSaving] = useState(false);
     const [acceptOfficeMaterialsSaving, setAcceptOfficeMaterialsSaving] = useState(false);
+    const [acknowledgeSupplementReviewSaving, setAcknowledgeSupplementReviewSaving] = useState(false);
     const [noteSaving, setNoteSaving] = useState(false);
     const [followUpSaving, setFollowUpSaving] = useState(false);
     const [appendMessageDraft, setAppendMessageDraft] = useState('');
@@ -704,6 +707,35 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
             message.error(String(msg));
         } finally {
             setAcceptOfficeMaterialsSaving(false);
+        }
+    };
+
+    const handleAcknowledgeSupplementReview = async () => {
+        if (!currentCase?.case_id) return;
+        setAcknowledgeSupplementReviewSaving(true);
+        try {
+            const updated = await acknowledgeSupplementReview(currentCase.case_id);
+            setCurrentCase(updated);
+            setRecentCases((cases) =>
+                orderCasesForWorkbench([
+                    updated,
+                    ...cases.filter((item) => item.case_id !== updated.case_id),
+                ]),
+            );
+            if (updated.already_acknowledged) {
+                message.info('该补充资料此前已核对');
+            } else {
+                message.success('已核对补充资料');
+            }
+        } catch (e: unknown) {
+            const msg =
+                (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data
+                    ?.detail
+                ?? (e as { message?: string })?.message
+                ?? '无法核对补充资料';
+            message.error(String(msg));
+        } finally {
+            setAcknowledgeSupplementReviewSaving(false);
         }
     };
 
@@ -1655,6 +1687,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                         </Button>
                                     </Dropdown>
                                 )}
+                                {resolveClaimPrimaryStatus(currentCase).key !== 'waiting_office_review' ? (
                                 <CloseCaseButton
                                     caseRecord={currentCase}
                                     onClosed={(updated) => {
@@ -1667,6 +1700,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                         );
                                     }}
                                 />
+                                ) : null}
                                 {!productOnlyUi && (
                                 <Button
                                     icon={<CopyOutlined />}
@@ -1725,6 +1759,8 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                                     }
                                     onAcceptOfficeMaterials={() => void handleAcceptOfficeMaterials()}
                                     acceptOfficeMaterialsSaving={acceptOfficeMaterialsSaving}
+                                    onAcknowledgeSupplementReview={() => void handleAcknowledgeSupplementReview()}
+                                    acknowledgeSupplementReviewSaving={acknowledgeSupplementReviewSaving}
                                 />
                             ) : currentCase.case_id ? (
                                 <BrokerCaseWorkspacePanel

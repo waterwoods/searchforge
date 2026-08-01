@@ -29,6 +29,9 @@ export type ClaimCaseBriefPanelProps = {
   /** Happy Path Loop 1 — broker accepts Cap2 Must Haves as office-ready. */
   onAcceptOfficeMaterials?: () => void;
   acceptOfficeMaterialsSaving?: boolean;
+  /** After Request More submit — broker acks supplement review. */
+  onAcknowledgeSupplementReview?: () => void;
+  acknowledgeSupplementReviewSaving?: boolean;
 };
 
 function severityColor(severity: string): string {
@@ -73,6 +76,8 @@ export function ClaimCaseBriefPanel({
   nextAction,
   onAcceptOfficeMaterials,
   acceptOfficeMaterialsSaving,
+  onAcknowledgeSupplementReview,
+  acknowledgeSupplementReviewSaving,
 }: ClaimCaseBriefPanelProps) {
   const brief = resolveClaimCaseBrief(briefProp);
   if (!brief) {
@@ -107,6 +112,10 @@ export function ClaimCaseBriefPanel({
     && onAcceptOfficeMaterials
     && (!primary || primary.key === 'suggest_accept'),
   );
+  const canAckSupplement = Boolean(
+    onAcknowledgeSupplementReview
+    && primary?.key === 'waiting_office_review',
+  );
   const suggestion =
     String(brief.office_materials_ready_suggestion || '').trim()
     || CLAIM_PRIMARY_STATUS.suggestAccept;
@@ -114,6 +123,7 @@ export function ClaimCaseBriefPanel({
   const showOfficeProcessingBanner = Boolean(
     acceptedAt
     && !canAccept
+    && !canAckSupplement
     && (!primary || primary.key === 'office_processing'),
   );
   // Cap2-ready / office-accepted: optional gaps must not read as「资料不齐」.
@@ -167,6 +177,35 @@ export function ClaimCaseBriefPanel({
     >
       <Paragraph style={{ fontSize: 14, marginBottom: 12 }}>{brief.summary}</Paragraph>
 
+      {canAckSupplement ? (
+        <div
+          data-testid="supplement-review-ack-banner"
+          style={{
+            marginBottom: 12,
+            padding: '12px 14px',
+            background: '#fff7e6',
+            border: '1px solid #ffd591',
+            borderRadius: 8,
+          }}
+        >
+          <Text strong style={{ display: 'block', fontSize: 14, color: '#ad6800', marginBottom: 4 }}>
+            {CLAIM_PRIMARY_STATUS.waitingOfficeReview}
+          </Text>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 10 }}>
+            客户已提交补充资料。核对后继续下一步；不会结束案件。
+          </Text>
+          <Button
+            type="primary"
+            size="middle"
+            icon={<CheckCircleOutlined />}
+            loading={Boolean(acknowledgeSupplementReviewSaving)}
+            onClick={() => onAcknowledgeSupplementReview?.()}
+            block
+          >
+            已核对补充资料
+          </Button>
+        </div>
+      ) : null}
       {canAccept ? (
         <div
           data-testid="office-materials-accept-banner"

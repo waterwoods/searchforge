@@ -67,9 +67,20 @@ export function hasActiveUnresolvedRequestMore(caseItem: SavedCase): boolean {
   return false;
 }
 
+/** Broker clicked「已核对补充资料」— one idempotent timeline stamp. */
+export function hasBrokerSupplementReviewed(caseItem: SavedCase): boolean {
+  const timeline = caseItem.claim_timeline || [];
+  return timeline.some(
+    (event) => String(event.event_type || '').trim() === 'broker_supplement_reviewed',
+  );
+}
+
 /**
  * Request More items were submitted; broker has not finished review.
  * Must beat Cap2-complete「建议确认资料已齐」so queue/header/Brief agree.
+ *
+ * After「已核对补充资料」, Slice1 leaves broker_review_ready — do not keep
+ * trapping on satisfied open_request progress alone.
  */
 export function hasRequestMoreAwaitingOfficeReview(caseItem: SavedCase): boolean {
   if (hasActiveUnresolvedRequestMore(caseItem)) return false;
@@ -77,6 +88,8 @@ export function hasRequestMoreAwaitingOfficeReview(caseItem: SavedCase): boolean
   const slice1 = slice1Of(caseItem);
   const ws = slice1WorkflowState(caseItem);
   if (ws === 'broker_review_ready') return true;
+  // Post-ack Slice1 state — Cap2 suggest-accept / missing step may take over.
+  if (ws === 'broker_reviewing') return false;
 
   const brokerAction = slice1?.broker_next_action;
   const actionType = String(brokerAction?.action_type || '').trim().toLowerCase();
@@ -84,6 +97,9 @@ export function hasRequestMoreAwaitingOfficeReview(caseItem: SavedCase): boolean
   if (actionType === 'review_customer_response' || actionStatus === 'review_ready') {
     return true;
   }
+
+  // Ack stamp clears stale access / progress heuristics until a new review-ready cycle.
+  if (hasBrokerSupplementReviewed(caseItem)) return false;
 
   const access = caseItem.customer_access || caseItem.p20_case_intake_projection?.customer_access;
   if (String(access?.simple_status || '').toLowerCase().includes('ready for review')) {
@@ -94,11 +110,16 @@ export function hasRequestMoreAwaitingOfficeReview(caseItem: SavedCase): boolean
   if (openRequest) {
     const total = openRequest.progress?.total ?? 0;
     const satisfied = openRequest.progress?.satisfied ?? 0;
-    if (total > 0 && satisfied >= total) return true;
+    // Only when Slice1 state is unknown — never after explicit broker_reviewing.
+    if (!ws && total > 0 && satisfied >= total) return true;
   }
 
   const waiting = String(caseItem.waiting_on || '').trim().toLowerCase();
-  if (waiting === 'broker' && Boolean(openRequest || access?.request_sent || access?.access_ready)) {
+  if (
+    !ws
+    && waiting === 'broker'
+    && Boolean(openRequest || access?.request_sent || access?.access_ready)
+  ) {
     return true;
   }
 

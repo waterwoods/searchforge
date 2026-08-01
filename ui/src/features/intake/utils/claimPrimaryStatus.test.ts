@@ -216,4 +216,65 @@ test('closed / history is terminal primary', () => {
   assert.equal(primary.label, CLAIM_PRIMARY_STATUS.closed);
 });
 
+test('8. After supplement ack + Cap2 complete → 建议确认资料已齐', () => {
+  const c = claimCase({
+    case_id: 'case_acked_cap2',
+    known_facts: CAP2_FACTS,
+    claim_case_brief: {
+      can_accept_office_materials: true,
+      office_materials_ready_suggestion: '建议确认资料已齐',
+    },
+    claim_timeline: [
+      { event_type: 'broker_supplement_reviewed', text: '已核对补充资料' },
+    ],
+    p20_slice1_projection: {
+      workflow_state: 'broker_reviewing',
+      broker_next_action: { action_type: 'create_request', status: 'reviewing' },
+      open_request: {
+        progress: { total: 1, satisfied: 1 },
+        items: [{ status: 'satisfied', item_type: 'vin', label: 'VIN' }],
+      },
+    } as SavedCase['p20_slice1_projection'],
+  });
+  const primary = resolveClaimPrimaryStatus(c);
+  assert.equal(primary.key, 'suggest_accept');
+  assert.equal(primary.label, CLAIM_PRIMARY_STATUS.suggestAccept);
+  assert.equal(resolveCurrentActionLabel(c), CLAIM_PRIMARY_STATUS.suggestAccept);
+  assert.notEqual(primary.key, 'waiting_office_review');
+});
+
+test('9. After supplement ack + Cap2 gaps → genuine missing step', () => {
+  const c = claimCase({
+    case_id: 'case_acked_gap',
+    known_facts: {
+      accident_description: '刮蹭',
+      accident_datetime: '今天',
+    },
+    claim_case_brief: {
+      can_accept_office_materials: false,
+      next_best_question: '请补充：事故地点、是否有人受伤',
+      missing_info: [
+        { key: 'accident_location', label: '事故地点', severity: 'critical' },
+        { key: 'injury_status', label: '是否有人受伤', severity: 'critical' },
+      ],
+    },
+    claim_timeline: [
+      { event_type: 'broker_supplement_reviewed', text: '已核对补充资料' },
+    ],
+    p20_slice1_projection: {
+      workflow_state: 'broker_reviewing',
+      broker_next_action: { action_type: 'create_request', status: 'reviewing' },
+      open_request: {
+        progress: { total: 1, satisfied: 1 },
+        items: [{ status: 'satisfied', item_type: 'vin', label: 'VIN' }],
+      },
+    } as SavedCase['p20_slice1_projection'],
+  });
+  const primary = resolveClaimPrimaryStatus(c);
+  assert.equal(primary.key, 'collect_missing');
+  assert.equal(primary.label.includes('事故地点') || primary.label.includes('受伤'), true);
+  assert.notEqual(primary.key, 'waiting_office_review');
+  assert.notEqual(primary.label, CLAIM_PRIMARY_STATUS.suggestAccept);
+});
+
 console.log('claimPrimaryStatus.test.ts: all assertions queued under node:test');

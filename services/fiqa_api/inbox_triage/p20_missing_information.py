@@ -319,6 +319,7 @@ CAP2_MUST_HAVE_OFFICE_KEYS: frozenset[str] = frozenset(
 OFFICE_MATERIALS_READY_SUGGESTION: str = "建议确认资料已齐"
 OFFICE_MATERIALS_ACCEPT_CTA: str = "确认资料已齐"
 EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED: str = "broker_office_materials_accepted"
+EVENT_BROKER_SUPPLEMENT_REVIEWED: str = "broker_supplement_reviewed"
 
 
 def _checklist_from_case(case: dict[str, Any] | None) -> list[dict[str, Any]] | None:

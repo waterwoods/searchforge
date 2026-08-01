@@ -1542,6 +1542,10 @@ def _claim_timeline_is_duplicate(timeline: list[dict[str, Any]], event: dict[str
         for existing in timeline:
             if str(existing.get("event_type") or "").strip() == "broker_office_materials_accepted":
                 return True
+    if event_type == "broker_supplement_reviewed":
+        for existing in timeline:
+            if str(existing.get("event_type") or "").strip() == "broker_supplement_reviewed":
+                return True
     return False
 
 

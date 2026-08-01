@@ -1412,6 +1412,28 @@ export async function acceptOfficeMaterials(
     return response.data;
 }
 
+/**
+ * Broker ack after customer supplement — exit broker_review_ready.
+ * Appends one idempotent broker_supplement_reviewed timeline event.
+ * Does not set broker_done / office_materials_accepted_at / Close.
+ */
+export async function acknowledgeSupplementReview(
+    caseId: string,
+): Promise<
+    SavedCase & {
+        already_acknowledged?: boolean;
+        event_appended?: boolean;
+    }
+> {
+    const response = await request.post<
+        SavedCase & {
+            already_acknowledged?: boolean;
+            event_appended?: boolean;
+        }
+    >(`/api/inbox/cases/${caseId}/acknowledge-supplement-review`, {});
+    return response.data;
+}
+
 export async function addSavedCaseNote(caseId: string, note: string): Promise<SavedCase> {
     const response = await request.post<SavedCase>(`/api/inbox/cases/${caseId}/notes`, {
         note: note.trim(),

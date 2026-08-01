@@ -229,11 +229,22 @@ export function resolveAccessReviewState(
     openRequest?.progress?.satisfied
     ?? access?.progress?.satisfied_count
     ?? 0;
+  const ws = String(slice1Projection?.workflow_state || '').trim().toLowerCase();
+  // After「已核对补充资料」, leave waiting-office-review chrome.
   const reviewReady =
-    slice1Projection?.workflow_state === 'broker_review_ready'
-    || slice1Projection?.broker_next_action?.action_type === 'review_customer_response'
-    || String(access?.simple_status || '').toLowerCase().includes('ready for review')
-    || (total > 0 && satisfied >= total);
+    ws !== 'broker_reviewing'
+    && (
+      ws === 'broker_review_ready'
+      || slice1Projection?.broker_next_action?.action_type === 'review_customer_response'
+      || slice1Projection?.broker_next_action?.status === 'review_ready'
+      || (
+        !ws
+        && (
+          String(access?.simple_status || '').toLowerCase().includes('ready for review')
+          || (total > 0 && satisfied >= total)
+        )
+      )
+    );
 
   let submittedVin: string | null = null;
   for (const item of openRequest?.items || []) {

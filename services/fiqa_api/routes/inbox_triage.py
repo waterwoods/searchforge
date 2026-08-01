@@ -18,6 +18,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -2593,6 +2594,81 @@ async def post_accept_office_materials(case_id: str, http_request: Request) -> d
     updated["office_materials_accepted_at"] = result.get("office_materials_accepted_at") or updated.get(
         "office_materials_accepted_at"
     )
+    return updated
+
+
+@router.post("/cases/{case_id}/acknowledge-supplement-review")
+async def post_acknowledge_supplement_review(
+    case_id: str, http_request: Request
+) -> dict[str, Any]:
+    """Broker ack after customer supplement — exit broker_review_ready.
+
+    Appends one idempotent ``broker_supplement_reviewed`` timeline event.
+    Does not set broker_done, office_materials_accepted_at, Close, or History.
+    """
+    from services.fiqa_api.inbox_triage.case_store import get_case_by_id
+
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    broker_identity = _broker_actor_identity(http_request)
+    command_id = f"ack-supp-{uuid.uuid4().hex[:16]}"
+    # Stable per-case key so UI double-clicks replay instead of re-commanding.
+    idempotency_key = f"ack-supplement-review:{case_id}"
+    try:
+        result = default_slice1_service().acknowledge_supplement_review(
+            case_id=case_id,
+            broker_id=broker_identity,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            source="workbench",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    outcome = str(result.get("outcome") or "")
+    if outcome == "conflict":
+        raise HTTPException(status_code=409, detail=result)
+    if outcome not in {"accepted", "replayed"}:
+        raise HTTPException(status_code=422, detail=result)
+
+    updated = get_case_by_id(case_id) or get_case_for_read(case_id) or dict(row)
+    projection = (
+        result.get("broker_projection")
+        or result.get("customer_projection")
+        or result.get("projection")
+    )
+    if isinstance(projection, dict):
+        updated = dict(updated)
+        updated["p20_slice1_projection"] = projection
+        updated["slice1_projection"] = projection
+    try:
+        from services.fiqa_api.inbox_triage.workbench_enrichment import enrich_cases_for_workbench
+
+        enriched = enrich_cases_for_workbench([updated])
+        updated = enriched[0] if enriched else updated
+    except Exception:
+        pass
+    try:
+        from services.fiqa_api.inbox_triage.claim_workbench_display import build_claim_case_brief
+        from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
+            default_case_intake_service,
+        )
+
+        intake_projection = default_case_intake_service().fetch_projection(case_id)
+        if isinstance(intake_projection, dict):
+            updated["p20_case_intake_projection"] = intake_projection
+            updated["missing_information_checklist"] = intake_projection.get(
+                "missing_information_checklist"
+            )
+        updated["claim_case_brief"] = build_claim_case_brief(updated)
+    except Exception:
+        pass
+    updated["already_acknowledged"] = bool(result.get("already_acknowledged")) or outcome == "replayed"
+    updated["event_appended"] = bool(result.get("event_appended"))
     return updated
 
 

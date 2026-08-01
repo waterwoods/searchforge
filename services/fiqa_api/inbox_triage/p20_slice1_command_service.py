@@ -692,10 +692,15 @@ def _legacy_projection_patch(projection: dict[str, Any]) -> dict[str, Any]:
     if state == STATE_BROKER_REVIEW_READY:
         claim_phase = CLAIM_PHASE_INTAKE_READY_FOR_BROKER
         guided = GUIDED_STATE_READY_FOR_BROKER_REVIEW
+    elif state == STATE_BROKER_REVIEWING:
+        # Post supplement-review ack — broker owns the case again; not "needs more".
+        claim_phase = CLAIM_PHASE_BROKER_REVIEW
+        guided = GUIDED_STATE_READY_FOR_BROKER_REVIEW
     request = projection.get("open_request") if isinstance(projection.get("open_request"), dict) else None
     return {
         "slice1_capability_version": SLICE1_CAPABILITY_VERSION,
         "p20_slice1_projection": projection,
+        "slice1_projection": projection,
         "claim_phase": claim_phase,
         "guided_workflow_state": guided,
         "broker_next_step": (projection.get("broker_next_action") or {}).get("status") or "",
@@ -1509,6 +1514,231 @@ class P20Slice1CommandService:
             handler=_handle,
         )
         _log_command_outcome(command_type="customer_request_item_submit", case_id=case_id, result=result)
+        return result
+
+    def acknowledge_supplement_review(
+        self,
+        *,
+        case_id: str,
+        broker_id: str,
+        command_id: str,
+        idempotency_key: str,
+        correlation_id: str | None = None,
+        source: str = "workbench",
+    ) -> dict[str, Any]:
+        """Broker ack after customer supplement — exit broker_review_ready.
+
+        Does not set broker_done, office_materials_accepted_at, Close, or History.
+        Appends one idempotent claim_timeline event ``broker_supplement_reviewed``.
+        """
+        from services.fiqa_api.inbox_triage.case_close import (
+            ERROR_CASE_CLOSED_READ_ONLY,
+            case_is_closed_history,
+        )
+        from services.fiqa_api.inbox_triage.case_store import (
+            _claim_timeline_from_case,
+            _claim_timeline_is_duplicate,
+            build_claim_timeline_event,
+        )
+        from services.fiqa_api.inbox_triage.p20_missing_information import (
+            EVENT_BROKER_SUPPLEMENT_REVIEWED,
+        )
+
+        command_id = _normalize_command_id(command_id, "command_id")
+        idempotency_key = _normalize_command_id(idempotency_key, "idempotency_key")
+        broker_id = _normalize_command_id(broker_id, "broker_id")
+        corr = (correlation_id or command_id).strip()[:128] or command_id
+
+        def _handle(tx: Slice1Tx, snapshot: Slice1Snapshot) -> dict[str, Any]:
+            replay = getattr(snapshot, "stored_outcome", None)
+            if isinstance(replay, dict):
+                return _replay_response(replay)
+            case = snapshot.case
+            if case_is_closed_history(case):
+                return _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    projection=_projection(
+                        case_id=case_id,
+                        state=_legacy_claim_state(case),
+                        aggregate_version=0,
+                        group=snapshot.group,
+                        items=snapshot.items,
+                        latest_events=snapshot.latest_events,
+                        known_facts=_case_known_facts(case),
+                    ),
+                    error_code=ERROR_CASE_CLOSED_READ_ONLY,
+                )
+            if str(case.get("service_lane") or "").strip().lower() != SERVICE_LANE_CLAIM:
+                return _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    projection=_projection(
+                        case_id=case_id,
+                        state=_legacy_claim_state(case),
+                        aggregate_version=int(
+                            (snapshot.aggregate.aggregate_version if snapshot.aggregate else 0) or 0
+                        ),
+                        group=snapshot.group,
+                        items=snapshot.items,
+                        latest_events=snapshot.latest_events,
+                        known_facts=_case_known_facts(case),
+                    ),
+                    error_code="lane_mismatch",
+                )
+
+            aggregate = snapshot.aggregate
+            current_state = aggregate.workflow_state if aggregate else _legacy_claim_state(case)
+            current_version = aggregate.aggregate_version if aggregate else 0
+            # Also treat case projection as review-ready when aggregate lags.
+            case_proj = case.get("p20_slice1_projection") or case.get("slice1_projection") or {}
+            case_ws = str((case_proj or {}).get("workflow_state") or "").strip().lower()
+            broker_action = (case_proj or {}).get("broker_next_action") if isinstance(case_proj, dict) else None
+            broker_type = (
+                str((broker_action or {}).get("action_type") or "").strip().lower()
+                if isinstance(broker_action, dict)
+                else ""
+            )
+            is_review_ready = (
+                current_state == STATE_BROKER_REVIEW_READY
+                or case_ws == STATE_BROKER_REVIEW_READY
+                or broker_type == "review_customer_response"
+            )
+
+            timeline = _claim_timeline_from_case(case)
+            already_event = any(
+                str(e.get("event_type") or "").strip() == EVENT_BROKER_SUPPLEMENT_REVIEWED
+                for e in timeline
+            )
+            # Idempotent no-op: already left review-ready (timeline and/or state).
+            if (already_event or current_state == STATE_BROKER_REVIEWING) and not is_review_ready:
+                projection = _projection(
+                    case_id=case_id,
+                    state=STATE_BROKER_REVIEWING,
+                    aggregate_version=max(current_version, 1),
+                    group=snapshot.group,
+                    items=snapshot.items,
+                    latest_events=snapshot.latest_events,
+                    known_facts=_case_known_facts(case),
+                )
+                out = _response(
+                    outcome="accepted",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    projection=projection,
+                )
+                out["already_acknowledged"] = True
+                out["event_appended"] = False
+                return out
+
+            if not is_review_ready:
+                return _response(
+                    outcome="rejected",
+                    command_id=command_id,
+                    correlation_id=corr,
+                    idempotency_key=idempotency_key,
+                    event_ids=[],
+                    projection=_projection(
+                        case_id=case_id,
+                        state=current_state,
+                        aggregate_version=current_version,
+                        group=snapshot.group,
+                        items=snapshot.items,
+                        latest_events=snapshot.latest_events,
+                        known_facts=_case_known_facts(case),
+                    ),
+                    error_code="illegal_state",
+                )
+
+            now = _utc_now_iso()
+            next_version = current_version + 1
+            event = _event(
+                event_type="broker_supplement_reviewed",
+                case_id=case_id,
+                command_id=command_id,
+                correlation_id=corr,
+                sequence_number=next_version,
+                aggregate_version=next_version,
+                expected_state_version=current_version,
+                actor="broker",
+                actor_identity=broker_id,
+                state_before=STATE_BROKER_REVIEW_READY,
+                state_after=STATE_BROKER_REVIEWING,
+                idempotency_key=idempotency_key,
+                evidence={
+                    "source": (source or "workbench").strip() or "workbench",
+                    "request_id": snapshot.group.request_id if snapshot.group else None,
+                },
+                timestamp=now,
+            )
+            projection = _projection(
+                case_id=case_id,
+                state=STATE_BROKER_REVIEWING,
+                aggregate_version=next_version,
+                group=snapshot.group,
+                items=snapshot.items,
+                latest_events=[*(snapshot.latest_events or []), event],
+                timestamp=now,
+                known_facts=_case_known_facts(case),
+            )
+            aggregate_out = Slice1Aggregate(
+                case_id=case_id,
+                workflow_state=STATE_BROKER_REVIEWING,
+                aggregate_version=next_version,
+                active_request_id=None,
+                customer_projection=projection,
+                broker_projection=projection,
+            )
+            tx.insert_events([event])
+            tx.upsert_aggregate(aggregate_out)
+
+            legacy_patch = _legacy_projection_patch(projection)
+            claim_event = build_claim_timeline_event(
+                event_type=EVENT_BROKER_SUPPLEMENT_REVIEWED,
+                source_channel="workbench",
+                actor="broker",
+                text="已核对补充资料",
+                metadata={"source": (source or "workbench").strip() or "workbench"},
+                created_at=now,
+            )
+            event_appended = False
+            if not _claim_timeline_is_duplicate(timeline, claim_event):
+                timeline = list(timeline)
+                timeline.append(claim_event)
+                legacy_patch["claim_timeline"] = timeline[-50:]
+                event_appended = True
+            legacy_patch["broker_supplement_reviewed_at"] = now
+            tx.update_legacy_projection(case_id, legacy_patch)
+
+            out = _response(
+                outcome="accepted",
+                command_id=command_id,
+                correlation_id=corr,
+                idempotency_key=idempotency_key,
+                event_ids=[event["event_id"]],
+                projection=projection,
+            )
+            out["already_acknowledged"] = False
+            out["event_appended"] = event_appended
+            return out
+
+        result = self.store.accept(
+            case_id=case_id,
+            actor_identity=broker_id,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            command_type="broker_supplement_reviewed",
+            handler=_handle,
+        )
+        _log_command_outcome(command_type="broker_supplement_reviewed", case_id=case_id, result=result)
         return result
 
 
