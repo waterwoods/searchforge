@@ -2563,7 +2563,17 @@ async def post_accept_office_materials(case_id: str, http_request: Request) -> d
     try:
         result = accept_office_materials(case_id, source="workbench")
     except OfficeMaterialsAcceptError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        code = str(getattr(exc, "code", None) or exc)
+        detail = getattr(exc, "detail", None)
+        if not isinstance(detail, dict):
+            detail = {"error": code}
+        # Unresolved / unreviewed Request More is a workflow conflict (not a soft 400).
+        if code in {
+            "office_materials_accept_blocked_open_request_more",
+            "office_materials_accept_blocked_awaiting_supplement_review",
+        }:
+            raise HTTPException(status_code=409, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
     if result.get("outcome") == "case_not_found" or result.get("case") is None:
         raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
     updated = dict(result["case"])

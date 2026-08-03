@@ -699,12 +699,18 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 message.success('已确认资料已齐，等待办公室处理');
             }
         } catch (e: unknown) {
-            const msg =
-                (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data
-                    ?.detail
-                ?? (e as { message?: string })?.message
-                ?? '无法确认资料已齐';
-            message.error(String(msg));
+            const detail = (e as { response?: { data?: { detail?: unknown } }; message?: string })
+                ?.response?.data?.detail;
+            let msg = '无法确认资料已齐';
+            if (typeof detail === 'string' && detail.trim()) {
+                msg = detail;
+            } else if (detail && typeof detail === 'object') {
+                const body = detail as { message?: string; error?: string; reason?: string };
+                msg = String(body.message || body.error || body.reason || msg);
+            } else if ((e as { message?: string })?.message) {
+                msg = String((e as { message?: string }).message);
+            }
+            message.error(msg);
         } finally {
             setAcceptOfficeMaterialsSaving(false);
         }

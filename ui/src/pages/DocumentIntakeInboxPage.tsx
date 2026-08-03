@@ -1087,10 +1087,15 @@ export default function DocumentIntakeInboxPage() {
       }
       await loadQueue();
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? '无法确认资料已齐';
-      messageApi.error(String(msg));
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      let msg = '无法确认资料已齐';
+      if (typeof detail === 'string' && detail.trim()) {
+        msg = detail;
+      } else if (detail && typeof detail === 'object') {
+        const body = detail as { message?: string; error?: string; reason?: string };
+        msg = String(body.message || body.error || body.reason || msg);
+      }
+      messageApi.error(msg);
     } finally {
       setAcceptOfficeMaterialsSaving(false);
     }

@@ -370,8 +370,117 @@ def cap2_must_have_gaps_empty(
     return True
 
 
+def _slice1_projection_of(case: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(case, dict):
+        return None
+    for key in ("p20_slice1_projection", "slice1_projection"):
+        proj = case.get(key)
+        if isinstance(proj, dict):
+            return proj
+    return None
+
+
+def office_materials_request_more_block(
+    case: dict[str, Any] | None,
+) -> tuple[str | None, dict[str, Any]]:
+    """Block office accept while Request More is unresolved or awaiting broker review.
+
+    Returns ``(error_code, detail)`` when blocked, else ``(None, {})``.
+    Does not cancel, close, or satisfy the Request More.
+    """
+    if not isinstance(case, dict):
+        return None, {}
+
+    proj = _slice1_projection_of(case) or {}
+    ws = _str(proj.get("workflow_state")).lower()
+    action = proj.get("customer_next_action")
+    action = action if isinstance(action, dict) else {}
+    action_type = _str(action.get("action_type")).lower()
+    open_req = proj.get("open_request")
+    open_req = open_req if isinstance(open_req, dict) else {}
+    progress = open_req.get("progress") if isinstance(open_req.get("progress"), dict) else {}
+    try:
+        total = int(progress.get("total") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    try:
+        satisfied = int(progress.get("satisfied") or 0)
+    except (TypeError, ValueError):
+        satisfied = 0
+
+    unresolved_items: list[dict[str, Any]] = []
+    items = open_req.get("items")
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            st = _str(item.get("status")).lower()
+            if st in {"", "active", "queued", "in_progress"}:
+                unresolved_items.append(item)
+    active_item = open_req.get("active_item")
+    if isinstance(active_item, dict):
+        st = _str(active_item.get("status")).lower()
+        if st in {"", "active", "queued", "in_progress"}:
+            if not any(
+                _str(i.get("request_item_id")) == _str(active_item.get("request_item_id"))
+                for i in unresolved_items
+            ):
+                unresolved_items.append(active_item)
+
+    unresolved = bool(
+        action_type in {"provide_fact", "provide_evidence"}
+        or ws in {"broker_more_requested", "customer_continuing"}
+        or unresolved_items
+        or (total > 0 and satisfied < total)
+    )
+    if unresolved:
+        return "office_materials_accept_blocked_open_request_more", {
+            "error": "office_materials_accept_blocked_open_request_more",
+            "reason": "unresolved_request_more",
+            "workflow_state": ws or None,
+            "open_request": {
+                "request_id": open_req.get("request_id"),
+                "status": open_req.get("status"),
+                "progress": progress or None,
+                "active_item": open_req.get("active_item"),
+                "unresolved_item_ids": [
+                    _str(i.get("request_item_id"))
+                    for i in unresolved_items
+                    if _str(i.get("request_item_id"))
+                ],
+                "unresolved_labels": [
+                    _str(i.get("label") or i.get("item_type"))
+                    for i in unresolved_items
+                    if _str(i.get("label") or i.get("item_type"))
+                ],
+            },
+            "message": (
+                "Cannot confirm materials complete while an unresolved Request More "
+                "is still open for the customer."
+            ),
+        }
+
+    if ws == "broker_review_ready":
+        return "office_materials_accept_blocked_awaiting_supplement_review", {
+            "error": "office_materials_accept_blocked_awaiting_supplement_review",
+            "reason": "awaiting_supplement_review",
+            "workflow_state": ws,
+            "open_request": {
+                "request_id": open_req.get("request_id"),
+                "status": open_req.get("status"),
+                "progress": progress or None,
+            },
+            "message": (
+                "Customer supplement is waiting for broker「已核对补充资料」"
+                " before office acceptance."
+            ),
+        }
+
+    return None, {}
+
+
 def office_materials_accept_eligible(case: dict[str, Any] | None) -> bool:
-    """Suggestion + CTA eligible: Cap2 Must Haves complete, not yet accepted, not History."""
+    """Suggestion + CTA eligible: Cap2 complete, no open Request More, not accepted/History."""
     if not isinstance(case, dict):
         return False
     if str(case.get("office_materials_accepted_at") or "").strip():
@@ -383,6 +492,9 @@ def office_materials_accept_eligible(case: dict[str, Any] | None) -> bool:
             return False
     except Exception:
         pass
+    block_code, _detail = office_materials_request_more_block(case)
+    if block_code:
+        return False
     return cap2_must_have_gaps_empty(case)
 
 

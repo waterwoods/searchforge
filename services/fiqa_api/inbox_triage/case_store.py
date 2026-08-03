@@ -2110,6 +2110,11 @@ class ClaimBrokerDoneError(ValueError):
 class OfficeMaterialsAcceptError(ValueError):
     """Raised when Happy Path office-materials accept is blocked."""
 
+    def __init__(self, code: str, *, detail: dict[str, Any] | None = None) -> None:
+        super().__init__(code)
+        self.code = str(code or "").strip() or "office_materials_accept_blocked"
+        self.detail: dict[str, Any] = dict(detail) if isinstance(detail, dict) else {"error": self.code}
+
 
 def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
     """Happy Path Loop 1 — broker confirms Cap2 Must Haves are office-ready.
@@ -2118,12 +2123,13 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
     ``broker_office_materials_accepted`` timeline event.
 
     Does **not** call broker_done, Done Card, Close, or History.
-    Completeness gate: Cap2 Must Have gaps only (``cap2_must_have_gaps_empty``).
+    Completeness gate: Cap2 Must Have gaps + no unresolved Request More.
     """
     from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
     from services.fiqa_api.inbox_triage.p20_missing_information import (
         EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED,
         cap2_must_have_gaps_empty,
+        office_materials_request_more_block,
     )
     from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
 
@@ -2178,6 +2184,49 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
             )
     except Exception:
         pass
+
+    # Slice1 Request More gate (P0). Prefer live projection when authoritative;
+    # never let an idle/empty live fetch wipe a stamped open Request More.
+    stamped_block, stamped_detail = office_materials_request_more_block(case)
+    live_projection: dict[str, Any] | None = None
+    try:
+        from services.fiqa_api.inbox_triage.p20_slice1_command_service import (
+            default_slice1_service,
+        )
+
+        fetched = default_slice1_service().fetch_projection(cid)
+        if isinstance(fetched, dict):
+            live_projection = fetched
+    except Exception:
+        live_projection = None
+
+    def _slice1_projection_is_authoritative(proj: dict[str, Any]) -> bool:
+        try:
+            if int(proj.get("aggregate_version") or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+        open_req = proj.get("open_request")
+        if isinstance(open_req, dict) and (
+            open_req.get("request_id") or open_req.get("items") or open_req.get("active_item")
+        ):
+            return True
+        ws = str(proj.get("workflow_state") or "").strip().lower()
+        return ws in {
+            "broker_more_requested",
+            "customer_continuing",
+            "broker_review_ready",
+            "broker_reviewing",
+        }
+
+    if isinstance(live_projection, dict) and _slice1_projection_is_authoritative(live_projection):
+        case["p20_slice1_projection"] = live_projection
+        case["slice1_projection"] = live_projection
+        block_code, block_detail = office_materials_request_more_block(case)
+        if block_code:
+            raise OfficeMaterialsAcceptError(block_code, detail=block_detail)
+    elif stamped_block:
+        raise OfficeMaterialsAcceptError(stamped_block, detail=stamped_detail)
 
     if not cap2_must_have_gaps_empty(case):
         raise OfficeMaterialsAcceptError("office_materials_accept_blocked_must_have_gaps")
