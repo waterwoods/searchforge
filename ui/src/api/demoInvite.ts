@@ -72,10 +72,12 @@ export type DemoInviteValidateResult = {
     invite?: {
         invite_id: string;
         office_id: string;
-        scenario_id: string;
+        scenario_id?: string;
         expires_at: number;
         revoked: boolean;
         use_count: number;
+        mock_scenario?: string;
+        demo_name?: string;
     };
 };
 
@@ -211,6 +213,24 @@ export async function resetDemoInviteOffice(office_id: string): Promise<{
         invites_revoked?: number;
         overlays_cleared?: number;
     }>('/api/inbox/support/demo-invite/reset-office', { office_id }, { headers: supportAuthHeaders() });
+    return response.data;
+}
+
+/** P35 Fresh via support-gated harness — clears stale Active Case for exact wx_* session. */
+export async function runP35FreshForDemo(session_id: string): Promise<{
+    ok?: boolean;
+    has_active_case?: boolean;
+    [key: string]: unknown;
+}> {
+    const response = await request.post<{
+        ok?: boolean;
+        has_active_case?: boolean;
+        [key: string]: unknown;
+    }>(
+        '/api/inbox/support/p35-mp-qa/presets/fresh',
+        { session_id, confirm: 'FRESH', actor: 'chen_demo_prepare' },
+        { headers: supportAuthHeaders(), timeout: 60000 },
+    );
     return response.data;
 }
 

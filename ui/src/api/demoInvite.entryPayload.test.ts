@@ -49,10 +49,12 @@ const panel = readFileSync(
 );
 assert.match(panel, /陈总演示工具/);
 assert.match(panel, /演示数据/);
-assert.match(panel, /生成演示入口/);
+assert.match(panel, /一键准备演示/);
 assert.match(panel, /重置演示/);
 assert.match(panel, /Active Case/);
 assert.match(panel, /isChenDemoInviteUiEnabled/);
+assert.match(panel, /删除旧的 DevTools 编译模式/);
+assert.match(panel, /邀请创建后请勿重置/);
 assert.doesNotMatch(panel, /QRCode/);
 assert.doesNotMatch(panel, /openid/i);
 
