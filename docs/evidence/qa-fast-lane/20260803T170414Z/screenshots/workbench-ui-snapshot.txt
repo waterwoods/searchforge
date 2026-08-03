@@ -1,0 +1,12 @@
+Workbench UI snapshot (2026-08-03T17:06Z, Cloud QA Preview)
+
+Confirmed visible:
+- case_2f54f2227a96
+- 陈明 · 2020 Toyota Camry
+- queue next step: 等待客户补充
+- recent timeline: 资料已齐：资料已齐，等待办公室处理 · 2026/8/3 10:04
+- API profile: fiqa-api-qa
+- Preview: ui-g8pz3t767-andys-projects-1f411b73.vercel.app
+- API: https://fiqa-api-qa-g7zatxrycq-uw.a.run.app
+
+Inconsistency: header/queue show waiting-for-customer supplement while timeline already records office-materials-accepted.

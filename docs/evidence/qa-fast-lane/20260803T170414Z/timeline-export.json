@@ -1,0 +1,19 @@
+{
+  "case_id": "case_2f54f2227a96",
+  "exported_at": "2026-08-03T17:04:17Z",
+  "events": [
+    {
+      "text": "资料已齐，等待办公室处理",
+      "actor": "broker",
+      "event_id": "evt_c6ca79a26f23",
+      "metadata": {
+        "source": "workbench"
+      },
+      "created_at": "2026-08-03T17:04:16Z",
+      "event_type": "broker_office_materials_accepted",
+      "message_id": null,
+      "attachment_id": null,
+      "source_channel": "workbench"
+    }
+  ]
+}
