@@ -1,6 +1,7 @@
 import { appConfig, QA_API_BASE_URL } from "../../utils/config";
 import {
   emitStartClaimVoiceRecordStart,
+  proposeAccidentStory,
   startClaim,
   transcribeStartClaimStoryAudio,
 } from "../../services/startClaimApi";
@@ -122,6 +123,10 @@ type PageData = {
   smartClaimEnabled: boolean;
   formTitle: string;
   formSubtitle: string;
+  /** Bounded LangGraph draft — AI proposed until customer continues/edits. */
+  storyAssistSummary: string;
+  storyAssistQuestions: string[];
+  storyAssistNote: string;
   busy: {
     submitting: boolean;
     uploading: boolean;
@@ -156,6 +161,9 @@ Page({
     formTitle: "告诉陈总发生了什么",
     formSubtitle:
       "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+    storyAssistSummary: "",
+    storyAssistQuestions: [],
+    storyAssistNote: "",
     busy: {
       submitting: false,
       uploading: false,
@@ -568,6 +576,52 @@ Page({
 
   onDescriptionBlur(e: WechatMiniprogram.Input) {
     this._applyFormPatch({ description: (e.detail && e.detail.value) || this._form.description });
+    void this._refreshStoryAssist();
+  },
+
+  async _refreshStoryAssist() {
+    const story = String(this._form.description || "").trim();
+    if (story.length < 8) {
+      this.setData({
+        storyAssistSummary: "",
+        storyAssistQuestions: [],
+        storyAssistNote: "",
+      });
+      return;
+    }
+    const proposal = await proposeAccidentStory(story);
+    if (!proposal) {
+      this.setData({
+        storyAssistSummary: "",
+        storyAssistQuestions: [],
+        storyAssistNote: "",
+      });
+      return;
+    }
+    const patch: Partial<StartClaimCanonicalForm> = {};
+    if (!String(this._form.accidentDatetime || "").trim() && proposal.accident_time_text) {
+      patch.accidentDatetime = String(proposal.accident_time_text);
+    }
+    if (!String(this._form.accidentLocation || "").trim() && proposal.accident_location_text) {
+      patch.accidentLocation = String(proposal.accident_location_text);
+    }
+    if (
+      !String(this._form.injuryStatus || "").trim() &&
+      (proposal.injury_status === "yes" || proposal.injury_status === "no")
+    ) {
+      patch.injuryStatus = String(proposal.injury_status);
+    }
+    if (Object.keys(patch).length) {
+      this._applyFormPatch(patch);
+    }
+    const questions = Array.isArray(proposal.followup_questions)
+      ? proposal.followup_questions.map((q) => String(q || "").trim()).filter(Boolean).slice(0, 3)
+      : [];
+    this.setData({
+      storyAssistSummary: String(proposal.incident_summary || "").trim(),
+      storyAssistQuestions: questions,
+      storyAssistNote: "AI 整理草稿（请核对；未确认前不会当作正式事实）",
+    });
   },
 
   onDatetimeBlur(e: WechatMiniprogram.Input) {

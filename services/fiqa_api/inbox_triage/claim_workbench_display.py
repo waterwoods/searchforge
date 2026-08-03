@@ -1011,6 +1011,30 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
     if can_accept:
         next_question = OFFICE_MATERIALS_READY_SUGGESTION
 
+    accident_assistant = None
+    raw_assistant = case.get("accident_story_assistant")
+    if isinstance(raw_assistant, dict):
+        accident_assistant = {
+            "ai_involved": bool(raw_assistant.get("ai_involved")),
+            "authority": _str_or_none(raw_assistant.get("authority")) or "ai_proposed",
+            "raw_story": _str_or_none(raw_assistant.get("raw_story")),
+            "incident_summary": _str_or_none(raw_assistant.get("incident_summary")),
+            "label_zh": (
+                "客户已确认（AI 辅助整理）"
+                if str(raw_assistant.get("authority") or "") == "customer_confirmed"
+                else "AI 提议（未确认，不可当作事实）"
+            ),
+        }
+        if accident_assistant["raw_story"] and accident_assistant["authority"] == "customer_confirmed":
+            highlights.insert(
+                0,
+                {
+                    "level": "received",
+                    "label": accident_assistant["label_zh"],
+                    "kind": "accident_story_assistant",
+                },
+            )
+
     return {
         "summary": _build_brief_summary(case, key_facts=key_facts, photo_count=photo_count),
         "customer": {
@@ -1018,6 +1042,7 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
             "phone": _str_or_none(case.get("customer_phone")),
             "wecom_external_userid": _str_or_none(case.get("wecom_external_userid")),
         },
+        "accident_story_assistant": accident_assistant,
         "key_facts": key_facts,
         "evidence_received": {
             "photo_count": photo_count,

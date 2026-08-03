@@ -115,3 +115,40 @@ export async function emitStartClaimVoiceRecordStart(): Promise<void> {
     // Metrics must not block recording.
   }
 }
+
+export type AccidentStoryProposal = {
+  schema_version?: number;
+  raw_story?: string;
+  incident_summary?: string;
+  injury_status?: string;
+  accident_time_text?: string;
+  accident_location_text?: string;
+  followup_questions?: string[];
+  missing_required_facts?: string[];
+  warnings?: string[];
+  used_fallback?: boolean;
+  authority_note?: string;
+};
+
+/** Bounded LangGraph propose — never blocks Start Claim on failure. */
+export async function proposeAccidentStory(rawStory: string): Promise<AccidentStoryProposal | null> {
+  const story = (rawStory || "").trim();
+  if (story.length < 4) return null;
+  const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const sessionId = getCustomerSessionId();
+    const res = await requestJson<{ ok?: boolean; proposal?: AccidentStoryProposal }>(
+      "POST",
+      "/api/h5/customer/accident-story/propose",
+      {
+        command_id: `story_propose_${stamp}`,
+        idempotency_key: `story_propose_idem_${stamp}`,
+        raw_story: story.slice(0, 2000),
+        session_id: sessionId || undefined,
+      },
+    );
+    return res && typeof res === "object" && res.proposal ? res.proposal : null;
+  } catch {
+    return null;
+  }
+}

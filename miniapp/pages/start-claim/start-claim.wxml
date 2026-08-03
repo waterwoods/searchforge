@@ -85,6 +85,15 @@
         <view class="char-count">{{charCount}} 字</view>
         <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
 
+        <view wx:if="{{storyAssistSummary}}" class="story-assist">
+          <view class="story-assist-note">{{storyAssistNote}}</view>
+          <view class="story-assist-summary">{{storyAssistSummary}}</view>
+          <block wx:if="{{storyAssistQuestions.length}}">
+            <view class="story-assist-q-title">还需确认（最多 3 条）</view>
+            <view wx:for="{{storyAssistQuestions}}" wx:key="*this" class="story-assist-q">· {{item}}</view>
+          </block>
+        </view>
+
         <view class="section-label section-gap">事故时间</view>
         <view wx:if="{{smartUi.whyAskTime}}" class="why-ask">{{smartUi.whyAskTime}}</view>
         <input

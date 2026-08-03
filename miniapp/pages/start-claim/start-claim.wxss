@@ -76,3 +76,36 @@
 .start-claim-page .why-ask-photos {
   margin-top: 20rpx;
 }
+
+.start-claim-page .story-assist {
+  margin-top: 16rpx;
+  padding: 16rpx 18rpx;
+  background: #f7fafc;
+  border-left: 6rpx solid #4a5568;
+}
+
+.start-claim-page .story-assist-note {
+  font-size: 22rpx;
+  color: #718096;
+  margin-bottom: 8rpx;
+}
+
+.start-claim-page .story-assist-summary {
+  font-size: 26rpx;
+  color: #2d3748;
+  line-height: 1.45;
+}
+
+.start-claim-page .story-assist-q-title {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #4a5568;
+  font-weight: 600;
+}
+
+.start-claim-page .story-assist-q {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #4a5568;
+  line-height: 1.4;
+}
