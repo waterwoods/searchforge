@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "invite_id": "dinv_14c7b393daef4aa8",
+  "office_id": "chen_kui",
+  "scenario_id": "chen_camry",
+  "mock_scenario": "S3",
+  "demo_name": "chen_known_customer_demo",
+  "is_demo": true,
+  "created_at": 1785791950,
+  "expires_at": 1785806350,
+  "revoked": false,
+  "use_count": 0,
+  "max_uses": null,
+  "customer_display_name": "陈明",
+  "vehicle_summary": "2020 Toyota Camry",
+  "label": "陈明 · 2020 Toyota Camry",
+  "token_masked": "di_6jA…mbmM"
+}

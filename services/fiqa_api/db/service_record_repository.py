@@ -347,6 +347,10 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         case["office_materials_accepted_at"] = str(v).strip() if v else None
     if isinstance(extra.get("claim_timeline"), list):
         case["claim_timeline"] = [e for e in extra.get("claim_timeline") or [] if isinstance(e, dict)]
+    # Stage 2 — known-customer policy confirmation must round-trip on DB-primary QA.
+    # Without this, timeline/known_facts survive but Task Home still owes「上传保险卡」.
+    if isinstance(extra.get("policy_context"), dict):
+        case["policy_context"] = dict(extra.get("policy_context") or {})
     if isinstance(extra.get("claim_collision_pending"), dict):
         case["claim_collision_pending"] = dict(extra.get("claim_collision_pending") or {})
     if isinstance(extra.get("lane_switch_pending"), dict):
@@ -412,6 +416,8 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "office_materials_accepted_at",
         "claim_mentioned_at",
         "claim_timeline",
+        # Stage 2 — durable customer policy-context confirmation (not an uploaded card).
+        "policy_context",
         "claim_collision_pending",
         "lane_switch_pending",
         "claim_end_card_state",

@@ -1,0 +1,47 @@
+{
+  "identity_source": "demo_invite_overlay",
+  "lookup_match_status": "MATCH_FOUND",
+  "mode": "MATCHED_KNOWN",
+  "known_chips": [
+    {
+      "field_key": "customer_name",
+      "label_zh": "姓名",
+      "value": "陈明",
+      "editability": "EDIT_ON_REQUEST"
+    },
+    {
+      "field_key": "phone",
+      "label_zh": "电话",
+      "value": "尾号 1234",
+      "editability": "EDIT_ON_REQUEST"
+    },
+    {
+      "field_key": "vehicle",
+      "label_zh": "车辆",
+      "value": "2020 Toyota Camry",
+      "editability": "EDIT_ON_REQUEST"
+    },
+    {
+      "field_key": "license_plate",
+      "label_zh": "车牌",
+      "value": "7ABC123",
+      "editability": "EDIT_ON_REQUEST"
+    },
+    {
+      "field_key": "policy",
+      "label_zh": "保单",
+      "value": "Mercury · 已关联",
+      "editability": "EDIT_ON_REQUEST"
+    },
+    {
+      "field_key": "driver",
+      "label_zh": "驾驶人",
+      "value": "陈明",
+      "editability": "EDIT_ON_REQUEST"
+    }
+  ],
+  "confirm_step_ids": [
+    "confirm_policy_context"
+  ],
+  "decision": "CONFIRM_EXISTING"
+}

@@ -1,0 +1,77 @@
+{
+  "case_id": "case_984b109f49b4",
+  "customer_name": "陈明",
+  "display_status": "理赔 · 记录中",
+  "policy_context": {
+    "source": "demo_invite_mock",
+    "status": "confirmed",
+    "decision": "CONFIRM_EXISTING",
+    "snapshot": {
+      "plate_masked": "7***23",
+      "effective_end": "2027-06-01",
+      "policy_status": "active",
+      "policy_freshness": "fresh",
+      "customer_safe_summary": {
+        "plate_masked": "7***23",
+        "customer_name": "陈明",
+        "carrier_display": "Mercury",
+        "vehicle_summary": "2020 Toyota Camry",
+        "policy_ref_masked": null,
+        "policy_currentness": "已关联"
+      }
+    },
+    "command_id": "stage2_preflight_20260803T211908Z:policy_context",
+    "policy_ref": "POL-MOCK-CAMRY-001",
+    "vehicle_ref": "mock_veh_camry",
+    "confirmed_at": "2026-08-03T21:19:11Z",
+    "reason_codes": [
+      "known_customer_fresh_policy",
+      "vehicle_resolved"
+    ],
+    "customer_name": "陈明",
+    "carrier_display": "Mercury",
+    "customer_choice": "correct",
+    "idempotency_key": "stage2_preflight_idem_20260803T211908Z:policy_context",
+    "upload_required": false,
+    "vehicle_summary": "2020 Toyota Camry",
+    "upload_reason_zh": null,
+    "lookup_confidence": "HIGH",
+    "insurance_card_uploaded": false
+  },
+  "claim_timeline": [
+    {
+      "event_type": "customer_policy_context_confirmed",
+      "created_at": "2026-08-03T21:19:11Z",
+      "text": "已有保单资料，客户已确认"
+    }
+  ],
+  "constitution_customer_today": "补充照片",
+  "policy_fact": {},
+  "brief_highlights": [
+    {
+      "level": "received",
+      "label": "已有保单资料，客户已确认",
+      "kind": "policy_context"
+    },
+    {
+      "level": "important",
+      "label": "受伤情况已确认：没有受伤",
+      "kind": "injury"
+    },
+    {
+      "level": "received",
+      "label": "事故基本经过已记录",
+      "kind": "basics"
+    },
+    {
+      "level": "missing",
+      "label": "还缺对方保险信息",
+      "kind": "missing_info"
+    },
+    {
+      "level": "missing",
+      "label": "还缺照片",
+      "kind": "missing_info"
+    }
+  ]
+}

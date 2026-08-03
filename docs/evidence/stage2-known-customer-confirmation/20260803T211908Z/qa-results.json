@@ -1,0 +1,169 @@
+{
+  "verdict": "PASS",
+  "generated_at": "2026-08-03T21:19:16Z",
+  "api": "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
+  "preview": "https://ui-gqwwjfbml-andys-projects-1f411b73.vercel.app",
+  "preflight_session_prefix": "wx_stage2pre_20260803t211908",
+  "preflight_case_id": "case_984b109f49b4",
+  "phone_invite_id": "dinv_a26d7d2e27384b1c",
+  "phone_expires_at_unix": 1785799156.0,
+  "phone_expires_pdt": "2026-08-03 04:19 PM PDT",
+  "phone_session_hint_unused": "wx_stage2phone_20260803t211908z",
+  "steps": [
+    {
+      "step": "qa_health",
+      "status": "PASS",
+      "detail": "Cloud QA live+ready",
+      "at": "2026-08-03T21:19:09Z"
+    },
+    {
+      "step": "p35_fresh",
+      "status": "PASS",
+      "detail": "wx_stage2pre_20260803t21…",
+      "at": "2026-08-03T21:19:09Z"
+    },
+    {
+      "step": "office_reset",
+      "status": "PASS",
+      "detail": "{'ok': True, 'office_id': 'chen_kui', 'invites_revoked': 0, 'overlays_cleared': 0, 'is_demo': True, 'demo_name': 'chen_k",
+      "at": "2026-08-03T21:19:09Z"
+    },
+    {
+      "step": "issue_preflight_invite",
+      "status": "PASS",
+      "detail": "invite=dinv_14c7b393daef4aa8",
+      "at": "2026-08-03T21:19:09Z"
+    },
+    {
+      "step": "redeem",
+      "status": "PASS",
+      "detail": "redeemed",
+      "at": "2026-08-03T21:19:09Z"
+    },
+    {
+      "step": "start_claim_identity",
+      "status": "PASS",
+      "detail": "mode=MATCHED_KNOWN camry+mercury chips; overlay=demo_invite_overlay",
+      "at": "2026-08-03T21:19:10Z"
+    },
+    {
+      "step": "decision_contract",
+      "status": "PASS",
+      "detail": "CONFIRM_EXISTING",
+      "at": "2026-08-03T21:19:10Z"
+    },
+    {
+      "step": "confirm_submit_1",
+      "status": "PASS",
+      "detail": "outcome=accepted",
+      "at": "2026-08-03T21:19:10Z"
+    },
+    {
+      "step": "confirm_submit_2",
+      "status": "PASS",
+      "detail": "outcome=resumed (same command/idempotency)",
+      "at": "2026-08-03T21:19:10Z"
+    },
+    {
+      "step": "discover_case",
+      "status": "PASS",
+      "detail": "case_984b109f49b4",
+      "at": "2026-08-03T21:19:12Z"
+    },
+    {
+      "step": "case_reload",
+      "status": "PASS",
+      "detail": "durable read ok",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "confirm_idempotent",
+      "status": "PASS",
+      "detail": "exactly one customer_policy_context_confirmed",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "policy_refs",
+      "status": "PASS",
+      "detail": "vehicle=2020 Toyota Camry policy_ref=POL-MOCK-CAMRY-001 carrier=Mercury",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "no_fabricated_upload",
+      "status": "PASS",
+      "detail": "no insurance-card attachment",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "customer_task_home",
+      "status": "PASS",
+      "detail": "today='补充照片'",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "cap2_policy",
+      "status": "PASS",
+      "detail": "status=confirmed gap=False",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "broker_brief_wording",
+      "status": "PASS",
+      "detail": "已有保单资料，客户已确认",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "broker_not_uploaded_wording",
+      "status": "PASS",
+      "detail": "no uploaded-card claim",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "broker_queue_header",
+      "status": "PASS",
+      "detail": "display_status='理赔 · 记录中' broker_next_step='Customer completing default intake; Request More only if exceptional' timeline_confirm=1",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "pytest_policy_context",
+      "status": "PASS",
+      "detail": "ok",
+      "at": "2026-08-03T21:19:13Z"
+    },
+    {
+      "step": "pytest_supplement_ack",
+      "status": "PASS",
+      "detail": "ok",
+      "at": "2026-08-03T21:19:14Z"
+    },
+    {
+      "step": "pytest_office_accept",
+      "status": "PASS",
+      "detail": "ok",
+      "at": "2026-08-03T21:19:15Z"
+    },
+    {
+      "step": "pytest_request_more_vehicle",
+      "status": "PASS",
+      "detail": "ok",
+      "at": "2026-08-03T21:19:16Z"
+    },
+    {
+      "step": "phone_invite",
+      "status": "PASS",
+      "detail": "expires_pdt=2026-08-03 04:19 PM PDT",
+      "at": "2026-08-03T21:19:16Z"
+    }
+  ],
+  "policy_context": {
+    "status": "confirmed",
+    "customer_choice": "correct",
+    "vehicle_summary": "2020 Toyota Camry",
+    "policy_ref": "POL-MOCK-CAMRY-001",
+    "carrier_display": "Mercury",
+    "insurance_card_uploaded": false
+  },
+  "customer_today": "补充照片",
+  "confirm_events": 1,
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_pUQ…wmTs"
+}

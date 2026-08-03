@@ -146,3 +146,35 @@ def test_hydrate_extra_restores_claim_timeline():
         },
     )
     assert case["claim_timeline"][0]["event_type"] == "customer_photo"
+
+
+def test_build_extra_includes_policy_context():
+    case = {
+        "policy_context": {
+            "status": "confirmed",
+            "customer_choice": "correct",
+            "decision": "CONFIRM_EXISTING",
+            "vehicle_summary": "2020 Toyota Camry",
+            "policy_ref": "POL-MOCK-CAMRY-001",
+            "insurance_card_uploaded": False,
+        }
+    }
+    extra = _build_extra(case)
+    assert extra["policy_context"]["status"] == "confirmed"
+    assert extra["policy_context"]["insurance_card_uploaded"] is False
+
+
+def test_hydrate_extra_restores_policy_context():
+    case: dict = {}
+    _hydrate_extra_pilot_fields(
+        case,
+        {
+            "policy_context": {
+                "status": "confirmed",
+                "customer_choice": "correct",
+                "carrier_display": "Mercury",
+            }
+        },
+    )
+    assert case["policy_context"]["status"] == "confirmed"
+    assert case["policy_context"]["carrier_display"] == "Mercury"
