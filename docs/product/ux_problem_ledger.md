@@ -76,6 +76,7 @@ It is not a backlog of feature ideas. It is a production UX risk ledger. Future 
 |----|---------|-----------------|------------|-----|---------------------|-----------------|
 | L1 | Photos defer wording differs from Story/Basics. | Minor wording inconsistency may confuse careful reviewers. | Photos uses hub escape wording while text pages use postpone wording. | Keep if intentional; unify later if Founder/customer notices confusion. | Accepted for first pilot. | Low. |
 | L2 | Entry and Task Home share nav title `事故资料`. | Customer may not distinguish opening/loading page from hub. | Both pages use same nav title while card title distinguishes hub. | Optional Entry title polish after higher-priority items clear. | Accepted. | Low. |
+| L3 | Generic customer copy `请先完成这一步` after known-customer policy confirm. | Mild vagueness; customer may not know which step is meant, but Cap2 title and confirm path still work. | Placeholder / generic next-step copy not specialized for CONFIRM_EXISTING completion. | Replace with scenario-specific next-step copy in a later polish pass; do not reopen Stage 2. | Founder phone QA 2026-08-03: **accepted non-blocking** (Stage 2 PASS). Evidence: `docs/evidence/stage2-known-customer-confirmation/20260803T231041Z-final-phone/non-blocking-copy.md`. | Low. |
 
 ---
 

@@ -1,0 +1,26 @@
+{
+  "case_id": "case_09ad6254614a",
+  "case_ref": "CLM-0036",
+  "display_status": "理赔 · 记录中",
+  "lifecycle_status": "collecting",
+  "claim_phase": "accident_basics_complete",
+  "person_link_key": "wx_qaiso_71396323b411da18ec19",
+  "customer_task_title_insurance_card": "已有保单资料，客户已确认",
+  "known_facts_keys": [
+    "accident_datetime",
+    "accident_description",
+    "accident_location",
+    "anyone_injured",
+    "injury_status",
+    "insurance_carrier",
+    "policy_number",
+    "primary_vehicle_summary",
+    "qa_label"
+  ],
+  "has_stage1_vin_1NXBR32E58Z946068": false,
+  "vin_or_vehicle_fields": {
+    "primary_vehicle_summary": "2020 Toyota Camry"
+  },
+  "policy_context_present": true,
+  "office_processing_present": false
+}

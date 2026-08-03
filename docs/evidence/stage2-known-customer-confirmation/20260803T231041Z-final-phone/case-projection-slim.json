@@ -1,0 +1,109 @@
+{
+  "case_id": "case_09ad6254614a",
+  "case_ref": "CLM-0036",
+  "display_status": "理赔 · 记录中",
+  "lifecycle_status": "collecting",
+  "claim_phase": "accident_basics_complete",
+  "person_link_key": "wx_qaiso_71396323b411da18ec19",
+  "qa_label": "演示·陈明",
+  "constitution_customer": {
+    "today": "补充照片",
+    "why": "请先完成这一步，方便我们继续处理。",
+    "after": "完成后我们会继续处理。",
+    "trust": {
+      "care_line": "陈总已收到资料",
+      "care_note": "如有需要，我们会联系您"
+    },
+    "current_stage": "waiting",
+    "office_materials_accepted": false,
+    "office_processing": false,
+    "tasks": [
+      {
+        "task_id": "insurance_card",
+        "title": "已有保单资料，客户已确认",
+        "state": "completed",
+        "progress": {
+          "completed": 1,
+          "total": 1
+        },
+        "is_today": false,
+        "route": null,
+        "actionable": false,
+        "primary_action": null,
+        "task_source": "system_default"
+      },
+      {
+        "task_id": "accident_photos",
+        "title": "事故照片",
+        "state": "in_progress",
+        "progress": {
+          "completed": 0,
+          "total": 1
+        },
+        "is_today": true,
+        "route": "photos",
+        "actionable": true,
+        "primary_action": "补充照片",
+        "task_source": "system_default",
+        "action": {
+          "kind": "open_route",
+          "route": "photos",
+          "task_type": "accident_photos",
+          "task_source": "system_default"
+        }
+      },
+      {
+        "task_id": "accident_story",
+        "title": "事故经过",
+        "state": "completed",
+        "progress": {
+          "completed": 1,
+          "total": 1
+        },
+        "is_today": false,
+        "route": null,
+        "actionable": false,
+        "primary_action": null,
+        "task_source": "system_default"
+      }
+    ]
+  },
+  "workbench_brief_snippets": {
+    "queue_summary": {
+      "band": "customer_missing",
+      "label": "还缺客户关键资料",
+      "why_attention": "关键资料还在客户手里，案件暂时推不动。"
+    },
+    "case_conclusion": {
+      "what_happened": "客户报告1pm在Santa Ana今天下午在圣达安娜停车场发生轻微碰撞,没有人受伤。。客户表示人没事。",
+      "known": [
+        "事故经过",
+        "已有保单资料，客户已确认"
+      ],
+      "uncertain": [
+        "{'key': 'other_party_info', 'label': '对方信息（如已知）', 'severity': 'optional', 'reason': 'missing'}",
+        "{'key': 'police_involved', 'label': '是否报警', 'severity': 'optional', 'reason': 'unknown'}",
+        "{'key': 'photos', 'label': '车损或现场照片（可选）', 'severity': 'optional', 'reason': 'missing'}"
+      ],
+      "evidence": [
+        "事故描述",
+        "已有保单资料，客户已确认"
+      ],
+      "customer_focus": "补充照片",
+      "customer_why": "请先完成这一步，方便我们继续处理。",
+      "customer_after": "完成后我们会继续处理。",
+      "customer_trust": "陈总已收到资料"
+    },
+    "next_action": {
+      "label": "暂无动作",
+      "action_type": "none",
+      "enabled": false,
+      "note": "等客户完成今天的任务后再处理。"
+    },
+    "priority": {
+      "band": "customer_missing",
+      "rank": 3
+    },
+    "current_stage": "waiting"
+  }
+}

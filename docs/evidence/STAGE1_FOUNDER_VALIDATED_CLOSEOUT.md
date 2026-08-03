@@ -61,10 +61,11 @@ Phase A / pre-phone workspace (partial, largely superseded):
 
 ## Known non-blocking Stage 2 issues
 
-1. **Known-customer insurance-card upload is redundant.** Known customers already have linked policy/vehicle information, but the current flow still asks for an insurance-card upload. Preferred future behavior: find and prefill existing policy/vehicle data → ask customer to confirm → request a new card only when missing, stale, changed, or conflicting.
-2. **Demo invite store is process-local.** With QA `minScale=0` / `maxScale=2`, cold start or a second instance can miss an invite token; re-issue on the same revision is the operator workaround (see `invite-revoke-diagnosis.json`).
-3. **Stale customer context / revoked dit soft-fails** can block phone Stage 1 until Fresh reset / new invite (diagnosed 2026-08-02; not on the final GO path).
+1. **Known-customer insurance-card upload is redundant.** ~~Known customers still asked for insurance-card upload.~~ **Addressed in Stage 2** (`stage2/known-customer-prefill-confirm`, commit `8b6ca01`, case `case_09ad6254614a`): CONFIRM_EXISTING → Cap2 `已有保单资料，客户已确认`. See `docs/evidence/STAGE2_FOUNDER_VALIDATED_CLOSEOUT.md`.
+2. **Demo invite store is process-local.** ~~Cold start / second instance could miss invite tokens.~~ **Hardened in Stage 2** via Postgres-durable demo invite store on QA; still re-issue if an invite is expired/revoked.
+3. **Stale customer context / revoked dit soft-fails** can block phone Stage 1 until Fresh reset / new invite (diagnosed 2026-08-02; not on the final GO path). Stage 2 adds Mini Program fail-closed when launch `dit` redeem fails (no silent fall-through to prior Active Case).
 4. **Value metrics gaps:** broker-first-open time is not recorded; AI accept/edit/reject rates have no events yet (see Metrics V1 tool notes).
+5. **Generic copy `请先完成这一步`** — Low / non-blocking (UX ledger L3); recorded at Stage 2 phone closeout.
 
 ## Frozen components (do not casually rebuild)
 
