@@ -12,6 +12,7 @@ from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import (
     MOCK_KEY_S2_MULTI_VEHICLE,
     MOCK_KEY_S3_NO_ACTIVE,
     MOCK_KEY_S4_STALE_POLICY,
+    MOCK_KEY_STAGE2_PHONE,
     get_fixture,
 )
 
@@ -21,6 +22,7 @@ DEMO_NAME = "chen_known_customer_demo"
 _SCENARIO_CHEN_CAMRY = "S3"
 _SCENARIO_LI_MULTI = "S2"
 _SCENARIO_WANG_STALE = "S4"
+_SCENARIO_CHEN_STAGE2_PHONE = "S3_STAGE2_PHONE"
 
 
 class DemoScenarioEntry(TypedDict):
@@ -35,6 +37,8 @@ class DemoScenarioEntry(TypedDict):
 
 
 # Allowlisted catalog — only these may be issued as Demo Invites.
+# Optional runtime key `isolated_identity` (bool) opts a scenario into a QA-only
+# Active Case namespace so Stage 1 cases on the real wx link stay untouched.
 APPROVED_DEMO_SCENARIOS: dict[str, DemoScenarioEntry] = {
     "chen_camry": {
         "scenario_id": "chen_camry",
@@ -45,6 +49,17 @@ APPROVED_DEMO_SCENARIOS: dict[str, DemoScenarioEntry] = {
         "vehicle_summary": "2020 Toyota Camry",
         "demo_name": DEMO_NAME,
         "is_demo": True,
+    },
+    "chen_camry_stage2_phone": {
+        "scenario_id": "chen_camry_stage2_phone",
+        "mock_scenario": _SCENARIO_CHEN_STAGE2_PHONE,
+        "mock_person_link_key": MOCK_KEY_STAGE2_PHONE,
+        "label": "陈明 · Stage2 Phone QA (isolated)",
+        "customer_display_name": "陈明",
+        "vehicle_summary": "2020 Toyota Camry",
+        "demo_name": DEMO_NAME,
+        "is_demo": True,
+        "isolated_identity": True,  # type: ignore[typeddict-unknown-key]
     },
     "li_multi": {
         "scenario_id": "li_multi",

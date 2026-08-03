@@ -28,6 +28,7 @@ from services.fiqa_api.inbox_triage.p20_missing_information import (
 from services.fiqa_api.inbox_triage.policy_context_confirm import (
     BROKER_LABEL_CONFIRMED,
     BROKER_LABEL_UPLOADED,
+    FACT_VALUE_CONFIRMED,
     apply_policy_context_to_case_dict,
     broker_policy_evidence_label,
     build_policy_context_record,
@@ -213,6 +214,10 @@ def test_constitution_skips_insurance_after_confirm():
     assert insurance_tasks
     assert insurance_tasks[0]["state"] in {"completed", "waiting_broker"}
     assert insurance_tasks[0].get("actionable") is False
+    # Case Status "已提交资料" must not imply an insurance-card upload.
+    assert insurance_tasks[0].get("title") == BROKER_LABEL_CONFIRMED
+    assert "上传" not in str(insurance_tasks[0].get("title") or "")
+    assert insurance_tasks[0].get("title") != "保险卡"
 
 
 def test_cap2_checklist_confirmed_not_gap():
@@ -239,6 +244,9 @@ def test_cap2_checklist_confirmed_not_gap():
     policy_item = next(i for i in checklist if i["field_key"] == "policy_or_insurance_card")
     assert policy_item["is_gap"] is False
     assert policy_item["status"] == FACT_STATUS_CONFIRMED
+    assert policy_item["label"] == FACT_VALUE_CONFIRMED
+    assert policy_item["customer_label"] == FACT_VALUE_CONFIRMED
+    assert policy_item["value"] == FACT_VALUE_CONFIRMED
 
 
 def test_broker_label_distinguishes_confirm_vs_upload():

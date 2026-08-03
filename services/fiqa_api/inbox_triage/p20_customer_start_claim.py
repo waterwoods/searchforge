@@ -132,7 +132,16 @@ def start_customer_claim(
     _ = bool(force_new)
 
     durable_link = person_link_from_session_id(session_id)
-    identity_key = resolve_customer_identity_key(session_id)
+    # Stage 2 isolated demo overlay uses a QA namespaced key so Start Claim does
+    # not resume a prior Stage 1 case bound to the real wx person_link.
+    try:
+        from services.fiqa_api.inbox_triage.demo_invite import effective_customer_identity_key
+
+        identity_key = effective_customer_identity_key(session_id) or resolve_customer_identity_key(
+            session_id
+        )
+    except Exception:
+        identity_key = resolve_customer_identity_key(session_id)
 
     # Every customer create must carry a bindable identity (wx_* always;
     # anon-/p26h-/p35-* only when allow_prototype_anon_customer_create).
@@ -212,10 +221,12 @@ def start_customer_claim(
             "known_facts": known_facts,
             "title": "Customer Claim intake" if not (is_test or demo_inputs) else "QA Customer Claim intake",
             "entry_channel": "mini_program",
-            "identity_binding_state": "linked" if durable_link else "unbound",
-            "person_link_key": durable_link,
-            "person_link_source": "wechat" if durable_link else None,
-            "person_link_confidence": 0.9 if durable_link else None,
+            # Bind case metadata to the effective identity (isolated key when
+            # Stage 2 phone overlay is active) so One Active Case stays per-key.
+            "identity_binding_state": "linked" if identity_key else "unbound",
+            "person_link_key": identity_key,
+            "person_link_source": "wechat" if (durable_link or identity_key) else None,
+            "person_link_confidence": 0.9 if identity_key else None,
             **demo_inputs,
         },
     )

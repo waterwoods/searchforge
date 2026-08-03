@@ -60,11 +60,131 @@ def test_catalog_has_three_allowlisted_fictional_customers():
     assert len(rows) >= 3
     ids = {r["scenario_id"] for r in rows}
     assert "chen_camry" in ids
+    assert "chen_camry_stage2_phone" in ids
     assert "li_multi" in ids
     assert "wang_stale" in ids
     for row in rows:
         assert row["is_demo"] is True
         assert row["demo_name"] == di.DEMO_NAME
+
+
+def test_stage2_phone_isolated_invite_ignores_real_wx_active_case(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Fresh Stage 2 phone DIT must open Start Claim even when Stage 1 case is bound."""
+    from services.fiqa_api.inbox_triage.p0_customer_context import (
+        START_NEW_CLAIM,
+        resolve_customer_context,
+    )
+    from services.fiqa_api.inbox_triage.policy_context_decision import (
+        CONFIRM_STEP_ID,
+        decide_policy_context,
+    )
+    from services.fiqa_api.inbox_triage.customer_lookup.facade import (
+        lookup_demo_invite_fixture,
+    )
+    from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import (
+        MOCK_KEY_STAGE2_PHONE,
+    )
+    import services.fiqa_api.inbox_triage.demo_invite.service as di_svc
+
+    session = "wx_founder_phone_stage1_bound_zz"
+    # Real wx identity still has Stage 1 validated case — must not be cleared.
+    monkeypatch.setattr(
+        di_svc,
+        "_active_case_for_session",
+        lambda _sid: {
+            "case_id": "case_4e5adf36c637",
+            "record_id": "case_4e5adf36c637",
+            "case_status": "office_processing",
+        },
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.p0_customer_context.resolve_active_case_for_person_link",
+        lambda key: (
+            {
+                "case_id": "case_4e5adf36c637",
+                "record_id": "case_4e5adf36c637",
+            }
+            if not str(key).startswith("wx_qaiso_")
+            else None
+        ),
+    )
+
+    issued = di.issue_demo_invite(
+        office_id="office_demo_a", scenario_id="chen_camry_stage2_phone"
+    )
+    assert issued["customer_display_name"] == "陈明"
+    redeemed = di.redeem_demo_invite(
+        token=issued["token"], session_id=session, office_id="office_demo_a"
+    )
+    assert redeemed["ok"] is True
+    assert redeemed.get("error_code") != "active_case_blocks_scenario_switch"
+
+    plan = build_smart_claim_start_response(session_id=session)["plan"]
+    assert plan["mode"] == "MATCHED_KNOWN"
+    assert _chip_name(plan) == "陈明"
+    chip_blob = str(plan.get("known_chips") or [])
+    assert "Camry" in chip_blob
+    assert "Mercury" in chip_blob or "已关联" in chip_blob
+    step_ids = [str(s.get("step_id") or "") for s in (plan.get("confirm_steps") or [])]
+    assert CONFIRM_STEP_ID in step_ids
+    options = []
+    for s in plan.get("confirm_steps") or []:
+        if str(s.get("step_id") or "") == CONFIRM_STEP_ID:
+            options = [str(o) for o in (s.get("options") or [])]
+    assert any("资料正确，继续" in o for o in options)
+
+    decision = decide_policy_context(lookup_demo_invite_fixture(MOCK_KEY_STAGE2_PHONE))
+    assert decision.get("decision") == "CONFIRM_EXISTING"
+
+    context = resolve_customer_context(session_id=session)
+    assert context["next_action"] == START_NEW_CLAIM
+    assert context["has_active_case"] is False
+
+    # Real-link Active Case helper still sees Stage 1 — isolation did not reset it.
+    assert di_svc._active_case_for_session(session)["case_id"] == "case_4e5adf36c637"
+
+
+def test_stage2_phone_redeem_rebinds_overlay_when_isolated_case_exists(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Rescan must re-attach overlay even when Stage 2 isolated case already exists."""
+    import services.fiqa_api.inbox_triage.demo_invite.service as di_svc
+
+    session = "wx_founder_phone_rescan_stage2_yy"
+    issued = di.issue_demo_invite(
+        office_id="office_demo_a", scenario_id="chen_camry_stage2_phone"
+    )
+    iso = di.isolated_identity_key(session, "chen_camry_stage2_phone")
+
+    # Isolated namespace already has Stage 2 case; real wx still has Stage 1.
+    monkeypatch.setattr(
+        di_svc,
+        "_active_case_for_session",
+        lambda _sid: {"case_id": "case_4e5adf36c637"},
+    )
+    monkeypatch.setattr(
+        di_svc,
+        "_active_case_for_invite_session",
+        lambda _sid, _invite: {"case_id": "case_09ad6254614a"},
+    )
+
+    redeemed = di.redeem_demo_invite(
+        token=issued["token"], session_id=session, office_id="office_demo_a"
+    )
+    assert redeemed["ok"] is True, redeemed
+    assert redeemed.get("error_code") != "active_case_blocks_scenario_switch"
+    assert di.resolve_overlay_mock_scenario(session) == "S3_STAGE2_PHONE"
+    assert di.effective_customer_identity_key(session) == iso
+
+    # Switching to another scenario while Active Case exists still blocks.
+    other = di.issue_demo_invite(office_id="office_demo_a", scenario_id="li_multi")
+    blocked = di.redeem_demo_invite(
+        token=other["token"], session_id=session, office_id="office_demo_a"
+    )
+    assert blocked["ok"] is False
+    assert blocked["error_code"] == "active_case_blocks_scenario_switch"
 
 
 def test_unknown_scenario_rejected():

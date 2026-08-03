@@ -1,0 +1,113 @@
+{
+  "invite_id": "dinv_eaa519d37be24c97",
+  "scenario_id": "chen_camry_stage2_phone",
+  "isolated_identity_key_prefix": "wx_qaiso_",
+  "mock_person_link_key": "wx_mock_cap01_stage2_phone",
+  "expires_pdt": "2026-08-03 04:52 PM PDT",
+  "expires_at_unix": 1785801133.0,
+  "proof_session": "wx_iso_proof_20260803215211_7d2487",
+  "proof_prior_case_disposable": "case_fb9349a29356",
+  "preserved_cases": [
+    "case_4e5adf36c637",
+    "case_984b109f49b4"
+  ],
+  "automated_proof": [
+    {
+      "check": "preserve_case_4e5adf36c637",
+      "ok": true,
+      "detail": "status=办公室处理中"
+    },
+    {
+      "check": "preserve_case_984b109f49b4",
+      "ok": true,
+      "detail": "status=理赔 · 记录中"
+    },
+    {
+      "check": "revoke_old_invite",
+      "ok": true,
+      "detail": "{'ok': False, 'error_code': 'unknown_invite', 'is_demo': True, 'demo_name': 'chen_known_customer_demo'}"
+    },
+    {
+      "check": "fresh_session",
+      "ok": true,
+      "detail": "wx_iso_proof_20260803215211_"
+    },
+    {
+      "check": "classic_redeem",
+      "ok": true,
+      "detail": "redeemed"
+    },
+    {
+      "check": "prior_case_created",
+      "ok": true,
+      "detail": "outcome=accepted"
+    },
+    {
+      "check": "prior_context_not_start_new",
+      "ok": true,
+      "detail": "BROKER_REVIEW"
+    },
+    {
+      "check": "prior_case_id_known",
+      "ok": true,
+      "detail": "case_fb9349a29356"
+    },
+    {
+      "check": "issue_stage2",
+      "ok": true,
+      "detail": "invite=dinv_eaa519d37be24c97"
+    },
+    {
+      "check": "redeem_not_blocked",
+      "ok": true,
+      "detail": "redeemed"
+    },
+    {
+      "check": "redeem_not_continue_fallback",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "context_start_new_claim",
+      "ok": true,
+      "detail": "{\"has_active_case\": false, \"resume_token\": \"\", \"resume_expires_at\": \"\", \"next_action\": \"START_NEW_CLAIM\"}"
+    },
+    {
+      "check": "first_screen_chen",
+      "ok": true,
+      "detail": "[{\"field_key\": \"customer_name\", \"label_zh\": \"姓名\", \"value\": \"陈明\", \"editability\": \"EDIT_ON_REQUEST\"}, {\"field_key\": \"phone\", \"label_zh\": \"电话\", \"value\": \"尾号 1234\", \"editability\": \"EDI"
+    },
+    {
+      "check": "first_screen_camry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "first_screen_mercury",
+      "ok": true,
+      "detail": "[{\"field_key\": \"customer_name\", \"label_zh\": \"姓名\", \"value\": \"陈明\", \"editability\": \"EDIT_ON_REQUEST\"}, {\"field_key\": \"phone\", \"label_zh\": \"电话\", \"value\": \"尾号 1234\", \"editability\": \"EDI"
+    },
+    {
+      "check": "confirm_panel",
+      "ok": true,
+      "detail": "['资料正确，继续', '信息有变化', '我不确定']"
+    },
+    {
+      "check": "mode_matched_known",
+      "ok": true,
+      "detail": "MATCHED_KNOWN"
+    },
+    {
+      "check": "untouched_case_4e5adf36c637",
+      "ok": true,
+      "detail": "办公室处理中"
+    },
+    {
+      "check": "untouched_case_984b109f49b4",
+      "ok": true,
+      "detail": "理赔 · 记录中"
+    }
+  ],
+  "preview": "https://ui-gqwwjfbml-andys-projects-1f411b73.vercel.app",
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_nIM…2XOo"
+}

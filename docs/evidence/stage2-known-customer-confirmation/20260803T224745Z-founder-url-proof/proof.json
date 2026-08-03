@@ -1,0 +1,106 @@
+{
+  "all_pass": true,
+  "revision": "fiqa-api-qa-00049-drv",
+  "minScale": 1,
+  "maxScale": 2,
+  "invite_id": "dinv_1f8d4d70799a4ec3",
+  "scenario_id": "chen_camry_stage2_phone",
+  "expires_pdt": "2026-08-03 05:47 PM PDT",
+  "founder_person_link": "wx_08af8e465ecbcba85eb15f946ad1aa998aa5e8b3",
+  "isolated_identity_key": "wx_qaiso_71396323b411da18ec19",
+  "resolved_case_id_via_context_resume": "case_09ad6254614a",
+  "stage2_case_id": "case_09ad6254614a",
+  "customer_projection_title": "已有保单资料，客户已确认",
+  "workbench_brief": "已有保单资料，客户已确认",
+  "automated_proof": [
+    {
+      "check": "issue",
+      "ok": true,
+      "detail": "dinv_1f8d4d70799a4ec3"
+    },
+    {
+      "check": "validate",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "validate_durable_same_invite",
+      "ok": true,
+      "detail": "dinv_1f8d4d70799a4ec3"
+    },
+    {
+      "check": "bare_stage1",
+      "ok": true,
+      "detail": "case_4e5adf36c637"
+    },
+    {
+      "check": "redeem",
+      "ok": true,
+      "detail": "redeemed"
+    },
+    {
+      "check": "context_case_stage2",
+      "ok": true,
+      "detail": "case_09ad6254614a"
+    },
+    {
+      "check": "context_not_stage1",
+      "ok": true,
+      "detail": "case_09ad6254614a"
+    },
+    {
+      "check": "scs_overlay",
+      "ok": true,
+      "detail": "demo_invite_overlay"
+    },
+    {
+      "check": "scs_identity_chips",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case_url_title",
+      "ok": true,
+      "detail": "已有保单资料，客户已确认"
+    },
+    {
+      "check": "case_url_brief",
+      "ok": true,
+      "detail": "['已有保单资料，客户已确认', '受伤情况已确认：没有受伤', '事故基本经过已记录']"
+    },
+    {
+      "check": "case_url_not_office",
+      "ok": true,
+      "detail": "理赔 · 记录中"
+    },
+    {
+      "check": "case_url_no_vin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case_url_plink",
+      "ok": true,
+      "detail": "wx_qaiso_71396323b411da18ec19"
+    },
+    {
+      "check": "rescan_ok",
+      "ok": true,
+      "detail": "redeemed_idempotent:case_09ad6254614a"
+    },
+    {
+      "check": "stage1_preserved",
+      "ok": true,
+      "detail": "办公室处理中"
+    }
+  ],
+  "exact_url_checks": {
+    "POST /api/h5/demo-invite/redeem": "redeemed",
+    "POST /api/h5/customer/context resume case_id": "case_09ad6254614a",
+    "GET /api/inbox/cases/case_09ad6254614a task title": "已有保单资料，客户已确认",
+    "GET /api/inbox/cases/case_09ad6254614a brief": [
+      "已有保单资料，客户已确认"
+    ]
+  },
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_sGB…gANk"
+}

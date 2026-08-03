@@ -16,6 +16,8 @@ from services.fiqa_api.inbox_triage.demo_invite.service import (
     FLAG_ENV,
     assert_demo_invite_allowed,
     demo_invite_enabled,
+    effective_customer_identity_key,
+    isolated_identity_key,
     issue_demo_invite,
     list_catalog,
     peek_session_overlay,
@@ -24,6 +26,7 @@ from services.fiqa_api.inbox_triage.demo_invite.service import (
     reset_session_overlay,
     resolve_overlay_mock_scenario,
     revoke_demo_invite,
+    scenario_uses_isolated_identity,
     validate_demo_invite,
 )
 from services.fiqa_api.inbox_triage.demo_invite.store import reset_demo_invite_store_for_tests
@@ -33,8 +36,10 @@ __all__ = [
     "FLAG_ENV",
     "assert_demo_invite_allowed",
     "demo_invite_enabled",
+    "effective_customer_identity_key",
     "get_approved_scenario",
     "is_scenario_allowlisted",
+    "isolated_identity_key",
     "issue_demo_invite",
     "list_approved_scenarios",
     "list_catalog",
@@ -45,5 +50,6 @@ __all__ = [
     "reset_session_overlay",
     "resolve_overlay_mock_scenario",
     "revoke_demo_invite",
+    "scenario_uses_isolated_identity",
     "validate_demo_invite",
 ]

@@ -1,0 +1,152 @@
+{
+  "invite_id": "dinv_baeb5cf02d374fda",
+  "scenario_id": "chen_camry_stage2_phone",
+  "expires_pdt": "2026-08-03 05:37 PM PDT",
+  "expires_at_unix": 1785803834,
+  "founder_person_link": "wx_08af8e465ecbcba85eb15f946ad1aa998aa5e8b3",
+  "isolated_identity_key": "wx_qaiso_71396323b411da18ec19",
+  "stage2_case_id": "case_09ad6254614a",
+  "stage1_case_id": "case_4e5adf36c637",
+  "old_dead_token_prefix": "di_nIMwbLz",
+  "automated_proof": [
+    {
+      "check": "stage1_still_office",
+      "ok": true,
+      "detail": "办公室处理中"
+    },
+    {
+      "check": "stage1_still_has_vin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "stage2_case_plink_isolated",
+      "ok": true,
+      "detail": "wx_qaiso_71396323b411da18ec19"
+    },
+    {
+      "check": "stage2_workbench_confirm",
+      "ok": true,
+      "detail": "['已有保单资料，客户已确认', '受伤情况已确认：没有受伤', '事故基本经过已记录']"
+    },
+    {
+      "check": "stage2_customer_task_title",
+      "ok": true,
+      "detail": "已有保单资料，客户已确认"
+    },
+    {
+      "check": "stage2_not_upload_wording",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "old_token_invalid",
+      "ok": true,
+      "detail": "unknown_token"
+    },
+    {
+      "check": "issue",
+      "ok": true,
+      "detail": "dinv_baeb5cf02d374fda"
+    },
+    {
+      "check": "validate_active",
+      "ok": true,
+      "detail": "{'ok': True, 'status': 'active', 'error_code': None, 'is_demo': True, 'demo_name': 'chen_known_customer_demo', 'invite': {'invite_id': 'dinv_baeb5cf02d374fda', 'office_id': 'chen_kui', 'scenario_id': 'chen_camry_stage2_phone', 'mock_scenario': 'S3_STAGE2_PHONE', 'demo_name': 'chen_known_customer_dem"
+    },
+    {
+      "check": "validate_scenario",
+      "ok": true,
+      "detail": "chen_camry_stage2_phone"
+    },
+    {
+      "check": "validate_still_active_after_wait",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "founder_bare_has_active",
+      "ok": true,
+      "detail": "BROKER_REVIEW"
+    },
+    {
+      "check": "founder_bare_is_stage1",
+      "ok": true,
+      "detail": "case_4e5adf36c637"
+    },
+    {
+      "check": "redeem_ok",
+      "ok": false,
+      "detail": "active_case_blocks_scenario_switch"
+    },
+    {
+      "check": "redeem_scenario_overlay",
+      "ok": false,
+      "detail": "None"
+    },
+    {
+      "check": "redeem_not_blocked_by_stage1",
+      "ok": false,
+      "detail": "active_case_blocks_scenario_switch"
+    },
+    {
+      "check": "context_has_active_stage2_or_start",
+      "ok": true,
+      "detail": "{'has_active_case': True, 'resume_token': 'h5t1.eyJjYXNlX2lkIjoiY2FzZV80ZTVhZGYzNmM2MzciLCJleHAiOjE3ODY0MDE0MzcsImZsb3ciOiJjbGFpbV9pbnRha2VfZm9ybSIsImlhdCI6MTc4NTc5NjYzNywibGFuZSI6ImNsYWltIiwibW9kZWwiOiJoNV90YXNrX3Rva2VuX3YxIiwibm9uY2UiOiI3YTE1N2IyNjU4Mzk0MzllIiwidiI6M30.986cbe2a7780671bf3b0445da367"
+    },
+    {
+      "check": "resolved_not_stage1",
+      "ok": false,
+      "detail": "case= next=BROKER_REVIEW"
+    },
+    {
+      "check": "resolved_is_stage2_when_active",
+      "ok": true,
+      "detail": "case= iso_case_plink=wx_qaiso_71396323b411da18ec19 iso=wx_qaiso_71396323b411da18ec19"
+    },
+    {
+      "check": "scs_identity_overlay",
+      "ok": false,
+      "detail": "session_id"
+    },
+    {
+      "check": "scs_chen_camry_mercury",
+      "ok": false,
+      "detail": "[]"
+    },
+    {
+      "check": "url_case_projection_title",
+      "ok": true,
+      "detail": "已有保单资料，客户已确认"
+    },
+    {
+      "check": "url_case_not_office_processing",
+      "ok": true,
+      "detail": "理赔 · 记录中"
+    },
+    {
+      "check": "url_case_no_stage1_vin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context_not_pointing_bare_stage1_only",
+      "ok": true,
+      "detail": "next=BROKER_REVIEW has_active=True"
+    },
+    {
+      "check": "token_durable",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "stage1_untouched",
+      "ok": true,
+      "detail": "办公室处理中"
+    }
+  ],
+  "all_pass": false,
+  "revision": "fiqa-api-qa-latest",
+  "note": "DIT is Postgres-durable. Failed/stale dit must not open Stage1. Rescan must resolve Stage2 isolated case.",
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_-jY…wJUU"
+}

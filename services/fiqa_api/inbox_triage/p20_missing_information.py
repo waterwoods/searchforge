@@ -560,11 +560,37 @@ def derive_missing_information_checklist(
             and business_class == BUSINESS_CLASS_REQUEST_MORE
         )
         is_gap = fact_status_is_gap(status)
+        label = meta["label"]
+        customer_label = meta["customer_label"]
+        # Stage 2 — confirm-existing must not surface as an uploaded insurance card.
+        if key == "policy_or_insurance_card" and status == FACT_STATUS_CONFIRMED:
+            try:
+                from services.fiqa_api.inbox_triage.policy_context_confirm import (
+                    FACT_VALUE_CONFIRMED,
+                    SOURCE_CUSTOMER_CONFIRMED,
+                    insurance_card_uploaded,
+                    policy_context_is_customer_confirmed,
+                )
+        
+                source = _str(record.get("source"))
+                value = _str(record.get("value"))
+                if (
+                    (
+                        policy_context_is_customer_confirmed(case)
+                        and not insurance_card_uploaded(case)
+                    )
+                    or source == SOURCE_CUSTOMER_CONFIRMED
+                    or value == FACT_VALUE_CONFIRMED
+                ):
+                    label = FACT_VALUE_CONFIRMED
+                    customer_label = FACT_VALUE_CONFIRMED
+            except Exception:
+                pass
         items.append(
             {
                 "field_key": key,
-                "label": meta["label"],
-                "customer_label": meta["customer_label"],
+                "label": label,
+                "customer_label": customer_label,
                 "item_type": meta["item_type"],
                 "business_class": business_class,
                 "severity": meta["severity"],

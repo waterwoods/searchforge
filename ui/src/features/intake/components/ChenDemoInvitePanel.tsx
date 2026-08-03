@@ -148,7 +148,9 @@ export function ChenDemoInvitePanel({ onInviteGenerated }: ChenDemoInvitePanelPr
 
     const scenarioOptions = useMemo(() => {
         const ids = catalog.map((c) => c.scenario_id);
-        const ordered = ['chen_camry', 'li_multi', 'wang_stale'].filter((id) => ids.includes(id));
+        const ordered = ['chen_camry_stage2_phone', 'chen_camry', 'li_multi', 'wang_stale'].filter(
+            (id) => ids.includes(id),
+        );
         const rest = ids.filter((id) => !ordered.includes(id));
         return [...ordered, ...rest];
     }, [catalog]);

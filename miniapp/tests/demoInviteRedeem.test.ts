@@ -59,6 +59,8 @@ test("start-claim page wires redeem before smart claim", () => {
   assert.match(src, /resolveDemoInviteTokenFromQuery/);
   assert.match(src, /active_case_blocks_scenario_switch/);
   assert.match(src, /_demoInviteActive/);
+  assert.match(src, /demo_invite_redeem_failed_no_active_case_fallback/);
+  assert.match(src, /演示入口已失效或已过期/);
   assert.doesNotMatch(src, /console\.(log|info|warn).*dit/);
   // Must not persist raw token to storage helpers.
   assert.doesNotMatch(src, /setStorage.*dit/);

@@ -7,6 +7,7 @@ QA / non-Production only.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import time
@@ -204,6 +205,43 @@ def _session_identity_key(session_id: str) -> str | None:
     return None
 
 
+def scenario_uses_isolated_identity(scenario_id: str | None) -> bool:
+    entry = get_approved_scenario(scenario_id)
+    return bool(entry and entry.get("isolated_identity"))
+
+
+def isolated_identity_key(session_id: str, scenario_id: str) -> str:
+    """QA-only namespaced Active Case key — never equals the real wx person_link."""
+    from services.fiqa_api.inbox_triage.mp_customer_identity import (
+        resolve_customer_identity_key,
+    )
+
+    base = resolve_customer_identity_key(session_id) or _session_identity_key(session_id) or str(
+        session_id or ""
+    ).strip()
+    digest = hashlib.sha256(f"{base}|{scenario_id}".encode("utf-8")).hexdigest()[:20]
+    return f"wx_qaiso_{digest}"[:80]
+
+
+def effective_customer_identity_key(session_id: str | None) -> str | None:
+    """One Active Case identity: isolated under opted-in demo overlay; else real wx link.
+
+    Does not clear or rewrite bindings on the real person_link. Validated Stage 1
+    cases remain bound to the real identity when the isolated overlay is absent.
+    """
+    from services.fiqa_api.inbox_triage.mp_customer_identity import (
+        resolve_customer_identity_key,
+    )
+
+    sid = str(session_id or "").strip()[:80]
+    if not sid:
+        return None
+    overlay = peek_session_overlay(sid)
+    if overlay and scenario_uses_isolated_identity(str(overlay.get("scenario_id") or "")):
+        return isolated_identity_key(sid, str(overlay.get("scenario_id") or "").strip())
+    return resolve_customer_identity_key(sid)
+
+
 def _active_case_for_session(session_id: str) -> dict[str, Any] | None:
     from services.fiqa_api.inbox_triage.mp_customer_identity import (
         resolve_active_case_for_person_link,
@@ -216,6 +254,27 @@ def _active_case_for_session(session_id: str) -> dict[str, Any] | None:
         return resolve_active_case_for_person_link(key)
     except Exception:
         return None
+
+
+def _active_case_for_invite_session(
+    session_id: str, invite: DemoInviteRecord
+) -> dict[str, Any] | None:
+    """Active Case check scoped to the invite's identity namespace.
+
+    Isolated Stage 2 invites ignore the real wx Active Case (Stage 1 preserved).
+    Non-isolated invites keep classic One Active Case semantics on the real link.
+    """
+    from services.fiqa_api.inbox_triage.mp_customer_identity import (
+        resolve_active_case_for_person_link,
+    )
+
+    if scenario_uses_isolated_identity(invite.scenario_id):
+        key = isolated_identity_key(session_id, invite.scenario_id)
+        try:
+            return resolve_active_case_for_person_link(key)
+        except Exception:
+            return None
+    return _active_case_for_session(session_id)
 
 
 def _overlay_matches_invite(session_id: str, invite: DemoInviteRecord) -> bool:
@@ -295,27 +354,42 @@ def redeem_demo_invite(
                 "fallback": "blank_claim",
             }
 
-    active = _active_case_for_session(sid)
+    # Isolated Stage 2 invites scope Active Case to a QA namespaced key so a
+    # prior Stage 1 陈明 case on the real wx link cannot divert Start Claim.
+    active = _active_case_for_invite_session(sid, invite)
     if active is not None and not _overlay_matches_invite(sid, invite):
-        # Do not bind/replace overlay; do not clear existing same-scenario overlay.
-        case_id = str(
-            active.get("case_id")
-            or active.get("record_id")
-            or active.get("id")
-            or ""
-        ).strip()
+        # Refuse only a silent *switch* to a different mock scenario while an
+        # Active Case exists in this invite's identity namespace.
+        # Same-scenario Continue with a missing/expired overlay must still bind
+        # (common after cold start) so Stage 2 phone rescans reopen the isolated
+        # case instead of falling back to Stage 1 office-processing.
         existing = get_demo_invite_store().get_overlay(sid)
-        return {
-            "ok": False,
-            "error_code": "active_case_blocks_scenario_switch",
-            "status": "active_case_blocks_scenario_switch",
-            "active_case_id": case_id or None,
-            "requires_support_reset": True,
-            "overlay": existing.to_public_dict() if existing else None,
-            "is_demo": True,
-            "demo_name": DEMO_NAME,
-            "fallback": "continue_active_case",
-        }
+        switching = bool(
+            existing is not None
+            and (
+                existing.scenario_id != invite.scenario_id
+                or existing.mock_scenario != invite.mock_scenario
+            )
+        )
+        if switching:
+            case_id = str(
+                active.get("case_id")
+                or active.get("record_id")
+                or active.get("id")
+                or ""
+            ).strip()
+            return {
+                "ok": False,
+                "error_code": "active_case_blocks_scenario_switch",
+                "status": "active_case_blocks_scenario_switch",
+                "active_case_id": case_id or None,
+                "requires_support_reset": True,
+                "overlay": existing.to_public_dict() if existing else None,
+                "is_demo": True,
+                "demo_name": DEMO_NAME,
+                "fallback": "continue_active_case",
+            }
+        # else: fall through and (re)bind same-scenario overlay below.
 
     # Idempotent same-scenario re-redeem while Active Case exists: refresh overlay TTL
     # metadata without treating as a switch.
@@ -480,6 +554,8 @@ __all__ = [
     "FLAG_ENV",
     "assert_demo_invite_allowed",
     "demo_invite_enabled",
+    "effective_customer_identity_key",
+    "isolated_identity_key",
     "issue_demo_invite",
     "list_catalog",
     "peek_session_overlay",
@@ -489,5 +565,6 @@ __all__ = [
     "reset_session_overlay",
     "resolve_overlay_mock_scenario",
     "revoke_demo_invite",
+    "scenario_uses_isolated_identity",
     "validate_demo_invite",
 ]

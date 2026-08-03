@@ -1,0 +1,137 @@
+{
+  "all_pass": false,
+  "revision": "fiqa-api-qa-00046-or-latest",
+  "invite_id": "dinv_1965e257a76b4ca5",
+  "scenario_id": "chen_camry_stage2_phone",
+  "expires_pdt": "2026-08-03 05:42 PM PDT",
+  "founder_person_link": "wx_08af8e465ecbcba85eb15f946ad1aa998aa5e8b3",
+  "isolated_identity_key": "wx_qaiso_71396323b411da18ec19",
+  "resolved_case_id": "case_09ad6254614a",
+  "stage2_case_id": "case_09ad6254614a",
+  "stage1_case_id": "case_4e5adf36c637",
+  "customer_task_title": "已有保单资料，客户已确认",
+  "brief_highlight": "已有保单资料，客户已确认",
+  "automated_proof": [
+    {
+      "check": "prior_invite_survived_redeploy",
+      "ok": false,
+      "detail": "invalid"
+    },
+    {
+      "check": "issue",
+      "ok": true,
+      "detail": "dinv_1965e257a76b4ca5"
+    },
+    {
+      "check": "validate",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "bare_bound_stage1",
+      "ok": true,
+      "detail": "case_4e5adf36c637"
+    },
+    {
+      "check": "redeem_ok",
+      "ok": true,
+      "detail": "redeemed:None"
+    },
+    {
+      "check": "overlay_stage2",
+      "ok": true,
+      "detail": "{'session_id': 'wx_08af8e465ecbcba85eb15f946ad1aa998aa5e8b3', 'invite_id': 'dinv_1965e257a76b4ca5', 'office_id': 'chen_kui', 'scenario_id': 'chen_camry_stage2_phone', 'mock_scenario': 'S3_STAGE2_PHONE', 'demo_name': 'chen_known_customer_demo', 'is_demo': True, 'expires_at': 1785804129, 'bound_at': 1785796930}"
+    },
+    {
+      "check": "context_active",
+      "ok": true,
+      "detail": "BROKER_REVIEW"
+    },
+    {
+      "check": "context_resume_is_stage2",
+      "ok": true,
+      "detail": "case_09ad6254614a"
+    },
+    {
+      "check": "context_resume_not_stage1",
+      "ok": true,
+      "detail": "case_09ad6254614a"
+    },
+    {
+      "check": "scs_overlay",
+      "ok": true,
+      "detail": "demo_invite_overlay"
+    },
+    {
+      "check": "scs_chen_camry_mercury",
+      "ok": true,
+      "detail": "{\"mode\": \"MATCHED_KNOWN\", \"headline_zh\": \"今天发生了什么？\", \"subtitle_zh\": \"请确认下方信息。您只需补充事故事实。\", \"confidence_signal\": \"请确认以下信息\", \"known_chips\": [{\"field_key\": \"customer_name\", \"label_zh\":"
+    },
+    {
+      "check": "scs_mode_known",
+      "ok": true,
+      "detail": "MATCHED_KNOWN"
+    },
+    {
+      "check": "GET_case_id",
+      "ok": true,
+      "detail": "case_09ad6254614a"
+    },
+    {
+      "check": "GET_display_not_office",
+      "ok": true,
+      "detail": "理赔 · 记录中"
+    },
+    {
+      "check": "GET_plink_isolated",
+      "ok": true,
+      "detail": "wx_qaiso_71396323b411da18ec19"
+    },
+    {
+      "check": "GET_task_title_confirmed",
+      "ok": true,
+      "detail": "已有保单资料，客户已确认"
+    },
+    {
+      "check": "GET_brief_confirmed",
+      "ok": true,
+      "detail": "['已有保单资料，客户已确认', '受伤情况已确认：没有受伤', '事故基本经过已记录', '还缺对方保险信息']"
+    },
+    {
+      "check": "GET_no_upload_claim",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "GET_no_stage1_vin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "GET_title_not_bare_保险卡",
+      "ok": true,
+      "detail": "已有保单资料，客户已确认"
+    },
+    {
+      "check": "stage1_preserved",
+      "ok": true,
+      "detail": "办公室处理中"
+    },
+    {
+      "check": "token_still_active",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "rescan_redeem_ok",
+      "ok": true,
+      "detail": "redeemed_idempotent"
+    },
+    {
+      "check": "rescan_still_stage2",
+      "ok": true,
+      "detail": "case_09ad6254614a"
+    }
+  ],
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_Txf…2omA"
+}

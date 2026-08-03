@@ -30,6 +30,7 @@ _SCENARIO_ALIASES: dict[str, str] = {
     "S5": "S5_no_mapping",
     "S6": "S6_unavailable",
     "AMBIGUOUS": "AMBIGUOUS",
+    "S3_STAGE2_PHONE": "S3_STAGE2_PHONE",
 }
 
 

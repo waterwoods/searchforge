@@ -241,8 +241,26 @@ Page({
       pageReady: true,
     });
     try {
-      // T4: redeem Demo Invite before context/plan — soft-fail to blank path.
+      // T4: redeem Demo Invite before context/plan.
+      // If dit= was present but redeem failed, never fall through to a prior
+      // Active Case (Stage 1 office-processing) — that looks like a bad QR.
+      const launchedWithDit = hasDemoInviteLaunchQuery(this._launchOptions);
       await this.redeemDemoInviteIfPresent();
+      if (launchedWithDit && !this._demoInviteActive) {
+        qaPathLog("EARLY_EXIT", {
+          reason: "demo_invite_redeem_failed_no_active_case_fallback",
+          why: "stale_or_unknown_dit",
+          page: "pages/start-claim/start-claim",
+        });
+        this.setData({
+          formAuthorized: false,
+          contextPhase: "error",
+          pageReady: true,
+          initErrorMessage:
+            "演示入口已失效或已过期。请使用陈总最新生成的入口，不要继续旧案件。",
+        });
+        return;
+      }
 
       const context = await resolveCustomerContext();
       if (context.nextAction !== "START_NEW_CLAIM") {

@@ -22,6 +22,11 @@ export const CHEN_DEMO_SCENARIO_UI: Record<
         customer: '陈明',
         vehicle: 'Toyota Camry',
     },
+    chen_camry_stage2_phone: {
+        title: '陈明 · Stage2 Phone QA',
+        customer: '陈明',
+        vehicle: 'Toyota Camry (isolated)',
+    },
     li_multi: {
         title: '李娜 · 多辆车',
         customer: '李娜',

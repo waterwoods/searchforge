@@ -19,6 +19,18 @@ from services.fiqa_api.inbox_triage.mp_customer_identity import (
     resolve_customer_identity_key,
 )
 
+
+def _identity_key_for_context(session_id: str) -> str | None:
+    """Prefer demo-invite isolated QA identity when an opted-in overlay is active."""
+    try:
+        from services.fiqa_api.inbox_triage.demo_invite import effective_customer_identity_key
+
+        return effective_customer_identity_key(session_id) or resolve_customer_identity_key(
+            session_id
+        )
+    except Exception:
+        return resolve_customer_identity_key(session_id)
+
 START_NEW_CLAIM = "START_NEW_CLAIM"
 CONTINUE_ACTIVE_CASE = "CONTINUE_ACTIVE_CASE"
 UPLOAD_REQUEST_ITEM = "UPLOAD_REQUEST_ITEM"
@@ -80,7 +92,7 @@ def resolve_customer_context(
     A launch token is proof for a first binding only.  An existing Active Case
     always wins, so a stale QR cannot replace or fork the customer's case.
     """
-    identity_key = resolve_customer_identity_key(session_id)
+    identity_key = _identity_key_for_context(session_id)
     if not identity_key:
         raise ValueError("durable_identity_required")
 

@@ -405,12 +405,45 @@ def _insurance_satisfied_from_evidence(deps: _ResolvedDeps) -> bool:
     return False
 
 
+def _policy_context_confirmed_without_upload(deps: _ResolvedDeps) -> bool:
+    """True when Cap2 insurance is satisfied by confirm-existing, not an uploaded card."""
+    try:
+        from services.fiqa_api.inbox_triage.policy_context_confirm import (
+            insurance_card_uploaded,
+            policy_context_is_customer_confirmed,
+        )
+
+        return policy_context_is_customer_confirmed(deps.case) and not insurance_card_uploaded(
+            deps.case
+        )
+    except Exception:
+        return False
+
+
+def _insurance_completed_customer_title(deps: _ResolvedDeps) -> str:
+    """Case Status / Task Home title — never imply upload when only policy was confirmed."""
+    if _policy_context_confirmed_without_upload(deps):
+        try:
+            from services.fiqa_api.inbox_triage.policy_context_confirm import (
+                BROKER_LABEL_CONFIRMED,
+            )
+
+            return BROKER_LABEL_CONFIRMED
+        except Exception:
+            return "已有保单资料，客户已确认"
+    return "保险卡"
+
+
 def _insurance_satisfied(deps: _ResolvedDeps) -> bool:
     if "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
+        # Slice1 may mark the Cap2 field satisfied after confirm-existing; still
+        # treat as satisfied, but titles use _insurance_completed_customer_title.
         return True
     if _insurance_satisfied_from_evidence(deps):
         return True
     # Stage 2 — known-customer confirmed existing policy context (not an upload).
+    if _policy_context_confirmed_without_upload(deps):
+        return True
     try:
         from services.fiqa_api.inbox_triage.policy_context_confirm import (
             policy_context_is_customer_confirmed,
@@ -967,7 +1000,7 @@ def _customer_tasks_from_open_request(
         tasks.append(
             _task_card(
                 task_id=TASK_ID_INSURANCE,
-                title="保险卡",
+                title=_insurance_completed_customer_title(deps),
                 state=(
                     TASK_STATE_WAITING_BROKER
                     if stage == STAGE_WAITING_BROKER or _is_waiting_broker(
@@ -1060,10 +1093,15 @@ def _customer_tasks(deps: _ResolvedDeps, customer: Mapping[str, Any]) -> list[di
             if insurance_source == TASK_SOURCE_BROKER_REQUESTED
             else _ROUTE_INSURANCE
         )
+    insurance_title = (
+        _insurance_completed_customer_title(deps)
+        if insurance_done
+        else "保险卡"
+    )
     tasks.append(
         _task_card(
             task_id=TASK_ID_INSURANCE,
-            title="保险卡",
+            title=insurance_title,
             state=insurance_state,
             completed=1 if insurance_done else 0,
             total=1,
@@ -1521,7 +1559,9 @@ def _conclusion_known(deps: _ResolvedDeps) -> list[str]:
         known.append("现场照片")
     if "customer_damage_photo" in received and "车损照片" not in known:
         known.append("车损照片")
-    if "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
+    if _policy_context_confirmed_without_upload(deps):
+        known.append("已有保单资料，客户已确认")
+    elif "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
         known.append("保险卡（待审核）")
     # De-dupe preserving order
     seen: set[str] = set()
@@ -1557,7 +1597,9 @@ def _conclusion_evidence(deps: _ResolvedDeps) -> list[str]:
     received = _str_list((deps.evidence or {}).get("received_slots"))
     for slot in received:
         evidence_rows.append(_EVIDENCE_SLOT_LABELS.get(slot, slot))
-    if "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
+    if _policy_context_confirmed_without_upload(deps):
+        evidence_rows.append("已有保单资料，客户已确认")
+    elif "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
         evidence_rows.append("保险卡照片")
     seen: set[str] = set()
     ordered: list[str] = []
