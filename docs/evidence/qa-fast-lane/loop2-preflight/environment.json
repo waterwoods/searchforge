@@ -1,0 +1,11 @@
+{
+  "run_id": "loop2-preflight",
+  "api": "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
+  "api_profile": "fiqa-api-qa",
+  "frontend_origin": "https://ui-waterwoods-andys-projects-1f411b73.vercel.app",
+  "workbench_url": "https://ui-waterwoods-andys-projects-1f411b73.vercel.app/workbench/document-intake",
+  "scenario": "chen_camry",
+  "session_id_present": false,
+  "created_at": "2026-08-03T04:11:11Z",
+  "production_blocked": true
+}

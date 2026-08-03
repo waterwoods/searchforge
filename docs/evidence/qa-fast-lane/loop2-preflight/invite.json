@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "steps": [
+    "office_reset",
+    "issue",
+    "validate"
+  ],
+  "reason": "ok",
+  "verdict": "PASS",
+  "invite_id": "dinv_1c683d7a81544f59",
+  "scenario_id": "chen_camry",
+  "validation_status": "active",
+  "use_count": 0,
+  "token_masked": "di_wW_…Skm8",
+  "launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_wW_…Skm8"
+}
