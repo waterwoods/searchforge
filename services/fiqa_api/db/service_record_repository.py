@@ -353,6 +353,8 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
         if timing_key in extra:
             tv = extra.get(timing_key)
             case[timing_key] = str(tv).strip() if tv else None
+    if isinstance(extra.get("accident_story_assistant"), dict):
+        case["accident_story_assistant"] = dict(extra.get("accident_story_assistant") or {})
     if isinstance(extra.get("claim_timeline"), list):
         case["claim_timeline"] = [e for e in extra.get("claim_timeline") or [] if isinstance(e, dict)]
     # Stage 2 — known-customer policy confirmation must round-trip on DB-primary QA.
@@ -428,6 +430,8 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "customer_intake_opened_at",
         "customer_first_action_at",
         "broker_first_opened_at",
+        # Bounded LangGraph accident-story assistant confirmation bag.
+        "accident_story_assistant",
         # Stage 2 — durable customer policy-context confirmation (not an uploaded card).
         "policy_context",
         "claim_collision_pending",

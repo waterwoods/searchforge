@@ -1,0 +1,9 @@
+{
+  "raw_story": "昨天下午在 San Jose 停车场，我的 Camry 等红灯时被后车追尾，没有受伤。",
+  "expect": {
+    "injury_status": "no",
+    "max_followup_questions": 0,
+    "has_time": true,
+    "has_location": true
+  }
+}

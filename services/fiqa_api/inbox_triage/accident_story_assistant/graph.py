@@ -1,0 +1,281 @@
+"""Bounded LangGraph for accident-story AI subworkflow only.
+
+Never submits/closes claims, never mutates lifecycle, never decides coverage.
+Final persistence happens outside this graph after customer confirmation.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any, Callable
+
+from services.fiqa_api.inbox_triage.accident_story_assistant.contract import (
+    AccidentStoryState,
+    ProposedFact,
+    empty_state,
+    public_proposal,
+)
+from services.fiqa_api.inbox_triage.accident_story_assistant.extractors import (
+    build_incident_summary,
+    extract_injury_status,
+    extract_location_text,
+    extract_time_text,
+    extract_vehicles,
+    normalize_story,
+    validate_model_proposals,
+)
+from services.fiqa_api.inbox_triage.accident_story_assistant.guardrails import (
+    apply_safety_guardrails,
+    build_confirmation_proposal,
+    derive_missing_facts,
+    draft_followup_questions,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _llm_enabled() -> bool:
+    raw = (os.getenv("ACCIDENT_STORY_LLM") or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def node_normalize_story(state: AccidentStoryState) -> AccidentStoryState:
+    out = dict(state)
+    out["normalized_story"] = normalize_story(str(state.get("raw_story") or ""))
+    out.setdefault("schema_version", 1)
+    return out  # type: ignore[return-value]
+
+
+_LLM_HOOK: Callable[[str], dict[str, Any]] | None = None
+
+
+def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState:
+    """Deterministic extraction; optional LLM merge when ACCIDENT_STORY_LLM=1 or test hook."""
+    out = dict(state)
+    text = str(out.get("normalized_story") or out.get("raw_story") or "")
+    injury, inj_conf, conflicts = extract_injury_status(text)
+    time_text, time_conf = extract_time_text(text)
+    loc_text, loc_conf = extract_location_text(text)
+    vehicles = extract_vehicles(text)
+
+    out["injury_status"] = injury
+    out["accident_time_text"] = time_text
+    out["accident_location_text"] = loc_text
+    out["involved_vehicles"] = vehicles
+    out["involved_parties"] = list(out.get("involved_parties") or [])
+    out["conflicts"] = list(dict.fromkeys([*(out.get("conflicts") or []), *conflicts]))
+    out["confidence_by_field"] = {
+        "injury_status": inj_conf,
+        "accident_datetime": time_conf,
+        "accident_location": loc_conf,
+        "accident_description": 0.9 if text else 0.0,
+    }
+    out["model_provider"] = "deterministic"
+    out["model_name"] = "rules_v1"
+
+    llm_caller = _LLM_HOOK
+    if _llm_enabled() or callable(llm_caller):
+        try:
+            if callable(llm_caller):
+                llm_out = llm_caller(text)
+            else:
+                llm_out = _call_optional_llm(text)
+            if not isinstance(llm_out, dict):
+                raise ValueError("invalid_model_json")
+            merged = validate_model_proposals(llm_out)
+            if merged.get("injury_status"):
+                if out["injury_status"] == "unknown" or merged["injury_status"] == out["injury_status"]:
+                    out["injury_status"] = merged["injury_status"]
+                elif merged["injury_status"] != out["injury_status"]:
+                    out["conflicts"] = list(
+                        dict.fromkeys([*(out.get("conflicts") or []), "injury_model_disagrees"])
+                    )
+                    out["injury_status"] = "unknown"
+            for key in ("accident_time_text", "accident_location_text", "incident_summary"):
+                if merged.get(key) and not str(out.get(key) or "").strip():
+                    out[key] = merged[key]
+            if merged.get("involved_vehicles"):
+                out["involved_vehicles"] = list(
+                    dict.fromkeys([*(out.get("involved_vehicles") or []), *merged["involved_vehicles"]])
+                )[:5]
+            if merged.get("confidence_by_field"):
+                conf = dict(out.get("confidence_by_field") or {})
+                conf.update(merged["confidence_by_field"])
+                out["confidence_by_field"] = conf
+            out["model_provider"] = str(llm_out.get("_provider") or "openai")
+            out["model_name"] = str(llm_out.get("_model") or "accident_story_llm")
+        except Exception as exc:
+            out["used_fallback"] = True
+            out["fallback_reason"] = f"llm_failed:{exc}"
+            warns = list(out.get("warnings") or [])
+            warns.append("llm_unavailable_or_invalid_using_deterministic")
+            out["warnings"] = warns
+
+    out["incident_summary"] = str(out.get("incident_summary") or "") or build_incident_summary(
+        normalized=text,
+        injury=out["injury_status"],  # type: ignore[arg-type]
+        time_text=str(out.get("accident_time_text") or ""),
+        location_text=str(out.get("accident_location_text") or ""),
+    )
+    return out  # type: ignore[return-value]
+
+
+def _call_optional_llm(text: str) -> dict[str, Any]:
+    """Optional LLM path — disabled by default; raises on timeout/invalid."""
+    raise TimeoutError("accident_story_llm_disabled_or_timeout")
+
+
+def node_validate_proposals(state: AccidentStoryState) -> AccidentStoryState:
+    out = dict(state)
+    # Re-validate injury domain.
+    if str(out.get("injury_status") or "") not in ("yes", "no", "unknown"):
+        out["used_fallback"] = True
+        out["fallback_reason"] = out.get("fallback_reason") or "invalid_injury_status"
+        out["injury_status"] = "unknown"
+        warns = list(out.get("warnings") or [])
+        warns.append("proposal_validation_coerced_injury_unknown")
+        out["warnings"] = warns
+    # Build proposed_facts list with ai_proposed authority only.
+    facts: list[ProposedFact] = []
+    story = str(out.get("normalized_story") or out.get("raw_story") or "").strip()
+    if story:
+        facts.append(
+            {
+                "field_key": "accident_description",
+                "value": story,
+                "authority": "ai_proposed",
+                "confidence": float((out.get("confidence_by_field") or {}).get("accident_description") or 0.9),
+                "source": "customer_text",
+            }
+        )
+    if str(out.get("accident_time_text") or "").strip():
+        facts.append(
+            {
+                "field_key": "accident_datetime",
+                "value": str(out["accident_time_text"]),
+                "authority": "ai_proposed",
+                "confidence": float((out.get("confidence_by_field") or {}).get("accident_datetime") or 0.5),
+                "source": "extractor",
+            }
+        )
+    if str(out.get("accident_location_text") or "").strip():
+        facts.append(
+            {
+                "field_key": "accident_location",
+                "value": str(out["accident_location_text"]),
+                "authority": "ai_proposed",
+                "confidence": float((out.get("confidence_by_field") or {}).get("accident_location") or 0.5),
+                "source": "extractor",
+            }
+        )
+    facts.append(
+        {
+            "field_key": "injury_status",
+            "value": str(out.get("injury_status") or "unknown"),
+            "authority": "ai_proposed",
+            "confidence": float((out.get("confidence_by_field") or {}).get("injury_status") or 0.2),
+            "source": "extractor",
+        }
+    )
+    out["proposed_facts"] = facts
+    return out  # type: ignore[return-value]
+
+
+def node_derive_missing_facts(state: AccidentStoryState) -> AccidentStoryState:
+    out = dict(state)
+    out["missing_required_facts"] = derive_missing_facts(out)  # type: ignore[arg-type]
+    return out  # type: ignore[return-value]
+
+
+def node_draft_followup_questions(state: AccidentStoryState) -> AccidentStoryState:
+    out = dict(state)
+    missing = list(out.get("missing_required_facts") or [])
+    out["followup_questions"] = draft_followup_questions(missing, max_questions=3)
+    return out  # type: ignore[return-value]
+
+
+def node_apply_safety_guardrails(state: AccidentStoryState) -> AccidentStoryState:
+    return apply_safety_guardrails(state)
+
+
+def node_build_customer_confirmation_proposal(state: AccidentStoryState) -> AccidentStoryState:
+    return build_confirmation_proposal(state)
+
+
+def run_accident_story_graph(
+    *,
+    raw_story: str,
+    command_id: str = "",
+    idempotency_key: str = "",
+    llm_caller: Callable[[str], dict[str, Any]] | None = None,
+) -> AccidentStoryState:
+    """Execute the bounded graph. Persistence stays outside."""
+    global _LLM_HOOK
+    initial: AccidentStoryState = empty_state(
+        raw_story=raw_story,
+        command_id=command_id,
+        idempotency_key=idempotency_key,
+    )
+    prev_hook = _LLM_HOOK
+    _LLM_HOOK = llm_caller
+    try:
+        from langgraph.graph import END, StateGraph
+
+        graph: Any = StateGraph(AccidentStoryState)
+        graph.add_node("normalize_story", node_normalize_story)
+        graph.add_node("extract_fact_proposals", node_extract_fact_proposals)
+        graph.add_node("validate_proposals", node_validate_proposals)
+        graph.add_node("derive_missing_facts", node_derive_missing_facts)
+        graph.add_node("draft_followup_questions", node_draft_followup_questions)
+        graph.add_node("apply_safety_guardrails", node_apply_safety_guardrails)
+        graph.add_node(
+            "build_customer_confirmation_proposal",
+            node_build_customer_confirmation_proposal,
+        )
+        graph.set_entry_point("normalize_story")
+        graph.add_edge("normalize_story", "extract_fact_proposals")
+        graph.add_edge("extract_fact_proposals", "validate_proposals")
+        graph.add_edge("validate_proposals", "derive_missing_facts")
+        graph.add_edge("derive_missing_facts", "draft_followup_questions")
+        graph.add_edge("draft_followup_questions", "apply_safety_guardrails")
+        graph.add_edge("apply_safety_guardrails", "build_customer_confirmation_proposal")
+        graph.add_edge("build_customer_confirmation_proposal", END)
+        app = graph.compile()
+        result = app.invoke(dict(initial))
+        return result  # type: ignore[return-value]
+    except Exception as exc:
+        logger.warning("langgraph_unavailable_sequential_fallback: %s", exc)
+        state: AccidentStoryState = dict(initial)  # type: ignore[assignment]
+        for fn in (
+            node_normalize_story,
+            node_extract_fact_proposals,
+            node_validate_proposals,
+            node_derive_missing_facts,
+            node_draft_followup_questions,
+            node_apply_safety_guardrails,
+            node_build_customer_confirmation_proposal,
+        ):
+            state = fn(state)
+        state = dict(state)
+        state["used_fallback"] = True
+        state["fallback_reason"] = state.get("fallback_reason") or f"graph_runtime:{exc}"
+        return state  # type: ignore[return-value]
+    finally:
+        _LLM_HOOK = prev_hook
+
+
+def propose_from_story(
+    *,
+    raw_story: str,
+    command_id: str = "",
+    idempotency_key: str = "",
+    llm_caller: Callable[[str], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    state = run_accident_story_graph(
+        raw_story=raw_story,
+        command_id=command_id,
+        idempotency_key=idempotency_key,
+        llm_caller=llm_caller,
+    )
+    return public_proposal(state)

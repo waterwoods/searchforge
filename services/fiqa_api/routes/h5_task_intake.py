@@ -137,6 +137,28 @@ class SmartClaimStartBody(BaseModel):
     mock_scenario: str | None = Field(default=None, max_length=64)
 
 
+class AccidentStoryProposeBody(BaseModel):
+    """Bounded LangGraph accident-story proposal (no lifecycle mutation)."""
+
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    raw_story: str = Field(..., min_length=1, max_length=2000)
+    session_id: str | None = Field(default=None, max_length=128)
+    case_id: str | None = Field(default=None, max_length=128)
+
+
+class AccidentStoryConfirmBody(BaseModel):
+    """Customer confirm/edit of accident-story proposal → authoritative facts only on confirm."""
+
+    command_id: str = Field(..., min_length=8, max_length=128)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
+    case_id: str = Field(..., min_length=4, max_length=128)
+    raw_story: str = Field(default="", max_length=2000)
+    confirm: bool = Field(default=False)
+    customer_edits: dict[str, Any] | None = None
+    proposal: dict[str, Any] | None = None
+
+
 @router.post("/customer/session")
 async def post_customer_session(body: CustomerSessionBody) -> dict[str, Any]:
     """
@@ -218,6 +240,39 @@ async def post_customer_smart_claim_start(body: SmartClaimStartBody) -> dict[str
     plan.pop("person_link_key", None)
     plan.pop("openid", None)
     result["plan"] = plan
+    return result
+
+
+@router.post("/customer/accident-story/propose")
+async def post_accident_story_propose(body: AccidentStoryProposeBody) -> dict[str, Any]:
+    """Run bounded LangGraph proposal. Never mutates Claim lifecycle."""
+    from services.fiqa_api.inbox_triage.accident_story_assistant import propose_accident_story
+
+    return propose_accident_story(
+        raw_story=body.raw_story,
+        command_id=body.command_id,
+        idempotency_key=body.idempotency_key,
+        case_id=body.case_id,
+        session_id=body.session_id,
+    )
+
+
+@router.post("/customer/accident-story/confirm")
+async def post_accident_story_confirm(body: AccidentStoryConfirmBody) -> dict[str, Any]:
+    """Persist facts only after explicit customer confirm/edit. No submit/close."""
+    from services.fiqa_api.inbox_triage.accident_story_assistant import confirm_accident_story
+
+    result = confirm_accident_story(
+        case_id=body.case_id,
+        command_id=body.command_id,
+        idempotency_key=body.idempotency_key,
+        raw_story=body.raw_story,
+        confirm=bool(body.confirm),
+        customer_edits=body.customer_edits,
+        proposal=body.proposal,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result)
     return result
 
 

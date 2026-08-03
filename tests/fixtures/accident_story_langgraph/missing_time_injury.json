@@ -1,0 +1,8 @@
+{
+  "raw_story": "在 Fremont 路口发生追尾事故。",
+  "expect": {
+    "injury_status": "unknown",
+    "missing_contains": ["accident_datetime", "injury_status"],
+    "max_followup_questions": 2
+  }
+}
