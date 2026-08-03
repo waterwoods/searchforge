@@ -1,0 +1,10 @@
+{
+  "root_cause": "DevTools redeemed prior token revoked by reset-office; validate does not revoke; new token remained active",
+  "old_token_prefix": "di_US-yOF76",
+  "old_validate": "revoked 20/20",
+  "previous_new_token_prefix": "di_5e4UPhS7",
+  "previous_new_validate": "active 20/20",
+  "maxScale": 2,
+  "minScale": 0,
+  "store": "process-local in-memory"
+}
