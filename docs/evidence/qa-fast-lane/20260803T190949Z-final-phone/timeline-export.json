@@ -1,0 +1,48 @@
+{
+  "case_id": "case_4e5adf36c637",
+  "exported_at": "2026-08-03T19:10:07Z",
+  "events": [
+    {
+      "text": null,
+      "actor": "customer",
+      "event_id": "evt_924166f2dc85",
+      "metadata": {
+        "category": "policy_or_insurance_card",
+        "filename": "tmp_383cf26f2c30903b67b9d59e7eb5f64e.jpg",
+        "size_bytes": 380701,
+        "submission_phase": "pre_submit"
+      },
+      "created_at": "2026-08-03T18:38:35Z",
+      "event_type": "evidence_uploaded",
+      "message_id": null,
+      "attachment_id": "att_d0b2961dd852",
+      "source_channel": "h5_task"
+    },
+    {
+      "text": "已核对补充资料",
+      "actor": "broker",
+      "event_id": "evt_5036e0c11e0b",
+      "metadata": {
+        "source": "workbench"
+      },
+      "created_at": "2026-08-03T19:10:05Z",
+      "event_type": "broker_supplement_reviewed",
+      "message_id": null,
+      "attachment_id": null,
+      "source_channel": "workbench"
+    },
+    {
+      "text": "资料已齐，等待办公室处理",
+      "actor": "broker",
+      "event_id": "evt_c38312816fa7",
+      "metadata": {
+        "source": "workbench"
+      },
+      "created_at": "2026-08-03T19:10:06Z",
+      "event_type": "broker_office_materials_accepted",
+      "message_id": null,
+      "attachment_id": null,
+      "source_channel": "workbench"
+    }
+  ]
+}

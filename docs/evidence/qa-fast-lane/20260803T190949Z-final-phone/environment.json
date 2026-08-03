@@ -1,0 +1,11 @@
+{
+  "api": "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
+  "api_profile": "fiqa-api-qa",
+  "frontend_origin": "https://ui-jnk8lixxe-andys-projects-1f411b73.vercel.app",
+  "workbench_url": "https://ui-jnk8lixxe-andys-projects-1f411b73.vercel.app/workbench/document-intake",
+  "scenario": "chen_camry",
+  "case_id": "case_4e5adf36c637",
+  "session_id_present": true,
+  "production_blocked": true,
+  "revision_at_run": "fiqa-api-qa-00039-k5c"
+}

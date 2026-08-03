@@ -1,0 +1,2 @@
+run_id,case_id,env,ack,accept,suggest_accept,idempotent,broker_done,closed,go_nogo
+20260803T190949Z-final-phone,case_4e5adf36c637,qa,PASS,PASS,PASS,PASS,no,no,GO

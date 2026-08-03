@@ -1,0 +1,13 @@
+Workbench UI snapshot after final phone closure (2026-08-03)
+
+Confirmed visible in QA Preview queue:
+- 陈明 · 演示·陈明
+- 2020 Toyota Camry
+- 下一步: 办公室处理中
+- 更新: 刚刚
+- API profile: fiqa-api-qa
+- Preview: ui-jnk8lixxe-andys-projects-1f411b73.vercel.app
+- API: https://fiqa-api-qa-g7zatxrycq-uw.a.run.app
+
+Case detail API confirms case_4e5adf36c637 / CLM-0031 / office_materials_accepted_at set /
+timeline has broker_supplement_reviewed + broker_office_materials_accepted.
