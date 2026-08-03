@@ -1,0 +1,2 @@
+run_id,date_utc,persona,scenario_type,case_id,env,invite_verdict,steps_pass,steps_fail,go_nogo,notes
+loop2-preflight,2026-08-03T04:11:14Z,陈明,chen_camry,case_cfc524b56b7a,qa,,8,0,GO,qa_fast_lane_v1
