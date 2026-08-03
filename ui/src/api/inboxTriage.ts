@@ -1094,6 +1094,27 @@ export async function getSavedCase(caseId: string): Promise<SavedCase> {
     return response.data;
 }
 
+/**
+ * Observational first-wins stamp after successful Workbench detail/Brief render.
+ * Idempotent. Never called by metrics export or generic support GETs.
+ */
+export async function recordBrokerFirstOpened(caseId: string): Promise<{
+    ok: boolean;
+    broker_first_opened_at?: string;
+    created_at?: string;
+    recorded?: boolean;
+    duplicate?: boolean;
+}> {
+    const response = await request.post<{
+        ok: boolean;
+        broker_first_opened_at?: string;
+        created_at?: string;
+        recorded?: boolean;
+        duplicate?: boolean;
+    }>(`/api/inbox/cases/${encodeURIComponent(caseId)}/activity/broker-first-opened`, {});
+    return response.data;
+}
+
 export async function createCaseRequestMore(
     caseId: string,
     command: CreateRequestMoreCommand,

@@ -1,0 +1,169 @@
+{
+  "case_id": "case_064c13b33017",
+  "session_id_prefix": "wx_integrity_770474fbf0b",
+  "broker_first_opened_at": "2026-08-03T23:44:30Z",
+  "export_row": {
+    "case_id": "case_064c13b33017",
+    "customer_intake_opened_at": "2026-08-03T23:44:28Z",
+    "customer_first_action_at": "2026-08-03T23:44:28Z",
+    "formal_submitted_at": "",
+    "intake_open_to_submit_sec": "",
+    "first_action_to_submit_sec": "",
+    "policy_context_confirmed_at": "",
+    "broker_first_opened_at": "2026-08-03T23:44:30Z",
+    "submit_to_broker_first_open_sec": "",
+    "first_request_more_at": "",
+    "request_more_loops": "",
+    "supplement_submitted_at": "",
+    "request_more_to_supplement_sec": "",
+    "broker_supplement_reviewed_at": "",
+    "supplement_to_broker_review_sec": "",
+    "office_materials_accepted_at": "",
+    "first_action_to_office_accept_sec": "",
+    "data_quality_notes": "note:observational_open_not_active_work;missing:formal_submitted_at;missing:broker_ready_timestamp;missing:policy_context_confirmed_at;missing:first_request_more_at;missing:office_materials_accepted_at;unsupported:ai_accept_edit_reject_rates_no_events;qa_or_artificial_timing",
+    "customer_started_at": "2026-08-03T23:44:28Z",
+    "time_to_formal_submit_sec": "",
+    "time_to_broker_ready_sec": "",
+    "supplement_turnaround_sec": "",
+    "time_to_office_accept_sec": ""
+  },
+  "activity_first": {
+    "ok": true,
+    "recorded": true,
+    "duplicate": false,
+    "created_at": "2026-08-03T23:44:30Z",
+    "actor_role": "broker",
+    "source_surface": "broker_workbench",
+    "schema_version": 1
+  },
+  "activity_second": {
+    "ok": true,
+    "recorded": false,
+    "duplicate": true,
+    "created_at": "2026-08-03T23:44:30Z"
+  },
+  "steps": [
+    {
+      "step": "issue_invite",
+      "status": "PASS",
+      "detail": "invite=dinv_d806d237b4044bdb",
+      "at": "2026-08-03T23:44:27Z"
+    },
+    {
+      "step": "redeem",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:27Z"
+    },
+    {
+      "step": "start_claim",
+      "status": "PASS",
+      "detail": "outcome=accepted",
+      "at": "2026-08-03T23:44:27Z"
+    },
+    {
+      "step": "case_id",
+      "status": "PASS",
+      "detail": "case_064c13b33017",
+      "at": "2026-08-03T23:44:28Z"
+    },
+    {
+      "step": "blank_before_open",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:28Z"
+    },
+    {
+      "step": "export_blank",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:28Z"
+    },
+    {
+      "step": "get_again_no_stamp",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "support_manifest",
+      "status": "PASS",
+      "detail": "http=200",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "after_readonly_still_blank",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "readonly_no_customer_open",
+      "status": "PASS",
+      "detail": "unchanged_or_preexisting",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "readonly_no_customer_action",
+      "status": "PASS",
+      "detail": "unchanged_or_preexisting",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "server_timestamp",
+      "status": "PASS",
+      "detail": "2026-08-03T23:44:30Z",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "actor_role",
+      "status": "PASS",
+      "detail": "broker",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "source_surface",
+      "status": "PASS",
+      "detail": "broker_workbench",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "first_record",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:29Z"
+    },
+    {
+      "step": "idempotent_reopen",
+      "status": "PASS",
+      "detail": "2026-08-03T23:44:30Z",
+      "at": "2026-08-03T23:44:30Z"
+    },
+    {
+      "step": "duplicate_flag",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:30Z"
+    },
+    {
+      "step": "export_matches",
+      "status": "PASS",
+      "detail": "2026-08-03T23:44:30Z",
+      "at": "2026-08-03T23:44:30Z"
+    },
+    {
+      "step": "no_pii_payload",
+      "status": "PASS",
+      "detail": "",
+      "at": "2026-08-03T23:44:30Z"
+    },
+    {
+      "step": "get_after_stamp",
+      "status": "PASS",
+      "detail": "2026-08-03T23:44:30Z",
+      "at": "2026-08-03T23:44:30Z"
+    }
+  ],
+  "verdict": "PASS",
+  "at": "2026-08-03T23:44:30Z"
+}

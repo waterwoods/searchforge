@@ -44,6 +44,7 @@ import {
     getSavedCase,
     listRecentCasesPage,
     patchCaseWorkbench,
+    recordBrokerFirstOpened,
     triageMessage,
     updateSavedCaseFollowUp,
     updateSavedCaseStatus,
@@ -53,6 +54,7 @@ import {
     type TriageResult,
     type WaitingOn,
 } from '@/api/inboxTriage';
+import { notifyBrokerCaseDetailRendered } from '@/features/intake/utils/brokerCaseOpenInstrumentation';
 import { hasDebugSignals, pickTriageResultCore } from '@/api/triageResultContract';
 import { copyToClipboard } from '@/utils/demoCopy';
 import { useClientConfig } from '@/context/ClientConfigContext';
@@ -336,6 +338,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 setCurrentCase(full);
                 setNoteDraft('');
                 setError(null);
+                void notifyBrokerCaseDetailRendered(initialCaseId, recordBrokerFirstOpened);
             } catch (e: unknown) {
                 const msg =
                     (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
@@ -407,6 +410,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
             try {
                 const full = await getSavedCase(savedCase.case_id);
                 setCurrentCase(full);
+                void notifyBrokerCaseDetailRendered(savedCase.case_id, recordBrokerFirstOpened);
             } catch (e: unknown) {
                 const msg =
                     (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
@@ -422,7 +426,9 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
         await loadRecent({ page: workbenchPageIndex });
         if (!currentCase?.case_id) return;
         try {
-            setCurrentCase(await getSavedCase(currentCase.case_id));
+            const full = await getSavedCase(currentCase.case_id);
+            setCurrentCase(full);
+            void notifyBrokerCaseDetailRendered(currentCase.case_id, recordBrokerFirstOpened);
         } catch (e: unknown) {
             const msg =
                 (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
@@ -608,6 +614,7 @@ export function BrokerWorkbenchTab({ initialCaseId, clientId: clientIdProp }: Br
                 try {
                     const full = await getSavedCase(caseToOpen.case_id);
                     setCurrentCase(full);
+                    void notifyBrokerCaseDetailRendered(caseToOpen.case_id, recordBrokerFirstOpened);
                 } catch {
                     setCurrentCase(caseToOpen);
                 }

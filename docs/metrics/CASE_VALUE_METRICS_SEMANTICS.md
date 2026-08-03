@@ -102,11 +102,11 @@ Required properties per event:
 
 | Item | Definition |
 |------|------------|
-| **Exact definition** | First successful Broker case-detail / Brief render for that case (`GET /api/inbox/cases/{case_id}` after access checks). |
+| **Exact definition** | First successful Broker Workbench case-detail / Brief **render**, stamped by dedicated `POST /api/inbox/cases/{case_id}/activity/broker-first-opened` after the UI loads detail successfully. |
 | **Source** | `case_activity_events.event_type = broker_first_opened` |
-| **Server timestamp** | Insert time on first successful GET |
-| **Idempotency** | One row per case; key `{case_id}:broker_first_opened`. Refresh does not reset. |
-| **Known limitations** | List-only glance without detail fetch is not counted. Not “time broker spent reading.” |
+| **Server timestamp** | Insert time on first successful activity POST |
+| **Idempotency** | One row per case; key `{case_id}:broker_first_opened`. Refresh / reopen / replay do not reset. |
+| **Known limitations** | List-only glance without detail render is not counted. Generic `GET /cases/{id}`, metrics export, and support scripts must **not** create this event. Not “time broker spent reading.” |
 | **Class** | Observational telemetry |
 
 ### 6. `first_request_more_at` / `request_more_loops`

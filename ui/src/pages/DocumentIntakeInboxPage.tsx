@@ -39,8 +39,10 @@ import {
   listRecentCasesPage,
   markClaimBrokerDone,
   patchCaseWorkbench,
+  recordBrokerFirstOpened,
   type SavedCase,
 } from '@/api/inboxTriage';
+import { notifyBrokerCaseDetailRendered } from '@/features/intake/utils/brokerCaseOpenInstrumentation';
 import { resolveClaimPrimaryStatus } from '@/features/intake/utils/claimPrimaryStatus';
 import { humanizeStructuredField, isAddCarReadyForBroker, resolveCustomerDisplayName } from '@/features/intake/utils/intakePure';
 import { BrokerHeader } from '@/features/intake/components/BrokerHeader';
@@ -987,6 +989,7 @@ export default function DocumentIntakeInboxPage() {
     try {
       const full = await getSavedCase(caseId);
       setDetail(full);
+      void notifyBrokerCaseDetailRendered(caseId, recordBrokerFirstOpened);
       const hydratedCount = countImagePreviews(full.case_attachments, isImageAttachment);
       if (hydratedCount !== session.imagePreviewCount) {
         session.imagePreviewCount = hydratedCount;

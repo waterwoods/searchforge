@@ -112,9 +112,23 @@ def test_attach_case_activity_timing_additive():
     assert isinstance(case.get("case_activity_timing"), dict)
 
 
-def test_export_fetch_header_contract_documented():
-    """Exporter must send X-Case-Activity-Record: 0 (see tools/export_case_value_metrics)."""
+def test_get_saved_case_route_does_not_stamp_broker_open():
+    """Integrity: generic GET must never call record_broker_first_opened."""
+    from pathlib import Path
+
+    src = Path("services/fiqa_api/routes/inbox_triage.py").read_text(encoding="utf-8")
+    # Dedicated activity route owns the stamp; GET only attaches timing.
+    assert "activity/broker-first-opened" in src
+    get_fn = src.split("async def get_saved_case")[1].split("async def ")[0]
+    assert "record_broker_first_opened" not in get_fn
+    assert "attach_case_activity_timing" in get_fn
+
+
+def test_export_remains_read_only_header_defense():
     from pathlib import Path
 
     src = Path("tools/export_case_value_metrics.py").read_text(encoding="utf-8")
     assert 'X-Case-Activity-Record": "0"' in src or "X-Case-Activity-Record': '0'" in src
+    assert "Never targets Production" in Path("tools/export_case_value_metrics.py").read_text(
+        encoding="utf-8"
+    ) or "Never mutates" in src

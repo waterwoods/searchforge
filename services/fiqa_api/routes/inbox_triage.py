@@ -2064,28 +2064,63 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Workbench list projection failed for case %s: %s", cid, exc)
 
-    # Observational: first successful broker case-detail/Brief render (first-wins).
-    # Skip recording when X-Case-Activity-Record: 0 (metrics export / read-only probes).
+    # Read-only: attach first-wins timing if already recorded. Never stamp here —
+    # broker_first_opened is only via POST .../activity/broker-first-opened after
+    # a successful Workbench detail/Brief render.
     try:
         from services.fiqa_api.inbox_triage.case_activity_events import (
             attach_case_activity_timing,
-            record_broker_first_opened,
-            safe_record,
         )
 
-        record_header = (http_request.headers.get("X-Case-Activity-Record") or "").strip().lower()
-        if record_header not in ("0", "false", "no", "off"):
-            safe_record(
-                record_broker_first_opened,
-                cid,
-                source_surface="broker_workbench",
-                meta={"command_type": "get_saved_case"},
-            )
         attach_case_activity_timing(case)
     except Exception as exc:
         logger.warning("Case activity timing attach failed for case %s: %s", cid, exc)
 
     return sanitize_case_for_workbench_api(case)
+
+
+@router.post("/cases/{case_id}/activity/broker-first-opened")
+async def post_broker_first_opened_activity(
+    case_id: str,
+    http_request: Request,
+) -> dict[str, Any]:
+    """Idempotent observational stamp: first successful Workbench detail/Brief render.
+
+    Must be called only after the Workbench UI successfully renders case detail.
+    Generic GET /cases/{id} and metrics export never create this event.
+    """
+    cid = (case_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="case_id required")
+    case = get_case_for_read(cid)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(http_request, case)
+    assert_case_client_access_allowed(http_request, case)
+
+    from services.fiqa_api.inbox_triage.case_activity_events import (
+        get_case_activity_timing,
+        record_broker_first_opened,
+    )
+
+    result = record_broker_first_opened(
+        cid,
+        source_surface="broker_workbench",
+        meta={"command_type": "workbench_detail_render"},
+    )
+    timing = get_case_activity_timing(cid)
+    return {
+        "ok": True,
+        "case_id": cid,
+        "event_type": "broker_first_opened",
+        "recorded": bool(result.get("recorded")),
+        "duplicate": bool(result.get("duplicate")),
+        "created_at": result.get("created_at") or timing.get("broker_first_opened_at") or "",
+        "actor_role": result.get("actor_role") or "broker",
+        "source_surface": result.get("source_surface") or "broker_workbench",
+        "schema_version": result.get("schema_version") or 1,
+        "broker_first_opened_at": timing.get("broker_first_opened_at") or result.get("created_at") or "",
+    }
 
 
 def _broker_actor_identity(http_request: Request) -> str:
