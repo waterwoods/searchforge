@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export minimum case value metrics (V1) from existing case + Timeline fields.
+"""Export case value metrics (V1+) from case + Timeline + activity timing.
 
 Read-only. Cloud QA by default. Never targets Production. Never mutates cases.
 
@@ -7,6 +7,7 @@ Usage:
   PYTHONPATH=. python3 tools/export_case_value_metrics.py case_4e5adf36c637
   PYTHONPATH=. python3 tools/export_case_value_metrics.py case_a case_b --out-dir /tmp/metrics
   PYTHONPATH=. python3 tools/export_case_value_metrics.py --from-json path/to/case.json
+  PYTHONPATH=. python3 tools/export_case_value_metrics.py --from-json a.json --summary
 
 Auth: loads `.env.cloudrun.qa` (UNIFIED_INTAKE_INTAKE_API_KEY) like QA Fast Lane.
 """
@@ -16,6 +17,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import sys
 import urllib.error
@@ -30,18 +32,30 @@ PRODUCTION_API = "https://fiqa-api-g7zatxrycq-uw.a.run.app"
 
 CSV_COLUMNS = [
     "case_id",
-    "customer_started_at",
+    # Stage 2 primary timing columns
+    "customer_intake_opened_at",
+    "customer_first_action_at",
     "formal_submitted_at",
-    "time_to_formal_submit_sec",
-    "time_to_broker_ready_sec",
+    "intake_open_to_submit_sec",
+    "first_action_to_submit_sec",
+    "policy_context_confirmed_at",
+    "broker_first_opened_at",
+    "submit_to_broker_first_open_sec",
     "first_request_more_at",
     "request_more_loops",
     "supplement_submitted_at",
-    "supplement_turnaround_sec",
+    "request_more_to_supplement_sec",
     "broker_supplement_reviewed_at",
+    "supplement_to_broker_review_sec",
     "office_materials_accepted_at",
-    "time_to_office_accept_sec",
+    "first_action_to_office_accept_sec",
     "data_quality_notes",
+    # Legacy aliases (backward compatible)
+    "customer_started_at",
+    "time_to_formal_submit_sec",
+    "time_to_broker_ready_sec",
+    "supplement_turnaround_sec",
+    "time_to_office_accept_sec",
 ]
 
 
@@ -51,7 +65,7 @@ def _load_qa_env() -> None:
         return
     for line in path.read_text(encoding="utf-8").splitlines():
         raw = line.strip()
-        if not raw or raw.startswith("#") or "=" not in raw:
+        if raw.startswith("#") or "=" not in raw:
             continue
         key, _, val = raw.partition("=")
         key = key.strip()
@@ -149,17 +163,37 @@ def _unique_event_times(events: list[dict[str, Any]], event_type: str) -> list[d
     return sorted(times)
 
 
+def _timing_field(case: dict[str, Any], key: str) -> datetime | None:
+    direct = _parse_ts(case.get(key))
+    if direct is not None:
+        return direct
+    bag = case.get("case_activity_timing")
+    if isinstance(bag, dict):
+        return _parse_ts(bag.get(key))
+    return None
+
+
 def compute_case_value_metrics(case: dict[str, Any]) -> dict[str, Any]:
-    """Derive V1 metrics from a case detail payload. Never fabricates missing times."""
+    """Derive metrics from a case detail payload. Never fabricates missing times."""
     notes: list[str] = []
     case_id = str(case.get("case_id") or case.get("id") or "").strip()
 
     started = _parse_ts(case.get("created_at"))
+    intake_opened = _timing_field(case, "customer_intake_opened_at")
+    first_action = _timing_field(case, "customer_first_action_at")
+    broker_opened = _timing_field(case, "broker_first_opened_at")
     formal = _parse_ts(case.get("formal_submitted_at"))
     office = _parse_ts(case.get("office_materials_accepted_at"))
 
     if started is None:
         notes.append("missing:customer_started_at(created_at)")
+    if intake_opened is None:
+        notes.append("missing:customer_intake_opened_at")
+        notes.append("note:observational_open_not_active_work")
+    else:
+        notes.append("note:observational_open_not_active_work")
+    if first_action is None:
+        notes.append("missing:customer_first_action_at")
     if formal is None:
         notes.append("missing:formal_submitted_at")
     elif started is not None and formal == started:
@@ -168,16 +202,29 @@ def compute_case_value_metrics(case: dict[str, Any]) -> dict[str, Any]:
             "pre_submit_dwell_not_separately_recorded"
         )
 
-    # Initial broker-ready ≈ formal submit for this product shape.
     broker_ready = formal
     if broker_ready is None:
         notes.append("missing:broker_ready_timestamp")
 
     events = _iter_events(case)
+
+    policy_times = _unique_event_times(events, "customer_policy_context_confirmed")
+    policy_confirmed = policy_times[0] if policy_times else None
+    if policy_confirmed is None:
+        pc = case.get("policy_context")
+        if isinstance(pc, dict):
+            policy_confirmed = _parse_ts(pc.get("confirmed_at"))
+    if policy_confirmed is None:
+        notes.append("missing:policy_context_confirmed_at")
+
     rm_times = _unique_event_times(events, "broker_request_more_created")
-    # Fallback: open_request.created_at when timeline slice omitted the create event.
     if not rm_times:
-        for proj_key in ("p20_slice1_projection", "slice1_projection", "p20_slice1_request_summary", "slice1_request_summary"):
+        for proj_key in (
+            "p20_slice1_projection",
+            "slice1_projection",
+            "p20_slice1_request_summary",
+            "slice1_request_summary",
+        ):
             proj = case.get(proj_key)
             if not isinstance(proj, dict):
                 continue
@@ -196,9 +243,13 @@ def compute_case_value_metrics(case: dict[str, Any]) -> dict[str, Any]:
         notes.append("missing:first_request_more_at")
 
     supp_times = _unique_event_times(events, "supplement_submitted")
-    # Fallback: request item customer_response.submitted_at
     if not supp_times:
-        for proj_key in ("p20_slice1_projection", "slice1_projection", "p20_slice1_request_summary", "slice1_request_summary"):
+        for proj_key in (
+            "p20_slice1_projection",
+            "slice1_projection",
+            "p20_slice1_request_summary",
+            "slice1_request_summary",
+        ):
             proj = case.get(proj_key)
             if not isinstance(proj, dict):
                 continue
@@ -230,29 +281,129 @@ def compute_case_value_metrics(case: dict[str, Any]) -> dict[str, Any]:
     if office is None:
         notes.append("missing:office_materials_accepted_at")
 
-    # Explicitly never invent broker-open.
-    if not _parse_ts(case.get("broker_confirmed_at")) and not any(
-        _event_type(e) in ("broker_opened", "broker_case_opened", "broker_first_open") for e in events
-    ):
+    if broker_opened is None:
+        notes.append("missing:broker_first_opened_at")
         notes.append("unsupported:broker_first_open_not_recorded")
 
     notes.append("unsupported:ai_accept_edit_reject_rates_no_events")
 
+    if bool(case.get("workbench_test")) or bool(case.get("is_test")) or str(
+        case.get("demo_name") or ""
+    ).strip():
+        notes.append("qa_or_artificial_timing")
+
+    request_more_to_supp = _sec_between(first_rm, supplement_at)
+
     return {
         "case_id": case_id,
-        "customer_started_at": _fmt_ts(started),
+        "customer_intake_opened_at": _fmt_ts(intake_opened),
+        "customer_first_action_at": _fmt_ts(first_action),
         "formal_submitted_at": _fmt_ts(formal),
-        "time_to_formal_submit_sec": _sec_between(started, formal),
-        "time_to_broker_ready_sec": _sec_between(started, broker_ready),
+        "intake_open_to_submit_sec": _sec_between(intake_opened, formal),
+        "first_action_to_submit_sec": _sec_between(first_action, formal),
+        "policy_context_confirmed_at": _fmt_ts(policy_confirmed),
+        "broker_first_opened_at": _fmt_ts(broker_opened),
+        "submit_to_broker_first_open_sec": _sec_between(formal, broker_opened),
         "first_request_more_at": _fmt_ts(first_rm),
         "request_more_loops": rm_loops if first_rm is not None else "",
         "supplement_submitted_at": _fmt_ts(supplement_at),
-        "supplement_turnaround_sec": _sec_between(first_rm, supplement_at),
+        "request_more_to_supplement_sec": request_more_to_supp,
         "broker_supplement_reviewed_at": _fmt_ts(ack_at),
+        "supplement_to_broker_review_sec": _sec_between(supplement_at, ack_at),
         "office_materials_accepted_at": _fmt_ts(office),
-        "time_to_office_accept_sec": _sec_between(started, office),
+        "first_action_to_office_accept_sec": _sec_between(first_action, office),
         "data_quality_notes": ";".join(notes),
+        # Legacy
+        "customer_started_at": _fmt_ts(started),
+        "time_to_formal_submit_sec": _sec_between(started, formal),
+        "time_to_broker_ready_sec": _sec_between(started, broker_ready),
+        "supplement_turnaround_sec": request_more_to_supp,
+        "time_to_office_accept_sec": _sec_between(started, office),
     }
+
+
+def _percentile(sorted_vals: list[float], p: float) -> float | None:
+    if not sorted_vals:
+        return None
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    rank = (len(sorted_vals) - 1) * p
+    low = int(math.floor(rank))
+    high = int(math.ceil(rank))
+    if low == high:
+        return sorted_vals[low]
+    weight = rank - low
+    return sorted_vals[low] * (1 - weight) + sorted_vals[high] * weight
+
+
+def summarize_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summary mode: count, median/p75/p90, missing-data rate. No significance claims."""
+    n = len(rows)
+    duration_fields = [
+        "intake_open_to_submit_sec",
+        "first_action_to_submit_sec",
+        "submit_to_broker_first_open_sec",
+        "request_more_to_supplement_sec",
+        "supplement_to_broker_review_sec",
+        "first_action_to_office_accept_sec",
+        "time_to_formal_submit_sec",
+        "time_to_office_accept_sec",
+    ]
+    stamp_fields = [
+        "customer_intake_opened_at",
+        "customer_first_action_at",
+        "formal_submitted_at",
+        "broker_first_opened_at",
+        "first_request_more_at",
+        "supplement_submitted_at",
+        "broker_supplement_reviewed_at",
+        "office_materials_accepted_at",
+        "policy_context_confirmed_at",
+    ]
+
+    out: dict[str, Any] = {
+        "case_count": n,
+        "statistically_meaningful": False,
+        "note": (
+            "Small sample — do not treat percentiles as statistically meaningful "
+            "until real pilot traffic accumulates."
+            if n < 30
+            else "Sample size still requires judgment; not a formal statistical study."
+        ),
+        "durations": {},
+        "missing_data_rate": {},
+    }
+
+    for field in duration_fields:
+        vals: list[float] = []
+        missing = 0
+        for row in rows:
+            raw = row.get(field)
+            if raw is None or str(raw).strip() == "":
+                missing += 1
+                continue
+            try:
+                vals.append(float(raw))
+            except (TypeError, ValueError):
+                missing += 1
+        vals.sort()
+        out["durations"][field] = {
+            "n": len(vals),
+            "missing": missing,
+            "missing_rate": (missing / n) if n else 1.0,
+            "median": _percentile(vals, 0.50),
+            "p75": _percentile(vals, 0.75),
+            "p90": _percentile(vals, 0.90),
+        }
+
+    for field in stamp_fields:
+        missing = sum(1 for row in rows if not str(row.get(field) or "").strip())
+        out["missing_data_rate"][field] = {
+            "missing": missing,
+            "missing_rate": (missing / n) if n else 1.0,
+        }
+
+    return out
 
 
 def _http_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
@@ -273,7 +424,11 @@ def _http_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
 
 def fetch_case(api: str, case_id: str) -> dict[str, Any]:
     key = (os.getenv("UNIFIED_INTAKE_INTAKE_API_KEY") or "").strip()
-    headers = {"Accept": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        # Never stamp broker_first_opened via metrics export GETs.
+        "X-Case-Activity-Record": "0",
+    }
     if key:
         headers["X-Unified-Intake-Api-Key"] = key
     return _http_get_json(f"{api.rstrip('/')}/api/inbox/cases/{case_id}", headers)
@@ -293,7 +448,7 @@ def write_outputs(rows: list[dict[str, Any]], out_dir: Path, stem: str) -> tuple
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Export case value metrics V1 (read-only, Cloud QA).")
+    parser = argparse.ArgumentParser(description="Export case value metrics V1+ (read-only, Cloud QA).")
     parser.add_argument("case_ids", nargs="*", help="One or more QA case_id values")
     parser.add_argument("--from-json", action="append", default=[], help="Local case JSON fixture path")
     parser.add_argument("--api", default=CLOUD_QA_API, help="API base (Cloud QA only)")
@@ -303,6 +458,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Output directory for CSV/JSON",
     )
     parser.add_argument("--stem", default="case_value_metrics", help="Output filename stem")
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Also write summary (count, median, p75, p90, missing rates)",
+    )
     args = parser.parse_args(argv)
 
     if not args.case_ids and not args.from_json:
@@ -322,15 +482,24 @@ def main(argv: list[str] | None = None) -> int:
             case = fetch_case(args.api, case_id)
             rows.append(compute_case_value_metrics(case))
 
-    json_path, csv_path = write_outputs(rows, Path(args.out_dir), args.stem)
+    out_dir = Path(args.out_dir)
+    json_path, csv_path = write_outputs(rows, out_dir, args.stem)
     print(json.dumps({"rows": len(rows), "json": str(json_path), "csv": str(csv_path)}, indent=2))
     for row in rows:
         print(
-            f"{row['case_id']}: formal={row['time_to_formal_submit_sec'] or 'MISSING'}s "
+            f"{row['case_id']}: open→submit={row['intake_open_to_submit_sec'] or 'MISSING'}s "
+            f"action→submit={row['first_action_to_submit_sec'] or 'MISSING'}s "
+            f"submit→broker_open={row['submit_to_broker_first_open_sec'] or 'MISSING'}s "
             f"rm_loops={row['request_more_loops']} "
-            f"supp_turnaround={row['supplement_turnaround_sec'] or 'MISSING'}s "
-            f"office={row['time_to_office_accept_sec'] or 'MISSING'}s"
+            f"supp_turnaround={row['request_more_to_supplement_sec'] or 'MISSING'}s "
+            f"action→office={row['first_action_to_office_accept_sec'] or 'MISSING'}s"
         )
+
+    if args.summary:
+        summary = summarize_metrics(rows)
+        summary_path = out_dir / f"{args.stem}.summary.json"
+        summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(json.dumps({"summary": str(summary_path), "case_count": summary["case_count"]}, indent=2))
     return 0
 
 
