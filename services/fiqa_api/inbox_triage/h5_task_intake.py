@@ -755,6 +755,20 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
             brief=brief,
             slice1=None,
         )
+        try:
+            from services.fiqa_api.inbox_triage.case_activity_events import (
+                record_customer_intake_opened,
+                safe_record,
+            )
+
+            safe_record(
+                record_customer_intake_opened,
+                claims.case_id,
+                source_surface="h5_intake",
+                meta={"command_type": "intake_info_render"},
+            )
+        except Exception:
+            pass
         return result
     if slice1_projection:
         result["slice1_projection"] = slice1_projection
@@ -780,6 +794,20 @@ def intake_info_for_token(claims: VerifiedH5TaskToken) -> dict[str, Any]:
         brief=brief,
         slice1=slice1_projection if isinstance(slice1_projection, dict) else None,
     )
+    try:
+        from services.fiqa_api.inbox_triage.case_activity_events import (
+            record_customer_intake_opened,
+            safe_record,
+        )
+
+        safe_record(
+            record_customer_intake_opened,
+            claims.case_id,
+            source_surface="h5_intake",
+            meta={"command_type": "intake_info_render"},
+        )
+    except Exception:
+        pass
     return result
 
 
@@ -936,6 +964,21 @@ def patch_intake_fields(
     new_state["task_revision"] = int(new_state.get("task_revision") or 0) + 1
     update_case_h5_intake_state(claims.case_id, new_state)
 
+    try:
+        from services.fiqa_api.inbox_triage.case_activity_events import (
+            record_customer_first_action,
+            safe_record,
+        )
+
+        safe_record(
+            record_customer_first_action,
+            claims.case_id,
+            source_surface="h5_intake",
+            meta={"command_type": f"patch_fields:{step_norm}"},
+        )
+    except Exception:
+        pass
+
     return intake_info_for_token(claims)
 
 
@@ -1015,6 +1058,20 @@ def submit_intake_form(
         intent[:8],
         confirm_result.get("sent"),
     )
+    try:
+        from services.fiqa_api.inbox_triage.case_activity_events import (
+            record_customer_first_action,
+            safe_record,
+        )
+
+        safe_record(
+            record_customer_first_action,
+            claims.case_id,
+            source_surface="h5_intake",
+            meta={"command_type": "submit_intake_form"},
+        )
+    except Exception:
+        pass
     return {
         **intake_info_for_token(claims),
         "already_submitted": False,

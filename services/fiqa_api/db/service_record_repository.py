@@ -345,6 +345,14 @@ def _hydrate_extra_pilot_fields(case: dict[str, Any], extra: dict[str, Any]) -> 
     if "office_materials_accepted_at" in extra:
         v = extra.get("office_materials_accepted_at")
         case["office_materials_accepted_at"] = str(v).strip() if v else None
+    for timing_key in (
+        "customer_intake_opened_at",
+        "customer_first_action_at",
+        "broker_first_opened_at",
+    ):
+        if timing_key in extra:
+            tv = extra.get(timing_key)
+            case[timing_key] = str(tv).strip() if tv else None
     if isinstance(extra.get("claim_timeline"), list):
         case["claim_timeline"] = [e for e in extra.get("claim_timeline") or [] if isinstance(e, dict)]
     # Stage 2 — known-customer policy confirmation must round-trip on DB-primary QA.
@@ -416,6 +424,10 @@ def _build_extra(case: dict[str, Any]) -> dict[str, Any]:
         "office_materials_accepted_at",
         "claim_mentioned_at",
         "claim_timeline",
+        # Stage 2 timing instrumentation (observational; events table is SSOT).
+        "customer_intake_opened_at",
+        "customer_first_action_at",
+        "broker_first_opened_at",
         # Stage 2 — durable customer policy-context confirmation (not an uploaded card).
         "policy_context",
         "claim_collision_pending",

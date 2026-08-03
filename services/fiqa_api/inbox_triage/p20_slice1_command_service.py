@@ -1514,6 +1514,21 @@ class P20Slice1CommandService:
             handler=_handle,
         )
         _log_command_outcome(command_type="customer_request_item_submit", case_id=case_id, result=result)
+        if str(result.get("outcome") or "") in ("accepted", "replayed"):
+            try:
+                from services.fiqa_api.inbox_triage.case_activity_events import (
+                    record_customer_first_action,
+                    safe_record,
+                )
+
+                safe_record(
+                    record_customer_first_action,
+                    case_id,
+                    source_surface="h5_intake",
+                    meta={"command_type": "submit_request_item"},
+                )
+            except Exception:
+                pass
         return result
 
     def acknowledge_supplement_review(

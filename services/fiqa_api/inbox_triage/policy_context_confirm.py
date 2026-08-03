@@ -335,6 +335,20 @@ def confirm_policy_context_for_case(
     if applied["outcome"] in ("accepted",) and updated is not None:
         if not _persist_case_after_update(cid, updated):
             return {"outcome": "persist_failed", "case": None, "event_appended": False}
+        try:
+            from services.fiqa_api.inbox_triage.case_activity_events import (
+                record_customer_first_action,
+                safe_record,
+            )
+
+            safe_record(
+                record_customer_first_action,
+                cid,
+                source_surface="mini_program",
+                meta={"command_type": "policy_context_confirm"},
+            )
+        except Exception:
+            pass
     return {
         "outcome": applied["outcome"],
         "case": updated,

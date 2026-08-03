@@ -156,7 +156,23 @@ def start_customer_claim(
     if existing:
         case_id = str(existing.get("case_id") or "").strip()
         if case_id:
-            return _resume_existing(case_id)
+            out = _resume_existing(case_id)
+            try:
+                from services.fiqa_api.inbox_triage.case_activity_events import (
+                    record_customer_intake_opened,
+                    safe_record,
+                )
+
+                safe_record(
+                    record_customer_intake_opened,
+                    case_id,
+                    source_surface="mini_program",
+                    session_id=session_id,
+                    meta={"command_type": "start_claim_resume"},
+                )
+            except Exception:
+                pass
+            return out
 
     actor_identity = normalize_customer_actor_identity(session_id)
     office = (office_id if office_id is not None else resolve_customer_start_claim_office_id())
@@ -278,4 +294,36 @@ def start_customer_claim(
                 # Never fail Start Claim because confirm side-effect failed;
                 # customer can still upload insurance card (FALLBACK).
                 pass
+        try:
+            from services.fiqa_api.inbox_triage.case_activity_events import (
+                record_customer_first_action,
+                record_customer_intake_opened,
+                safe_record,
+            )
+
+            safe_record(
+                record_customer_intake_opened,
+                case_id,
+                source_surface="mini_program",
+                session_id=session_id,
+                meta={"command_type": "start_claim_create"},
+            )
+            meaningful = bool(
+                known_facts
+                or str(policy_context_choice or "").strip()
+                or description
+                or datetime_value
+                or location
+                or injury
+            )
+            if meaningful:
+                safe_record(
+                    record_customer_first_action,
+                    case_id,
+                    source_surface="mini_program",
+                    session_id=session_id,
+                    meta={"command_type": "start_claim_mutation"},
+                )
+        except Exception:
+            pass
     return out

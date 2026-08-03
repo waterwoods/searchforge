@@ -104,6 +104,21 @@ def resolve_customer_context(
         resume = issue_resume_for_case(case_id)
         context = _context_for_token(token=resume["resume_token"], active_case=True)
         context["resume_expires_at"] = resume["resume_expires_at"]
+        try:
+            from services.fiqa_api.inbox_triage.case_activity_events import (
+                record_customer_intake_opened,
+                safe_record,
+            )
+
+            safe_record(
+                record_customer_intake_opened,
+                case_id,
+                source_surface="mini_program",
+                session_id=session_id,
+                meta={"command_type": "customer_context_active"},
+            )
+        except Exception:
+            pass
         return context
 
     presented = str(launch_token or "").strip()
@@ -119,8 +134,39 @@ def resolve_customer_context(
             resume = issue_resume_for_case(claims.case_id)
             context = _context_for_token(token=resume["resume_token"], active_case=True)
             context["resume_expires_at"] = resume["resume_expires_at"]
+            try:
+                from services.fiqa_api.inbox_triage.case_activity_events import (
+                    record_customer_intake_opened,
+                    safe_record,
+                )
+
+                safe_record(
+                    record_customer_intake_opened,
+                    str(claims.case_id),
+                    source_surface="mini_program",
+                    session_id=session_id,
+                    meta={"command_type": "customer_context_launch_bind"},
+                )
+            except Exception:
+                pass
             return context
-        return _context_for_token(token=presented, active_case=False)
+        context = _context_for_token(token=presented, active_case=False)
+        try:
+            from services.fiqa_api.inbox_triage.case_activity_events import (
+                record_customer_intake_opened,
+                safe_record,
+            )
+
+            safe_record(
+                record_customer_intake_opened,
+                str(claims.case_id),
+                source_surface="mini_program",
+                session_id=session_id,
+                meta={"command_type": "customer_context_launch_token"},
+            )
+        except Exception:
+            pass
+        return context
 
     return {
         "has_active_case": False,

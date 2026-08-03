@@ -2064,6 +2064,27 @@ async def get_saved_case(case_id: str, http_request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Workbench list projection failed for case %s: %s", cid, exc)
 
+    # Observational: first successful broker case-detail/Brief render (first-wins).
+    # Skip recording when X-Case-Activity-Record: 0 (metrics export / read-only probes).
+    try:
+        from services.fiqa_api.inbox_triage.case_activity_events import (
+            attach_case_activity_timing,
+            record_broker_first_opened,
+            safe_record,
+        )
+
+        record_header = (http_request.headers.get("X-Case-Activity-Record") or "").strip().lower()
+        if record_header not in ("0", "false", "no", "off"):
+            safe_record(
+                record_broker_first_opened,
+                cid,
+                source_surface="broker_workbench",
+                meta={"command_type": "get_saved_case"},
+            )
+        attach_case_activity_timing(case)
+    except Exception as exc:
+        logger.warning("Case activity timing attach failed for case %s: %s", cid, exc)
+
     return sanitize_case_for_workbench_api(case)
 
 

@@ -414,6 +414,18 @@ def _normalize_case(case: dict[str, Any]) -> dict[str, Any]:
         v = normalized.get("office_materials_accepted_at")
         normalized["office_materials_accepted_at"] = str(v).strip() if v else None
 
+    # Stage 2 observational timing stamps (additive; first-wins via case_activity_events).
+    for timing_key in (
+        "customer_intake_opened_at",
+        "customer_first_action_at",
+        "broker_first_opened_at",
+    ):
+        if timing_key not in normalized:
+            normalized[timing_key] = None
+        else:
+            tv = normalized.get(timing_key)
+            normalized[timing_key] = str(tv).strip() if tv else None
+
     # Track B0.2/B0.3 — WeCom channel identity binding (contract §4.1). Narrow,
     # additive fields only; not used by the phone-based resolver.
     if "wecom_external_userid" not in normalized:
