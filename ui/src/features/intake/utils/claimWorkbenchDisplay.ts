@@ -93,6 +93,37 @@ export function claimDisplayStatus(c: SavedCase): string {
   return '事故基本信息已收到';
 }
 
+/** Stage 2 — distinguish customer-confirmed linked policy from uploaded insurance card. */
+export function policyContextEvidenceLabel(caseItem: {
+  policy_context?: { status?: string; customer_choice?: string } | null;
+  claim_attachment_slots?: Record<string, { status?: string } | undefined> | null;
+  case_attachments?: Array<{ slot_assignment?: string; document_type?: string; evidence_category?: string }>;
+} | null | undefined): string | null {
+  if (!caseItem) return null;
+  const slots = caseItem.claim_attachment_slots || {};
+  const slot = slots.policy_or_insurance_card;
+  if (slot && String(slot.status || '').toLowerCase() === 'received') {
+    return '客户上传了保险卡';
+  }
+  const atts = Array.isArray(caseItem.case_attachments) ? caseItem.case_attachments : [];
+  for (const att of atts) {
+    const keys = [att.slot_assignment, att.document_type, att.evidence_category]
+      .map((v) => String(v || '').toLowerCase());
+    if (keys.some((k) => k === 'policy_or_insurance_card' || k === 'insurance_card' || k === 'insurance_card_photo')) {
+      return '客户上传了保险卡';
+    }
+  }
+  const pc = caseItem.policy_context;
+  if (
+    pc
+    && String(pc.status || '').toLowerCase() === 'confirmed'
+    && String(pc.customer_choice || '').toLowerCase() === 'correct'
+  ) {
+    return '已有保单资料，客户已确认';
+  }
+  return null;
+}
+
 export const CLAIM_INTAKE_SAFETY_NOTE =
   '当前仅为收件整理。正式报案前须由经纪人确认。';
 

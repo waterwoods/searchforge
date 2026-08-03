@@ -16,6 +16,10 @@ export type CustomerStartClaimCommand = {
   accident_location?: string;
   injury_status?: string;
   correlation_id?: string;
+  /** Stage 2 — known-customer policy context confirmation choice / label. */
+  policy_context_choice?: string;
+  selected_vehicle_ref?: string;
+  selected_vehicle_summary?: string;
 };
 
 export type CustomerStartClaimResult = {
@@ -51,6 +55,9 @@ export async function startClaim(
     accident_datetime: (command.accident_datetime || "").trim() || undefined,
     accident_location: (command.accident_location || "").trim() || undefined,
     injury_status: (command.injury_status || "").trim() || undefined,
+    policy_context_choice: (command.policy_context_choice || "").trim() || undefined,
+    selected_vehicle_ref: (command.selected_vehicle_ref || "").trim() || undefined,
+    selected_vehicle_summary: (command.selected_vehicle_summary || "").trim() || undefined,
     is_test: Boolean(appConfig.prototypeMode),
   });
 }

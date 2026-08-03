@@ -109,6 +109,25 @@ export function policyConfirmWantsBroker(selections: Record<string, string>): bo
   return Boolean(chosen) && /联系/.test(chosen);
 }
 
+/** Stage 2 — map confirm_policy_context option to API choice token. */
+export function resolvePolicyContextChoice(
+  selections: Record<string, string>,
+): string | undefined {
+  const chosen = String(selections.confirm_policy_context || "").trim();
+  if (!chosen) return undefined;
+  if (chosen === "资料正确，继续" || chosen === "correct") return "correct";
+  if (chosen === "信息有变化" || chosen === "changed") return "changed";
+  if (chosen === "我不确定" || chosen === "uncertain") return "uncertain";
+  return chosen;
+}
+
+export function resolveSelectedVehicleSummary(
+  selections: Record<string, string>,
+): string | undefined {
+  const chosen = String(selections.confirm_vehicle || "").trim();
+  return chosen || undefined;
+}
+
 export function emptySmartClaimUiState(): SmartClaimUiState {
   return {
     uiMode: "legacy",

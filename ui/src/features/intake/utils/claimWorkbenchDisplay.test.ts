@@ -19,6 +19,7 @@ import {
   formatClaimEvidenceStatusLabel,
   isClaimGuidedCase,
   isClaimGuidedLane,
+  policyContextEvidenceLabel,
   resolveClaimEvidenceSummary,
   resolveClaimSummary,
 } from './claimWorkbenchDisplay.ts';
@@ -184,5 +185,22 @@ for (const text of sampleOutputs) {
 for (const phrase of CLAIM_EVIDENCE_FORBIDDEN_PHRASES) {
   assert.equal(claimEvidenceCopyIsBrokerSafe(`test ${phrase}`), false);
 }
+
+assert.equal(
+  policyContextEvidenceLabel({
+    policy_context: { status: 'confirmed', customer_choice: 'correct' },
+    claim_attachment_slots: {},
+    case_attachments: [],
+  }),
+  '已有保单资料，客户已确认',
+);
+assert.equal(
+  policyContextEvidenceLabel({
+    policy_context: null,
+    claim_attachment_slots: { policy_or_insurance_card: { status: 'received' } },
+    case_attachments: [],
+  }),
+  '客户上传了保险卡',
+);
 
 console.log('claimWorkbenchDisplay.test: PASS');

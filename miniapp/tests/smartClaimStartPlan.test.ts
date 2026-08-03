@@ -9,6 +9,8 @@ import {
   emptySmartClaimUiState,
   planHasBannedIdentityLeak,
   resolveMockScenarioFromQuery,
+  resolvePolicyContextChoice,
+  resolveSelectedVehicleSummary,
   sanitizeChipValue,
   sanitizeChips,
 } from "../utils/smartClaimStartPlan";
@@ -68,6 +70,42 @@ test("S1 continue gate hides accident form and blocks duplicate create path", ()
   assert.equal(ui.uiMode, "continue_active");
   assert.equal(ui.showAccidentForm, false);
   assert.equal(ui.canShowAccidentBlock, false);
+});
+
+test("Stage 2 policy context confirm choices map to API tokens", () => {
+  assert.equal(
+    resolvePolicyContextChoice({ confirm_policy_context: "资料正确，继续" }),
+    "correct",
+  );
+  assert.equal(
+    resolvePolicyContextChoice({ confirm_policy_context: "信息有变化" }),
+    "changed",
+  );
+  assert.equal(
+    resolvePolicyContextChoice({ confirm_policy_context: "我不确定" }),
+    "uncertain",
+  );
+  assert.equal(resolveSelectedVehicleSummary({ confirm_vehicle: "2020 Toyota Camry" }), "2020 Toyota Camry");
+});
+
+test("Stage 2 policy context confirm gates accident until chosen", () => {
+  const plan = matchedPlan({
+    mode: "MATCHED_KNOWN",
+    confirm_steps: [
+      {
+        step_id: "confirm_policy_context",
+        prompt_zh: "已找到您的车辆和保单资料",
+        options: ["资料正确，继续", "信息有变化", "我不确定"],
+        required_before_accident: true,
+      },
+    ],
+  });
+  const before = buildSmartClaimUiState(plan, {});
+  assert.equal(before.canShowAccidentBlock, false);
+  const after = buildSmartClaimUiState(plan, {
+    confirm_policy_context: "资料正确，继续",
+  });
+  assert.equal(after.canShowAccidentBlock, true);
 });
 
 test("S2 vehicle confirm blocks accident until selected", () => {

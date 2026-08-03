@@ -14,6 +14,7 @@ import {
   formatClaimInjuryStatus,
   formatClaimPoliceStatus,
   formatClaimTimelinePreview,
+  policyContextEvidenceLabel,
   resolveClaimCaseBrief,
 } from '@/features/intake/utils/claimWorkbenchDisplay';
 
@@ -167,6 +168,7 @@ export function ClaimCaseBriefPanel({
     String(nextAction || '').trim()
     || (primary ? primary.label : '')
     || String(brief.next_best_question || '').trim();
+  const policyEvidenceLabel = policyContextEvidenceLabel(caseRecord || null);
 
   return (
     <Card
@@ -176,6 +178,11 @@ export function ClaimCaseBriefPanel({
       styles={{ body: { padding: '12px 16px' } }}
     >
       <Paragraph style={{ fontSize: 14, marginBottom: 12 }}>{brief.summary}</Paragraph>
+      {policyEvidenceLabel ? (
+        <Tag color="blue" style={{ marginBottom: 12 }} data-testid="policy-context-evidence-label">
+          {policyEvidenceLabel}
+        </Tag>
+      ) : null}
 
       {canAckSupplement ? (
         <div

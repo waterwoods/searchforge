@@ -50,6 +50,8 @@ import {
   buildSmartClaimUiState,
   emptySmartClaimUiState,
   resolveMockScenarioFromQuery,
+  resolvePolicyContextChoice,
+  resolveSelectedVehicleSummary,
   type SmartClaimUiState,
 } from "../../utils/smartClaimStartPlan";
 import {
@@ -850,6 +852,8 @@ Page({
         accident_datetime: payload.accident_datetime,
         accident_location: payload.accident_location,
         injury_status: payload.injury_status,
+        policy_context_choice: resolvePolicyContextChoice(this._confirmSelections),
+        selected_vehicle_summary: resolveSelectedVehicleSummary(this._confirmSelections),
       });
       if (!result.ok) {
         const errorCode = result.error_code || "create_claim_failed";
@@ -1028,6 +1032,8 @@ Page({
     accident_datetime?: string;
     accident_location?: string;
     injury_status?: string;
+    policy_context_choice?: string;
+    selected_vehicle_summary?: string;
   }) {
     return startClaim(command);
   },
