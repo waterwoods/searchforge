@@ -408,7 +408,19 @@ def _insurance_satisfied_from_evidence(deps: _ResolvedDeps) -> bool:
 def _insurance_satisfied(deps: _ResolvedDeps) -> bool:
     if "policy_or_insurance_card" in _satisfied_item_types(deps.slice1):
         return True
-    return _insurance_satisfied_from_evidence(deps)
+    if _insurance_satisfied_from_evidence(deps):
+        return True
+    # Stage 2 — known-customer confirmed existing policy context (not an upload).
+    try:
+        from services.fiqa_api.inbox_triage.policy_context_confirm import (
+            policy_context_is_customer_confirmed,
+        )
+
+        if policy_context_is_customer_confirmed(deps.case):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _has_incomplete_default_intake(deps: _ResolvedDeps) -> bool:

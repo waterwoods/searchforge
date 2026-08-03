@@ -116,6 +116,9 @@ def start_customer_claim(
     office_id: str | None = None,
     tenant_id: str | None = None,
     force_new: bool = False,
+    policy_context_choice: str | None = None,
+    selected_vehicle_ref: str | None = None,
+    selected_vehicle_summary: str | None = None,
 ) -> dict[str, Any]:
     """Facade: Cap2 CreateClaim with actor=customer + resume token (P26G/P29B/P0).
 
@@ -220,4 +223,48 @@ def start_customer_claim(
     case_id = str(out.get("case_id") or "").strip()
     if case_id and str(out.get("outcome") or "") in ("accepted", "replayed"):
         bind_active_case(identity_key, case_id)
+        # Stage 2 — persist known-customer policy context choice (idempotent).
+        choice = str(policy_context_choice or "").strip()
+        if choice:
+            try:
+                from services.fiqa_api.inbox_triage.policy_context_confirm import (
+                    confirm_policy_context_for_case,
+                    lookup_from_session_overlay,
+                )
+
+                lookup = lookup_from_session_overlay(session_id)
+                # Prefer demo-invite fixture even when overlay already consumed.
+                if lookup is None or str(lookup.get("match_status") or "") in (
+                    "LOOKUP_UNAVAILABLE",
+                    "NOT_FOUND",
+                ):
+                    try:
+                        from services.fiqa_api.inbox_triage.customer_lookup.facade import (
+                            lookup_demo_invite_fixture,
+                        )
+                        from services.fiqa_api.inbox_triage.demo_invite import (
+                            get_approved_scenario,
+                            peek_session_overlay,
+                        )
+
+                        overlay = peek_session_overlay(session_id)
+                        if overlay:
+                            entry = get_approved_scenario(str(overlay.get("scenario_id") or ""))
+                            if entry:
+                                lookup = lookup_demo_invite_fixture(entry["mock_person_link_key"])
+                    except Exception:
+                        pass
+                confirm_policy_context_for_case(
+                    case_id,
+                    lookup=lookup,
+                    customer_choice=choice,
+                    command_id=f"{command_id}:policy_context",
+                    idempotency_key=f"{idempotency_key}:policy_context",
+                    selected_vehicle_ref=selected_vehicle_ref,
+                    selected_vehicle_summary=selected_vehicle_summary,
+                )
+            except Exception:
+                # Never fail Start Claim because confirm side-effect failed;
+                # customer can still upload insurance card (FALLBACK).
+                pass
     return out

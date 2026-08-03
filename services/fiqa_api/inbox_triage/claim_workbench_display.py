@@ -988,6 +988,17 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
             "该客户有多份未完成事故记录；系统已按最近活跃事故继续整理，请核对是否重复。",
         )
 
+    try:
+        from services.fiqa_api.inbox_triage.policy_context_confirm import (
+            broker_policy_evidence_label,
+        )
+
+        policy_label = broker_policy_evidence_label(case)
+        if policy_label:
+            highlights.insert(0, {"level": "received", "label": policy_label, "kind": "policy_context"})
+    except Exception:
+        pass
+
     # Happy Path Loop 1 — Cap2 Must Have gaps are the only completeness source.
     from services.fiqa_api.inbox_triage.p20_missing_information import (
         OFFICE_MATERIALS_READY_SUGGESTION,

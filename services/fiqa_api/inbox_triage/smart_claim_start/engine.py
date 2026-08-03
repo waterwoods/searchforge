@@ -19,6 +19,10 @@ from typing import Any
 
 from services.fiqa_api.inbox_triage.claim_prefill.contract import PrefillResult
 from services.fiqa_api.inbox_triage.customer_lookup.contract import LookupResult
+from services.fiqa_api.inbox_triage.policy_context_decision import (
+    confirm_step_for_decision,
+    decide_policy_context,
+)
 from services.fiqa_api.inbox_triage.smart_claim_start.contract import (
     MUST_HAVE_ACCIDENT_KEYS,
     ConfirmStep,
@@ -414,6 +418,32 @@ def build_smart_claim_start_plan(
                 "reason_code": "stale_policy_confirm",
             }
         )
+
+    # Stage 2 — known-customer policy context confirm (skip redundant card upload).
+    # Stale path keeps REQUIRE_UPLOAD; do not offer CONFIRM_EXISTING there.
+    if mode in ("MATCHED_KNOWN", "MATCHED_CONFIRM_VEHICLE") and not confirm_policy:
+        vehicles = [v for v in (lookup.get("vehicles") or []) if isinstance(v, dict)]
+        selected_summary = None
+        if len(vehicles) == 1:
+            selected_summary = " ".join(
+                str(vehicles[0].get(k) or "").strip()
+                for k in ("year", "make", "model")
+                if vehicles[0].get(k)
+            ).strip() or None
+        elif vehicles:
+            # Preview with primary / first vehicle for plan-time step; submit re-decides.
+            primary = next((v for v in vehicles if v.get("is_primary")), vehicles[0])
+            selected_summary = " ".join(
+                str(primary.get(k) or "").strip()
+                for k in ("year", "make", "model")
+                if primary.get(k)
+            ).strip() or None
+        decision = decide_policy_context(
+            lookup, selected_vehicle_summary=selected_summary
+        )
+        policy_ctx_step = confirm_step_for_decision(decision)
+        if policy_ctx_step:
+            confirm_steps.append(policy_ctx_step)  # type: ignore[arg-type]
 
     known_chips = (
         []

@@ -102,6 +102,10 @@ class CustomerStartClaimBody(BaseModel):
     accident_location: str | None = Field(default=None, max_length=500)
     injury_status: str | None = Field(default=None, max_length=32)
     is_test: bool = Field(default=False)
+    # Stage 2 — known-customer policy context confirmation (optional).
+    policy_context_choice: str | None = Field(default=None, max_length=64)
+    selected_vehicle_ref: str | None = Field(default=None, max_length=128)
+    selected_vehicle_summary: str | None = Field(default=None, max_length=256)
 
 
 class CustomerSessionBody(BaseModel):
@@ -234,6 +238,9 @@ async def post_customer_start_claim(
             accident_location=body.accident_location,
             injury_status=body.injury_status,
             is_test=body.is_test,
+            policy_context_choice=body.policy_context_choice,
+            selected_vehicle_ref=body.selected_vehicle_ref,
+            selected_vehicle_summary=body.selected_vehicle_summary,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc

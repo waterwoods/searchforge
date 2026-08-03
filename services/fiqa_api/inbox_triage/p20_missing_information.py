@@ -214,6 +214,27 @@ def seed_fact_records_from_case(case: dict[str, Any] | None) -> dict[str, dict[s
         elif key == "vehicle_information":
             value = _vehicle_value(facts)
         elif key == "policy_or_insurance_card":
+            # Stage 2 — customer confirmed linked policy context satisfies Cap2
+            # without claiming an insurance-card upload occurred.
+            try:
+                from services.fiqa_api.inbox_triage.policy_context_confirm import (
+                    FACT_VALUE_CONFIRMED,
+                    SOURCE_CUSTOMER_CONFIRMED,
+                    policy_context_is_customer_confirmed,
+                )
+
+                if policy_context_is_customer_confirmed(case):
+                    out[key] = {
+                        "field_key": key,
+                        "status": FACT_STATUS_CONFIRMED,
+                        "value": FACT_VALUE_CONFIRMED,
+                        "previous_value": None,
+                        "reason": "customer_confirmed_existing_policy_context",
+                        "source": SOURCE_CUSTOMER_CONFIRMED,
+                    }
+                    continue
+            except Exception:
+                pass
             value = _first_nonempty(facts, _POLICY_FACT_KEYS) or _str(case.get("policy_number")) or None
         elif key == "accident_description":
             value = _first_nonempty(facts, _ACCIDENT_FACT_KEYS)
