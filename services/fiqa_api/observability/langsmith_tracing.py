@@ -126,6 +126,10 @@ def maybe_traceable(
     - If tracing_enabled() is False → no-op
     - Otherwise → @traceable with optional process_inputs / process_outputs
 
+    Accident-story clean pilot project:
+    - ACCIDENT_STORY_LANGSMITH_PROJECT (or ACCIDENT_STORY_LANGSMITH_PILOT_PROJECT)
+      routes these traces to a dedicated project when set.
+
     Supports both:
     - LANGSMITH_API_KEY / LANGSMITH_PROJECT (preferred)
     - LANGCHAIN_API_KEY / LANGCHAIN_TRACING_V2 (backward compatibility)
@@ -135,15 +139,21 @@ def maybe_traceable(
             return fn
 
         wrapped_fn: Optional[Callable[P, T]] = None
+        wrapped_project: Optional[str] = None
 
         @wraps(fn)
         def inner(*args: P.args, **kwargs: P.kwargs) -> T:
-            nonlocal wrapped_fn
+            nonlocal wrapped_fn, wrapped_project
             if not tracing_enabled():
                 return fn(*args, **kwargs)
             try:
                 _get_langsmith_client()
-                if wrapped_fn is None:
+                pilot_project = (
+                    os.getenv("ACCIDENT_STORY_LANGSMITH_PROJECT")
+                    or os.getenv("ACCIDENT_STORY_LANGSMITH_PILOT_PROJECT")
+                    or ""
+                ).strip()
+                if wrapped_fn is None or wrapped_project != pilot_project:
                     tkwargs: dict = {"name": name}
                     if process_inputs is not None:
                         tkwargs["process_inputs"] = process_inputs
@@ -151,7 +161,10 @@ def maybe_traceable(
                         tkwargs["process_outputs"] = process_outputs
                     if metadata:
                         tkwargs["metadata"] = dict(metadata)
+                    if pilot_project:
+                        tkwargs["project_name"] = pilot_project
                     wrapped_fn = traceable(**tkwargs)(fn)  # type: ignore[misc]
+                    wrapped_project = pilot_project
                 return wrapped_fn(*args, **kwargs)  # type: ignore[misc]
             except Exception as e:
                 logger.warning(

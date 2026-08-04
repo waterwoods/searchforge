@@ -44,6 +44,19 @@ def langsmith_tracing_enabled() -> bool:
     return _truthy("ACCIDENT_STORY_LANGSMITH_TRACING", default=True)
 
 
+def langsmith_pilot_project() -> str:
+    """Optional clean project for restricted-pilot traces (QA only).
+
+    When set, accident-story @maybe_traceable runs target this project instead of
+    the shared lab project. Empty = inherit LANGSMITH_PROJECT / LANGCHAIN_PROJECT.
+    """
+    return (
+        os.getenv("ACCIDENT_STORY_LANGSMITH_PROJECT")
+        or os.getenv("ACCIDENT_STORY_LANGSMITH_PILOT_PROJECT")
+        or ""
+    ).strip()
+
+
 def deterministic_fallback_enabled() -> bool:
     """Always treat as enabled — safety contract forbids disabling fallback."""
     return True
@@ -121,6 +134,7 @@ def accident_story_flags_public() -> dict[str, Any]:
     key_present = bool(
         (os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY") or "").strip()
     )
+    pilot_project = langsmith_pilot_project()
     return {
         "assistant_enabled": assistant_enabled(),
         "llm_extraction_enabled": llm_extraction_enabled(),
@@ -129,6 +143,8 @@ def accident_story_flags_public() -> dict[str, Any]:
         "langsmith_tracing_active": bool(
             langsmith_tracing_enabled() and tracing_enabled() and key_present
         ),
+        "langsmith_pilot_project_configured": bool(pilot_project),
+        "langsmith_pilot_project_name_len": len(pilot_project),
         "deterministic_fallback_enabled": deterministic_fallback_enabled(),
         "office_allowlist_configured": bool(office_allowlist()),
         "office_allowlist_count": len(office_allowlist()),

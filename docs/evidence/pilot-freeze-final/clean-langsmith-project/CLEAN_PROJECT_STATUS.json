@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-08-04T22:05:13Z",
+  "project_name": "accident-story-restricted-pilot-v1",
+  "project_name_len": 34,
+  "created_now": true,
+  "already_existed": false,
+  "runs_before": 0,
+  "runs_after": 3,
+  "accident_story_runs_matched": 3,
+  "marker_leaked_in_project": false,
+  "all_matched_redacted": true,
+  "matched_sample": [
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "50bd2bdb",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "redacted_flag": true,
+      "has_unsafe_keys": false,
+      "marker_leaked": false
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "73299097",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "redacted_flag": true,
+      "has_unsafe_keys": false,
+      "marker_leaked": false
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "3896bbcf",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "redacted_flag": true,
+      "has_unsafe_keys": false,
+      "marker_leaked": false
+    }
+  ],
+  "status": "PASS",
+  "note": "Secrets never printed. Marker proves absence of raw story."
+}
