@@ -1,0 +1,230 @@
+{
+  "stamp": "20260804T172720Z",
+  "root_cause": "langgraph_final_phone_qa isolated identity already had Active Case case_f31c3604bb70 (CLM-0042 Santa Ana/昨天下午1点 @ 2026-08-04T03:53:02Z)",
+  "wrong_restored_case_id": "case_f31c3604bb70",
+  "qa_revision": "fiqa-api-qa-00059-g8x",
+  "scenario_id": "guided_intake_clean_phone_qa",
+  "case_id": "case_22f030e06557",
+  "case_ref": "CLM-0044",
+  "invite_id": "dinv_c8b845a45f4f48da",
+  "page_path": "pages/start-claim/start-claim",
+  "parameters": "entry=form&dit=di_5jXa9lFS9vhbN2DEJsYjF88Av7ppigrudYWAJj8gTxY",
+  "expires_pdt": "2026-08-04 02:27 PM PDT",
+  "expires_at_unix": 1785878845.0,
+  "session_id_prefix": "wx_founder_clean_phone_20260804t172720z_",
+  "devtools_compile_name": "Guided Intake Clean Phone QA",
+  "founder_must_close_recent_apps": true,
+  "automated_proof": [
+    {
+      "check": "qa_revision_deployed",
+      "ok": true,
+      "detail": "fiqa-api-qa-00059-g8x"
+    },
+    {
+      "check": "qa_max_scale_2",
+      "ok": true,
+      "detail": "autoscaling.knative.dev/maxScale=2;run.googleapis.com/client-name=gcloud;run.googleapis.com/client-version=539.0.0;run.googleapis.com/network-interfaces=[{\"netw"
+    },
+    {
+      "check": "qa_min_scale_0",
+      "ok": true,
+      "detail": "minScale unset/0"
+    },
+    {
+      "check": "prod_untouched",
+      "ok": true,
+      "detail": "fiqa-api-00233-scz"
+    },
+    {
+      "check": "preserve_read_stage1",
+      "ok": true,
+      "detail": "case_4e5adf36c637 ref=CLM-0031 loc=Santa Ana 停车场"
+    },
+    {
+      "check": "preserve_read_stage2",
+      "ok": true,
+      "detail": "case_09ad6254614a ref=CLM-0036 loc=Santa Ana"
+    },
+    {
+      "check": "preserve_read_prior_langgraph_clm0042",
+      "ok": true,
+      "detail": "case_f31c3604bb70 ref=CLM-0042 loc=Santa Ana 停车场"
+    },
+    {
+      "check": "prior_clm0042_is_santa_ana",
+      "ok": true,
+      "detail": "CLM-0042"
+    },
+    {
+      "check": "iso_keys_differ",
+      "ok": true,
+      "detail": "old=51fe8e57db8a new=b9bd70c37f21"
+    },
+    {
+      "check": "issue_invite",
+      "ok": true,
+      "detail": "dinv_c8b845a45f4f48da scen=guided_intake_clean_phone_qa"
+    },
+    {
+      "check": "app_launch_redeem",
+      "ok": true,
+      "detail": "redeemed scen=guided_intake_clean_phone_qa"
+    },
+    {
+      "check": "app_launch_scenario",
+      "ok": true,
+      "detail": "guided_intake_clean_phone_qa"
+    },
+    {
+      "check": "app_launch_start_new_claim",
+      "ok": true,
+      "detail": "next=START_NEW_CLAIM active=False resume_case=None"
+    },
+    {
+      "check": "not_prior_clm0042",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "not_stage2",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "not_stage1",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "propose_ok",
+      "ok": true,
+      "detail": "n_q=2 missing=['accident_datetime', 'accident_location']"
+    },
+    {
+      "check": "exactly_two_questions",
+      "ok": true,
+      "detail": "['事故大约发生在几点？', '事故发生在哪里？']"
+    },
+    {
+      "check": "asks_time_location",
+      "ok": true,
+      "detail": "['accident_datetime', 'accident_location']"
+    },
+    {
+      "check": "does_not_ask_injury",
+      "ok": true,
+      "detail": "injury=no qs=['事故大约发生在几点？', '事故发生在哪里？']"
+    },
+    {
+      "check": "guided_title",
+      "ok": true,
+      "detail": "AI已帮您整理"
+    },
+    {
+      "check": "guided_missing_2",
+      "ok": true,
+      "detail": "还需要确认 2 项"
+    },
+    {
+      "check": "no_santa_ana_in_proposal",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "check": "old_scenario_still_issuable",
+      "ok": true,
+      "detail": "langgraph_final_phone_qa"
+    },
+    {
+      "check": "new_session_still_start_claim",
+      "ok": true,
+      "detail": "START_NEW_CLAIM"
+    },
+    {
+      "check": "start_claim_new_case",
+      "ok": true,
+      "detail": "http=201 case=case_22f030e06557"
+    },
+    {
+      "check": "new_case_not_clm0042",
+      "ok": true,
+      "detail": "case_22f030e06557"
+    },
+    {
+      "check": "new_case_no_santa_ana",
+      "ok": true,
+      "detail": "{'qa_label': '演示·陈明', 'injury_status': 'no', 'anyone_injured': 'no', 'accident_datetime': '昨天下午4点', 'accident_location': 'Irvine 路口', 'accident_description': '昨"
+    },
+    {
+      "check": "new_case_person_link_isolated",
+      "ok": true,
+      "detail": "wx_qaiso_62becab6b9bd70c37f21"
+    },
+    {
+      "check": "rescan_redeem",
+      "ok": true,
+      "detail": "redeemed_idempotent"
+    },
+    {
+      "check": "rescan_same_new_case",
+      "ok": true,
+      "detail": "case_22f030e06557 vs case_22f030e06557 next=BROKER_REVIEW"
+    },
+    {
+      "check": "rescan_not_clm0042",
+      "ok": true,
+      "detail": "case_22f030e06557"
+    },
+    {
+      "check": "warm_relaunch_new_dit",
+      "ok": true,
+      "detail": "pages/start-claim/start-claim?entry=form&dit=di_HRXa4sPC9A6ZqiZCcyFFYu1fzUjGEaU4"
+    },
+    {
+      "check": "warm_relaunch_same_dit_no_loop",
+      "ok": true,
+      "detail": "no loop"
+    },
+    {
+      "check": "untouched_clm0042",
+      "ok": true,
+      "detail": "CLM-0042"
+    },
+    {
+      "check": "untouched_stage2",
+      "ok": true,
+      "detail": "CLM-0036"
+    },
+    {
+      "check": "untouched_stage1",
+      "ok": true,
+      "detail": "CLM-0031"
+    },
+    {
+      "check": "workspace_has_guided_ui_commits",
+      "ok": true,
+      "detail": "guided UI"
+    },
+    {
+      "check": "workspace_has_warm_relaunch",
+      "ok": true,
+      "detail": "app.ts"
+    },
+    {
+      "check": "commit_4e52992_in_head",
+      "ok": true,
+      "detail": "4e52992"
+    },
+    {
+      "check": "commit_e88cec5_in_head",
+      "ok": true,
+      "detail": "e88cec5"
+    }
+  ],
+  "all_pass": true,
+  "production_untouched": true,
+  "waterwoods_untouched": true,
+  "note": "Do not commit — contains dit token.",
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_5jX…gTxY",
+  "parameters_masked": "entry=form&dit=di_5jX…gTxY"
+}

@@ -10,6 +10,8 @@ import test from "node:test";
 import {
   hasDemoInviteLaunchQuery,
   isIntentionalStartClaimEntry,
+  buildDemoInviteStartClaimUrl,
+  resolveWarmDemoInviteRelaunchUrl,
 } from "../utils/demoInviteLaunch";
 import { resolveDemoInviteTokenFromQuery } from "../services/demoInviteApi";
 import { summarizeLaunchQuery } from "../utils/qaPathLog";
@@ -27,6 +29,42 @@ test("dit query helpers", () => {
   assert.equal(isIntentionalStartClaimEntry({ entry: "form" }), true);
   assert.equal(isIntentionalStartClaimEntry({ dit: "di_ok" }), true);
   assert.equal(isIntentionalStartClaimEntry({}), false);
+});
+
+test("warm Preview dit reLaunch URL is built for new tokens only", () => {
+  const url = buildDemoInviteStartClaimUrl({
+    entry: "form",
+    dit: "di_EoVE2RMCcyf9ZwhS0pAgIh6nGKHtc8aqZiO9GQ2TqVE",
+  });
+  assert.match(url, /^\/pages\/start-claim\/start-claim\?entry=form&dit=di_/);
+
+  const coldTracked = resolveWarmDemoInviteRelaunchUrl({
+    enterQuery: { entry: "form", dit: "di_newtokenAAAAAAAA" },
+    lastHandledDit: "di_newtokenAAAAAAAA",
+  });
+  assert.equal(coldTracked.shouldRelaunch, false);
+
+  const warmNew = resolveWarmDemoInviteRelaunchUrl({
+    enterQuery: { entry: "form", dit: "di_brandnewBBBBBBBB" },
+    lastHandledDit: "di_oldtokenCCCCCCCC",
+  });
+  assert.equal(warmNew.shouldRelaunch, true);
+  assert.match(warmNew.url, /dit=di_brandnewBBBBBBBB/);
+
+  const noDit = resolveWarmDemoInviteRelaunchUrl({
+    enterQuery: { entry: "form" },
+    lastHandledDit: "",
+  });
+  assert.equal(noDit.shouldRelaunch, false);
+});
+
+test("app.ts forces warm Demo Invite reLaunch and does not treat enter path as current page", () => {
+  const src = readFileSync(join(miniappRoot, "app.ts"), "utf8");
+  assert.match(src, /resolveWarmDemoInviteRelaunchUrl/);
+  assert.match(src, /demo_invite_warm_relaunch/);
+  assert.match(src, /demo_invite_dit_tracked_cold/);
+  // Must not skip warm reLaunch merely because enter path looks like start-claim.
+  assert.doesNotMatch(src, /alreadyOnStartClaim/);
 });
 
 test("qaPathLog redacts dit", () => {

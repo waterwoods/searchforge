@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, TypedDict
 
 from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import (
+    MOCK_KEY_GUIDED_INTAKE_PHONE,
     MOCK_KEY_LANGGRAPH_PHONE,
     MOCK_KEY_S2_MULTI_VEHICLE,
     MOCK_KEY_S3_NO_ACTIVE,
@@ -25,6 +26,7 @@ _SCENARIO_LI_MULTI = "S2"
 _SCENARIO_WANG_STALE = "S4"
 _SCENARIO_CHEN_STAGE2_PHONE = "S3_STAGE2_PHONE"
 _SCENARIO_CHEN_LANGGRAPH_PHONE = "S3_LANGGRAPH_PHONE"
+_SCENARIO_CHEN_GUIDED_INTAKE_PHONE = "S3_GUIDED_INTAKE_PHONE"
 
 
 class DemoScenarioEntry(TypedDict):
@@ -70,6 +72,20 @@ APPROVED_DEMO_SCENARIOS: dict[str, DemoScenarioEntry] = {
         "mock_scenario": _SCENARIO_CHEN_LANGGRAPH_PHONE,
         "mock_person_link_key": MOCK_KEY_LANGGRAPH_PHONE,
         "label": "陈明 · LangGraph Final Phone QA (isolated)",
+        "customer_display_name": "陈明",
+        "vehicle_summary": "2020 Toyota Camry",
+        "demo_name": DEMO_NAME,
+        "is_demo": True,
+        "isolated_identity": True,  # type: ignore[typeddict-unknown-key]
+    },
+    # Guided Intake clean phone QA — MUST NOT reuse langgraph_final_phone_qa.
+    # Founder phone already has Active Case case_f31c3604bb70 (CLM-0042,
+    # Santa Ana / 昨天下午1点) under that isolated namespace.
+    "guided_intake_clean_phone_qa": {
+        "scenario_id": "guided_intake_clean_phone_qa",
+        "mock_scenario": _SCENARIO_CHEN_GUIDED_INTAKE_PHONE,
+        "mock_person_link_key": MOCK_KEY_GUIDED_INTAKE_PHONE,
+        "label": "陈明 · Guided Intake Clean Phone QA (isolated)",
         "customer_display_name": "陈明",
         "vehicle_summary": "2020 Toyota Camry",
         "demo_name": DEMO_NAME,

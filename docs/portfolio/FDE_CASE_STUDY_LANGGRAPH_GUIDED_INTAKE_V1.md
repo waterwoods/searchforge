@@ -2,7 +2,7 @@
 
 **Branch:** `stage2/langgraph-accident-story-assistant`  
 **Environment:** Cloud QA only — Production / waterwoods untouched  
-**Status:** Guided UX slice shipped for phone QA — does **not** claim production AI accuracy
+**Status:** **FOUNDER PHONE VALIDATED** (`GUIDED_INTAKE_FOUNDER_PASS_CLOSEOUT.md`) — does **not** claim production AI accuracy
 
 This document is interview/portfolio evidence for the customer-visible LangGraph path.
 

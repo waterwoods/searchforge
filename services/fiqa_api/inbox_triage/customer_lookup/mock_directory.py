@@ -23,6 +23,8 @@ MOCK_KEY_AMBIGUOUS = "wx_mock_cap01_ambiguous"
 MOCK_KEY_STAGE2_PHONE = "wx_mock_cap01_stage2_phone"
 # LangGraph Final Phone QA — same presentation, separate mock key + isolated scenario.
 MOCK_KEY_LANGGRAPH_PHONE = "wx_mock_cap01_langgraph_phone"
+# Guided Intake clean phone QA — must not reuse langgraph_final_phone_qa (CLM-0042 collision).
+MOCK_KEY_GUIDED_INTAKE_PHONE = "wx_mock_cap01_guided_intake_phone"
 
 SCENARIO_KEYS: dict[str, str] = {
     "S1_existing_active": MOCK_KEY_S1_EXISTING_ACTIVE,
@@ -34,6 +36,7 @@ SCENARIO_KEYS: dict[str, str] = {
     "AMBIGUOUS": MOCK_KEY_AMBIGUOUS,
     "S3_STAGE2_PHONE": MOCK_KEY_STAGE2_PHONE,
     "S3_LANGGRAPH_PHONE": MOCK_KEY_LANGGRAPH_PHONE,
+    "S3_GUIDED_INTAKE_PHONE": MOCK_KEY_GUIDED_INTAKE_PHONE,
 }
 
 
@@ -228,6 +231,43 @@ def build_mock_directory() -> dict[str, LookupResult]:
                 "mock_existing_customer",
                 "mock_no_active_case",
                 "mock_langgraph_final_phone_isolated",
+            ],
+            "lookup_source": "mock",
+        },
+        MOCK_KEY_GUIDED_INTAKE_PHONE: {
+            "match_status": "MATCH_FOUND",
+            "lookup_confidence": "HIGH",
+            "customer": {
+                "display_name": "陈明",
+                "phone_last4": "1234",
+                "phone_e164_mock": "+14155551234",
+                "broker_customer_ref": "mock_cust_guided_intake_phone",
+            },
+            "policy": {
+                "policy_ref": "POL-MOCK-GUIDED-INTAKE-CAMRY-001",
+                "carrier_display": "Mercury",
+                "status": "active",
+                "freshness": "fresh",
+                "effective_end": "2027-06-01",
+            },
+            "vehicles": [
+                {
+                    "vehicle_ref": "mock_veh_guided_intake_camry",
+                    "year": "2020",
+                    "make": "Toyota",
+                    "model": "Camry",
+                    "vin_last4": "4352",
+                    "license_plate": "7ABC123",
+                    "is_primary": True,
+                }
+            ],
+            "active_case": None,
+            "prefill": _prefill_chen_camry(policy_ref="POL-MOCK-GUIDED-INTAKE-CAMRY-001"),
+            "next_action": "confirm_vehicle",
+            "reason_codes": [
+                "mock_existing_customer",
+                "mock_no_active_case",
+                "mock_guided_intake_clean_phone_isolated",
             ],
             "lookup_source": "mock",
         },
