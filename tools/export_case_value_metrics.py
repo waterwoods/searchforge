@@ -287,6 +287,29 @@ def compute_case_value_metrics(case: dict[str, Any]) -> dict[str, Any]:
 
     notes.append("unsupported:ai_accept_edit_reject_rates_no_events")
 
+    # Guided intake feedback — observational counts from assistant bag / timeline.
+    assistant = case.get("accident_story_assistant")
+    ai_story_confirmed = 0
+    ai_story_edited = 0
+    ai_story_fallback = 0
+    if isinstance(assistant, dict) and assistant.get("ai_involved"):
+        if str(assistant.get("authority") or "") == "customer_confirmed":
+            ai_story_confirmed = 1
+        edited = assistant.get("edited_field_names")
+        if isinstance(edited, list) and edited:
+            ai_story_edited = 1
+        if assistant.get("used_fallback"):
+            ai_story_fallback = 1
+        notes.append("note:ai_story_assistant_bag_present")
+        # Clear the older unsupported note when bag exists.
+        notes = [n for n in notes if n != "unsupported:ai_accept_edit_reject_rates_no_events"]
+    else:
+        confirm_times = _unique_event_times(events, "customer_accident_story_confirmed")
+        if confirm_times:
+            ai_story_confirmed = 1
+            notes.append("note:ai_story_from_timeline")
+            notes = [n for n in notes if n != "unsupported:ai_accept_edit_reject_rates_no_events"]
+
     if bool(case.get("workbench_test")) or bool(case.get("is_test")) or str(
         case.get("demo_name") or ""
     ).strip():
@@ -312,6 +335,9 @@ def compute_case_value_metrics(case: dict[str, Any]) -> dict[str, Any]:
         "supplement_to_broker_review_sec": _sec_between(supplement_at, ack_at),
         "office_materials_accepted_at": _fmt_ts(office),
         "first_action_to_office_accept_sec": _sec_between(first_action, office),
+        "ai_story_proposal_confirmed": ai_story_confirmed,
+        "ai_story_proposal_edited": ai_story_edited,
+        "ai_story_fallback_used": ai_story_fallback,
         "data_quality_notes": ";".join(notes),
         # Legacy
         "customer_started_at": _fmt_ts(started),

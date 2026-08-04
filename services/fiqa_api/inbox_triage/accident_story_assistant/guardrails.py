@@ -7,6 +7,7 @@ from services.fiqa_api.inbox_triage.accident_story_assistant.contract import (
     MUST_HAVE_KEYS,
     AccidentStoryState,
     ProposedFact,
+    time_needs_refinement,
 )
 
 
@@ -15,7 +16,9 @@ def derive_missing_facts(state: AccidentStoryState) -> list[str]:
     story = str(state.get("normalized_story") or state.get("raw_story") or "").strip()
     if not story:
         missing.append("accident_description")
-    if not str(state.get("accident_time_text") or "").strip():
+    time_text = str(state.get("accident_time_text") or "").strip()
+    # Bare "昨天/今天" still needs a more specific clock/period answer.
+    if time_needs_refinement(time_text):
         missing.append("accident_datetime")
     if not str(state.get("accident_location_text") or "").strip():
         missing.append("accident_location")

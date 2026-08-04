@@ -1,0 +1,8 @@
+{
+  "raw_story": "昨天上午在 Oakland 路口被追尾。",
+  "expect": {
+    "missing_contains": ["injury_status"],
+    "missing_excludes": ["accident_datetime", "accident_location"],
+    "max_followup_questions": 1
+  }
+}

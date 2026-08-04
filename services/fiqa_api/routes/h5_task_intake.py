@@ -106,6 +106,10 @@ class CustomerStartClaimBody(BaseModel):
     policy_context_choice: str | None = Field(default=None, max_length=64)
     selected_vehicle_ref: str | None = Field(default=None, max_length=128)
     selected_vehicle_summary: str | None = Field(default=None, max_length=256)
+    # Guided intake — customer already confirmed AI draft on device (optional).
+    ai_story_confirmed: bool = Field(default=False)
+    ai_story_proposal: dict[str, Any] | None = None
+    ai_story_customer_edits: dict[str, Any] | None = None
 
 
 class CustomerSessionBody(BaseModel):
@@ -296,6 +300,9 @@ async def post_customer_start_claim(
             policy_context_choice=body.policy_context_choice,
             selected_vehicle_ref=body.selected_vehicle_ref,
             selected_vehicle_summary=body.selected_vehicle_summary,
+            ai_story_confirmed=bool(body.ai_story_confirmed),
+            ai_story_proposal=body.ai_story_proposal,
+            ai_story_customer_edits=body.ai_story_customer_edits,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc

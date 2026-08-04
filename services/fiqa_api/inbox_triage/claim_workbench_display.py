@@ -1014,16 +1014,61 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
     accident_assistant = None
     raw_assistant = case.get("accident_story_assistant")
     if isinstance(raw_assistant, dict):
+        layers_raw = raw_assistant.get("layers") if isinstance(raw_assistant.get("layers"), dict) else {}
+        customer_raw = layers_raw.get("customer_raw") if isinstance(layers_raw.get("customer_raw"), dict) else {}
+        ai_draft = layers_raw.get("ai_draft") if isinstance(layers_raw.get("ai_draft"), dict) else {}
+        confirmed = (
+            layers_raw.get("customer_confirmed")
+            if isinstance(layers_raw.get("customer_confirmed"), dict)
+            else {}
+        )
+        authority = _str_or_none(raw_assistant.get("authority")) or "ai_proposed"
         accident_assistant = {
             "ai_involved": bool(raw_assistant.get("ai_involved")),
-            "authority": _str_or_none(raw_assistant.get("authority")) or "ai_proposed",
-            "raw_story": _str_or_none(raw_assistant.get("raw_story")),
-            "incident_summary": _str_or_none(raw_assistant.get("incident_summary")),
+            "authority": authority,
+            "raw_story": _str_or_none(raw_assistant.get("raw_story"))
+            or _str_or_none(customer_raw.get("text")),
+            "incident_summary": _str_or_none(raw_assistant.get("incident_summary"))
+            or _str_or_none(confirmed.get("incident_summary")),
             "label_zh": (
                 "客户已确认（AI 辅助整理）"
-                if str(raw_assistant.get("authority") or "") == "customer_confirmed"
+                if authority == "customer_confirmed"
                 else "AI 提议（未确认，不可当作事实）"
             ),
+            "layers": {
+                "customer_raw": {
+                    "label_zh": str(customer_raw.get("label_zh") or "客户原始描述"),
+                    "text": _str_or_none(customer_raw.get("text"))
+                    or _str_or_none(raw_assistant.get("raw_story")),
+                },
+                "ai_draft": {
+                    "label_zh": str(ai_draft.get("label_zh") or "AI整理草稿"),
+                    "incident_summary": _str_or_none(ai_draft.get("incident_summary")),
+                    "accident_time_text": _str_or_none(ai_draft.get("accident_time_text")),
+                    "accident_location_text": _str_or_none(ai_draft.get("accident_location_text")),
+                    "injury_status": _str_or_none(ai_draft.get("injury_status")),
+                    "followup_questions": list(ai_draft.get("followup_questions") or [])[:3]
+                    if isinstance(ai_draft.get("followup_questions"), list)
+                    else list(raw_assistant.get("questions_asked") or [])[:3],
+                    "authority": "ai_proposed",
+                },
+                "customer_confirmed": {
+                    "label_zh": str(confirmed.get("label_zh") or "客户已确认事实"),
+                    "incident_summary": _str_or_none(confirmed.get("incident_summary"))
+                    or _str_or_none(raw_assistant.get("incident_summary")),
+                    "accident_time_text": _str_or_none(confirmed.get("accident_time_text")),
+                    "accident_location_text": _str_or_none(confirmed.get("accident_location_text")),
+                    "injury_status": _str_or_none(confirmed.get("injury_status")),
+                    "edited_field_names": list(confirmed.get("edited_field_names") or [])[:12]
+                    if isinstance(confirmed.get("edited_field_names"), list)
+                    else list(raw_assistant.get("edited_field_names") or [])[:12],
+                    "authority": "customer_confirmed" if authority == "customer_confirmed" else None,
+                },
+            },
+            "questions_asked": list(raw_assistant.get("questions_asked") or [])[:3],
+            "edited_field_names": list(raw_assistant.get("edited_field_names") or [])[:12],
+            "used_fallback": bool(raw_assistant.get("used_fallback")),
+            "fallback_reason_category": _str_or_none(raw_assistant.get("fallback_reason_category")),
         }
         if accident_assistant["raw_story"] and accident_assistant["authority"] == "customer_confirmed":
             highlights.insert(

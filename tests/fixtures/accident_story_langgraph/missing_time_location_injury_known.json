@@ -1,0 +1,10 @@
+{
+  "raw_story": "昨天开车的时候被追尾，没有受伤。",
+  "expect": {
+    "injury_status": "no",
+    "missing_contains": ["accident_datetime", "accident_location"],
+    "missing_excludes": ["injury_status"],
+    "max_followup_questions": 2,
+    "accident_type": "追尾"
+  }
+}

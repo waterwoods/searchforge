@@ -1,0 +1,7 @@
+{
+  "raw_story": "被追尾了。",
+  "expect": {
+    "missing_contains": ["accident_datetime", "accident_location", "injury_status"],
+    "max_followup_questions": 3
+  }
+}

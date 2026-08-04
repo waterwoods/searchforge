@@ -119,6 +119,9 @@ def start_customer_claim(
     policy_context_choice: str | None = None,
     selected_vehicle_ref: str | None = None,
     selected_vehicle_summary: str | None = None,
+    ai_story_confirmed: bool = False,
+    ai_story_proposal: dict[str, Any] | None = None,
+    ai_story_customer_edits: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Facade: Cap2 CreateClaim with actor=customer + resume token (P26G/P29B/P0).
 
@@ -293,6 +296,31 @@ def start_customer_claim(
             except Exception:
                 # Never fail Start Claim because confirm side-effect failed;
                 # customer can still upload insurance card (FALLBACK).
+                pass
+        # Guided intake — stamp customer-confirmed AI layers after CreateClaim.
+        if ai_story_confirmed:
+            try:
+                from services.fiqa_api.inbox_triage.accident_story_assistant import (
+                    confirm_accident_story,
+                )
+
+                confirm_accident_story(
+                    case_id=case_id,
+                    command_id=f"{command_id}:ai_story",
+                    idempotency_key=f"{idempotency_key}:ai_story",
+                    raw_story=str(description or ""),
+                    confirm=True,
+                    customer_edits=ai_story_customer_edits
+                    if isinstance(ai_story_customer_edits, dict)
+                    else {
+                        "accident_time_text": str(datetime_value or ""),
+                        "accident_location_text": str(location or ""),
+                        "injury_status": str(injury or "unknown"),
+                        "raw_story": str(description or ""),
+                    },
+                    proposal=ai_story_proposal if isinstance(ai_story_proposal, dict) else None,
+                )
+            except Exception:
                 pass
         try:
             from services.fiqa_api.inbox_triage.case_activity_events import (
