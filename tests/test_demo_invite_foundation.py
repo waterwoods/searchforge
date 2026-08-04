@@ -61,11 +61,94 @@ def test_catalog_has_three_allowlisted_fictional_customers():
     ids = {r["scenario_id"] for r in rows}
     assert "chen_camry" in ids
     assert "chen_camry_stage2_phone" in ids
+    assert "langgraph_final_phone_qa" in ids
     assert "li_multi" in ids
     assert "wang_stale" in ids
     for row in rows:
         assert row["is_demo"] is True
         assert row["demo_name"] == di.DEMO_NAME
+
+
+def test_langgraph_final_phone_isolated_from_stage2_active_case(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Same phone OpenID must not resume Stage 2 Santa Ana case under LangGraph DIT."""
+    from services.fiqa_api.inbox_triage.p0_customer_context import (
+        START_NEW_CLAIM,
+        resolve_customer_context,
+    )
+    from services.fiqa_api.inbox_triage.policy_context_decision import (
+        CONFIRM_STEP_ID,
+        decide_policy_context,
+    )
+    from services.fiqa_api.inbox_triage.customer_lookup.facade import (
+        lookup_demo_invite_fixture,
+    )
+    from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import (
+        MOCK_KEY_LANGGRAPH_PHONE,
+    )
+    import services.fiqa_api.inbox_triage.demo_invite.service as di_svc
+
+    session = "wx_founder_phone_real_openid_sim"
+    stage2_iso = di.isolated_identity_key(session, "chen_camry_stage2_phone")
+    langgraph_iso = di.isolated_identity_key(session, "langgraph_final_phone_qa")
+    assert stage2_iso != langgraph_iso
+    assert stage2_iso.startswith("wx_qaiso_")
+    assert langgraph_iso.startswith("wx_qaiso_")
+
+    def _active_for_key(key: str):
+        if key == stage2_iso:
+            return {
+                "case_id": "case_09ad6254614a",
+                "record_id": "case_09ad6254614a",
+                "case_status": "in_progress",
+            }
+        if not str(key).startswith("wx_qaiso_"):
+            return {
+                "case_id": "case_4e5adf36c637",
+                "record_id": "case_4e5adf36c637",
+                "case_status": "office_processing",
+            }
+        return None
+
+    monkeypatch.setattr(
+        di_svc,
+        "_active_case_for_session",
+        lambda _sid: {
+            "case_id": "case_4e5adf36c637",
+            "record_id": "case_4e5adf36c637",
+            "case_status": "office_processing",
+        },
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.p0_customer_context.resolve_active_case_for_person_link",
+        _active_for_key,
+    )
+
+    issued = di.issue_demo_invite(
+        office_id="office_demo_a", scenario_id="langgraph_final_phone_qa"
+    )
+    redeemed = di.redeem_demo_invite(
+        token=issued["token"], session_id=session, office_id="office_demo_a"
+    )
+    assert redeemed["ok"] is True, redeemed
+    assert di.effective_customer_identity_key(session) == langgraph_iso
+
+    plan = build_smart_claim_start_response(session_id=session)["plan"]
+    assert plan["mode"] == "MATCHED_KNOWN"
+    assert _chip_name(plan) == "陈明"
+    step_ids = [str(s.get("step_id") or "") for s in (plan.get("confirm_steps") or [])]
+    assert CONFIRM_STEP_ID in step_ids
+
+    decision = decide_policy_context(lookup_demo_invite_fixture(MOCK_KEY_LANGGRAPH_PHONE))
+    assert decision.get("decision") == "CONFIRM_EXISTING"
+
+    context = resolve_customer_context(session_id=session)
+    assert context["next_action"] == START_NEW_CLAIM
+    assert context["has_active_case"] is False
+    # Stage 1 + Stage 2 cases remain bound on their own identity namespaces.
+    assert _active_for_key(stage2_iso)["case_id"] == "case_09ad6254614a"
+    assert di_svc._active_case_for_session(session)["case_id"] == "case_4e5adf36c637"
 
 
 def test_stage2_phone_isolated_invite_ignores_real_wx_active_case(

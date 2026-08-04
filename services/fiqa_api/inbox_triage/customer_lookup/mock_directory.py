@@ -21,6 +21,8 @@ MOCK_KEY_S6_UNAVAILABLE = "wx_mock_cap01_s6_lookup_unavailable"
 MOCK_KEY_AMBIGUOUS = "wx_mock_cap01_ambiguous"
 # Stage 2 phone QA — same 陈明/Camry/Mercury presentation, unique identity key.
 MOCK_KEY_STAGE2_PHONE = "wx_mock_cap01_stage2_phone"
+# LangGraph Final Phone QA — same presentation, separate mock key + isolated scenario.
+MOCK_KEY_LANGGRAPH_PHONE = "wx_mock_cap01_langgraph_phone"
 
 SCENARIO_KEYS: dict[str, str] = {
     "S1_existing_active": MOCK_KEY_S1_EXISTING_ACTIVE,
@@ -31,6 +33,7 @@ SCENARIO_KEYS: dict[str, str] = {
     "S6_unavailable": MOCK_KEY_S6_UNAVAILABLE,
     "AMBIGUOUS": MOCK_KEY_AMBIGUOUS,
     "S3_STAGE2_PHONE": MOCK_KEY_STAGE2_PHONE,
+    "S3_LANGGRAPH_PHONE": MOCK_KEY_LANGGRAPH_PHONE,
 }
 
 
@@ -188,6 +191,43 @@ def build_mock_directory() -> dict[str, LookupResult]:
                 "mock_existing_customer",
                 "mock_no_active_case",
                 "mock_stage2_phone_isolated",
+            ],
+            "lookup_source": "mock",
+        },
+        MOCK_KEY_LANGGRAPH_PHONE: {
+            "match_status": "MATCH_FOUND",
+            "lookup_confidence": "HIGH",
+            "customer": {
+                "display_name": "陈明",
+                "phone_last4": "1234",
+                "phone_e164_mock": "+14155551234",
+                "broker_customer_ref": "mock_cust_langgraph_phone",
+            },
+            "policy": {
+                "policy_ref": "POL-MOCK-LANGGRAPH-CAMRY-001",
+                "carrier_display": "Mercury",
+                "status": "active",
+                "freshness": "fresh",
+                "effective_end": "2027-06-01",
+            },
+            "vehicles": [
+                {
+                    "vehicle_ref": "mock_veh_langgraph_camry",
+                    "year": "2020",
+                    "make": "Toyota",
+                    "model": "Camry",
+                    "vin_last4": "4352",
+                    "license_plate": "7ABC123",
+                    "is_primary": True,
+                }
+            ],
+            "active_case": None,
+            "prefill": _prefill_chen_camry(policy_ref="POL-MOCK-LANGGRAPH-CAMRY-001"),
+            "next_action": "confirm_vehicle",
+            "reason_codes": [
+                "mock_existing_customer",
+                "mock_no_active_case",
+                "mock_langgraph_final_phone_isolated",
             ],
             "lookup_source": "mock",
         },

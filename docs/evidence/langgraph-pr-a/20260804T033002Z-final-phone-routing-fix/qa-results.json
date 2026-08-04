@@ -1,0 +1,160 @@
+{
+  "stamp": "20260804T033002Z",
+  "qa_revision": "fiqa-api-qa-00055-mxs",
+  "root_cause": "chen_camry_stage2_phone isolated identity reused Stage2 Active Case case_09ad6254614a (Santa Ana/1pm)",
+  "wrong_restored_case_id": "case_09ad6254614a",
+  "scenario_id": "langgraph_final_phone_qa",
+  "case_id": "case_d4fe3e5d3b7e",
+  "case_ref": "CLM-0041",
+  "invite_id": "dinv_ea83aadda56244d6",
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di__T0…bMhw",
+  "expires_pdt": "2026-08-03 10:30 PM PDT",
+  "first_screen_next_action": "START_NEW_CLAIM",
+  "stage1_preserved": "case_4e5adf36c637",
+  "stage2_preserved": "case_09ad6254614a",
+  "automated_proof": [
+    {
+      "check": "preserve_read_stage1",
+      "ok": true,
+      "detail": "case_4e5adf36c637 ref=CLM-0031"
+    },
+    {
+      "check": "preserve_read_stage2",
+      "ok": true,
+      "detail": "case_09ad6254614a ref=CLM-0036"
+    },
+    {
+      "check": "stage2_still_santa_ana",
+      "ok": true,
+      "detail": "facts present (must remain)"
+    },
+    {
+      "check": "issue_invite",
+      "ok": true,
+      "detail": "dinv_ea83aadda56244d6 scen=langgraph_final_phone_qa"
+    },
+    {
+      "check": "redeem",
+      "ok": true,
+      "detail": "redeemed scen=langgraph_final_phone_qa"
+    },
+    {
+      "check": "redeem_scenario",
+      "ok": true,
+      "detail": "langgraph_final_phone_qa"
+    },
+    {
+      "check": "customer_context_http",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "check": "first_screen_start_new_claim",
+      "ok": true,
+      "detail": "next=START_NEW_CLAIM active=False resume_case=None"
+    },
+    {
+      "check": "not_case_status_resume",
+      "ok": true,
+      "detail": "resume_case=None"
+    },
+    {
+      "check": "smart_claim_plan",
+      "ok": true,
+      "detail": "http=200"
+    },
+    {
+      "check": "propose_incomplete",
+      "ok": true,
+      "detail": "n_q=2 injury=unknown"
+    },
+    {
+      "check": "max_three_questions",
+      "ok": true,
+      "detail": "['事故发生在什么地点？', '有没有人受伤？（有 / 没有 / 不确定）']"
+    },
+    {
+      "check": "injury_unknown",
+      "ok": true,
+      "detail": "unknown"
+    },
+    {
+      "check": "no_santa_ana_in_proposal",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "check": "start_claim",
+      "ok": true,
+      "detail": "http=201 case=case_d4fe3e5d3b7e"
+    },
+    {
+      "check": "new_case_not_stage1",
+      "ok": true,
+      "detail": "case_d4fe3e5d3b7e"
+    },
+    {
+      "check": "new_case_not_stage2",
+      "ok": true,
+      "detail": "case_d4fe3e5d3b7e"
+    },
+    {
+      "check": "case_get",
+      "ok": true,
+      "detail": "ref=CLM-0041"
+    },
+    {
+      "check": "no_prior_santa_ana_facts",
+      "ok": true,
+      "detail": "{'qa_label': '演示·陈明', 'accident_description': '昨天追尾。', 'primary_vehicle_summary': '2020 Toyota Camry'}"
+    },
+    {
+      "check": "has_incomplete_story",
+      "ok": true,
+      "detail": "昨天追尾。"
+    },
+    {
+      "check": "not_office_processing",
+      "ok": true,
+      "detail": "理赔 · 记录中"
+    },
+    {
+      "check": "rescan_redeem",
+      "ok": true,
+      "detail": "redeemed_idempotent"
+    },
+    {
+      "check": "rescan_same_case",
+      "ok": true,
+      "detail": "case_d4fe3e5d3b7e vs case_d4fe3e5d3b7e next=BROKER_REVIEW"
+    },
+    {
+      "check": "stage2_untouched",
+      "ok": true,
+      "detail": "CLM-0036"
+    },
+    {
+      "check": "stage1_readable",
+      "ok": true,
+      "detail": "CLM-0031"
+    },
+    {
+      "check": "miniapp_has_propose_ui",
+      "ok": true,
+      "detail": "start-claim.ts"
+    },
+    {
+      "check": "miniapp_has_propose_api",
+      "ok": true,
+      "detail": "startClaimApi.ts"
+    },
+    {
+      "check": "devtools_compile_injected",
+      "ok": true,
+      "detail": "project.private.config.json[0]=LangGraph Final Phone QA"
+    }
+  ],
+  "all_pass": true,
+  "miniapp_ui_commit": "31abf61",
+  "experience_note": "Repo miniapp includes story-assist UI. Use DevTools compile 「LangGraph Final Phone QA」 + Preview from this workspace; do not reuse Stage2 compile condition."
+}

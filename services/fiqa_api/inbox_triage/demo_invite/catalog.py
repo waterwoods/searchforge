@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, TypedDict
 
 from services.fiqa_api.inbox_triage.customer_lookup.mock_directory import (
+    MOCK_KEY_LANGGRAPH_PHONE,
     MOCK_KEY_S2_MULTI_VEHICLE,
     MOCK_KEY_S3_NO_ACTIVE,
     MOCK_KEY_S4_STALE_POLICY,
@@ -23,6 +24,7 @@ _SCENARIO_CHEN_CAMRY = "S3"
 _SCENARIO_LI_MULTI = "S2"
 _SCENARIO_WANG_STALE = "S4"
 _SCENARIO_CHEN_STAGE2_PHONE = "S3_STAGE2_PHONE"
+_SCENARIO_CHEN_LANGGRAPH_PHONE = "S3_LANGGRAPH_PHONE"
 
 
 class DemoScenarioEntry(TypedDict):
@@ -55,6 +57,19 @@ APPROVED_DEMO_SCENARIOS: dict[str, DemoScenarioEntry] = {
         "mock_scenario": _SCENARIO_CHEN_STAGE2_PHONE,
         "mock_person_link_key": MOCK_KEY_STAGE2_PHONE,
         "label": "陈明 · Stage2 Phone QA (isolated)",
+        "customer_display_name": "陈明",
+        "vehicle_summary": "2020 Toyota Camry",
+        "demo_name": DEMO_NAME,
+        "is_demo": True,
+        "isolated_identity": True,  # type: ignore[typeddict-unknown-key]
+    },
+    # LangGraph Final Phone QA — MUST NOT reuse chen_camry_stage2_phone.
+    # Same phone OpenID + stage2 scenario resumes Stage 2 Active Case (Santa Ana).
+    "langgraph_final_phone_qa": {
+        "scenario_id": "langgraph_final_phone_qa",
+        "mock_scenario": _SCENARIO_CHEN_LANGGRAPH_PHONE,
+        "mock_person_link_key": MOCK_KEY_LANGGRAPH_PHONE,
+        "label": "陈明 · LangGraph Final Phone QA (isolated)",
         "customer_display_name": "陈明",
         "vehicle_summary": "2020 Toyota Camry",
         "demo_name": DEMO_NAME,
