@@ -1069,6 +1069,16 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
             "edited_field_names": list(raw_assistant.get("edited_field_names") or [])[:12],
             "used_fallback": bool(raw_assistant.get("used_fallback")),
             "fallback_reason_category": _str_or_none(raw_assistant.get("fallback_reason_category")),
+            "support_case_ref": str(case.get("case_id") or case.get("id") or "")[:16] or None,
+            "pilot_review_hint_zh": (
+                "AI曾回退到人工整理路径，请以客户已确认事实为准。"
+                if bool(raw_assistant.get("used_fallback")) and authority == "customer_confirmed"
+                else (
+                    "请确认客户已确认事实后再作为办公依据。"
+                    if authority == "customer_confirmed"
+                    else "AI草稿未确认，不可当作客户事实。"
+                )
+            ),
         }
         if accident_assistant["raw_story"] and accident_assistant["authority"] == "customer_confirmed":
             highlights.insert(
@@ -1079,6 +1089,29 @@ def build_claim_case_brief(case: dict[str, Any]) -> dict[str, Any]:
                     "kind": "accident_story_assistant",
                 },
             )
+            if accident_assistant["used_fallback"]:
+                highlights.insert(
+                    1,
+                    {
+                        "level": "attention",
+                        "label": "AI回退·以客户确认为准",
+                        "kind": "accident_story_fallback",
+                    },
+                )
+        # Pilot: clear next action when AI-assisted claim facts are confirmed.
+        if authority == "customer_confirmed":
+            if accident_assistant["used_fallback"]:
+                story_next = "事故事实已确认（含AI回退）；请继续收集理赔照片资料。"
+            else:
+                story_next = "事故事实已确认；请继续收集理赔照片资料。"
+            # Keep materials-ready hint when present, but never hide the story confirmation signal.
+            if next_question and "事故事实已确认" not in next_question:
+                if "资料" in next_question or "照片" in next_question or "确认" in next_question:
+                    next_question = f"{story_next} {next_question}"
+                else:
+                    next_question = story_next
+            else:
+                next_question = story_next
 
     return {
         "summary": _build_brief_summary(case, key_facts=key_facts, photo_count=photo_count),

@@ -117,6 +117,8 @@ export type ClaimCaseBrief = {
         edited_field_names?: string[];
         used_fallback?: boolean;
         fallback_reason_category?: string | null;
+        support_case_ref?: string | null;
+        pilot_review_hint_zh?: string | null;
         layers?: {
             customer_raw?: { label_zh?: string; text?: string | null };
             ai_draft?: {

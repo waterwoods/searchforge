@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-08-04T21:40:27Z",
+  "git": {
+    "commit": "c1d4af4e7",
+    "source": "env"
+  },
+  "flags": {
+    "assistant_enabled": true,
+    "llm_extraction_enabled": true,
+    "office_allowlist_configured": true,
+    "langsmith_tracing_active": false,
+    "emergency_disable_env": "ACCIDENT_STORY_ASSISTANT_ENABLED=0"
+  },
+  "metrics": {
+    "source": "postgres",
+    "event_count": 121,
+    "proposals_created": 66,
+    "fallbacks": 20,
+    "provider_timeouts": 78,
+    "avg_latency_ms": 630.89,
+    "p95_latency_ms": 2316.0,
+    "unknown_injury_safety_violations": 0,
+    "pii_policy": "no_raw_stories_phones_openids_tokens_photos_names"
+  },
+  "secrets_absent": true
+}

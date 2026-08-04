@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-08-04T21:34:12Z",
+  "project_name_len": 21,
+  "api_key_present": true,
+  "runs_scanned": 250,
+  "unsafe_found": 23,
+  "already_quarantined": 0,
+  "updated_ok": 15,
+  "conflict_or_immutable": 8,
+  "other_errors": 0,
+  "statuses": [
+    {
+      "id_prefix": "c7a31ec3",
+      "name": "build_customer_confirmation_proposal",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "2bde7fbe",
+      "name": "apply_safety_guardrails",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "ef04b145",
+      "name": "draft_followup_questions",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "0cbdc6b7",
+      "name": "derive_missing_facts",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "9d199040",
+      "name": "validate_proposals",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "47addca5",
+      "name": "extract_fact_proposals",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "c9a53031",
+      "name": "normalize_story",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "e6d25ad7",
+      "name": "LangGraph",
+      "status": "immutable_conflict",
+      "error": "LangSmithConflictError"
+    },
+    {
+      "id_prefix": "9f6b1d55",
+      "name": "build_customer_confirmation_proposal",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "a02736f6",
+      "name": "apply_safety_guardrails",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "483e77e6",
+      "name": "draft_followup_questions",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "b177c633",
+      "name": "derive_missing_facts",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "170b4e9d",
+      "name": "validate_proposals",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "942a8ddd",
+      "name": "extract_fact_proposals",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "402753e2",
+      "name": "normalize_story",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "0e92d3d1",
+      "name": "LangGraph",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "aacf82fd",
+      "name": "build_customer_confirmation_proposal",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "75e9183b",
+      "name": "apply_safety_guardrails",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "82a1d55c",
+      "name": "draft_followup_questions",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "e2fd53e5",
+      "name": "derive_missing_facts",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "eea1542d",
+      "name": "validate_proposals",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "c693dcb1",
+      "name": "extract_fact_proposals",
+      "status": "redacted"
+    },
+    {
+      "id_prefix": "7dc6f118",
+      "name": "normalize_story",
+      "status": "redacted"
+    }
+  ],
+  "manual_cleanup_required": true,
+  "manual_cleanup_instruction": "LangSmith UI \u2192 project (name length=21) \u2192 filter runs named normalize_story / LangGraph / extract_fact_proposals / validate_proposals / derive_missing_facts / draft_followup_questions / apply_safety_guardrails / build_customer_confirmation_proposal created before 2026-08-04 (pre commit 2ef3065) \u2192 Delete or move to quarantine project. New accident_story.* runs are already redacted.",
+  "post_fix_safe": true,
+  "note": "No raw story content logged.",
+  "status": "PARTIAL_MANUAL_UI_REQUIRED"
+}

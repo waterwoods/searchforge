@@ -201,6 +201,36 @@ export function ClaimCaseBriefPanel({
                 ? '客户已确认（AI 辅助整理）'
                 : 'AI 提议（未确认，不可当作事实）')}
           </Text>
+          {brief.accident_story_assistant.support_case_ref ? (
+            <Text
+              type="secondary"
+              data-testid="accident-story-support-ref"
+              style={{ display: 'block', fontSize: 12, marginBottom: 6 }}
+            >
+              支持编号：{brief.accident_story_assistant.support_case_ref}
+            </Text>
+          ) : null}
+          {brief.accident_story_assistant.used_fallback ? (
+            <Tag
+              color="gold"
+              data-testid="accident-story-fallback-tag"
+              style={{ marginBottom: 8 }}
+            >
+              AI回退
+              {brief.accident_story_assistant.fallback_reason_category
+                ? `·${brief.accident_story_assistant.fallback_reason_category}`
+                : ''}
+              （以客户确认为准）
+            </Tag>
+          ) : null}
+          {brief.accident_story_assistant.pilot_review_hint_zh ? (
+            <Text
+              data-testid="accident-story-pilot-hint"
+              style={{ display: 'block', fontSize: 12, marginBottom: 8, color: '#ad6800' }}
+            >
+              {brief.accident_story_assistant.pilot_review_hint_zh}
+            </Text>
+          ) : null}
           <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
             客户原始描述
           </Text>
