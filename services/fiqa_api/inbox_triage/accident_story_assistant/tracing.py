@@ -186,30 +186,68 @@ def build_root_trace_metadata(
     return filter_meta(meta)
 
 
+_SENSITIVE_STATE_KEYS = frozenset(
+    {
+        "raw_story",
+        "normalized_story",
+        "incident_summary",
+        "accident_description",
+        "accident_time_text",
+        "accident_location_text",
+        "proposed_facts",
+        "followup_questions",
+        "involved_vehicles",
+        "involved_parties",
+    }
+)
+
+
 def process_traced_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     """LangSmith process_inputs hook — redact AccidentStoryState kwargs/args."""
-    if not isinstance(inputs, dict):
-        return {"redacted": True}
-    out: dict[str, Any] = {"redacted": True}
-    if isinstance(inputs.get("state"), dict):
-        out["state"] = redact_state_for_trace(inputs["state"])
-    elif "raw_story" in inputs or "normalized_story" in inputs:
-        out["state"] = redact_state_for_trace(inputs)
-    else:
-        args = inputs.get("args")
-        if isinstance(args, (list, tuple)) and args and isinstance(args[0], dict):
-            out["state"] = redact_state_for_trace(args[0])
-        elif isinstance(inputs.get("kwargs"), dict) and isinstance(
-            inputs["kwargs"].get("state"), dict
-        ):
-            out["state"] = redact_state_for_trace(inputs["kwargs"]["state"])
-    return out
+    try:
+        if not isinstance(inputs, dict):
+            return {"redacted": True}
+        out: dict[str, Any] = {"redacted": True}
+        if isinstance(inputs.get("state"), dict):
+            out["state"] = redact_state_for_trace(inputs["state"])
+        elif any(k in inputs for k in _SENSITIVE_STATE_KEYS) or "injury_status" in inputs:
+            out["state"] = redact_state_for_trace(inputs)
+        else:
+            args = inputs.get("args")
+            if isinstance(args, (list, tuple)) and args and isinstance(args[0], dict):
+                out["state"] = redact_state_for_trace(args[0])
+            elif isinstance(inputs.get("kwargs"), dict):
+                kw = inputs["kwargs"]
+                if isinstance(kw.get("state"), dict):
+                    out["state"] = redact_state_for_trace(kw["state"])
+                elif isinstance(kw.get("raw_story"), str):
+                    # Root run: run_accident_story_graph(raw_story=...)
+                    out["state"] = redact_state_for_trace(
+                        {
+                            "raw_story": kw.get("raw_story"),
+                            "command_id": kw.get("command_id"),
+                            "idempotency_key": "",
+                        }
+                    )
+                    out["has_command_id"] = bool(str(kw.get("command_id") or "").strip())
+                    out["scenario"] = str(kw.get("scenario") or "")[:80]
+                else:
+                    # Drop unknown kwargs that may contain prose
+                    out["kwargs_keys"] = sorted(str(k) for k in kw.keys())[:20]
+            if isinstance(inputs.get("raw_story"), str):
+                out["state"] = redact_state_for_trace(inputs)
+        return out
+    except Exception:
+        return {"redacted": True, "redaction_error": True}
 
 
 def process_traced_outputs(outputs: Any) -> dict[str, Any]:
-    if isinstance(outputs, dict):
-        return redact_state_for_trace(outputs)
-    return {"redacted": True, "type": type(outputs).__name__}
+    try:
+        if isinstance(outputs, dict):
+            return redact_state_for_trace(outputs)
+        return {"redacted": True, "type": type(outputs).__name__}
+    except Exception:
+        return {"redacted": True, "redaction_error": True}
 
 
 class LatencyTimer:

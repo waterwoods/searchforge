@@ -32,3 +32,16 @@ See `META_ALLOWLIST` in tracing.py. Evaluators fail if any other key appears.
 ## Default posture
 
 Tracing is **opt-in**. No API key → silent no-op. Production/waterwoods remain untouched by this PR.
+
+## LangGraph auto-trace suppression
+
+When `LANGCHAIN_TRACING_V2` is on, LangGraph `compile().invoke()` otherwise uploads
+**full** `AccidentStoryState` (including `raw_story`) under bare node names.
+
+Pilot safety requires:
+
+1. `process_inputs` / `process_outputs` on `@maybe_traceable` wrappers
+2. `tracing_context(enabled=False)` around `app.invoke` so nested auto-traces never ship prose
+3. Kill switch `ACCIDENT_STORY_LANGSMITH_TRACING=0` (call-time, no reimport)
+
+See online validation evidence under `docs/evidence/langsmith-pr-b/online-validation/`.

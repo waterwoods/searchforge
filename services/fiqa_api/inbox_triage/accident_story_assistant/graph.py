@@ -43,8 +43,11 @@ logger = logging.getLogger(__name__)
 
 
 def _llm_enabled() -> bool:
-    raw = (os.getenv("ACCIDENT_STORY_LLM") or "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    from services.fiqa_api.inbox_triage.accident_story_assistant.flags import (
+        llm_extraction_enabled,
+    )
+
+    return llm_extraction_enabled()
 
 
 @maybe_traceable(
@@ -141,8 +144,38 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
 
 
 def _call_optional_llm(text: str) -> dict[str, Any]:
-    """Optional LLM path — disabled by default; raises on timeout/invalid."""
-    raise TimeoutError("accident_story_llm_disabled_or_timeout")
+    """Optional LLM path — disabled by default; raises on timeout/invalid/missing creds."""
+    import concurrent.futures
+
+    from services.fiqa_api.inbox_triage.accident_story_assistant.flags import (
+        llm_max_retries,
+        llm_timeout_seconds,
+    )
+
+    api_key = (os.getenv("OPENAI_API_KEY") or os.getenv("ACCIDENT_STORY_LLM_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("missing_credentials:accident_story_llm")
+
+    def _invoke() -> dict[str, Any]:
+        # Provider call intentionally not wired for restricted pilot — fail closed to deterministic.
+        raise TimeoutError("accident_story_llm_provider_not_configured")
+
+    last_exc: Exception | None = None
+    attempts = 1 + int(llm_max_retries())
+    for _ in range(max(1, attempts)):
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(_invoke)
+                return fut.result(timeout=float(llm_timeout_seconds()))
+        except concurrent.futures.TimeoutError as exc:
+            last_exc = TimeoutError("provider_timeout")
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            # Do not retry auth/credential failures.
+            if "missing_credentials" in str(exc).lower() or "auth" in str(exc).lower():
+                break
+    assert last_exc is not None
+    raise last_exc
 
 
 @maybe_traceable(
@@ -226,7 +259,13 @@ def node_derive_missing_facts(state: AccidentStoryState) -> AccidentStoryState:
 def node_draft_followup_questions(state: AccidentStoryState) -> AccidentStoryState:
     out = dict(state)
     missing = list(out.get("missing_required_facts") or [])
-    out["followup_questions"] = draft_followup_questions(missing, max_questions=3)
+    from services.fiqa_api.inbox_triage.accident_story_assistant.flags import (
+        max_followup_questions,
+    )
+
+    out["followup_questions"] = draft_followup_questions(
+        missing, max_questions=max_followup_questions()
+    )
     return out  # type: ignore[return-value]
 
 
@@ -308,7 +347,18 @@ def run_accident_story_graph(
         graph.add_edge("apply_safety_guardrails", "build_customer_confirmation_proposal")
         graph.add_edge("build_customer_confirmation_proposal", END)
         app = graph.compile()
-        result = app.invoke(dict(initial))
+        # LangGraph auto-instrumentation dumps full AccidentStoryState (raw_story)
+        # into LangSmith when LANGCHAIN_TRACING_V2 is on. Suppress nested auto-traces;
+        # our @maybe_traceable hooks apply process_inputs/outputs redaction instead.
+        try:
+            from langsmith.run_helpers import tracing_context as _ls_tracing_context
+        except Exception:  # pragma: no cover
+            _ls_tracing_context = None  # type: ignore[assignment]
+        if _ls_tracing_context is not None:
+            with _ls_tracing_context(enabled=False):
+                result = app.invoke(dict(initial))
+        else:
+            result = app.invoke(dict(initial))
         state = result  # type: ignore[assignment]
     except Exception as exc:
         logger.warning("langgraph_unavailable_sequential_fallback: %s", exc)

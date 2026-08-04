@@ -9,13 +9,25 @@ from typing import Any
 from services.fiqa_api.inbox_triage.accident_story_assistant.contract import public_proposal
 from services.fiqa_api.inbox_triage.accident_story_assistant.events import (
     EVENT_ACCEPTED,
+    EVENT_COMPLETION_AFTER_FALLBACK,
     EVENT_CREATED,
+    EVENT_DISABLED,
     EVENT_EDITED,
     EVENT_FALLBACK,
+    EVENT_INVALID,
     EVENT_REJECTED,
+    EVENT_TIMEOUT,
     emit_ai_story_event,
     fallback_reason_category,
     timed_ms,
+)
+from services.fiqa_api.inbox_triage.accident_story_assistant.flags import (
+    assistant_enabled,
+    customer_message_for_category,
+    max_followup_questions,
+    max_payload_bytes,
+    max_story_chars,
+    office_allowed,
 )
 from services.fiqa_api.inbox_triage.accident_story_assistant.graph import (
     propose_from_story,
@@ -43,7 +55,97 @@ def _proposal_event_meta(proposal: dict[str, Any], *, latency_ms: int | None = N
         "model_provider": str(proposal.get("model_provider") or "")[:64],
         "model_name": str(proposal.get("model_name") or "")[:64],
         "command_id_prefix": "story",
+        "failure_category": str(proposal.get("failure_category") or "")[:64] or None,
+        "customer_message_code": str(proposal.get("customer_message_code") or "")[:64] or None,
     }
+
+
+def _manual_fallback_proposal(*, raw_story: str, reason: str, category: str) -> dict[str, Any]:
+    """Preserve original story; invent nothing; calm customer copy; lifecycle untouched."""
+    story = str(raw_story or "")[: max_story_chars()]
+    cat = fallback_reason_category(category or reason)
+    msg = customer_message_for_category(cat)
+    missing = ["accident_datetime", "accident_location", "injury_status"]
+    if not story.strip():
+        missing = ["accident_description", *missing]
+    guided = {
+        "title_zh": "请继续填写",
+        "draft_label_zh": "AI未整理",
+        "fact_rows": [],
+        "missing_count": 0,
+        "missing_message_zh": msg,
+        "followup_questions": [],
+        "followup_fields": [],
+        "conflicts": [],
+        "conflict_message_zh": "",
+        "show_full_form_option": True,
+        "full_form_option_zh": "查看或修改全部信息",
+        "confirm_title_zh": "请确认事故信息",
+        "confirm_actions": {
+            "accept_zh": "信息正确，提交",
+            "edit_zh": "修改",
+            "redescribe_zh": "重新描述",
+        },
+    }
+    return {
+        "schema_version": 1,
+        "proposal_version": 1,
+        "raw_story": story,
+        "incident_summary": "",
+        "injury_status": "unknown",
+        "accident_time_text": "",
+        "accident_location_text": "",
+        "involved_parties": [],
+        "involved_vehicles": [],
+        "proposed_facts": [],
+        "missing_required_facts": missing,
+        "followup_questions": [],
+        "confidence_by_field": {},
+        "warnings": ["assistant_fallback_manual_intake"],
+        "conflicts": [],
+        "used_fallback": True,
+        "fallback_reason": str(reason or category)[:200],
+        "failure_category": cat,
+        "customer_message_zh": msg,
+        "customer_message_code": cat,
+        "model_provider": "none",
+        "model_name": "disabled_or_fallback",
+        "authority_note": "ai_proposed_until_customer_confirms",
+        "guided_view": guided,
+        "manual_intake_required": True,
+    }
+
+
+def _clamp_proposal_safety(proposal: dict[str, Any], *, raw_story: str) -> dict[str, Any]:
+    out = dict(proposal)
+    out["raw_story"] = str(raw_story or "")[: max_story_chars()]
+    injury = str(out.get("injury_status") or "unknown").lower()
+    if injury not in ("yes", "no", "unknown"):
+        out["injury_status"] = "unknown"
+        out["used_fallback"] = True
+        out["fallback_reason"] = out.get("fallback_reason") or "invalid_injury_status"
+    if injury == "unknown":
+        out["injury_status"] = "unknown"
+    qs = list(out.get("followup_questions") or [])
+    if len(qs) > max_followup_questions():
+        out["followup_questions"] = qs[: max_followup_questions()]
+        out["used_fallback"] = True
+        out["fallback_reason"] = out.get("fallback_reason") or "too_many_questions_clamped"
+        out["warnings"] = list(out.get("warnings") or []) + ["questions_clamped_to_3"]
+    guided = out.get("guided_view") if isinstance(out.get("guided_view"), dict) else {}
+    fields = list(guided.get("followup_fields") or [])
+    if len(fields) > max_followup_questions():
+        guided = dict(guided)
+        guided["followup_fields"] = fields[: max_followup_questions()]
+        guided["followup_questions"] = list(guided.get("followup_questions") or [])[: max_followup_questions()]
+        guided["missing_count"] = len(guided["followup_fields"])
+        out["guided_view"] = guided
+    if out.get("used_fallback") and not out.get("customer_message_zh"):
+        cat = fallback_reason_category(str(out.get("fallback_reason") or ""))
+        out["failure_category"] = cat
+        out["customer_message_zh"] = customer_message_for_category(cat)
+        out["customer_message_code"] = cat
+    return out
 
 
 def propose_accident_story(
@@ -53,6 +155,7 @@ def propose_accident_story(
     idempotency_key: str,
     case_id: str | None = None,
     session_id: str | None = None,
+    office_id: str | None = None,
     llm_caller: Any | None = None,
 ) -> dict[str, Any]:
     key = f"propose:{(idempotency_key or command_id).strip()}"
@@ -63,17 +166,59 @@ def propose_accident_story(
             return cached
 
     started = time.monotonic()
-    proposal = propose_from_story(
-        raw_story=raw_story,
-        command_id=command_id,
-        idempotency_key=idempotency_key,
-        llm_caller=llm_caller,
-    )
+    story = str(raw_story or "")
+    if len(story.encode("utf-8", errors="ignore")) > max_payload_bytes():
+        proposal = _manual_fallback_proposal(
+            raw_story=story[: max_story_chars()],
+            reason="payload_too_large",
+            category="internal_exception",
+        )
+    elif not assistant_enabled() or not office_allowed(office_id):
+        reason = "assistant_disabled" if not assistant_enabled() else "office_not_allowlisted"
+        proposal = _manual_fallback_proposal(raw_story=story[: max_story_chars()], reason=reason, category="disabled")
+        latency = timed_ms(started)
+        meta = _proposal_event_meta(proposal, latency_ms=latency)
+        emit_ai_story_event(EVENT_DISABLED, case_id=case_id, meta=meta)
+        emit_ai_story_event(EVENT_CREATED, case_id=case_id, meta=meta)
+        emit_ai_story_event(EVENT_FALLBACK, case_id=case_id, meta=meta)
+        result = {
+            "ok": True,
+            "outcome": "accepted",
+            "proposal": proposal,
+            "case_id": str(case_id or "").strip() or None,
+            "session_id_present": bool(str(session_id or "").strip()),
+            "lifecycle_mutated": False,
+        }
+        with _lock:
+            _idempotency[key] = dict(result)
+        return result
+    else:
+        story = story[: max_story_chars()]
+        try:
+            proposal = propose_from_story(
+                raw_story=story,
+                command_id=command_id,
+                idempotency_key=idempotency_key,
+                llm_caller=llm_caller,
+            )
+            proposal = _clamp_proposal_safety(proposal, raw_story=story)
+        except Exception as exc:
+            proposal = _manual_fallback_proposal(
+                raw_story=story,
+                reason=f"internal_exception:{type(exc).__name__}",
+                category="internal_exception",
+            )
+
     latency = timed_ms(started)
     meta = _proposal_event_meta(proposal, latency_ms=latency)
     emit_ai_story_event(EVENT_CREATED, case_id=case_id, meta=meta)
     if proposal.get("used_fallback"):
         emit_ai_story_event(EVENT_FALLBACK, case_id=case_id, meta=meta)
+        cat = str(proposal.get("failure_category") or meta.get("fallback_reason_category") or "")
+        if cat == "timeout":
+            emit_ai_story_event(EVENT_TIMEOUT, case_id=case_id, meta=meta)
+        if cat in ("invalid_json", "schema_validation", "hallucinated_fields"):
+            emit_ai_story_event(EVENT_INVALID, case_id=case_id, meta=meta)
 
     result = {
         "ok": True,
@@ -308,6 +453,12 @@ def confirm_accident_story(
     if edited_names:
         emit_ai_story_event(EVENT_EDITED, case_id=cid, meta=event_meta)
     emit_ai_story_event(EVENT_ACCEPTED, case_id=cid, meta=event_meta)
+    if bool(base.get("used_fallback")):
+        emit_ai_story_event(
+            EVENT_COMPLETION_AFTER_FALLBACK,
+            case_id=cid,
+            meta={"authority": "customer_confirmed", "command_id_prefix": "story"},
+        )
 
     result = {
         "ok": True,

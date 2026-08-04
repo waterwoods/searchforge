@@ -1,0 +1,300 @@
+{
+  "status": "PASS",
+  "marker_leaked_in_any_run": false,
+  "leaking_run_names": [],
+  "matched_accident_story_runs": [
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "c03bd42a",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "8207fd86",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "7566ddad",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "c6074a8d",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "340b32a7",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "35b0c58a",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "cd737dfd",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "38eff703",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "8f892f34",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    },
+    {
+      "name": "accident_story.run_graph",
+      "id_prefix": "2b771a2c",
+      "input_keys": [
+        "redacted",
+        "state"
+      ],
+      "output_keys": [
+        "command_id_prefix",
+        "conflict_keys",
+        "fallback_reason_category",
+        "has_location_text",
+        "has_time_text",
+        "injury_status",
+        "missing_count",
+        "missing_keys",
+        "model_name",
+        "model_provider",
+        "question_count",
+        "schema_version",
+        "story_char_len",
+        "story_lang_hint",
+        "used_fallback",
+        "vehicle_count",
+        "warning_count"
+      ],
+      "has_marker_in_io": false,
+      "redacted_flag": true
+    }
+  ],
+  "propose_ok": true,
+  "note": "Local .env credentials used; secrets never printed. Marker proves absence of raw story in recent runs.",
+  "optional_cloud_qa_action": "If Cloud QA needs online UI review: set LANGCHAIN_API_KEY + LANGCHAIN_TRACING_V2=true + LANGCHAIN_PROJECT on fiqa-api-qa only (never Production/waterwoods)."
+}

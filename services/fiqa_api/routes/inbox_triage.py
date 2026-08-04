@@ -2963,6 +2963,12 @@ async def support_deployment_manifest(request: Request) -> dict[str, Any]:
     from services.fiqa_api.utils.gitinfo import get_git_sha
 
     sha, source = get_git_sha()
+    from services.fiqa_api.inbox_triage.accident_story_assistant.flags import (
+        accident_story_flags_public,
+    )
+    from services.fiqa_api.inbox_triage.accident_story_assistant.metrics import (
+        summarize_pilot_metrics,
+    )
     persist = unified_intake_case_persistence_report()
     lineage = http_request_lineage(request)
     return {
@@ -2984,6 +2990,8 @@ async def support_deployment_manifest(request: Request) -> dict[str, Any]:
         "office_ownership": office_ownership_posture_dict(),
         "client_ownership": client_ownership_posture_dict(),
         "token_scope_registry": token_scope_registry_dict(),
+        "accident_story_assistant": accident_story_flags_public(),
+        "accident_story_pilot_metrics_window": summarize_pilot_metrics(),
     }
 
 

@@ -19,6 +19,11 @@ EVENT_ACCEPTED = "ai_story_proposal_accepted"
 EVENT_EDITED = "ai_story_proposal_edited"
 EVENT_REJECTED = "ai_story_proposal_rejected"
 EVENT_FALLBACK = "ai_story_fallback_used"
+EVENT_TIMEOUT = "ai_story_provider_timeout"
+EVENT_INVALID = "ai_story_invalid_output"
+EVENT_DISABLED = "ai_story_assistant_disabled"
+EVENT_TRACE_FAIL = "ai_story_trace_failed"
+EVENT_COMPLETION_AFTER_FALLBACK = "ai_story_completion_after_fallback"
 
 ALL_EVENT_TYPES = frozenset(
     {
@@ -27,6 +32,11 @@ ALL_EVENT_TYPES = frozenset(
         EVENT_EDITED,
         EVENT_REJECTED,
         EVENT_FALLBACK,
+        EVENT_TIMEOUT,
+        EVENT_INVALID,
+        EVENT_DISABLED,
+        EVENT_TRACE_FAIL,
+        EVENT_COMPLETION_AFTER_FALLBACK,
     }
 )
 
@@ -44,6 +54,10 @@ _ALLOWED_META = frozenset(
         "used_fallback",
         "authority",
         "command_id_prefix",
+        "unknown_injury_violation",
+        "unnecessary_question",
+        "failure_category",
+        "customer_message_code",
     }
 )
 
@@ -60,14 +74,30 @@ def fallback_reason_category(raw: str | None) -> str:
     text = str(raw or "").strip().lower()
     if not text:
         return "none"
+    if "disabled" in text or "allowlist" in text:
+        return "disabled"
     if "timeout" in text:
         return "timeout"
-    if "invalid" in text or "json" in text:
-        return "invalid_json"
+    if "connection" in text or "connect" in text:
+        return "connection_error"
+    if "schema" in text:
+        return "schema_validation"
     if "hallucin" in text:
         return "hallucinated_fields"
-    if "llm" in text:
+    if "conflict" in text:
+        return "conflicting_facts"
+    if "question" in text and ("max" in text or "three" in text or ">3" in text or "over"):
+        return "too_many_questions"
+    if "trace" in text:
+        return "tracing_failure"
+    if "credential" in text or "api_key" in text or "auth" in text:
+        return "missing_credentials"
+    if "invalid" in text or "json" in text:
+        return "invalid_json"
+    if "llm" in text or "provider" in text:
         return "llm_unavailable"
+    if "internal" in text or "exception" in text:
+        return "internal_exception"
     return "deterministic_other"
 
 

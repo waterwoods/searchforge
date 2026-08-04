@@ -94,8 +94,15 @@ def _get_langsmith_client() -> Optional[Client]:
 
 
 def tracing_enabled() -> bool:
-    """True when LangSmith client can send runs (API key present + package installed)."""
+    """True when LangSmith client can send runs (API key present + package installed).
+
+    Accident-story kill switch: ACCIDENT_STORY_LANGSMITH_TRACING=0 disables tracing
+    even when a key is present. Missing key → False (intake continues).
+    """
     if not _LANGSMITH_AVAILABLE:
+        return False
+    story_flag = (os.getenv("ACCIDENT_STORY_LANGSMITH_TRACING") or "1").strip().lower()
+    if story_flag in ("0", "false", "no", "off"):
         return False
     api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
     if api_key:
@@ -113,67 +120,48 @@ def maybe_traceable(
 ):
     """
     Decorator that optionally wraps a function with LangSmith tracing.
-    
-    Behavior:
-    - If langsmith is not installed → returns original function (no-op)
-    - If API key is not set → returns original function (no-op)
-    - Otherwise → wraps function with @traceable(name=name, ...)
-    
+
+    Behavior (evaluated at **call** time so kill switches work without reimport):
+    - If langsmith is not installed → no-op
+    - If tracing_enabled() is False → no-op
+    - Otherwise → @traceable with optional process_inputs / process_outputs
+
     Supports both:
     - LANGSMITH_API_KEY / LANGSMITH_PROJECT (preferred)
     - LANGCHAIN_API_KEY / LANGCHAIN_TRACING_V2 (backward compatibility)
-    
-    Args:
-        name: Name of the trace run (shown in LangSmith UI)
-        process_inputs: Optional redaction hook for traced inputs
-        process_outputs: Optional redaction hook for traced outputs
-        metadata: Optional static metadata merged into the run
-    
-    Returns:
-        Decorator function that optionally traces the wrapped function
-    
-    Example:
-        @maybe_traceable(name="ecommerce_after_sales_agent")
-        def run_ecommerce_agent(request: EcommerceAgentRequest) -> EcommerceAgentState:
-            ...
     """
     def decorator(fn: Callable[P, T]) -> Callable[P, T]:
-        # If langsmith is not available, return original function
-        if not _LANGSMITH_AVAILABLE:
+        if not _LANGSMITH_AVAILABLE or traceable is None:
             return fn
-        
-        if not tracing_enabled():
-            # API key not set - return original function (silent no-op)
-            return fn
-        
-        # Initialize client (sets project if LANGSMITH_PROJECT is set)
-        _get_langsmith_client()
-        
-        # Tracing is enabled - wrap with traceable
-        try:
-            kwargs: dict = {"name": name}
-            if process_inputs is not None:
-                kwargs["process_inputs"] = process_inputs
-            if process_outputs is not None:
-                kwargs["process_outputs"] = process_outputs
-            if metadata:
-                kwargs["metadata"] = dict(metadata)
-            wrapped = traceable(**kwargs)(fn)
-            
-            @wraps(fn)
-            def inner(*args: P.args, **kwargs: P.kwargs) -> T:
-                """Inner wrapper that preserves function metadata."""
-                return wrapped(*args, **kwargs)
-            
-            return inner
-        except Exception as e:
-            # If wrapping fails, log warning and return original function
-            logger.warning(
-                f"[LANGSMITH_TRACING] Failed to wrap function '{fn.__name__}' with traceable: {e}. "
-                f"Continuing without tracing."
-            )
-            return fn
-    
+
+        wrapped_fn: Optional[Callable[P, T]] = None
+
+        @wraps(fn)
+        def inner(*args: P.args, **kwargs: P.kwargs) -> T:
+            nonlocal wrapped_fn
+            if not tracing_enabled():
+                return fn(*args, **kwargs)
+            try:
+                _get_langsmith_client()
+                if wrapped_fn is None:
+                    tkwargs: dict = {"name": name}
+                    if process_inputs is not None:
+                        tkwargs["process_inputs"] = process_inputs
+                    if process_outputs is not None:
+                        tkwargs["process_outputs"] = process_outputs
+                    if metadata:
+                        tkwargs["metadata"] = dict(metadata)
+                    wrapped_fn = traceable(**tkwargs)(fn)  # type: ignore[misc]
+                return wrapped_fn(*args, **kwargs)  # type: ignore[misc]
+            except Exception as e:
+                logger.warning(
+                    f"[LANGSMITH_TRACING] Trace wrap/call failed for '{fn.__name__}': {e}. "
+                    f"Continuing without tracing."
+                )
+                return fn(*args, **kwargs)
+
+        return inner
+
     return decorator
 
 

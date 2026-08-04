@@ -252,12 +252,15 @@ async def post_accident_story_propose(body: AccidentStoryProposeBody) -> dict[st
     """Run bounded LangGraph proposal. Never mutates Claim lifecycle."""
     from services.fiqa_api.inbox_triage.accident_story_assistant import propose_accident_story
 
+    # Server-side office scope only — never trust client feature flags.
+    office_id = getattr(body, "office_id", None) or "chen_kui"
     return propose_accident_story(
         raw_story=body.raw_story,
         command_id=body.command_id,
         idempotency_key=body.idempotency_key,
         case_id=body.case_id,
         session_id=body.session_id,
+        office_id=str(office_id or "") or None,
     )
 
 
