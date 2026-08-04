@@ -130,16 +130,27 @@ def emit_ai_story_event(
     *,
     case_id: str | None = None,
     meta: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any] | None:
-    """Record a durable-ready observational event. Never raises."""
+    """Record observational event (memory mirror + durable PG when configured).
+
+    Idempotent by (event_type, idempotency_key) in Postgres. Never raises.
+    Never stores raw story or customer identity fields.
+    """
     try:
         et = str(event_type or "").strip()
         if et not in ALL_EVENT_TYPES:
             return None
+        cid = str(case_id or "").strip() or None
+        idem = str(idempotency_key or "").strip()
+        if not idem:
+            # Stable-enough fallback when caller omits key (still unique per emit).
+            idem = f"{et}:{cid or 'none'}:{uuid.uuid4().hex[:12]}"
         row = {
             "event_id": f"ais_{uuid.uuid4().hex[:16]}",
             "event_type": et,
-            "case_id": str(case_id or "").strip() or None,
+            "case_id": cid,
+            "idempotency_key": idem[:256],
             "server_timestamp": _utc_now_iso(),
             "meta": _sanitize(meta),
         }
@@ -147,6 +158,17 @@ def emit_ai_story_event(
             _memory.append(row)
             if len(_memory) > _MAX_MEMORY:
                 del _memory[: len(_memory) - _MAX_MEMORY]
+        try:
+            from services.fiqa_api.inbox_triage.accident_story_assistant.durable_events import (
+                persist_pilot_event,
+            )
+
+            durable = persist_pilot_event(row)
+            row["durable"] = bool(durable.get("durable"))
+            row["durable_recorded"] = bool(durable.get("recorded"))
+            row["durable_duplicate"] = bool(durable.get("duplicate"))
+        except Exception:
+            row["durable"] = False
         return row
     except Exception:
         logger.debug("ai_story_event_emit_failed", exc_info=True)

@@ -178,9 +178,16 @@ def propose_accident_story(
         proposal = _manual_fallback_proposal(raw_story=story[: max_story_chars()], reason=reason, category="disabled")
         latency = timed_ms(started)
         meta = _proposal_event_meta(proposal, latency_ms=latency)
-        emit_ai_story_event(EVENT_DISABLED, case_id=case_id, meta=meta)
-        emit_ai_story_event(EVENT_CREATED, case_id=case_id, meta=meta)
-        emit_ai_story_event(EVENT_FALLBACK, case_id=case_id, meta=meta)
+        idem_base = str(idempotency_key or command_id or "").strip() or "unknown"
+        emit_ai_story_event(
+            EVENT_DISABLED, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:disabled"
+        )
+        emit_ai_story_event(
+            EVENT_CREATED, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:created"
+        )
+        emit_ai_story_event(
+            EVENT_FALLBACK, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:fallback"
+        )
         result = {
             "ok": True,
             "outcome": "accepted",
@@ -211,14 +218,23 @@ def propose_accident_story(
 
     latency = timed_ms(started)
     meta = _proposal_event_meta(proposal, latency_ms=latency)
-    emit_ai_story_event(EVENT_CREATED, case_id=case_id, meta=meta)
+    idem_base = str(idempotency_key or command_id or "").strip() or "unknown"
+    emit_ai_story_event(
+        EVENT_CREATED, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:created"
+    )
     if proposal.get("used_fallback"):
-        emit_ai_story_event(EVENT_FALLBACK, case_id=case_id, meta=meta)
+        emit_ai_story_event(
+            EVENT_FALLBACK, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:fallback"
+        )
         cat = str(proposal.get("failure_category") or meta.get("fallback_reason_category") or "")
         if cat == "timeout":
-            emit_ai_story_event(EVENT_TIMEOUT, case_id=case_id, meta=meta)
+            emit_ai_story_event(
+                EVENT_TIMEOUT, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:timeout"
+            )
         if cat in ("invalid_json", "schema_validation", "hallucinated_fields"):
-            emit_ai_story_event(EVENT_INVALID, case_id=case_id, meta=meta)
+            emit_ai_story_event(
+                EVENT_INVALID, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:invalid"
+            )
 
     result = {
         "ok": True,
@@ -274,6 +290,7 @@ def confirm_accident_story(
             EVENT_REJECTED,
             case_id=cid,
             meta={"authority": "ai_proposed", "proposal_version": 1},
+            idempotency_key=f"{str(idempotency_key or command_id).strip()}:rejected",
         )
         return {
             "ok": True,
@@ -451,13 +468,24 @@ def confirm_accident_story(
         "model_name": str(base.get("model_name") or "")[:64],
     }
     if edited_names:
-        emit_ai_story_event(EVENT_EDITED, case_id=cid, meta=event_meta)
-    emit_ai_story_event(EVENT_ACCEPTED, case_id=cid, meta=event_meta)
+        emit_ai_story_event(
+            EVENT_EDITED,
+            case_id=cid,
+            meta=event_meta,
+            idempotency_key=f"{str(idempotency_key or command_id).strip()}:edited",
+        )
+    emit_ai_story_event(
+        EVENT_ACCEPTED,
+        case_id=cid,
+        meta=event_meta,
+        idempotency_key=f"{str(idempotency_key or command_id).strip()}:accepted",
+    )
     if bool(base.get("used_fallback")):
         emit_ai_story_event(
             EVENT_COMPLETION_AFTER_FALLBACK,
             case_id=cid,
             meta={"authority": "customer_confirmed", "command_id_prefix": "story"},
+            idempotency_key=f"{str(idempotency_key or command_id).strip()}:completion_after_fallback",
         )
 
     result = {

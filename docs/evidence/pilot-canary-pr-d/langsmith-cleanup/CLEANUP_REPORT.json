@@ -1,0 +1,868 @@
+{
+  "generated_at": "2026-08-04T19:38:02Z",
+  "project_configured": true,
+  "project_name_len": 21,
+  "api_key_present": true,
+  "runs_scanned": 150,
+  "unsafe_run_count": 52,
+  "safe_redacted_run_count": 98,
+  "deleted_count": 0,
+  "delete_supported": false,
+  "manual_cleanup_required": true,
+  "unsafe_run_summaries": [
+    {
+      "run_id_prefix": "c7a31ec3",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.086719"
+    },
+    {
+      "run_id_prefix": "2bde7fbe",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.085689"
+    },
+    {
+      "run_id_prefix": "ef04b145",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.084820"
+    },
+    {
+      "run_id_prefix": "0cbdc6b7",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.083847"
+    },
+    {
+      "run_id_prefix": "9d199040",
+      "name": "validate_proposals",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:validate_proposals",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.082921"
+    },
+    {
+      "run_id_prefix": "47addca5",
+      "name": "extract_fact_proposals",
+      "reason_keys": [
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:extract_fact_proposals",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.081091"
+    },
+    {
+      "run_id_prefix": "c9a53031",
+      "name": "normalize_story",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:normalize_story",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.079085"
+    },
+    {
+      "run_id_prefix": "e6d25ad7",
+      "name": "LangGraph",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:LangGraph",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:18:37.077977"
+    },
+    {
+      "run_id_prefix": "9f6b1d55",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.081415"
+    },
+    {
+      "run_id_prefix": "a02736f6",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.079957"
+    },
+    {
+      "run_id_prefix": "483e77e6",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.078195"
+    },
+    {
+      "run_id_prefix": "b177c633",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.076226"
+    },
+    {
+      "run_id_prefix": "170b4e9d",
+      "name": "validate_proposals",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:validate_proposals",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.074449"
+    },
+    {
+      "run_id_prefix": "942a8ddd",
+      "name": "extract_fact_proposals",
+      "reason_keys": [
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:extract_fact_proposals",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.072121"
+    },
+    {
+      "run_id_prefix": "402753e2",
+      "name": "normalize_story",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:normalize_story",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.069995"
+    },
+    {
+      "run_id_prefix": "0e92d3d1",
+      "name": "LangGraph",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:LangGraph",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.068697"
+    },
+    {
+      "run_id_prefix": "aacf82fd",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.057089"
+    },
+    {
+      "run_id_prefix": "75e9183b",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.055551"
+    },
+    {
+      "run_id_prefix": "82a1d55c",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.053881"
+    },
+    {
+      "run_id_prefix": "e2fd53e5",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.051725"
+    },
+    {
+      "run_id_prefix": "eea1542d",
+      "name": "validate_proposals",
+      "reason_keys": [
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:validate_proposals",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.048198"
+    },
+    {
+      "run_id_prefix": "c693dcb1",
+      "name": "extract_fact_proposals",
+      "reason_keys": [
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:extract_fact_proposals",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.046632"
+    },
+    {
+      "run_id_prefix": "7dc6f118",
+      "name": "normalize_story",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:normalize_story",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.044481"
+    },
+    {
+      "run_id_prefix": "17ba4a7e",
+      "name": "LangGraph",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:LangGraph",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.043497"
+    },
+    {
+      "run_id_prefix": "f5e74beb",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:44.032079"
+    },
+    {
+      "run_id_prefix": "106781ca",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:44.030427"
+    },
+    {
+      "run_id_prefix": "1206fb4b",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:44.028175"
+    },
+    {
+      "run_id_prefix": "8182fc37",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:44.026641"
+    },
+    {
+      "run_id_prefix": "e8ffa0c6",
+      "name": "validate_proposals",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:validate_proposals",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.025293"
+    },
+    {
+      "run_id_prefix": "a8955d9b",
+      "name": "extract_fact_proposals",
+      "reason_keys": [
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:extract_fact_proposals",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.023785"
+    },
+    {
+      "run_id_prefix": "f4f2371e",
+      "name": "normalize_story",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:normalize_story",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.022133"
+    },
+    {
+      "run_id_prefix": "e12fd7c2",
+      "name": "LangGraph",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:LangGraph",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.021173"
+    },
+    {
+      "run_id_prefix": "c4fa9459",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.010777"
+    },
+    {
+      "run_id_prefix": "103747a4",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.009050"
+    },
+    {
+      "run_id_prefix": "0dc0ec0b",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.007437"
+    },
+    {
+      "run_id_prefix": "e3d54905",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.006035"
+    },
+    {
+      "run_id_prefix": "afa5cadc",
+      "name": "validate_proposals",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:validate_proposals",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.004620"
+    },
+    {
+      "run_id_prefix": "525bab0e",
+      "name": "extract_fact_proposals",
+      "reason_keys": [
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:extract_fact_proposals",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.002917"
+    },
+    {
+      "run_id_prefix": "3cbceac4",
+      "name": "normalize_story",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:normalize_story",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.001206"
+    },
+    {
+      "run_id_prefix": "e6b71cd0",
+      "name": "LangGraph",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:LangGraph",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:44.000247"
+    },
+    {
+      "run_id_prefix": "ba07f807",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:43.989000"
+    },
+    {
+      "run_id_prefix": "4a64c71b",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:43.987705"
+    },
+    {
+      "run_id_prefix": "82d3d7ec",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:43.986571"
+    },
+    {
+      "run_id_prefix": "2e486399",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.proposed_facts.value",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value"
+      ],
+      "start_time": "2026-08-04 19:17:43.985243"
+    },
+    {
+      "run_id_prefix": "1f205f80",
+      "name": "validate_proposals",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:validate_proposals",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.983657"
+    },
+    {
+      "run_id_prefix": "98948382",
+      "name": "extract_fact_proposals",
+      "reason_keys": [
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:extract_fact_proposals",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.979881"
+    },
+    {
+      "run_id_prefix": "cefcef08",
+      "name": "normalize_story",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:normalize_story",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.978150"
+    },
+    {
+      "run_id_prefix": "b8db9773",
+      "name": "LangGraph",
+      "reason_keys": [
+        "inputs.raw_story",
+        "name:LangGraph",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.proposed_facts.value",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.977188"
+    },
+    {
+      "run_id_prefix": "ab2561ef",
+      "name": "build_customer_confirmation_proposal",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:build_customer_confirmation_proposal",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.966300"
+    },
+    {
+      "run_id_prefix": "0c1541b1",
+      "name": "apply_safety_guardrails",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:apply_safety_guardrails",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.964903"
+    },
+    {
+      "run_id_prefix": "d33a80bc",
+      "name": "draft_followup_questions",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:draft_followup_questions",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.963427"
+    },
+    {
+      "run_id_prefix": "596848d4",
+      "name": "derive_missing_facts",
+      "reason_keys": [
+        "inputs.accident_location_text",
+        "inputs.accident_time_text",
+        "inputs.incident_summary",
+        "inputs.normalized_story",
+        "inputs.raw_story",
+        "name:derive_missing_facts",
+        "outputs.accident_location_text",
+        "outputs.accident_time_text",
+        "outputs.incident_summary",
+        "outputs.normalized_story",
+        "outputs.raw_story"
+      ],
+      "start_time": "2026-08-04 19:17:43.961761"
+    }
+  ],
+  "note": "No raw story text or secrets included.",
+  "manual_cleanup_action": "In LangSmith UI for project (name length=21): filter runs named normalize_story / LangGraph / extract_fact_proposals (pre-fix) and delete or move to a quarantine project. Approximate window: any run before pilot-safety commit 2ef3065 with bare node names and raw_story input keys.",
+  "status": "PARTIAL_QUARANTINE",
+  "post_fix_marker_leaked": false,
+  "post_fix_safe": true,
+  "quarantine_via_update": {
+    "generated_at": "2026-08-04T19:38:57Z",
+    "method": "update_run_redact_inputs_outputs",
+    "runs_scanned": 200,
+    "unsafe_found": 54,
+    "updated": 8,
+    "still_unsafe_after_update": 54,
+    "delete_run_supported": false,
+    "manual_cleanup_required": true,
+    "note": "No raw story content written to evidence."
+  }
+}

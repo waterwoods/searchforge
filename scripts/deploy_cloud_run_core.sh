@@ -632,6 +632,27 @@ if [ -n "${WECOM_QUEUE_ADMIN_TOKEN:-}" ]; then
     ENV_VARS+=("WECOM_QUEUE_ADMIN_TOKEN=$WECOM_QUEUE_ADMIN_TOKEN")
 fi
 
+# Accident Story Assistant — restricted pilot kill switches (Cloud QA).
+# Defaults stay safe when unset; explicit values from .env.cloudrun.qa survive --set-env-vars.
+if [ -n "${ACCIDENT_STORY_ASSISTANT_ENABLED:-}" ]; then
+    ENV_VARS+=("ACCIDENT_STORY_ASSISTANT_ENABLED=$ACCIDENT_STORY_ASSISTANT_ENABLED")
+fi
+if [ -n "${ACCIDENT_STORY_LLM:-}" ]; then
+    ENV_VARS+=("ACCIDENT_STORY_LLM=$ACCIDENT_STORY_LLM")
+fi
+if [ -n "${ACCIDENT_STORY_LANGSMITH_TRACING:-}" ]; then
+    ENV_VARS+=("ACCIDENT_STORY_LANGSMITH_TRACING=$ACCIDENT_STORY_LANGSMITH_TRACING")
+fi
+if [ -n "${ACCIDENT_STORY_OFFICE_ALLOWLIST:-}" ]; then
+    ENV_VARS+=("ACCIDENT_STORY_OFFICE_ALLOWLIST=$ACCIDENT_STORY_OFFICE_ALLOWLIST")
+fi
+if [ -n "${ACCIDENT_STORY_LLM_TIMEOUT_SECONDS:-}" ]; then
+    ENV_VARS+=("ACCIDENT_STORY_LLM_TIMEOUT_SECONDS=$ACCIDENT_STORY_LLM_TIMEOUT_SECONDS")
+fi
+if [ -n "${ACCIDENT_STORY_LLM_MAX_RETRIES:-}" ]; then
+    ENV_VARS+=("ACCIDENT_STORY_LLM_MAX_RETRIES=$ACCIDENT_STORY_LLM_MAX_RETRIES")
+fi
+
 echo "Non-secret Unified Intake / persistence keys in this deploy bundle:"
 UNIFIED_BUNDLE_PRINTED=0
 for kv in "${ENV_VARS[@]}"; do

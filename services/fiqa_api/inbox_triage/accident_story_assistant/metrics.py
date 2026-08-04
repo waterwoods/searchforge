@@ -16,7 +16,6 @@ from services.fiqa_api.inbox_triage.accident_story_assistant.events import (
     list_ai_story_events_for_tests,
 )
 
-# Additional event types recorded in-memory for pilot (also via emit).
 EVENT_TIMEOUT = "ai_story_provider_timeout"
 EVENT_INVALID = "ai_story_invalid_output"
 EVENT_DISABLED = "ai_story_assistant_disabled"
@@ -70,6 +69,7 @@ def summarize_pilot_metrics(*, events: list[dict[str, Any]] | None = None) -> di
     return {
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "event_count": len(rows),
+        "source": "provided" if events is not None else "memory",
         "proposals_created": created,
         "accepted": counts.get(EVENT_ACCEPTED, 0),
         "edited": counts.get(EVENT_EDITED, 0),
@@ -91,3 +91,26 @@ def summarize_pilot_metrics(*, events: list[dict[str, Any]] | None = None) -> di
         "fallback_reason_categories": dict(fallback_categories),
         "pii_policy": "no_raw_stories_phones_openids_tokens_photos_names",
     }
+
+
+def summarize_durable_pilot_metrics(
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 5000,
+    include_memory_fallback: bool = True,
+) -> dict[str, Any]:
+    """Pilot SSOT summary from Postgres when available; optional memory fallback."""
+    from services.fiqa_api.inbox_triage.accident_story_assistant.durable_events import (
+        load_pilot_events,
+    )
+
+    rows = load_pilot_events(since=since, until=until, limit=limit)
+    source = "postgres"
+    if not rows and include_memory_fallback:
+        rows = list_ai_story_events_for_tests()
+        source = "memory_fallback"
+    summary = summarize_pilot_metrics(events=rows)
+    summary["source"] = source
+    summary["window"] = {"since": since, "until": until, "limit": limit}
+    return summary
