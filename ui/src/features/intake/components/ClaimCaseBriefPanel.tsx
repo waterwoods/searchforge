@@ -184,6 +184,66 @@ export function ClaimCaseBriefPanel({
         </Tag>
       ) : null}
 
+      {brief.accident_story_assistant?.ai_involved ? (
+        <div
+          data-testid="accident-story-assistant-layers"
+          style={{
+            marginBottom: 12,
+            padding: '12px 14px',
+            background: '#f7fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+          }}
+        >
+          <Text strong style={{ display: 'block', fontSize: 13, marginBottom: 8 }}>
+            {brief.accident_story_assistant.label_zh
+              || (brief.accident_story_assistant.authority === 'customer_confirmed'
+                ? '客户已确认（AI 辅助整理）'
+                : 'AI 提议（未确认，不可当作事实）')}
+          </Text>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+            客户原始描述
+          </Text>
+          <Text style={{ display: 'block', fontSize: 13, marginBottom: 8 }}>
+            {brief.accident_story_assistant.layers?.customer_raw?.text
+              || brief.accident_story_assistant.raw_story
+              || '—'}
+          </Text>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+            AI整理草稿
+          </Text>
+          <Text style={{ display: 'block', fontSize: 13, marginBottom: 8 }}>
+            {brief.accident_story_assistant.layers?.ai_draft?.incident_summary
+              || brief.accident_story_assistant.incident_summary
+              || '—'}
+          </Text>
+          {brief.accident_story_assistant.authority === 'customer_confirmed' ? (
+            <>
+              <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+                客户已确认事实
+              </Text>
+              <Text style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>
+                {brief.accident_story_assistant.layers?.customer_confirmed?.incident_summary
+                  || brief.accident_story_assistant.incident_summary
+                  || '—'}
+              </Text>
+              {(brief.accident_story_assistant.edited_field_names || []).length > 0 ? (
+                <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                  客户修改字段：{(brief.accident_story_assistant.edited_field_names || []).join('、')}
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <Tag color="orange">未确认 — 不可当作客户事实</Tag>
+          )}
+          {(brief.accident_story_assistant.questions_asked || []).length > 0 ? (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 6 }}>
+              AI提问：{(brief.accident_story_assistant.questions_asked || []).join(' / ')}
+            </Text>
+          ) : null}
+        </div>
+      ) : null}
+
       {canAckSupplement ? (
         <div
           data-testid="supplement-review-ack-banner"

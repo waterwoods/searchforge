@@ -4,7 +4,17 @@ import {
   proposeAccidentStory,
   startClaim,
   transcribeStartClaimStoryAudio,
+  type AccidentStoryProposal,
 } from "../../services/startClaimApi";
+import {
+  allFollowupsSatisfied,
+  buildGuidedUiState,
+  emptyGuidedUiState,
+  proposalToFormPatch,
+  resolveGuidedPhase,
+  type GuidedPhase,
+  type GuidedUiState,
+} from "../../utils/guidedAccidentStory";
 import {
   fetchSmartClaimStartPlan,
   type SmartClaimStartPlan,
@@ -127,6 +137,24 @@ type PageData = {
   storyAssistSummary: string;
   storyAssistQuestions: string[];
   storyAssistNote: string;
+  /** Guided intake UX phases (visible LangGraph value). */
+  guidedPhase: GuidedPhase;
+  guidedTitle: string;
+  guidedDraftLabel: string;
+  guidedFactRows: GuidedUiState["guidedFactRows"];
+  guidedMissingMessage: string;
+  guidedMissingCount: number;
+  guidedFollowupFields: GuidedUiState["guidedFollowupFields"];
+  guidedConflictMessage: string;
+  guidedShowFullFormLink: boolean;
+  guidedFullFormLinkLabel: string;
+  guidedConfirmTitle: string;
+  guidedAcceptLabel: string;
+  guidedEditLabel: string;
+  guidedRedescribeLabel: string;
+  guidedHideStaticFields: boolean;
+  guidedShowAllFields: boolean;
+  guidedShowConfirm: boolean;
   busy: {
     submitting: boolean;
     uploading: boolean;
@@ -134,6 +162,11 @@ type PageData = {
 };
 
 type FormPatch = Partial<StartClaimCanonicalForm>;
+
+function timeLooksVague(raw: string): boolean {
+  const t = String(raw || "").trim().toLowerCase();
+  return t === "昨天" || t === "今天" || t === "前天" || t === "yesterday" || t === "today";
+}
 
 Page({
   _submitState: null as StartClaimSubmitState | null,
@@ -147,10 +180,14 @@ Page({
   _confirmSelections: {} as Record<string, string>,
   /** Successful Demo Invite redeem this page lifetime — enables Smart Claim chips. */
   _demoInviteActive: false,
+  _storyProposal: null as AccidentStoryProposal | null,
+  _guidedConfirmed: false,
+  _forceManualAll: false,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
     ...initialVoiceUiData(),
+    ...emptyGuidedUiState(),
     brokerName: appConfig.brokerDisplayName || "陈总",
     shellSafetyCopy: START_CLAIM_SAFETY_COPY,
     formAuthorized: false,
@@ -582,38 +619,57 @@ Page({
   async _refreshStoryAssist() {
     const story = String(this._form.description || "").trim();
     if (story.length < 8) {
+      this._storyProposal = null;
+      this._guidedConfirmed = false;
+      this._forceManualAll = false;
       this.setData({
         storyAssistSummary: "",
         storyAssistQuestions: [],
         storyAssistNote: "",
+        ...emptyGuidedUiState(),
       });
       return;
     }
     const proposal = await proposeAccidentStory(story);
     if (!proposal) {
+      // Fallback: keep manual form usable.
+      this._storyProposal = null;
+      this._forceManualAll = true;
       this.setData({
         storyAssistSummary: "",
         storyAssistQuestions: [],
         storyAssistNote: "",
+        ...buildGuidedUiState(null, "manual_all"),
       });
       return;
     }
-    const patch: Partial<StartClaimCanonicalForm> = {};
-    if (!String(this._form.accidentDatetime || "").trim() && proposal.accident_time_text) {
-      patch.accidentDatetime = String(proposal.accident_time_text);
+    this._storyProposal = proposal;
+    this._guidedConfirmed = false;
+    const patch = proposalToFormPatch(proposal);
+    const applyPatch: Partial<StartClaimCanonicalForm> = {};
+    if (!String(this._form.accidentDatetime || "").trim() && patch.accidentDatetime) {
+      // Keep vague relative day visible but still ask for clock time via follow-ups.
+      applyPatch.accidentDatetime = patch.accidentDatetime;
     }
-    if (!String(this._form.accidentLocation || "").trim() && proposal.accident_location_text) {
-      patch.accidentLocation = String(proposal.accident_location_text);
+    if (!String(this._form.accidentLocation || "").trim() && patch.accidentLocation) {
+      applyPatch.accidentLocation = patch.accidentLocation;
     }
-    if (
-      !String(this._form.injuryStatus || "").trim() &&
-      (proposal.injury_status === "yes" || proposal.injury_status === "no")
-    ) {
-      patch.injuryStatus = String(proposal.injury_status);
+    if (!String(this._form.injuryStatus || "").trim() && patch.injuryStatus) {
+      applyPatch.injuryStatus = patch.injuryStatus;
     }
-    if (Object.keys(patch).length) {
-      this._applyFormPatch(patch);
+    // For vague time still missing in guided_view, clear autofill so customer answers the follow-up.
+    const missing = proposal.missing_required_facts || [];
+    if (missing.includes("accident_datetime") && timeLooksVague(applyPatch.accidentDatetime || this._form.accidentDatetime)) {
+      applyPatch.accidentDatetime = "";
     }
+    if (Object.keys(applyPatch).length) {
+      this._applyFormPatch(applyPatch);
+    }
+    const phase = resolveGuidedPhase(proposal, {
+      forceManual: this._forceManualAll,
+      confirmed: this._guidedConfirmed,
+    });
+    const guided = buildGuidedUiState(proposal, phase);
     const questions = Array.isArray(proposal.followup_questions)
       ? proposal.followup_questions.map((q) => String(q || "").trim()).filter(Boolean).slice(0, 3)
       : [];
@@ -621,7 +677,54 @@ Page({
       storyAssistSummary: String(proposal.incident_summary || "").trim(),
       storyAssistQuestions: questions,
       storyAssistNote: "AI 整理草稿（请核对；未确认前不会当作正式事实）",
+      ...guided,
     });
+  },
+
+  _applyGuidedPhase(phase: GuidedPhase) {
+    const guided = buildGuidedUiState(this._storyProposal, phase);
+    this.setData({ ...guided });
+  },
+
+  onShowAllFields() {
+    this._forceManualAll = true;
+    this._applyGuidedPhase("manual_all");
+  },
+
+  onBackToGuided() {
+    this._forceManualAll = false;
+    const phase = resolveGuidedPhase(this._storyProposal, { forceManual: false });
+    this._applyGuidedPhase(phase);
+  },
+
+  onEditFromConfirm() {
+    this._guidedConfirmed = false;
+    this._forceManualAll = true;
+    this._applyGuidedPhase("manual_all");
+  },
+
+  onRedescribe() {
+    this._storyProposal = null;
+    this._guidedConfirmed = false;
+    this._forceManualAll = false;
+    this._applyFormPatch({
+      description: "",
+      accidentDatetime: "",
+      accidentLocation: "",
+      injuryStatus: "",
+    });
+    this.setData({
+      storyAssistSummary: "",
+      storyAssistQuestions: [],
+      storyAssistNote: "",
+      ...emptyGuidedUiState(),
+    });
+  },
+
+  async onConfirmAndSubmit() {
+    this._guidedConfirmed = true;
+    this._applyGuidedPhase("confirm");
+    await this.submitStartClaim({ reuseIdentity: false });
   },
 
   onDatetimeBlur(e: WechatMiniprogram.Input) {
@@ -803,6 +906,7 @@ Page({
         busy: { ...this.data.busy, uploading: false },
         ...voiceUiPatch("draft", { submitting: this.data.busy.submitting }),
       });
+      void this._refreshStoryAssist();
     } catch (err) {
       const apiErr = err instanceof ApiRequestError ? err : null;
       logVoiceUploadDiagnostic({
@@ -837,6 +941,37 @@ Page({
     if (smartUi.showAccidentForm && !smartUi.canShowAccidentBlock) {
       return;
     }
+
+    // Guided follow-up path: answer missing questions → confirmation gate (not direct submit).
+    if (
+      this._storyProposal &&
+      !this._forceManualAll &&
+      !this._guidedConfirmed &&
+      (this.data.guidedPhase === "followup" || this.data.guidedPhase === "assist")
+    ) {
+      const fields = this.data.guidedFollowupFields || [];
+      if (!allFollowupsSatisfied(fields, this._form)) {
+        const validated = this._applyFormPatch({}, { showErrors: true });
+        this.setData({
+          errorMessage: this.data.guidedMissingMessage || validated.missingHint,
+          errorRetryable: false,
+        });
+        return;
+      }
+      // Also require full Must Haves before confirmation (customer may have answered follow-ups).
+      const validated = this._applyFormPatch({}, { showErrors: true });
+      if (!validated.ok) {
+        this.setData({
+          errorMessage: validated.missingHint,
+          errorRetryable: false,
+        });
+        this._focusFirstInvalid(validated.firstInvalid);
+        return;
+      }
+      this._applyGuidedPhase("confirm");
+      return;
+    }
+
     // Final flush from canonical `_form` (already updated by input/blur).
     const validated = this._applyFormPatch({}, { showErrors: true });
     if (!validated.ok) {
@@ -847,6 +982,14 @@ Page({
       this._focusFirstInvalid(validated.firstInvalid);
       return;
     }
+
+    // Complete story / manual path: show confirm gate when AI assist is present.
+    if (this._storyProposal && !this._guidedConfirmed && !this.data.guidedShowConfirm) {
+      this._applyGuidedPhase("confirm");
+      return;
+    }
+
+    this._guidedConfirmed = true;
     await this.submitStartClaim({ reuseIdentity: false });
   },
 
@@ -926,6 +1069,16 @@ Page({
         injury_status: payload.injury_status,
         policy_context_choice: resolvePolicyContextChoice(this._confirmSelections),
         selected_vehicle_summary: resolveSelectedVehicleSummary(this._confirmSelections),
+        ai_story_confirmed: Boolean(this._guidedConfirmed && this._storyProposal),
+        ai_story_proposal: this._storyProposal || undefined,
+        ai_story_customer_edits: this._storyProposal
+          ? {
+              accident_time_text: String(this._form.accidentDatetime || ""),
+              accident_location_text: String(this._form.accidentLocation || ""),
+              injury_status: String(this._form.injuryStatus || ""),
+              raw_story: String(this._form.description || ""),
+            }
+          : undefined,
       });
       if (!result.ok) {
         const errorCode = result.error_code || "create_claim_failed";
@@ -1106,6 +1259,9 @@ Page({
     injury_status?: string;
     policy_context_choice?: string;
     selected_vehicle_summary?: string;
+    ai_story_confirmed?: boolean;
+    ai_story_proposal?: AccidentStoryProposal | null;
+    ai_story_customer_edits?: Record<string, string>;
   }) {
     return startClaim(command);
   },

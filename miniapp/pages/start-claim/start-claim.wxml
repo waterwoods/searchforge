@@ -53,95 +53,207 @@
         <view class="card-title">{{formTitle}}</view>
         <view class="card-subtitle">{{formSubtitle}}</view>
 
-        <view class="section-label">事故经过</view>
-        <view class="voice-row">
-          <button
-            wx:if="{{showRecordBtn}}"
-            class="voice-btn"
-            hover-class="voice-btn-hover"
-            disabled="{{recordBtnDisabled}}"
-            bindtap="onTapRecord"
-          >{{recordBtnLabel}}</button>
-          <button
-            wx:if="{{showStopBtn}}"
-            class="voice-btn voice-btn-stop"
-            hover-class="voice-btn-hover"
-            bindtap="onTapStop"
-          >停止</button>
-          <view wx:if="{{voiceHint}}" class="voice-hint">{{voiceHint}}</view>
-        </view>
-        <textarea
-          id="start-claim-description"
-          class="textarea-field {{fieldErrors.description ? 'field-invalid' : ''}}"
-          placeholder="例如：等红灯时被后车追尾。"
-          maxlength="2000"
-          value="{{description}}"
-          bindinput="onDescriptionInput"
-          bindblur="onDescriptionBlur"
-          auto-height
-          show-confirm-bar="{{false}}"
-          disabled="{{busy.submitting || storyInputDisabled}}"
-        />
-        <view class="char-count">{{charCount}} 字</view>
-        <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
+        <!-- Step A: customer description (always visible unless confirm-only) -->
+        <block wx:if="{{!guidedShowConfirm}}">
+          <view class="section-label">事故经过</view>
+          <view class="voice-row">
+            <button
+              wx:if="{{showRecordBtn}}"
+              class="voice-btn"
+              hover-class="voice-btn-hover"
+              disabled="{{recordBtnDisabled}}"
+              bindtap="onTapRecord"
+            >{{recordBtnLabel}}</button>
+            <button
+              wx:if="{{showStopBtn}}"
+              class="voice-btn voice-btn-stop"
+              hover-class="voice-btn-hover"
+              bindtap="onTapStop"
+            >停止</button>
+            <view wx:if="{{voiceHint}}" class="voice-hint">{{voiceHint}}</view>
+          </view>
+          <textarea
+            id="start-claim-description"
+            class="textarea-field {{fieldErrors.description ? 'field-invalid' : ''}}"
+            placeholder="例如：昨天开车的时候被追尾。"
+            maxlength="2000"
+            value="{{description}}"
+            bindinput="onDescriptionInput"
+            bindblur="onDescriptionBlur"
+            auto-height
+            show-confirm-bar="{{false}}"
+            disabled="{{busy.submitting || storyInputDisabled}}"
+          />
+          <view class="char-count">{{charCount}} 字</view>
+          <view wx:if="{{fieldErrors.description}}" class="field-error">{{fieldErrors.description}}</view>
+        </block>
 
-        <view wx:if="{{storyAssistSummary}}" class="story-assist">
-          <view class="story-assist-note">{{storyAssistNote}}</view>
-          <view class="story-assist-summary">{{storyAssistSummary}}</view>
-          <block wx:if="{{storyAssistQuestions.length}}">
-            <view class="story-assist-q-title">还需确认（最多 3 条）</view>
-            <view wx:for="{{storyAssistQuestions}}" wx:key="*this" class="story-assist-q">· {{item}}</view>
+        <!-- Step B: AI understanding panel -->
+        <view wx:if="{{guidedFactRows.length}}" class="guided-panel">
+          <view class="guided-panel-title">{{guidedTitle}}</view>
+          <view class="guided-draft-label">{{guidedDraftLabel}}</view>
+          <view wx:for="{{guidedFactRows}}" wx:key="key" class="guided-fact-row">
+            <text class="guided-fact-label">{{item.label_zh}}</text>
+            <text class="guided-fact-value guided-fact-{{item.status}}">{{item.value_zh}}</text>
+          </view>
+          <view wx:if="{{guidedConflictMessage}}" class="guided-conflict">{{guidedConflictMessage}}</view>
+        </view>
+
+        <!-- Step C: missing-information + dynamic questions only -->
+        <block wx:if="{{guidedPhase === 'followup' && guidedFollowupFields.length && !guidedShowAllFields}}">
+          <view class="guided-missing-msg">{{guidedMissingMessage}}</view>
+          <block wx:for="{{guidedFollowupFields}}" wx:key="field_key">
+            <view class="section-label section-gap">{{item.question_zh}}</view>
+            <block wx:if="{{item.input_kind === 'injury'}}">
+              <view id="start-claim-injury" class="choice-row">
+                <button
+                  class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"
+                  data-value="no"
+                  bindtap="onInjurySelect"
+                  disabled="{{busy.submitting}}"
+                >没有受伤</button>
+                <button
+                  class="choice-btn {{injuryStatus === 'yes' ? 'choice-btn-active' : ''}}"
+                  data-value="yes"
+                  bindtap="onInjurySelect"
+                  disabled="{{busy.submitting}}"
+                >有人受伤</button>
+                <button
+                  class="choice-btn {{injuryStatus === 'unknown' ? 'choice-btn-active' : ''}}"
+                  data-value="unknown"
+                  bindtap="onInjurySelect"
+                  disabled="{{busy.submitting}}"
+                >不确定</button>
+              </view>
+              <view wx:if="{{fieldErrors.injuryStatus}}" class="field-error">{{fieldErrors.injuryStatus}}</view>
+            </block>
+            <block wx:elif="{{item.field_key === 'accident_datetime'}}">
+              <input
+                id="start-claim-datetime"
+                class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
+                placeholder="例如：昨天下午 3 点"
+                value="{{accidentDatetime}}"
+                bindinput="onDatetimeInput"
+                bindblur="onDatetimeBlur"
+                disabled="{{busy.submitting}}"
+              />
+              <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
+            </block>
+            <block wx:else>
+              <input
+                id="start-claim-location"
+                class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
+                placeholder="城市 / 路口 / 停车场"
+                value="{{accidentLocation}}"
+                bindinput="onLocationInput"
+                bindblur="onLocationBlur"
+                disabled="{{busy.submitting}}"
+              />
+              <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
+            </block>
           </block>
-        </view>
+          <view
+            wx:if="{{guidedShowFullFormLink}}"
+            class="guided-full-link"
+            bindtap="onShowAllFields"
+          >{{guidedFullFormLinkLabel}}</view>
+        </block>
 
-        <view class="section-label section-gap">事故时间</view>
-        <view wx:if="{{smartUi.whyAskTime}}" class="why-ask">{{smartUi.whyAskTime}}</view>
-        <input
-          id="start-claim-datetime"
-          class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
-          placeholder="例如：今天上午 9 点 或 Today 9 am"
-          value="{{accidentDatetime}}"
-          bindinput="onDatetimeInput"
-          bindblur="onDatetimeBlur"
-          disabled="{{busy.submitting}}"
-        />
-        <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
+        <!-- Manual / full static fields (secondary path or describe-only) -->
+        <block wx:if="{{guidedShowAllFields}}">
+          <view class="section-label section-gap">事故时间</view>
+          <view wx:if="{{smartUi.whyAskTime}}" class="why-ask">{{smartUi.whyAskTime}}</view>
+          <input
+            id="start-claim-datetime"
+            class="input-field {{fieldErrors.accidentDatetime ? 'field-invalid' : ''}}"
+            placeholder="例如：今天上午 9 点 或 Today 9 am"
+            value="{{accidentDatetime}}"
+            bindinput="onDatetimeInput"
+            bindblur="onDatetimeBlur"
+            disabled="{{busy.submitting}}"
+          />
+          <view wx:if="{{fieldErrors.accidentDatetime}}" class="field-error">{{fieldErrors.accidentDatetime}}</view>
 
-        <view class="section-label section-gap">事故地点</view>
-        <input
-          id="start-claim-location"
-          class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
-          placeholder="城市 / 路口 / 停车场"
-          value="{{accidentLocation}}"
-          bindinput="onLocationInput"
-          bindblur="onLocationBlur"
-          disabled="{{busy.submitting}}"
-        />
-        <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
+          <view class="section-label section-gap">事故地点</view>
+          <input
+            id="start-claim-location"
+            class="input-field {{fieldErrors.accidentLocation ? 'field-invalid' : ''}}"
+            placeholder="城市 / 路口 / 停车场"
+            value="{{accidentLocation}}"
+            bindinput="onLocationInput"
+            bindblur="onLocationBlur"
+            disabled="{{busy.submitting}}"
+          />
+          <view wx:if="{{fieldErrors.accidentLocation}}" class="field-error">{{fieldErrors.accidentLocation}}</view>
 
-        <view id="start-claim-injury" class="section-label section-gap">是否有人受伤</view>
-        <view class="choice-row">
-          <button
-            class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"
-            data-value="no"
-            bindtap="onInjurySelect"
-            disabled="{{busy.submitting}}"
-          >没有受伤</button>
-          <button
-            class="choice-btn {{injuryStatus === 'yes' ? 'choice-btn-active' : ''}}"
-            data-value="yes"
-            bindtap="onInjurySelect"
-            disabled="{{busy.submitting}}"
-          >有人受伤</button>
-          <button
-            class="choice-btn {{injuryStatus === 'unknown' ? 'choice-btn-active' : ''}}"
-            data-value="unknown"
-            bindtap="onInjurySelect"
-            disabled="{{busy.submitting}}"
-          >不确定</button>
-        </view>
-        <view wx:if="{{fieldErrors.injuryStatus}}" class="field-error">{{fieldErrors.injuryStatus}}</view>
-        <view wx:if="{{smartUi.whyAskPhotos}}" class="why-ask why-ask-photos">{{smartUi.whyAskPhotos}}</view>
+          <view id="start-claim-injury" class="section-label section-gap">是否有人受伤</view>
+          <view class="choice-row">
+            <button
+              class="choice-btn {{injuryStatus === 'no' ? 'choice-btn-active' : ''}}"
+              data-value="no"
+              bindtap="onInjurySelect"
+              disabled="{{busy.submitting}}"
+            >没有受伤</button>
+            <button
+              class="choice-btn {{injuryStatus === 'yes' ? 'choice-btn-active' : ''}}"
+              data-value="yes"
+              bindtap="onInjurySelect"
+              disabled="{{busy.submitting}}"
+            >有人受伤</button>
+            <button
+              class="choice-btn {{injuryStatus === 'unknown' ? 'choice-btn-active' : ''}}"
+              data-value="unknown"
+              bindtap="onInjurySelect"
+              disabled="{{busy.submitting}}"
+            >不确定</button>
+          </view>
+          <view wx:if="{{fieldErrors.injuryStatus}}" class="field-error">{{fieldErrors.injuryStatus}}</view>
+          <view wx:if="{{smartUi.whyAskPhotos}}" class="why-ask why-ask-photos">{{smartUi.whyAskPhotos}}</view>
+          <view
+            wx:if="{{guidedPhase === 'manual_all' && guidedFactRows.length}}"
+            class="guided-full-link"
+            bindtap="onBackToGuided"
+          >返回 AI 引导提问</view>
+        </block>
+
+        <!-- Step D: confirmation review -->
+        <block wx:if="{{guidedShowConfirm}}">
+          <view class="guided-confirm">
+            <view class="guided-confirm-title">{{guidedConfirmTitle}}</view>
+            <view class="guided-confirm-block">
+              <view class="guided-confirm-label">客户原始描述</view>
+              <view class="guided-confirm-text">{{description}}</view>
+            </view>
+            <view class="guided-confirm-block" wx:if="{{storyAssistSummary}}">
+              <view class="guided-confirm-label">AI整理草稿</view>
+              <view class="guided-confirm-text">{{storyAssistSummary}}</view>
+            </view>
+            <view class="guided-confirm-facts">
+              <view>时间：{{accidentDatetime || '—'}}</view>
+              <view>地点：{{accidentLocation || '—'}}</view>
+              <view>受伤：{{injuryStatus === 'no' ? '没有受伤' : (injuryStatus === 'yes' ? '有人受伤' : (injuryStatus === 'unknown' ? '不确定' : '—'))}}</view>
+            </view>
+            <view wx:if="{{guidedConflictMessage}}" class="guided-conflict">{{guidedConflictMessage}}</view>
+            <button
+              class="btn-primary guided-confirm-btn"
+              hover-class="btn-primary-hover"
+              bindtap="onConfirmAndSubmit"
+              disabled="{{busy.submitting}}"
+            >{{guidedAcceptLabel}}</button>
+            <button
+              class="btn-secondary"
+              hover-class="btn-secondary-hover"
+              bindtap="onEditFromConfirm"
+              disabled="{{busy.submitting}}"
+            >{{guidedEditLabel}}</button>
+            <button
+              class="btn-secondary"
+              hover-class="btn-secondary-hover"
+              bindtap="onRedescribe"
+              disabled="{{busy.submitting}}"
+            >{{guidedRedescribeLabel}}</button>
+          </view>
+        </block>
       </view>
 
       <view class="card" wx:if="{{errorMessage}}">
@@ -163,10 +275,11 @@
 
       <view class="safety-footer">{{shellSafetyCopy}}</view>
 
-      <view class="footer-cta">
-        <view wx:if="{{!canSubmit && missingHint && !busy.submitting}}" class="submit-hint">{{missingHint}}</view>
+      <view class="footer-cta" wx:if="{{!guidedShowConfirm}}">
+        <view wx:if="{{!canSubmit && missingHint && !busy.submitting && guidedShowAllFields}}" class="submit-hint">{{missingHint}}</view>
+        <view wx:if="{{guidedPhase === 'followup' && guidedMissingMessage && !canSubmit && !busy.submitting && !guidedShowAllFields}}" class="submit-hint">{{guidedMissingMessage}}</view>
         <task-cta
-          label="提交给陈总"
+          label="{{guidedPhase === 'followup' && !guidedShowAllFields ? '继续确认' : '提交给陈总'}}"
           disabled="{{busy.submitting || !canSubmit || confirmDisabled}}"
           loading="{{busy.submitting}}"
           bindtap="onSubmit"

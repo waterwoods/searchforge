@@ -8,6 +8,51 @@ import { getCustomerSessionId, resolveStartClaimSessionId } from "./sessionIdent
 import { appConfig } from "../utils/config";
 import type { StoryTranscriptDraft } from "./taskApi";
 
+export type AccidentStoryProposal = {
+  schema_version?: number;
+  proposal_version?: number;
+  raw_story?: string;
+  incident_summary?: string;
+  injury_status?: string;
+  accident_time_text?: string;
+  accident_location_text?: string;
+  followup_questions?: string[];
+  missing_required_facts?: string[];
+  warnings?: string[];
+  conflicts?: string[];
+  used_fallback?: boolean;
+  authority_note?: string;
+  guided_view?: {
+    title_zh?: string;
+    draft_label_zh?: string;
+    fact_rows?: Array<{
+      key: string;
+      label_zh: string;
+      value_zh: string;
+      status: string;
+    }>;
+    missing_count?: number;
+    missing_message_zh?: string;
+    followup_questions?: string[];
+    followup_fields?: Array<{
+      field_key: string;
+      question_zh: string;
+      input_kind: string;
+      form_key: string;
+    }>;
+    conflicts?: string[];
+    conflict_message_zh?: string;
+    show_full_form_option?: boolean;
+    full_form_option_zh?: string;
+    confirm_title_zh?: string;
+    confirm_actions?: {
+      accept_zh?: string;
+      edit_zh?: string;
+      redescribe_zh?: string;
+    };
+  };
+};
+
 export type CustomerStartClaimCommand = {
   command_id: string;
   idempotency_key: string;
@@ -20,6 +65,10 @@ export type CustomerStartClaimCommand = {
   policy_context_choice?: string;
   selected_vehicle_ref?: string;
   selected_vehicle_summary?: string;
+  /** Guided intake — customer confirmed AI draft before submit. */
+  ai_story_confirmed?: boolean;
+  ai_story_proposal?: AccidentStoryProposal | null;
+  ai_story_customer_edits?: Record<string, string>;
 };
 
 export type CustomerStartClaimResult = {
@@ -58,6 +107,9 @@ export async function startClaim(
     policy_context_choice: (command.policy_context_choice || "").trim() || undefined,
     selected_vehicle_ref: (command.selected_vehicle_ref || "").trim() || undefined,
     selected_vehicle_summary: (command.selected_vehicle_summary || "").trim() || undefined,
+    ai_story_confirmed: Boolean(command.ai_story_confirmed) || undefined,
+    ai_story_proposal: command.ai_story_proposal || undefined,
+    ai_story_customer_edits: command.ai_story_customer_edits || undefined,
     is_test: Boolean(appConfig.prototypeMode),
   });
 }
@@ -116,20 +168,6 @@ export async function emitStartClaimVoiceRecordStart(): Promise<void> {
   }
 }
 
-export type AccidentStoryProposal = {
-  schema_version?: number;
-  raw_story?: string;
-  incident_summary?: string;
-  injury_status?: string;
-  accident_time_text?: string;
-  accident_location_text?: string;
-  followup_questions?: string[];
-  missing_required_facts?: string[];
-  warnings?: string[];
-  used_fallback?: boolean;
-  authority_note?: string;
-};
-
 /** Bounded LangGraph propose — never blocks Start Claim on failure. */
 export async function proposeAccidentStory(rawStory: string): Promise<AccidentStoryProposal | null> {
   const story = (rawStory || "").trim();
@@ -150,5 +188,32 @@ export async function proposeAccidentStory(rawStory: string): Promise<AccidentSt
     return res && typeof res === "object" && res.proposal ? res.proposal : null;
   } catch {
     return null;
+  }
+}
+
+/** Persist customer-confirmed facts after Start Claim creates the case. Never blocks navigation. */
+export async function confirmAccidentStory(params: {
+  caseId: string;
+  rawStory: string;
+  confirm: boolean;
+  proposal?: AccidentStoryProposal | null;
+  customerEdits?: Record<string, string>;
+}): Promise<boolean> {
+  const caseId = String(params.caseId || "").trim();
+  if (!caseId) return false;
+  const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await requestJson("POST", "/api/h5/customer/accident-story/confirm", {
+      command_id: `story_confirm_${stamp}`,
+      idempotency_key: `story_confirm_idem_${stamp}`,
+      case_id: caseId,
+      raw_story: String(params.rawStory || "").slice(0, 2000),
+      confirm: Boolean(params.confirm),
+      proposal: params.proposal || undefined,
+      customer_edits: params.customerEdits || undefined,
+    });
+    return true;
+  } catch {
+    return false;
   }
 }

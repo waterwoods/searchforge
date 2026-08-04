@@ -107,6 +107,38 @@ export type ClaimCaseBrief = {
         phone?: string | null;
         wecom_external_userid?: string | null;
     };
+    accident_story_assistant?: {
+        ai_involved?: boolean;
+        authority?: string | null;
+        raw_story?: string | null;
+        incident_summary?: string | null;
+        label_zh?: string | null;
+        questions_asked?: string[];
+        edited_field_names?: string[];
+        used_fallback?: boolean;
+        fallback_reason_category?: string | null;
+        layers?: {
+            customer_raw?: { label_zh?: string; text?: string | null };
+            ai_draft?: {
+                label_zh?: string;
+                incident_summary?: string | null;
+                accident_time_text?: string | null;
+                accident_location_text?: string | null;
+                injury_status?: string | null;
+                followup_questions?: string[];
+                authority?: string;
+            };
+            customer_confirmed?: {
+                label_zh?: string;
+                incident_summary?: string | null;
+                accident_time_text?: string | null;
+                accident_location_text?: string | null;
+                injury_status?: string | null;
+                edited_field_names?: string[];
+                authority?: string | null;
+            };
+        };
+    } | null;
     key_facts?: {
         accident_datetime?: string | null;
         accident_location?: string | null;
