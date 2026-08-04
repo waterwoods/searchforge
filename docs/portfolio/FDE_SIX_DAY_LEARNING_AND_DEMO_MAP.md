@@ -249,7 +249,7 @@ Interview depth is optional; customer honesty is mandatory.
 | Timeline/projections | Yes | Yes | Yes | Yes (Stage 1/2) |
 | Idempotency | Yes | Yes | Yes | Partial (Stage 1 path) |
 | Real usage metrics | Yes | Yes | Yes | Integrity pack; not phone product feature |
-| LangGraph | Yes | Yes (local) | Code on branch; QA deploy TBD Day 1 | No phone freeze yet |
+| LangGraph | Yes | Yes (local) | Yes (`fiqa-api-qa-00054-l2s` propose 200) | No phone freeze yet |
 | LangSmith Case Builder | No | No | No | No |
 | HITL confirm path | Yes | Yes | Branch | Pending Day 1 phone |
 | HITL Accept/Edit/Reject metrics | No | No | No | No |

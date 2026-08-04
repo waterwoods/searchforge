@@ -1,0 +1,3 @@
+customer_confirmed -> 客户已确认（AI 辅助整理）
+ai_proposed -> AI 提议（未确认，不可当作事实）
+BROKER_LABELS_OK

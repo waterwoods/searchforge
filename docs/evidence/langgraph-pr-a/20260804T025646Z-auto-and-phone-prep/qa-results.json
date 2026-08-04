@@ -1,0 +1,94 @@
+{
+  "stamp": "20260804T025646Z",
+  "product_tip_commit": "31abf61",
+  "planning_commit": "942fe68",
+  "qa_revision": "fiqa-api-qa-00054-l2s",
+  "scenario_id": "chen_camry_stage2_phone",
+  "case_id": "case_afcad5560663",
+  "case_ref": "CLM-0040",
+  "invite_id": "dinv_6c824eab9840496b",
+  "phone_launch_path_masked": "pages/start-claim/start-claim?entry=form&dit=di_-wq…py_U",
+  "expires_pdt": "2026-08-03 09:56 PM PDT",
+  "automated_proof": [
+    {
+      "check": "issue_invite",
+      "ok": true,
+      "detail": "dinv_6c824eab9840496b"
+    },
+    {
+      "check": "redeem",
+      "ok": true,
+      "detail": "redeemed"
+    },
+    {
+      "check": "scenario_match",
+      "ok": true,
+      "detail": "chen_camry_stage2_phone"
+    },
+    {
+      "check": "start_claim",
+      "ok": true,
+      "detail": "http=201"
+    },
+    {
+      "check": "case_from_resume_token",
+      "ok": true,
+      "detail": "case_afcad5560663"
+    },
+    {
+      "check": "not_stage1_case",
+      "ok": true,
+      "detail": "case_afcad5560663"
+    },
+    {
+      "check": "not_prior_stage2_case",
+      "ok": true,
+      "detail": "case_afcad5560663"
+    },
+    {
+      "check": "case_get",
+      "ok": true,
+      "detail": "http=200 ref=CLM-0040"
+    },
+    {
+      "check": "not_office_processing",
+      "ok": true,
+      "detail": "理赔 · 记录中"
+    },
+    {
+      "check": "opens_correct_case",
+      "ok": true,
+      "detail": "昨天追尾。"
+    },
+    {
+      "check": "propose_live",
+      "ok": true,
+      "detail": "n_q=2 injury=unknown raw=True"
+    },
+    {
+      "check": "max_three_questions",
+      "ok": true,
+      "detail": "['事故发生在什么地点？', '有没有人受伤？（有 / 没有 / 不确定）']"
+    },
+    {
+      "check": "injury_unknown_for_incomplete",
+      "ok": true,
+      "detail": "unknown"
+    },
+    {
+      "check": "redeem_idempotent",
+      "ok": true,
+      "detail": "redeemed_idempotent"
+    },
+    {
+      "check": "metrics_header_get_ok",
+      "ok": true,
+      "detail": "200"
+    }
+  ],
+  "all_pass": true,
+  "pytest_critical_suite": "PASS",
+  "broker_labels_unit": "PASS",
+  "freeze_status": "NOT FROZEN — waiting Founder phone QA",
+  "sensitive_git_policy": "raw dit token only in gitignored artifacts/langgraph_phone_handoff/"
+}

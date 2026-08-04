@@ -33,18 +33,20 @@ Do not reopen without Founder decision.
 Canonical detail lives only in the six-day plan (IDs below).  
 Do not create parallel tickets with new names.
 
-| Rank | Plan ID | Summary | CV | CU | FDE | IR | EV |
-|------|---------|---------|----|----|-----|----|----|
-| 1 | D1-1…D1-4 | Close/freeze LangGraph PR A | 5 | 5 | 5 | 3 | 4 |
-| 2 | S-1…S-6 | Sunday final gate + truthful label | 5 | 5 | 5 | 2 | 3 |
-| 3 | D6-1 | One-click Chen demo + 3 scenarios | 5 | 5 | 4 | 2 | 3 |
-| 4 | D4-1…D4-3 | Pilot safety baseline | 5 | 5 | 4 | 3 | 3 |
-| 5 | D2-1…D2-2 | LangSmith traces + golden/deterministic eval | 3 | 3 | 5 | 3 | 2 |
-| 6 | D3-1, D3-3 | AI Accept/Edit/Reject + truthful report | 4 | 4 | 5 | 3 | 2 |
-| 7 | D6-2…D6-3 | Portfolio package + evidence index | 2 | 3 | 5 | 1 | 3 |
-| 8 | D2-3 | Optional LLM judge + failure evidence | 2 | 2 | 4 | 3 | 1 |
-| 9 | D3-2 | Follow-up/fallback/latency export | 3 | 3 | 4 | 2 | 2 |
-| 10 | D5-1…D5-2 | MCP thin tools + second-office checklist | 2 | 2 | 5 | 3 | 1 |
+**Priority law:** P0 ranks 1–6 before any P1 MCP work. Accumulate evidence daily.
+
+| Rank | Pri | Plan ID | Summary | CV | CU | FDE | IR | EV |
+|------|-----|---------|---------|----|----|-----|----|----|
+| 1 | P0 | D1-1…D1-4 | Close/freeze LangGraph PR A (phone before tag) | 5 | 5 | 5 | 3 | 4 |
+| 2 | P0 | D2-1…D2-2 (+ D2-3 gate) | LangSmith traces + golden + deterministic eval | 3 | 4 | 5 | 3 | 2 |
+| 3 | P0 | D3-1…D3-3 | AI Accept/Edit/Reject + fallback/latency + truthful report | 4 | 4 | 5 | 3 | 2 |
+| 4 | P0 | D4-1…D4-3 | Pilot safety baseline | 5 | 5 | 4 | 3 | 3 |
+| 5 | P0 | D5-1…D5-2, D6-1 | One-click demo + portfolio/evidence package | 5 | 5 | 5 | 2 | 3 |
+| 6 | P0 | S-1…S-6 | Sunday final release gate | 5 | 5 | 5 | 2 | 3 |
+| 7 | P1 | D5-3 | Thin MCP + second-office checklist (after P0s) | 2 | 2 | 5 | 3 | 1 |
+| 8 | P2 | D2-3 judge only | Optional LLM judge | 2 | 1 | 3 | 3 | 1 |
+| 9 | P2 | A2 / ledger L3 | Additional polish | 2 | 1 | 1 | 1 | 4 |
+| 10 | P2 | D6-2 | Cost cleanup that does not affect demo | 1 | 2 | 2 | 1 | 4 |
 
 ---
 
