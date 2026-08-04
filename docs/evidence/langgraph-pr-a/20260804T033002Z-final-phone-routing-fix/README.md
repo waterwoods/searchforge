@@ -12,7 +12,7 @@ New isolated scenario/fixture: `langgraph_final_phone_qa` (unique `wx_qaiso_*`, 
 
 | Item | Value |
 |------|--------|
-| QA revision | `fiqa-api-qa-00055-mxs` |
+| QA revision | `fiqa-api-qa-00055-mxs (code) → scale bump fiqa-api-qa-00056-mwc` |
 | New case | `case_d4fe3e5d3b7e` |
 | Invite | `dinv_ea83aadda56244d6` |
 | Expires PDT | 2026-08-03 10:30 PM PDT |
