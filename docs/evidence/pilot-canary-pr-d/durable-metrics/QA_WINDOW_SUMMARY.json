@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-08-04T19:51:35Z",
+  "source": "postgres",
+  "window": {
+    "since": null,
+    "until": null,
+    "limit": 5000
+  },
+  "summary": {
+    "event_count": 96,
+    "proposals_created": 56,
+    "accepted": 0,
+    "edited": 0,
+    "rejected": 0,
+    "fallbacks": 20,
+    "provider_timeouts": 76,
+    "invalid_output_failures": 0,
+    "avg_latency_ms": 365.48,
+    "p95_latency_ms": 2146.0,
+    "avg_question_count": 1.031,
+    "unknown_injury_safety_violations": 0,
+    "completion_after_fallback": 0,
+    "fallback_reason_categories": {
+      "timeout": 57,
+      "disabled": 3
+    },
+    "pii_policy": "no_raw_stories_phones_openids_tokens_photos_names"
+  },
+  "note": "Exported from Cloud QA deployment-manifest after synthetic canary. No PII."
+}

@@ -105,6 +105,8 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
                 llm_out = _call_optional_llm(text)
             if not isinstance(llm_out, dict):
                 raise ValueError("invalid_model_json")
+            provider = str(llm_out.pop("_provider", "") or "openai")
+            model_name = str(llm_out.pop("_model", "") or "accident_story_llm")
             merged = validate_model_proposals(llm_out)
             if merged.get("injury_status"):
                 if out["injury_status"] == "unknown" or merged["injury_status"] == out["injury_status"]:
@@ -125,8 +127,8 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
                 conf = dict(out.get("confidence_by_field") or {})
                 conf.update(merged["confidence_by_field"])
                 out["confidence_by_field"] = conf
-            out["model_provider"] = str(llm_out.get("_provider") or "openai")
-            out["model_name"] = str(llm_out.get("_model") or "accident_story_llm")
+            out["model_provider"] = provider or "openai"
+            out["model_name"] = model_name or "accident_story_llm"
         except Exception as exc:
             out["used_fallback"] = True
             out["fallback_reason"] = f"llm_failed:{exc}"
@@ -146,6 +148,8 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
 def _call_optional_llm(text: str) -> dict[str, Any]:
     """Optional LLM path — disabled by default; raises on timeout/invalid/missing creds."""
     import concurrent.futures
+    import json
+    import re
 
     from services.fiqa_api.inbox_triage.accident_story_assistant.flags import (
         llm_max_retries,
@@ -156,9 +160,49 @@ def _call_optional_llm(text: str) -> dict[str, Any]:
     if not api_key:
         raise RuntimeError("missing_credentials:accident_story_llm")
 
+    model = (os.getenv("ACCIDENT_STORY_LLM_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
+    story = str(text or "")[:2000]
+
     def _invoke() -> dict[str, Any]:
-        # Provider call intentionally not wired for restricted pilot — fail closed to deterministic.
-        raise TimeoutError("accident_story_llm_provider_not_configured")
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+        system = (
+            "Extract California auto accident intake facts from the customer story. "
+            "Return ONLY a JSON object with keys from this allow-list: "
+            "injury_status (yes|no|unknown), accident_time_text, accident_location_text, "
+            "incident_summary, involved_vehicles (string array), confidence_by_field (object). "
+            "Rules: never invent facts; if injury is unclear use unknown; "
+            "never decide coverage/liability; never add other keys."
+        )
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=400,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": story},
+            ],
+        )
+        content = ""
+        try:
+            content = str(resp.choices[0].message.content or "")
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("invalid_model_json") from exc
+        content = content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*", "", content)
+            content = re.sub(r"\s*```$", "", content)
+        try:
+            parsed = json.loads(content)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("invalid_model_json") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("invalid_model_json")
+        parsed["_provider"] = "openai"
+        parsed["_model"] = model
+        return parsed
 
     last_exc: Exception | None = None
     attempts = 1 + int(llm_max_retries())
@@ -167,7 +211,7 @@ def _call_optional_llm(text: str) -> dict[str, Any]:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 fut = pool.submit(_invoke)
                 return fut.result(timeout=float(llm_timeout_seconds()))
-        except concurrent.futures.TimeoutError as exc:
+        except concurrent.futures.TimeoutError:
             last_exc = TimeoutError("provider_timeout")
         except Exception as exc:  # noqa: BLE001
             last_exc = exc

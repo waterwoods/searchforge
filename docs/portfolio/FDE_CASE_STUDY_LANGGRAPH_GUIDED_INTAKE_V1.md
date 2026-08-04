@@ -1,10 +1,60 @@
 # FDE Case Study — LangGraph Guided Intake UX V1
 
-**Branch:** `stage2/langgraph-accident-story-assistant`  
+**Branch:** `stage2/restricted-pilot-canary-release` (from Guided Intake + LangSmith + Pilot Safety)  
 **Environment:** Cloud QA only — Production / waterwoods untouched  
-**Status:** **FOUNDER PHONE VALIDATED** (`GUIDED_INTAKE_FOUNDER_PASS_CLOSEOUT.md`) — does **not** claim production AI accuracy
+**Status:** **QA CANARY PASS — PILOT READY WITH RESTRICTIONS**  
+Tags: `guided-intake-ux-v1-founder-pass`, `langsmith-golden-evals-v1`, `accident-story-pilot-safety-v1`
 
-This document is interview/portfolio evidence for the customer-visible LangGraph path.
+This document is interview/portfolio evidence for the customer-visible LangGraph path **plus** restricted-pilot runtime proof.
+
+---
+
+## Customer problem
+
+After an auto accident, customers struggle to turn a free-form story into the Must Have facts (time, location, injury) without a dead-end form. Brokers need those facts confirmed — not invented — before Claim work continues.
+
+---
+
+## Bounded LangGraph workflow
+
+Propose → normalize → extract → validate → ≤3 follow-ups → customer confirm.  
+LangGraph **never** submits/closes claims or mutates Claim lifecycle.
+
+---
+
+## Deterministic fallback
+
+Timeout / invalid JSON / missing credentials / kill switch → deterministic extractor or manual intake. Original story preserved; unknown injury never becomes `no`.
+
+---
+
+## Golden evaluation
+
+Offline suite `accident_story_v1`: **20/20**. Means golden-suite correctness, **not** real-pilot model accuracy alone.
+
+---
+
+## Live synthetic canary (Cloud QA)
+
+Allowlisted office `qa_canary_synth` only. Live LLM canary **20/20**, injury accuracy 100%, p95 ≈ 2.4s, zero unknown→no, zero >3 questions. Evidence: `docs/release/ACCIDENT_STORY_QA_CANARY_REPORT_V1.md`.
+
+---
+
+## PII-safe tracing
+
+Redacted `accident_story.*` traces; LangGraph auto-trace suppressed. Pre-fix historical runs may still need LangSmith UI quarantine.
+
+---
+
+## Kill switches
+
+Server-side: `ACCIDENT_STORY_ASSISTANT_ENABLED`, `ACCIDENT_STORY_LLM`, `ACCIDENT_STORY_LANGSMITH_TRACING`, office allowlist. Visible in support diagnostics without secrets.
+
+---
+
+## Measurable pilot gates
+
+See `docs/release/ACCIDENT_STORY_RESTRICTED_PILOT_GATES_V1.md` and QA canary report. Durable Postgres events power the pilot metrics SSOT.
 
 ---
 
@@ -48,7 +98,7 @@ Secondary escape: `查看或修改全部信息` → full static form without aba
 |---------------------------|---------------------------|
 | Cap2 CreateClaim / submit | Story normalize + fact proposals |
 | Must Have enablement rules | Follow-up drafting (≤3) |
-| Request More / office accept | Optional LLM merge (off by default) |
+| Request More / office accept | Optional LLM merge (allowlisted pilot) |
 | Claim status transitions | Never |
 
 Facts become authoritative only after **customer confirmation** (`customer_confirmed`). Unconfirmed AI drafts stay `ai_proposed`.
@@ -93,17 +143,16 @@ Invalid JSON / timeout / LLM failure → deterministic extractor path (`used_fal
 
 ## Metrics (non-sensitive)
 
-Events (in-memory + case bag / exporter hooks):
+Durable Postgres table `accident_story_pilot_events` is the pilot SSOT (survives Cloud Run cold starts). In-memory counters are convenience only.
 
-- `ai_story_proposal_created`
-- `ai_story_proposal_accepted`
-- `ai_story_proposal_edited`
-- `ai_story_proposal_rejected`
-- `ai_story_fallback_used`
+Events:
 
-Meta allow-list: case_id, proposal version, question count, edited field names, fallback reason category, latency, model/provider, server timestamp. **No raw story text in telemetry.**
+- `ai_story_proposal_created` / `accepted` / `edited` / `rejected`
+- `ai_story_fallback_used` / `provider_timeout` / `invalid_output`
+- `ai_story_trace_failed` / `ai_story_completion_after_fallback`
 
-Exporter fields: `ai_story_proposal_confirmed`, `ai_story_proposal_edited`, `ai_story_fallback_used`.
+Meta allow-list only — **no raw story text in telemetry.**  
+Exporter: `scripts/export_accident_story_pilot_metrics.py --since/--until`
 
 ---
 
