@@ -3,6 +3,7 @@
 **Prerequisite:** Guided Intake UX V1 phone QA PASS (`docs/portfolio/FDE_CASE_STUDY_LANGGRAPH_GUIDED_INTAKE_V1.md`)  
 **Do not start** until the dynamic-question customer experience is visibly proven on phone.  
 **Scope:** QA / lab only — Production and waterwoods untouched.
+**Status:** Implemented on `stage2/langsmith-tracing-golden-evals` — see `docs/evidence/langsmith-pr-b/`.
 
 ---
 

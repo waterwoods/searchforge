@@ -31,6 +31,13 @@ from services.fiqa_api.inbox_triage.accident_story_assistant.guardrails import (
     derive_missing_facts,
     draft_followup_questions,
 )
+from services.fiqa_api.inbox_triage.accident_story_assistant.tracing import (
+    LatencyTimer,
+    build_root_trace_metadata,
+    process_traced_inputs,
+    process_traced_outputs,
+)
+from services.fiqa_api.observability.langsmith_tracing import maybe_traceable
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +47,12 @@ def _llm_enabled() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+@maybe_traceable(
+    name="accident_story.normalize_story",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "normalize_story"},
+)
 def node_normalize_story(state: AccidentStoryState) -> AccidentStoryState:
     out = dict(state)
     out["normalized_story"] = normalize_story(str(state.get("raw_story") or ""))
@@ -50,6 +63,12 @@ def node_normalize_story(state: AccidentStoryState) -> AccidentStoryState:
 _LLM_HOOK: Callable[[str], dict[str, Any]] | None = None
 
 
+@maybe_traceable(
+    name="accident_story.extract_fact_proposals",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "extract_fact_proposals"},
+)
 def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState:
     """Deterministic extraction; optional LLM merge when ACCIDENT_STORY_LLM=1 or test hook."""
     out = dict(state)
@@ -126,9 +145,14 @@ def _call_optional_llm(text: str) -> dict[str, Any]:
     raise TimeoutError("accident_story_llm_disabled_or_timeout")
 
 
+@maybe_traceable(
+    name="accident_story.validate_proposals",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "validate_proposals"},
+)
 def node_validate_proposals(state: AccidentStoryState) -> AccidentStoryState:
     out = dict(state)
-    # Re-validate injury domain.
     if str(out.get("injury_status") or "") not in ("yes", "no", "unknown"):
         out["used_fallback"] = True
         out["fallback_reason"] = out.get("fallback_reason") or "invalid_injury_status"
@@ -136,7 +160,6 @@ def node_validate_proposals(state: AccidentStoryState) -> AccidentStoryState:
         warns = list(out.get("warnings") or [])
         warns.append("proposal_validation_coerced_injury_unknown")
         out["warnings"] = warns
-    # Build proposed_facts list with ai_proposed authority only.
     facts: list[ProposedFact] = []
     story = str(out.get("normalized_story") or out.get("raw_story") or "").strip()
     if story:
@@ -182,12 +205,24 @@ def node_validate_proposals(state: AccidentStoryState) -> AccidentStoryState:
     return out  # type: ignore[return-value]
 
 
+@maybe_traceable(
+    name="accident_story.derive_missing_facts",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "derive_missing_facts"},
+)
 def node_derive_missing_facts(state: AccidentStoryState) -> AccidentStoryState:
     out = dict(state)
     out["missing_required_facts"] = derive_missing_facts(out)  # type: ignore[arg-type]
     return out  # type: ignore[return-value]
 
 
+@maybe_traceable(
+    name="accident_story.draft_followup_questions",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "draft_followup_questions"},
+)
 def node_draft_followup_questions(state: AccidentStoryState) -> AccidentStoryState:
     out = dict(state)
     missing = list(out.get("missing_required_facts") or [])
@@ -195,23 +230,54 @@ def node_draft_followup_questions(state: AccidentStoryState) -> AccidentStorySta
     return out  # type: ignore[return-value]
 
 
+@maybe_traceable(
+    name="accident_story.apply_safety_guardrails",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "apply_safety_guardrails"},
+)
 def node_apply_safety_guardrails(state: AccidentStoryState) -> AccidentStoryState:
     return apply_safety_guardrails(state)
 
 
+@maybe_traceable(
+    name="accident_story.build_confirmation_proposal",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"node": "build_customer_confirmation_proposal"},
+)
 def node_build_customer_confirmation_proposal(state: AccidentStoryState) -> AccidentStoryState:
     return build_confirmation_proposal(state)
 
 
+_NODE_SEQUENCE: tuple[Callable[[AccidentStoryState], AccidentStoryState], ...] = (
+    node_normalize_story,
+    node_extract_fact_proposals,
+    node_validate_proposals,
+    node_derive_missing_facts,
+    node_draft_followup_questions,
+    node_apply_safety_guardrails,
+    node_build_customer_confirmation_proposal,
+)
+
+
+@maybe_traceable(
+    name="accident_story.run_graph",
+    process_inputs=process_traced_inputs,
+    process_outputs=process_traced_outputs,
+    metadata={"assistant": "accident_story_langgraph_v1"},
+)
 def run_accident_story_graph(
     *,
     raw_story: str,
     command_id: str = "",
     idempotency_key: str = "",
     llm_caller: Callable[[str], dict[str, Any]] | None = None,
+    scenario: str = "",
 ) -> AccidentStoryState:
     """Execute the bounded graph. Persistence stays outside."""
     global _LLM_HOOK
+    timer = LatencyTimer()
     initial: AccidentStoryState = empty_state(
         raw_story=raw_story,
         command_id=command_id,
@@ -243,26 +309,26 @@ def run_accident_story_graph(
         graph.add_edge("build_customer_confirmation_proposal", END)
         app = graph.compile()
         result = app.invoke(dict(initial))
-        return result  # type: ignore[return-value]
+        state = result  # type: ignore[assignment]
     except Exception as exc:
         logger.warning("langgraph_unavailable_sequential_fallback: %s", exc)
-        state: AccidentStoryState = dict(initial)  # type: ignore[assignment]
-        for fn in (
-            node_normalize_story,
-            node_extract_fact_proposals,
-            node_validate_proposals,
-            node_derive_missing_facts,
-            node_draft_followup_questions,
-            node_apply_safety_guardrails,
-            node_build_customer_confirmation_proposal,
-        ):
-            state = fn(state)
+        state = dict(initial)  # type: ignore[assignment]
+        for fn in _NODE_SEQUENCE:
+            state = fn(state)  # type: ignore[assignment]
         state = dict(state)
         state["used_fallback"] = True
         state["fallback_reason"] = state.get("fallback_reason") or f"graph_runtime:{exc}"
-        return state  # type: ignore[return-value]
     finally:
         _LLM_HOOK = prev_hook
+
+    meta = build_root_trace_metadata(
+        state=dict(state),  # type: ignore[arg-type]
+        scenario=scenario,
+        latency_ms=timer.ms(),
+    )
+    out = dict(state)
+    out["_trace_metadata"] = meta  # type: ignore[typeddict-unknown-key]
+    return out  # type: ignore[return-value]
 
 
 def propose_from_story(
@@ -271,11 +337,16 @@ def propose_from_story(
     command_id: str = "",
     idempotency_key: str = "",
     llm_caller: Callable[[str], dict[str, Any]] | None = None,
+    scenario: str = "",
 ) -> dict[str, Any]:
     state = run_accident_story_graph(
         raw_story=raw_story,
         command_id=command_id,
         idempotency_key=idempotency_key,
         llm_caller=llm_caller,
+        scenario=scenario,
     )
-    return public_proposal(state)
+    proposal = public_proposal(state)
+    if isinstance(state.get("_trace_metadata"), dict):
+        proposal["_trace_metadata"] = dict(state["_trace_metadata"])  # type: ignore[index]
+    return proposal

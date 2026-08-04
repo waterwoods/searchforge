@@ -1,13 +1,11 @@
 {
-  "id": "missing_time_location_injury_known",
-  "raw_story": "昨天开车的时候被追尾，没有受伤。",
+  "id": "explicit_no_injury",
+  "raw_story": "昨天追尾，没有受伤。",
   "expect": {
     "extracted": {
-      "injury_status": "no",
-      "accident_type": "追尾"
+      "injury_status": "no"
     },
     "missing_contains": [
-      "accident_datetime",
       "accident_location"
     ],
     "missing_excludes": [

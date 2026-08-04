@@ -1,0 +1,1175 @@
+{
+  "stamp": "20260804T183705Z",
+  "dataset": "accident_story_v1",
+  "tracing_enabled": true,
+  "langsmith_key_present": true,
+  "total": 20,
+  "passed": 20,
+  "failed": 0,
+  "pass_rate": 100.0,
+  "results": [
+    {
+      "id": "all_three_missing",
+      "ok": true,
+      "question_count": 3,
+      "missing": [
+        "accident_datetime",
+        "accident_location",
+        "injury_status"
+      ],
+      "injury_status": "unknown",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime', 'accident_location', 'injury_status']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=3 cap=3"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime', 'accident_location', 'injury_status']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "unknown"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=3"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "complete_story",
+      "ok": true,
+      "question_count": 0,
+      "missing": [],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=[]"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=0 cap=3"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=[]"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=0"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "empty_story",
+      "ok": true,
+      "question_count": 3,
+      "missing": [
+        "accident_description",
+        "accident_datetime",
+        "accident_location",
+        "injury_status"
+      ],
+      "injury_status": "unknown",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime', 'accident_description', 'accident_location', 'injury_status']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=3 cap=3"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_description', 'accident_datetime', 'accident_location']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "unknown"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=3"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "english_rear_end",
+      "ok": true,
+      "question_count": 0,
+      "missing": [],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=[]"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=0 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=[]"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=0"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "explicit_no_injury",
+      "ok": true,
+      "question_count": 2,
+      "missing": [
+        "accident_datetime",
+        "accident_location"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime', 'accident_location']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=2 cap=2"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime', 'accident_location']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=2"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "hallucinated_field_rejected",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": true,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "llm_failed:hallucinated_fields:coverage_decision"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "injury_conflict",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "injury_status"
+      ],
+      "injury_status": "unknown",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['injury_status']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['injury_status']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "unknown"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "conflicts=['injury_yes_and_no_mentioned']"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "invalid_model_fallback",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": true,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "llm_failed:invalid_model_json"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "missing_injury_only",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "injury_status"
+      ],
+      "injury_status": "unknown",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['injury_status']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['injury_status']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "unknown"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "missing_location",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_location"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_location']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_location']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "missing_time_injury",
+      "ok": true,
+      "question_count": 2,
+      "missing": [
+        "accident_datetime",
+        "injury_status"
+      ],
+      "injury_status": "unknown",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime', 'injury_status']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=2 cap=2"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime', 'injury_status']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "unknown"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=2"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "missing_time_location_injury_known",
+      "ok": true,
+      "question_count": 2,
+      "missing": [
+        "accident_datetime",
+        "accident_location"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime', 'accident_location']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=2 cap=2"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime', 'accident_location']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=2"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "missing_time_only",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "mixed_zh_en",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "parking_lot_location_only",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "side_swipe",
+      "ok": true,
+      "question_count": 0,
+      "missing": [],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=[]"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=0 cap=3"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=[]"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=0"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "timeout_fallback",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": true,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "llm_failed:timeout"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "unknown_injury",
+      "ok": true,
+      "question_count": 3,
+      "missing": [
+        "accident_datetime",
+        "accident_location",
+        "injury_status"
+      ],
+      "injury_status": "unknown",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime', 'accident_location', 'injury_status']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=3 cap=3"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime', 'accident_location', 'injury_status']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "unknown"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=3"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "vague_yesterday_time",
+      "ok": true,
+      "question_count": 1,
+      "missing": [
+        "accident_datetime"
+      ],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=['accident_datetime']"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=1 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=['accident_datetime']"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=1"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "very_long_story",
+      "ok": true,
+      "question_count": 0,
+      "missing": [],
+      "injury_status": "no",
+      "used_fallback": false,
+      "evaluators": [
+        {
+          "evaluator": "extracted_fact_correctness",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "evaluator": "missing_matches_expect",
+          "ok": true,
+          "detail": "missing=[]"
+        },
+        {
+          "evaluator": "max_questions_le_3",
+          "ok": true,
+          "detail": "n=0 cap=1"
+        },
+        {
+          "evaluator": "no_unnecessary_questions",
+          "ok": true,
+          "detail": "asked=[]"
+        },
+        {
+          "evaluator": "no_silent_injury_no",
+          "ok": true,
+          "detail": "no"
+        },
+        {
+          "evaluator": "conflict_not_resolved",
+          "ok": true,
+          "detail": "n/a"
+        },
+        {
+          "evaluator": "fallback_on_bad_llm",
+          "ok": true,
+          "detail": "fallback=False"
+        },
+        {
+          "evaluator": "guided_view_present",
+          "ok": true,
+          "detail": "fields=0"
+        },
+        {
+          "evaluator": "no_pii_in_trace_meta",
+          "ok": true,
+          "detail": "keys=['assistant', 'command_id_prefix', 'fallback_reason_category', 'injury_status', 'latency_ms', 'missing_count', 'missing_keys', 'model_name', 'model_provider', 'proposal_version', 'question_count', 'scenario', 'schema_version', 'story_char_len', 'story_lang_hint', 'used_fallback']"
+        }
+      ],
+      "failed": []
+    }
+  ],
+  "redaction_policy": "docs/evidence/langsmith-pr-b/REDACTION_POLICY.md"
+}

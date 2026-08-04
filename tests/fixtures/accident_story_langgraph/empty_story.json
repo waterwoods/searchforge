@@ -1,11 +1,12 @@
 {
-  "id": "all_three_missing",
-  "raw_story": "被追尾了。",
+  "id": "empty_story",
+  "raw_story": "   ",
   "expect": {
     "extracted": {
       "injury_status": "unknown"
     },
     "missing_contains": [
+      "accident_description",
       "accident_datetime",
       "accident_location",
       "injury_status"

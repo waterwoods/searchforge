@@ -93,14 +93,31 @@ def _get_langsmith_client() -> Optional[Client]:
         return None
 
 
-def maybe_traceable(name: str):
+def tracing_enabled() -> bool:
+    """True when LangSmith client can send runs (API key present + package installed)."""
+    if not _LANGSMITH_AVAILABLE:
+        return False
+    api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
+    if api_key:
+        return True
+    tracing_flag = os.getenv("LANGCHAIN_TRACING_V2", "").lower() in ("true", "1", "yes", "on")
+    return tracing_flag and bool(os.getenv("LANGCHAIN_API_KEY"))
+
+
+def maybe_traceable(
+    name: str,
+    *,
+    process_inputs: Optional[Callable[[dict], dict]] = None,
+    process_outputs: Optional[Callable[[object], object]] = None,
+    metadata: Optional[dict] = None,
+):
     """
     Decorator that optionally wraps a function with LangSmith tracing.
     
     Behavior:
     - If langsmith is not installed → returns original function (no-op)
     - If API key is not set → returns original function (no-op)
-    - Otherwise → wraps function with @traceable(name=name)
+    - Otherwise → wraps function with @traceable(name=name, ...)
     
     Supports both:
     - LANGSMITH_API_KEY / LANGSMITH_PROJECT (preferred)
@@ -108,6 +125,9 @@ def maybe_traceable(name: str):
     
     Args:
         name: Name of the trace run (shown in LangSmith UI)
+        process_inputs: Optional redaction hook for traced inputs
+        process_outputs: Optional redaction hook for traced outputs
+        metadata: Optional static metadata merged into the run
     
     Returns:
         Decorator function that optionally traces the wrapped function
@@ -122,15 +142,7 @@ def maybe_traceable(name: str):
         if not _LANGSMITH_AVAILABLE:
             return fn
         
-        # Check for API key (prefer LANGSMITH_API_KEY, fallback to LANGCHAIN_API_KEY)
-        api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
-        
-        # For backward compatibility, also check LANGCHAIN_TRACING_V2
-        if not api_key:
-            tracing_enabled = os.getenv("LANGCHAIN_TRACING_V2", "").lower() in ("true", "1", "yes", "on")
-            api_key = os.getenv("LANGCHAIN_API_KEY") if tracing_enabled else None
-        
-        if not api_key:
+        if not tracing_enabled():
             # API key not set - return original function (silent no-op)
             return fn
         
@@ -139,7 +151,14 @@ def maybe_traceable(name: str):
         
         # Tracing is enabled - wrap with traceable
         try:
-            wrapped = traceable(name=name)(fn)
+            kwargs: dict = {"name": name}
+            if process_inputs is not None:
+                kwargs["process_inputs"] = process_inputs
+            if process_outputs is not None:
+                kwargs["process_outputs"] = process_outputs
+            if metadata:
+                kwargs["metadata"] = dict(metadata)
+            wrapped = traceable(**kwargs)(fn)
             
             @wraps(fn)
             def inner(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -158,5 +177,5 @@ def maybe_traceable(name: str):
     return decorator
 
 
-__all__ = ["maybe_traceable"]
+__all__ = ["maybe_traceable", "tracing_enabled"]
 

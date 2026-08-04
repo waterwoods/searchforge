@@ -1,18 +1,17 @@
 {
-  "id": "missing_location",
-  "raw_story": "昨天下午被追尾，没有受伤。",
+  "id": "invalid_model_fallback",
+  "raw_story": "昨天在 San Jose 停车场追尾，没有受伤。",
+  "llm_mode": "invalid_json",
   "expect": {
     "extracted": {
       "injury_status": "no"
     },
-    "missing_contains": [
-      "accident_location"
-    ],
+    "missing_contains": [],
     "missing_excludes": [
       "injury_status"
     ],
     "max_followup_questions": 1,
     "conflicts": [],
-    "fallback": false
+    "fallback": true
   }
 }

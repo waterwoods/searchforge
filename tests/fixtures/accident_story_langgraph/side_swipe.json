@@ -1,14 +1,12 @@
 {
-  "id": "complete_story",
-  "raw_story": "昨天下午3点在 Oakland 路口被追尾，没有受伤。",
+  "id": "side_swipe",
+  "raw_story": "今天下午在 Irvine Blvd 被侧面刮蹭，没有受伤。",
   "expect": {
     "extracted": {
       "injury_status": "no"
     },
     "missing_contains": [],
     "missing_excludes": [
-      "accident_datetime",
-      "accident_location",
       "injury_status"
     ],
     "max_followup_questions": 0,

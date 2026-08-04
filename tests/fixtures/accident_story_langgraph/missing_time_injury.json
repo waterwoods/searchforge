@@ -1,7 +1,17 @@
 {
+  "id": "missing_time_injury",
   "raw_story": "在停车场被追尾了。",
   "expect": {
-    "missing_contains": ["accident_datetime", "injury_status"],
-    "max_followup_questions": 2
+    "extracted": {
+      "injury_status": "unknown"
+    },
+    "missing_contains": [
+      "accident_datetime",
+      "injury_status"
+    ],
+    "missing_excludes": [],
+    "max_followup_questions": 2,
+    "conflicts": [],
+    "fallback": false
   }
 }

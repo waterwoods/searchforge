@@ -1,6 +1,6 @@
 {
-  "id": "all_three_missing",
-  "raw_story": "被追尾了。",
+  "id": "unknown_injury",
+  "raw_story": "昨天追尾，不确定有没有受伤。",
   "expect": {
     "extracted": {
       "injury_status": "unknown"
@@ -13,6 +13,7 @@
     "missing_excludes": [],
     "max_followup_questions": 3,
     "conflicts": [],
-    "fallback": false
+    "fallback": false,
+    "never_coerce_injury_to_no": true
   }
 }

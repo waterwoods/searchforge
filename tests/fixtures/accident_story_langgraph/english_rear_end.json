@@ -1,17 +1,15 @@
 {
-  "id": "complete_story",
-  "raw_story": "昨天下午3点在 Oakland 路口被追尾，没有受伤。",
+  "id": "english_rear_end",
+  "raw_story": "Yesterday afternoon I was rear-ended in a San Jose parking lot, no injuries.",
   "expect": {
     "extracted": {
       "injury_status": "no"
     },
     "missing_contains": [],
     "missing_excludes": [
-      "accident_datetime",
-      "accident_location",
       "injury_status"
     ],
-    "max_followup_questions": 0,
+    "max_followup_questions": 1,
     "conflicts": [],
     "fallback": false
   }

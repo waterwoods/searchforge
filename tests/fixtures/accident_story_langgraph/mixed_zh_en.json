@@ -1,15 +1,15 @@
 {
-  "id": "missing_injury_only",
-  "raw_story": "昨天下午在 San Jose 停车场被追尾。",
+  "id": "mixed_zh_en",
+  "raw_story": "Yesterday 在 Fremont 路口被追尾，没有受伤。",
   "expect": {
     "extracted": {
-      "injury_status": "unknown"
+      "injury_status": "no"
     },
     "missing_contains": [
-      "injury_status"
+      "accident_datetime"
     ],
     "missing_excludes": [
-      "accident_datetime",
+      "injury_status",
       "accident_location"
     ],
     "max_followup_questions": 1,

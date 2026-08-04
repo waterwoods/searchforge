@@ -1,0 +1,18 @@
+{
+  "id": "injury_conflict",
+  "raw_story": "有人受伤，同时没有受伤。昨天下午在 Oakland。",
+  "expect": {
+    "extracted": {
+      "injury_status": "unknown"
+    },
+    "missing_contains": [
+      "injury_status"
+    ],
+    "missing_excludes": [],
+    "max_followup_questions": 1,
+    "conflicts": [
+      "injury_yes_and_no_mentioned"
+    ],
+    "fallback": false
+  }
+}

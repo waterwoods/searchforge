@@ -1,18 +1,19 @@
 {
-  "id": "missing_location",
-  "raw_story": "昨天下午被追尾，没有受伤。",
+  "id": "hallucinated_field_rejected",
+  "raw_story": "昨天在 Oakland 追尾，没有受伤。",
+  "llm_mode": "hallucinated",
   "expect": {
     "extracted": {
       "injury_status": "no"
     },
     "missing_contains": [
-      "accident_location"
+      "accident_datetime"
     ],
     "missing_excludes": [
       "injury_status"
     ],
     "max_followup_questions": 1,
     "conflicts": [],
-    "fallback": false
+    "fallback": true
   }
 }
