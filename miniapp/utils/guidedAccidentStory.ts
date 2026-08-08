@@ -57,6 +57,7 @@ export type AccidentStoryProposalLike = {
   guided_view?: GuidedView;
   raw_story?: string;
   proposal_version?: number;
+  proposal_id?: string;
 };
 
 export type GuidedUiState = {

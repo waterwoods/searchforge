@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import threading
+import hashlib
 import time
 from typing import Any
 
@@ -33,14 +33,29 @@ from services.fiqa_api.inbox_triage.accident_story_assistant.graph import (
     propose_from_story,
     run_accident_story_graph,
 )
-
-_lock = threading.RLock()
-_idempotency: dict[str, dict[str, Any]] = {}
+from services.fiqa_api.inbox_triage.accident_story_assistant.persistence import (
+    bind_proposal_case,
+    filter_customer_edits,
+    get_idempotent_record,
+    load_proposal_record,
+    mark_proposal_confirmed,
+    proposal_expired,
+    put_idempotent_result,
+    request_digest,
+    reset_accident_story_ephemeral_for_tests,
+    reset_accident_story_persistence_for_tests,
+    store_proposal_record,
+)
 
 
 def reset_accident_story_idempotency_for_tests() -> None:
-    with _lock:
-        _idempotency.clear()
+    """Tests: clear ephemeral + durable memory (full reset)."""
+    reset_accident_story_persistence_for_tests()
+
+
+def reset_accident_story_ephemeral_idempotency_for_tests() -> None:
+    """Tests: clear process cache only — durable memory remains for cross-instance sims."""
+    reset_accident_story_ephemeral_for_tests()
 
 
 def _proposal_event_meta(proposal: dict[str, Any], *, latency_ms: int | None = None) -> dict[str, Any]:
@@ -148,6 +163,24 @@ def _clamp_proposal_safety(proposal: dict[str, Any], *, raw_story: str) -> dict[
     return out
 
 
+def _replay_or_conflict(*, idem_key: str, digest: str) -> dict[str, Any] | None:
+    """Return replayed response, conflict response, or None if first write."""
+    existing = get_idempotent_record(idem_key)
+    if not existing:
+        return None
+    prior_digest = str(existing.get("request_digest") or "")
+    if prior_digest and prior_digest != digest:
+        return {
+            "ok": False,
+            "outcome": "rejected",
+            "error_code": "idempotency_key_conflict",
+            "lifecycle_mutated": False,
+        }
+    cached = dict(existing.get("response") or {})
+    cached["outcome"] = "replayed"
+    return cached
+
+
 def propose_accident_story(
     *,
     raw_story: str,
@@ -159,14 +192,20 @@ def propose_accident_story(
     llm_caller: Any | None = None,
 ) -> dict[str, Any]:
     key = f"propose:{(idempotency_key or command_id).strip()}"
-    with _lock:
-        if key in _idempotency:
-            cached = dict(_idempotency[key])
-            cached["outcome"] = "replayed"
-            return cached
+    story = str(raw_story or "")
+    digest = request_digest(
+        {
+            "op": "propose",
+            "story_sha256": hashlib.sha256(story.encode("utf-8")).hexdigest(),
+            "case_id": str(case_id or "").strip(),
+            "office_id": str(office_id or "").strip(),
+        }
+    )
+    replay = _replay_or_conflict(idem_key=key, digest=digest)
+    if replay is not None:
+        return replay
 
     started = time.monotonic()
-    story = str(raw_story or "")
     if len(story.encode("utf-8", errors="ignore")) > max_payload_bytes():
         proposal = _manual_fallback_proposal(
             raw_story=story[: max_story_chars()],
@@ -175,7 +214,9 @@ def propose_accident_story(
         )
     elif not assistant_enabled() or not office_allowed(office_id):
         reason = "assistant_disabled" if not assistant_enabled() else "office_not_allowlisted"
-        proposal = _manual_fallback_proposal(raw_story=story[: max_story_chars()], reason=reason, category="disabled")
+        proposal = _manual_fallback_proposal(
+            raw_story=story[: max_story_chars()], reason=reason, category="disabled"
+        )
         latency = timed_ms(started)
         meta = _proposal_event_meta(proposal, latency_ms=latency)
         idem_base = str(idempotency_key or command_id or "").strip() or "unknown"
@@ -188,16 +229,24 @@ def propose_accident_story(
         emit_ai_story_event(
             EVENT_FALLBACK, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:fallback"
         )
+        stored = store_proposal_record(
+            proposal=proposal,
+            case_id=case_id,
+            session_id=session_id,
+            office_id=office_id,
+        )
+        proposal = dict(stored["proposal"])
         result = {
             "ok": True,
             "outcome": "accepted",
             "proposal": proposal,
+            "proposal_id": stored["proposal_id"],
+            "proposal_version": stored["proposal_version"],
             "case_id": str(case_id or "").strip() or None,
             "session_id_present": bool(str(session_id or "").strip()),
             "lifecycle_mutated": False,
         }
-        with _lock:
-            _idempotency[key] = dict(result)
+        put_idempotent_result(key, request_digest_value=digest, response=result)
         return result
     else:
         story = story[: max_story_chars()]
@@ -236,16 +285,24 @@ def propose_accident_story(
                 EVENT_INVALID, case_id=case_id, meta=meta, idempotency_key=f"{idem_base}:invalid"
             )
 
+    stored = store_proposal_record(
+        proposal=proposal,
+        case_id=case_id,
+        session_id=session_id,
+        office_id=office_id,
+    )
+    proposal = dict(stored["proposal"])
     result = {
         "ok": True,
         "outcome": "accepted",
         "proposal": proposal,
+        "proposal_id": stored["proposal_id"],
+        "proposal_version": stored["proposal_version"],
         "case_id": str(case_id or "").strip() or None,
         "session_id_present": bool(str(session_id or "").strip()),
         "lifecycle_mutated": False,
     }
-    with _lock:
-        _idempotency[key] = dict(result)
+    put_idempotent_result(key, request_digest_value=digest, response=result)
     return result
 
 
@@ -268,6 +325,72 @@ def _edited_field_names(base: dict[str, Any], edits: dict[str, Any]) -> list[str
     return names
 
 
+def _resolve_server_proposal(
+    *,
+    proposal_id: str | None,
+    proposal_version: int | None,
+    case_id: str,
+    raw_story: str,
+    client_proposal: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Load server proposal; never trust client proposal body as AI truth.
+
+    Returns (base_proposal, error_result).
+    """
+    pid = str(proposal_id or "").strip()
+    if not pid and isinstance(client_proposal, dict):
+        pid = str(client_proposal.get("proposal_id") or "").strip()
+
+    if pid:
+        record = load_proposal_record(pid)
+        if not record or proposal_expired(record):
+            return None, {
+                "ok": False,
+                "outcome": "rejected",
+                "error_code": "proposal_not_found_or_expired",
+                "lifecycle_mutated": False,
+            }
+        bound_case = str(record.get("case_id") or "").strip()
+        if bound_case and bound_case != str(case_id).strip():
+            return None, {
+                "ok": False,
+                "outcome": "rejected",
+                "error_code": "proposal_case_mismatch",
+                "lifecycle_mutated": False,
+            }
+        if proposal_version is not None:
+            try:
+                want = int(proposal_version)
+            except Exception:
+                want = -1
+            got = int(record.get("proposal_version") or 1)
+            if want != got:
+                return None, {
+                    "ok": False,
+                    "outcome": "rejected",
+                    "error_code": "proposal_version_mismatch",
+                    "lifecycle_mutated": False,
+                }
+        base = dict(record.get("proposal") or {})
+        if not bound_case:
+            bind_proposal_case(pid, case_id)
+        return base, None
+
+    # No proposal_id: regenerate server-side from raw story (ignore client proposal body).
+    _ = client_proposal  # intentionally unused — never authoritative
+    story = str(raw_story or "").strip()
+    if not story:
+        return None, {
+            "ok": False,
+            "outcome": "rejected",
+            "error_code": "proposal_id_or_raw_story_required",
+            "lifecycle_mutated": False,
+        }
+    base = public_proposal(run_accident_story_graph(raw_story=story))
+    stored = store_proposal_record(proposal=base, case_id=case_id)
+    return dict(stored["proposal"]), None
+
+
 def confirm_accident_story(
     *,
     case_id: str,
@@ -277,10 +400,13 @@ def confirm_accident_story(
     confirm: bool,
     customer_edits: dict[str, Any] | None = None,
     proposal: dict[str, Any] | None = None,
+    proposal_id: str | None = None,
+    proposal_version: int | None = None,
 ) -> dict[str, Any]:
     """Apply customer-confirmed facts to the case. Unconfirmed proposals never write.
 
     Does not change Claim lifecycle status, submit, or close.
+    Server proposal record is authoritative for the AI draft layer.
     """
     cid = str(case_id or "").strip()
     if not cid:
@@ -302,18 +428,34 @@ def confirm_accident_story(
         }
 
     key = f"confirm:{(idempotency_key or command_id).strip()}:{cid}"
-    with _lock:
-        if key in _idempotency:
-            cached = dict(_idempotency[key])
-            cached["outcome"] = "replayed"
-            return cached
-
-    edits = customer_edits if isinstance(customer_edits, dict) else {}
-    base = proposal if isinstance(proposal, dict) else public_proposal(
-        run_accident_story_graph(raw_story=raw_story, command_id=command_id, idempotency_key=idempotency_key)
+    edits = filter_customer_edits(customer_edits)
+    digest = request_digest(
+        {
+            "op": "confirm",
+            "case_id": cid,
+            "proposal_id": str(proposal_id or (proposal or {}).get("proposal_id") or "").strip(),
+            "proposal_version": proposal_version,
+            "edits": edits,
+            "raw_story_sha256": hashlib.sha256(str(raw_story or "").encode("utf-8")).hexdigest(),
+        }
     )
+    replay = _replay_or_conflict(idem_key=key, digest=digest)
+    if replay is not None:
+        return replay
 
-    # Customer edits override AI proposal.
+    base, err = _resolve_server_proposal(
+        proposal_id=proposal_id,
+        proposal_version=proposal_version,
+        case_id=cid,
+        raw_story=raw_story,
+        client_proposal=proposal if isinstance(proposal, dict) else None,
+    )
+    if err:
+        put_idempotent_result(key, request_digest_value=digest, response=err)
+        return err
+    assert base is not None
+
+    # Customer edits override AI proposal (allowlisted only).
     summary = str(edits.get("incident_summary") or base.get("incident_summary") or raw_story or "").strip()
     injury = str(edits.get("injury_status") or base.get("injury_status") or "unknown").strip().lower()
     if injury not in ("yes", "no", "unknown"):
@@ -324,6 +466,7 @@ def confirm_accident_story(
     ).strip()
     story = str(edits.get("raw_story") or raw_story or base.get("raw_story") or "").strip()
     edited_names = _edited_field_names(base, edits)
+    server_proposal_id = str(base.get("proposal_id") or proposal_id or "").strip()
 
     facts_patch: dict[str, str] = {}
     if story:
@@ -358,7 +501,9 @@ def confirm_accident_story(
             status="customer_confirmed",
         )
         if updated is None:
-            return {"ok": False, "outcome": "rejected", "error_code": "case_not_found"}
+            err_nf = {"ok": False, "outcome": "rejected", "error_code": "case_not_found"}
+            put_idempotent_result(key, request_digest_value=digest, response=err_nf)
+            return err_nf
 
         # Provenance bag for Broker distinction — three explicit layers.
         try:
@@ -380,11 +525,13 @@ def confirm_accident_story(
                         "prior_authority": "ai_proposed",
                         "assistant": "accident_story_langgraph_v1",
                         "command_id": command_id,
+                        "proposal_id": server_proposal_id,
                     }
                 case["known_fact_provenance"] = provenance
                 case["accident_story_assistant"] = {
                     "schema_version": 1,
                     "proposal_version": int(base.get("proposal_version") or 1),
+                    "proposal_id": server_proposal_id,
                     "last_confirmed_command_id": command_id,
                     "ai_involved": True,
                     "authority": "customer_confirmed",
@@ -402,6 +549,7 @@ def confirm_accident_story(
                             "followup_questions": questions_asked,
                             "used_fallback": bool(base.get("used_fallback")),
                             "authority": "ai_proposed",
+                            "proposal_id": server_proposal_id,
                         },
                         "customer_confirmed": {
                             "label_zh": "客户已确认事实",
@@ -422,7 +570,6 @@ def confirm_accident_story(
                     "fallback_reason_category": fallback_reason_category(
                         str(base.get("fallback_reason") or "")
                     ),
-                    # Technical detail only — not primary Broker UI.
                     "tech": {
                         "model_provider": str(base.get("model_provider") or ""),
                         "model_name": str(base.get("model_name") or ""),
@@ -444,18 +591,24 @@ def confirm_accident_story(
                     "authority": "customer_confirmed",
                     "command_id": command_id,
                     "idempotency_key": idempotency_key,
+                    "proposal_id": server_proposal_id,
                     "injury_status": injury,
                     "edited_field_count": len(edited_names),
                 },
             ),
         )
     except Exception as exc:
-        return {
+        err_p = {
             "ok": False,
             "outcome": "rejected",
             "error_code": "persist_failed",
             "detail": str(exc)[:200],
         }
+        put_idempotent_result(key, request_digest_value=digest, response=err_p)
+        return err_p
+
+    if server_proposal_id:
+        mark_proposal_confirmed(server_proposal_id)
 
     event_meta = {
         "proposal_version": int(base.get("proposal_version") or 1),
@@ -494,10 +647,10 @@ def confirm_accident_story(
         "persisted": True,
         "authority": "customer_confirmed",
         "case_id": cid,
+        "proposal_id": server_proposal_id or None,
         "confirmed_fields": sorted(facts_patch.keys()),
         "edited_field_names": edited_names,
         "lifecycle_mutated": False,
     }
-    with _lock:
-        _idempotency[key] = dict(result)
+    put_idempotent_result(key, request_digest_value=digest, response=result)
     return result

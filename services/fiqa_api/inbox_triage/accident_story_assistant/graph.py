@@ -108,14 +108,23 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
             provider = str(llm_out.pop("_provider", "") or "openai")
             model_name = str(llm_out.pop("_model", "") or "accident_story_llm")
             merged = validate_model_proposals(llm_out)
+            # HARD: re-check source evidence before accepting model injury.
+            from services.fiqa_api.inbox_triage.accident_story_assistant.guardrails import (
+                enforce_injury_evidence_guardrail,
+            )
+
             if merged.get("injury_status"):
-                if out["injury_status"] == "unknown" or merged["injury_status"] == out["injury_status"]:
-                    out["injury_status"] = merged["injury_status"]
-                elif merged["injury_status"] != out["injury_status"]:
-                    out["conflicts"] = list(
-                        dict.fromkeys([*(out.get("conflicts") or []), "injury_model_disagrees"])
+                safe_injury, inj_conflicts, inj_warns = enforce_injury_evidence_guardrail(
+                    source_text=text,
+                    proposed_injury=str(merged.get("injury_status")),
+                    prior_conflicts=list(out.get("conflicts") or []),
+                )
+                out["injury_status"] = safe_injury
+                out["conflicts"] = inj_conflicts
+                if inj_warns:
+                    out["warnings"] = list(
+                        dict.fromkeys([*(out.get("warnings") or []), *inj_warns])
                     )
-                    out["injury_status"] = "unknown"
             for key in ("accident_time_text", "accident_location_text", "incident_summary"):
                 if merged.get(key) and not str(out.get(key) or "").strip():
                     out[key] = merged[key]
@@ -126,6 +135,12 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
             if merged.get("confidence_by_field"):
                 conf = dict(out.get("confidence_by_field") or {})
                 conf.update(merged["confidence_by_field"])
+                # Cap injury confidence when evidence forced unknown.
+                if out.get("injury_status") == "unknown" and any(
+                    w == "injury_llm_unsupported_forced_unknown"
+                    for w in (out.get("warnings") or [])
+                ):
+                    conf["injury_status"] = min(float(conf.get("injury_status") or 0.3), 0.3)
                 out["confidence_by_field"] = conf
             out["model_provider"] = provider or "openai"
             out["model_name"] = model_name or "accident_story_llm"

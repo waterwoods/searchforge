@@ -6,9 +6,50 @@ from services.fiqa_api.inbox_triage.accident_story_assistant.contract import (
     FOLLOWUP_COPY,
     MUST_HAVE_KEYS,
     AccidentStoryState,
+    InjuryStatus,
     ProposedFact,
     time_needs_refinement,
 )
+from services.fiqa_api.inbox_triage.accident_story_assistant.extractors import (
+    extract_injury_status,
+)
+
+
+INJURY_LLM_UNSUPPORTED = "injury_llm_unsupported_forced_unknown"
+
+
+def enforce_injury_evidence_guardrail(
+    *,
+    source_text: str,
+    proposed_injury: str | None,
+    prior_conflicts: list[str] | None = None,
+) -> tuple[InjuryStatus, list[str], list[str]]:
+    """HARD rule: LLM may not invent yes/no without explicit source evidence.
+
+    Deterministic extractors are the evidence gate. If the customer story does not
+    support yes/no, force unknown even when the model proposed otherwise.
+    """
+    det_injury, _conf, det_conflicts = extract_injury_status(source_text)
+    conflicts = list(dict.fromkeys([*(prior_conflicts or []), *det_conflicts]))
+    warnings: list[str] = []
+    model = str(proposed_injury or "unknown").strip().lower()
+    if model not in ("yes", "no", "unknown"):
+        model = "unknown"
+        warnings.append("invalid_injury_coerced_to_unknown")
+
+    if det_injury == "unknown":
+        if model in ("yes", "no"):
+            warnings.append(INJURY_LLM_UNSUPPORTED)
+            conflicts = list(dict.fromkeys([*conflicts, "injury_model_lacks_source_evidence"]))
+        return "unknown", conflicts, warnings
+
+    # Explicit yes/no (or conflict already collapsed to unknown by extractor).
+    if model in ("yes", "no") and model != det_injury:
+        conflicts = list(dict.fromkeys([*conflicts, "injury_model_disagrees"]))
+        warnings.append("injury_model_disagrees_forced_unknown")
+        return "unknown", conflicts, warnings
+
+    return det_injury, conflicts, warnings  # type: ignore[return-value]
 
 
 def derive_missing_facts(state: AccidentStoryState) -> list[str]:
@@ -45,15 +86,17 @@ def draft_followup_questions(missing: list[str], *, max_questions: int = 3) -> l
 def apply_safety_guardrails(state: AccidentStoryState) -> AccidentStoryState:
     """Clamp questions, preserve uncertainty, never invent missing facts."""
     out = dict(state)
-    injury = str(out.get("injury_status") or "unknown").lower()
-    if injury not in ("yes", "no", "unknown"):
-        out["injury_status"] = "unknown"
-        warns = list(out.get("warnings") or [])
-        warns.append("invalid_injury_coerced_to_unknown")
-        out["warnings"] = warns
-    # Never convert unknown → no.
-    if injury == "unknown":
-        out["injury_status"] = "unknown"
+    story = str(out.get("normalized_story") or out.get("raw_story") or "")
+    injury, conflicts, inj_warns = enforce_injury_evidence_guardrail(
+        source_text=story,
+        proposed_injury=str(out.get("injury_status") or "unknown"),
+        prior_conflicts=list(out.get("conflicts") or []),
+    )
+    out["injury_status"] = injury
+    if conflicts:
+        out["conflicts"] = conflicts
+    if inj_warns:
+        out["warnings"] = list(dict.fromkeys([*(out.get("warnings") or []), *inj_warns]))
 
     missing = derive_missing_facts(out)  # type: ignore[arg-type]
     out["missing_required_facts"] = missing

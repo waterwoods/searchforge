@@ -11,6 +11,7 @@ import type { StoryTranscriptDraft } from "./taskApi";
 export type AccidentStoryProposal = {
   schema_version?: number;
   proposal_version?: number;
+  proposal_id?: string;
   raw_story?: string;
   incident_summary?: string;
   injury_status?: string;
@@ -175,17 +176,24 @@ export async function proposeAccidentStory(rawStory: string): Promise<AccidentSt
   const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   try {
     const sessionId = getCustomerSessionId();
-    const res = await requestJson<{ ok?: boolean; proposal?: AccidentStoryProposal }>(
-      "POST",
-      "/api/h5/customer/accident-story/propose",
-      {
-        command_id: `story_propose_${stamp}`,
-        idempotency_key: `story_propose_idem_${stamp}`,
-        raw_story: story.slice(0, 2000),
-        session_id: sessionId || undefined,
-      },
-    );
-    return res && typeof res === "object" && res.proposal ? res.proposal : null;
+    const res = await requestJson<{
+      ok?: boolean;
+      proposal?: AccidentStoryProposal;
+      proposal_id?: string;
+      proposal_version?: number;
+    }>("POST", "/api/h5/customer/accident-story/propose", {
+      command_id: `story_propose_${stamp}`,
+      idempotency_key: `story_propose_idem_${stamp}`,
+      raw_story: story.slice(0, 2000),
+      session_id: sessionId || undefined,
+    });
+    if (!res || typeof res !== "object" || !res.proposal) return null;
+    const proposal = { ...res.proposal };
+    if (res.proposal_id && !proposal.proposal_id) proposal.proposal_id = res.proposal_id;
+    if (res.proposal_version && !proposal.proposal_version) {
+      proposal.proposal_version = res.proposal_version;
+    }
+    return proposal;
   } catch {
     return null;
   }
@@ -203,13 +211,17 @@ export async function confirmAccidentStory(params: {
   if (!caseId) return false;
   const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   try {
+    const proposal = params.proposal || undefined;
     await requestJson("POST", "/api/h5/customer/accident-story/confirm", {
       command_id: `story_confirm_${stamp}`,
       idempotency_key: `story_confirm_idem_${stamp}`,
       case_id: caseId,
       raw_story: String(params.rawStory || "").slice(0, 2000),
       confirm: Boolean(params.confirm),
-      proposal: params.proposal || undefined,
+      proposal_id: proposal?.proposal_id || undefined,
+      proposal_version: proposal?.proposal_version || undefined,
+      // Echo for backward UX only — server ignores body as AI truth.
+      proposal: proposal || undefined,
       customer_edits: params.customerEdits || undefined,
     });
     return true;

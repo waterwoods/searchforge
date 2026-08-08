@@ -319,6 +319,17 @@ def start_customer_claim(
                         "raw_story": str(description or ""),
                     },
                     proposal=ai_story_proposal if isinstance(ai_story_proposal, dict) else None,
+                    proposal_id=(
+                        str((ai_story_proposal or {}).get("proposal_id") or "").strip() or None
+                        if isinstance(ai_story_proposal, dict)
+                        else None
+                    ),
+                    proposal_version=(
+                        int(ai_story_proposal.get("proposal_version") or 1)
+                        if isinstance(ai_story_proposal, dict)
+                        and ai_story_proposal.get("proposal_version") is not None
+                        else None
+                    ),
                 )
             except Exception:
                 pass

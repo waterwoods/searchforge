@@ -162,7 +162,11 @@ class AccidentStoryConfirmBody(BaseModel):
     raw_story: str = Field(default="", max_length=2000)
     confirm: bool = Field(default=False)
     customer_edits: dict[str, Any] | None = None
+    # Client may echo proposal for UX; server never trusts it as AI truth.
     proposal: dict[str, Any] | None = None
+    # Server-issued proposal identity (preferred confirm path).
+    proposal_id: str | None = Field(default=None, max_length=64)
+    proposal_version: int | None = Field(default=None, ge=1, le=100)
 
 
 @router.post("/customer/session")
@@ -279,6 +283,8 @@ async def post_accident_story_confirm(body: AccidentStoryConfirmBody) -> dict[st
         confirm=bool(body.confirm),
         customer_edits=body.customer_edits,
         proposal=body.proposal,
+        proposal_id=body.proposal_id,
+        proposal_version=body.proposal_version,
     )
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result)
