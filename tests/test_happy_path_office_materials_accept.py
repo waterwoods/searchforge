@@ -664,3 +664,233 @@ def test_p0_request_more_full_sequence_ack_then_accept_idempotent():
     assert final.get("claim_phase") != "broker_done"
     assert final.get("case_history_state") != "history"
     assert final.get("case_status") != "closed"
+
+
+# --- Pilot Reliability Fix 1 — atomic office accept -------------------------
+
+
+def _accept_events(case: dict | None) -> list[dict]:
+    timeline = (case or {}).get("claim_timeline") or []
+    return [e for e in timeline if e.get("event_type") == EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED]
+
+
+def test_atomic_accept_normal_once():
+    case = _claim_case()
+    result = accept_office_materials(case["case_id"], source="workbench")
+    assert result["outcome"] == "office_materials_accepted"
+    assert result["already_accepted"] is False
+    assert result["event_appended"] is True
+    stamp = result["office_materials_accepted_at"]
+    assert stamp
+    persisted = get_case_by_id(case["case_id"])
+    assert persisted is not None
+    assert persisted.get("office_materials_accepted_at") == stamp
+    assert len(_accept_events(persisted)) == 1
+
+
+def test_atomic_accept_sequential_double_idempotent():
+    case = _claim_case()
+    first = accept_office_materials(case["case_id"])
+    second = accept_office_materials(case["case_id"])
+    assert first["already_accepted"] is False
+    assert first["event_appended"] is True
+    assert second["already_accepted"] is True
+    assert second["event_appended"] is False
+    assert second["office_materials_accepted_at"] == first["office_materials_accepted_at"]
+    persisted = get_case_by_id(case["case_id"])
+    assert len(_accept_events(persisted)) == 1
+
+
+def test_atomic_accept_concurrent_double_one_effect():
+    """True in-process concurrency against the JSON accept lock path.
+
+    Limitation: this does not exercise a live multi-connection Postgres
+    ``FOR UPDATE`` race. Paid-pilot PG path uses ``mutate_full_case_under_lock``;
+    see ``test_atomic_accept_db_path_lock_reread_before_mutate``.
+    """
+    import threading
+
+    from services.fiqa_api.inbox_triage.case_store import (
+        _load_case_for_mutation,
+        _persist_case_after_update,
+    )
+
+    case = _claim_case()
+    cid = case["case_id"]
+    row = _load_case_for_mutation(cid)
+    assert row is not None
+    row["contact_note"] = "sibling-note-keep"
+    row["customer_name"] = "陈测试"
+    row["policy_context"] = {"status": "confirmed", "customer_choice": "use_on_file"}
+    assert _persist_case_after_update(cid, row)
+
+    barrier = threading.Barrier(2)
+    results: list[dict] = []
+    errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def _worker() -> None:
+        try:
+            barrier.wait(timeout=5)
+            out = accept_office_materials(cid, source="workbench")
+            with lock:
+                results.append(out)
+        except BaseException as exc:  # noqa: BLE001 — collect any worker failure
+            with lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=_worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+        assert not t.is_alive()
+
+    assert errors == []
+    assert len(results) == 2
+    accepted = [r for r in results if r.get("already_accepted") is False]
+    replayed = [r for r in results if r.get("already_accepted") is True]
+    assert len(accepted) == 1
+    assert len(replayed) == 1
+    assert accepted[0].get("event_appended") is True
+    assert replayed[0].get("event_appended") is False
+    stamp = accepted[0]["office_materials_accepted_at"]
+    assert stamp
+    assert replayed[0]["office_materials_accepted_at"] == stamp
+
+    final = get_case_by_id(cid)
+    assert final is not None
+    assert final.get("office_materials_accepted_at") == stamp
+    assert len(_accept_events(final)) == 1
+    assert final.get("contact_note") == "sibling-note-keep"
+    assert final.get("customer_name") == "陈测试"
+    assert (final.get("policy_context") or {}).get("customer_choice") == "use_on_file"
+
+
+def test_atomic_accept_blocked_open_request_more_no_stamp():
+    case = _claim_case()
+    cid = case["case_id"]
+    _open_vin_request_more(cid, suffix="atomic_rm")
+    with pytest.raises(OfficeMaterialsAcceptError, match="open_request_more"):
+        accept_office_materials(cid)
+    persisted = get_case_by_id(cid)
+    assert persisted is not None
+    assert not persisted.get("office_materials_accepted_at")
+    assert _accept_events(persisted) == []
+
+
+def test_atomic_accept_blocked_must_have_gap_no_partial_mutation():
+    from services.fiqa_api.inbox_triage.case_store import (
+        _load_case_for_mutation,
+        _persist_case_after_update,
+    )
+
+    case = _claim_case(known_facts={"accident_description": "only story"})
+    cid = case["case_id"]
+    row = _load_case_for_mutation(cid)
+    assert row is not None
+    row["contact_note"] = "gap-sibling"
+    assert _persist_case_after_update(cid, row)
+
+    with pytest.raises(OfficeMaterialsAcceptError, match="must_have_gaps"):
+        accept_office_materials(cid)
+    persisted = get_case_by_id(cid)
+    assert persisted is not None
+    assert not persisted.get("office_materials_accepted_at")
+    assert _accept_events(persisted) == []
+    assert persisted.get("contact_note") == "gap-sibling"
+    assert (persisted.get("known_facts") or {}).get("accident_description") == "only story"
+
+
+def test_atomic_accept_preserves_sibling_fields():
+    from services.fiqa_api.inbox_triage.case_store import (
+        _load_case_for_mutation,
+        _persist_case_after_update,
+        build_claim_timeline_event,
+    )
+
+    case = _claim_case()
+    cid = case["case_id"]
+    row = _load_case_for_mutation(cid)
+    assert row is not None
+    row["contact_note"] = "keep-me"
+    row["customer_name"] = "Sibling Customer"
+    row["customer_phone"] = "9495550199"
+    row["policy_context"] = {"status": "confirmed", "customer_choice": "use_on_file"}
+    row["accident_story_assistant"] = {
+        "authority": "customer_confirmed",
+        "ai_involved": True,
+    }
+    prior = build_claim_timeline_event(
+        event_type="claim_started",
+        source_channel="mini_program",
+        actor="customer",
+        text="案件已开始",
+    )
+    row["claim_timeline"] = [prior]
+    row["demo_name"] = "atomic_sibling_demo"
+    assert _persist_case_after_update(cid, row)
+
+    result = accept_office_materials(cid)
+    assert result["already_accepted"] is False
+    final = get_case_by_id(cid)
+    assert final is not None
+    assert final.get("contact_note") == "keep-me"
+    assert final.get("customer_name") == "Sibling Customer"
+    assert final.get("customer_phone") == "9495550199"
+    assert (final.get("policy_context") or {}).get("status") == "confirmed"
+    assert (final.get("accident_story_assistant") or {}).get("authority") == "customer_confirmed"
+    assert final.get("demo_name") == "atomic_sibling_demo"
+    types = [e.get("event_type") for e in (final.get("claim_timeline") or [])]
+    assert types.count("claim_started") == 1
+    assert types.count(EVENT_BROKER_OFFICE_MATERIALS_ACCEPTED) == 1
+
+
+def test_atomic_accept_db_path_lock_reread_before_mutate(monkeypatch):
+    """PG-primary path must mutate only the case loaded under lock (not a stale snapshot)."""
+    from services.fiqa_api.inbox_triage import case_store as cs
+
+    case = _claim_case(contact_note="pre-lock-sibling")
+    cid = case["case_id"]
+    order: list[str] = []
+    locked_case = {
+        "case_id": cid,
+        "service_lane": SERVICE_LANE_CLAIM,
+        "known_facts": _complete_known_facts(),
+        "claim_phase": CLAIM_PHASE_ACCIDENT_BASICS_COMPLETE,
+        "office_materials_accepted_at": None,
+        "claim_timeline": [],
+        "contact_note": "locked-authoritative-sibling",
+        "customer_name": "FromLockedRead",
+        "slice1_capability_version": 1,
+        "entry_channel": "mini_program",
+    }
+
+    def _fake_mutate(case_id: str, mutator):
+        order.append("lock_and_load")
+        assert case_id == cid
+        # Authoritative state under lock — includes sibling not present on stale clients.
+        result, should_persist = mutator(locked_case)
+        order.append("mutated")
+        assert should_persist is True
+        assert locked_case.get("office_materials_accepted_at")
+        assert locked_case.get("contact_note") == "locked-authoritative-sibling"
+        order.append("persist_under_same_txn")
+        return result
+
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_settings.db_primary_writes_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_repository.mutate_full_case_under_lock",
+        _fake_mutate,
+    )
+
+    result = cs.accept_office_materials(cid)
+    assert order == ["lock_and_load", "mutated", "persist_under_same_txn"]
+    assert result["already_accepted"] is False
+    assert result["event_appended"] is True
+    assert (result.get("case") or {}).get("contact_note") == "locked-authoritative-sibling"
+    assert (result.get("case") or {}).get("customer_name") == "FromLockedRead"
+    assert len(_accept_events(result.get("case"))) == 1

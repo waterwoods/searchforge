@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
-from typing import Any, Generator, Iterable
+from typing import Any, Callable, Generator, Iterable
 
 from services.fiqa_api.db.service_record_settings import service_record_database_url
 
@@ -614,8 +614,11 @@ def persist_new_case(case: dict[str, Any]) -> None:
                 )
 
 
-def persist_case_append(case: dict[str, Any]) -> None:
-    """Upsert core record + structured payload; insert only new messages (by external_message_id)."""
+def _persist_case_append_on_cursor(cur: Any, case: dict[str, Any]) -> bool:
+    """Write one case update on an open cursor (caller owns the transaction).
+
+    Returns False when no ``service_records`` row exists for the case_id.
+    """
     from psycopg.types.json import Json
 
     record_id = _str(case.get("case_id"))
@@ -627,159 +630,162 @@ def persist_case_append(case: dict[str, Any]) -> None:
     extra_patch = _build_extra(case)
     now_updated = _str(case.get("updated_at"))
     now_created = _str(case.get("created_at")) or now_updated
-
     oid_incoming = _office_owner_org_id_from_case(case) or ""
 
+    _ensure_office_owner_org_schema(cur)
+    _ensure_case_ref_schema(cur)
+    cur.execute(
+        "SELECT extra FROM service_records WHERE record_id = %s FOR UPDATE",
+        (record_id,),
+    )
+    existing_row = cur.fetchone()
+    existing_extra = existing_row[0] if existing_row and isinstance(existing_row[0], dict) else {}
+    extra = {**existing_extra, **extra_patch}
+    case_ref = _str(case.get("case_ref")) or None
+    cur.execute(
+        """
+        UPDATE service_records SET
+            client_id = COALESCE(%(client_id)s, client_id),
+            issue_category = %(issue_category)s,
+            title_summary = %(title_summary)s,
+            case_status = %(case_status)s,
+            lifecycle_status = %(lifecycle_status)s,
+            waiting_on = %(waiting_on)s,
+            next_contact_by = %(next_contact_by)s,
+            current_next_action = %(current_next_action)s,
+            customer_name = %(customer_name)s,
+            customer_phone = %(customer_phone)s,
+            customer_email = %(customer_email)s,
+            policy_number = %(policy_number)s,
+            contact_note = %(contact_note)s,
+            updated_at = %(updated_at)s,
+            closed_at = COALESCE(%(closed_at)s, closed_at),
+            office_owner_org_id = COALESCE(
+                NULLIF(TRIM(%(office_owner_patch)s), ''),
+                office_owner_org_id
+            ),
+            case_ref = COALESCE(NULLIF(TRIM(case_ref), ''), %(case_ref)s),
+            extra = %(extra)s
+        WHERE record_id = %(record_id)s
+        """,
+        {
+            "record_id": record_id,
+            "client_id": _str(case.get("client_id")) or None,
+            "issue_category": _str(case.get("issue_category")) or None,
+            "title_summary": _title_summary(case) or None,
+            "case_status": _str(case.get("case_status")) or "new",
+            "lifecycle_status": _str(case.get("lifecycle_status")) or None,
+            "waiting_on": _str(case.get("waiting_on")) or "none",
+            "next_contact_by": _str(case.get("next_contact_by")),
+            "current_next_action": (
+                _str(case.get("office_broker_next_step"))
+                or _str(case.get("broker_next_step"))
+                or None
+            ),
+            "customer_name": _str(case.get("customer_name")),
+            "customer_phone": _str(case.get("customer_phone")),
+            "customer_email": _str(case.get("customer_email")),
+            "policy_number": _str(case.get("policy_number")),
+            "contact_note": _str(case.get("contact_note")),
+            "updated_at": now_updated,
+            "closed_at": _str(case.get("closed_at")) or None,
+            "office_owner_patch": oid_incoming,
+            "case_ref": case_ref,
+            "extra": Json(extra),
+        },
+    )
+    if cur.rowcount == 0:
+        logger.warning(
+            "UNIFIED_INTAKE_DB_OBS signal=PG_APPEND_NO_ROW case_id=%s",
+            record_id,
+        )
+        return False
+
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        ext_id = _str(msg.get("message_id"))
+        text = _str(msg.get("text"))
+        if not ext_id or not text:
+            continue
+        role = _str(msg.get("role"), "customer").lower()
+        sender = "customer" if role == "customer" else "system"
+        cur.execute(
+            """
+            INSERT INTO record_messages (
+                record_id, external_message_id, sender_type, message_text,
+                source_channel, raw_payload, sequence_num, created_at
+            ) VALUES (
+                %(record_id)s, %(external_message_id)s, %(sender_type)s, %(message_text)s,
+                %(source_channel)s, %(raw_payload)s, %(sequence_num)s, %(created_at)s
+            )
+            ON CONFLICT (record_id, external_message_id) DO NOTHING
+            """,
+            {
+                "record_id": record_id,
+                "external_message_id": ext_id,
+                "sender_type": sender,
+                "message_text": text,
+                "source_channel": "portal",
+                "raw_payload": Json(msg),
+                "sequence_num": int(msg.get("sequence") or 1),
+                "created_at": _str(msg.get("created_at")) or now_created,
+            },
+        )
+
+    cur.execute(
+        """
+        INSERT INTO structured_record_data (
+            record_id, structured_payload, quote_readiness, missing_fields_summary,
+            extracted_at, updated_at
+        ) VALUES (
+            %(record_id)s, %(structured_payload)s, %(quote_readiness)s, %(missing_fields_summary)s,
+            %(extracted_at)s, %(updated_at)s
+        )
+        ON CONFLICT (record_id) DO UPDATE SET
+            structured_payload = EXCLUDED.structured_payload,
+            quote_readiness = EXCLUDED.quote_readiness,
+            missing_fields_summary = EXCLUDED.missing_fields_summary,
+            extracted_at = EXCLUDED.extracted_at,
+            updated_at = EXCLUDED.updated_at
+        """,
+        {
+            "record_id": record_id,
+            "structured_payload": Json(structured),
+            "quote_readiness": _str(case.get("quote_ready_status")) or None,
+            "missing_fields_summary": _missing_fields_summary(case),
+            "extracted_at": now_updated,
+            "updated_at": now_updated,
+        },
+    )
+
+    cur.execute(
+        """
+        INSERT INTO state_history (
+            record_id, from_status, to_status, triggered_by, reason, snapshot_note, created_at
+        ) VALUES (
+            %(record_id)s, %(from_status)s, %(to_status)s, %(triggered_by)s, %(reason)s, %(snapshot_note)s, %(created_at)s
+        )
+        """,
+        {
+            "record_id": record_id,
+            "from_status": None,
+            "to_status": _str(case.get("case_status")) or "new",
+            "triggered_by": "system",
+            "reason": "conversation_appended",
+            "snapshot_note": _str(case.get("lifecycle_status")) or None,
+            "created_at": now_updated,
+        },
+    )
+    return True
+
+
+def persist_case_append(case: dict[str, Any]) -> None:
+    """Upsert core record + structured payload; insert only new messages (by external_message_id)."""
     with service_record_connection() as conn:
         with conn.transaction():
             with conn.cursor() as cur:
-                _ensure_office_owner_org_schema(cur)
-                _ensure_case_ref_schema(cur)
-                cur.execute(
-                    "SELECT extra FROM service_records WHERE record_id = %s FOR UPDATE",
-                    (record_id,),
-                )
-                existing_row = cur.fetchone()
-                existing_extra = (
-                    existing_row[0] if existing_row and isinstance(existing_row[0], dict) else {}
-                )
-                extra = {**existing_extra, **extra_patch}
-                case_ref = _str(case.get("case_ref")) or None
-                cur.execute(
-                    """
-                    UPDATE service_records SET
-                        client_id = COALESCE(%(client_id)s, client_id),
-                        issue_category = %(issue_category)s,
-                        title_summary = %(title_summary)s,
-                        case_status = %(case_status)s,
-                        lifecycle_status = %(lifecycle_status)s,
-                        waiting_on = %(waiting_on)s,
-                        next_contact_by = %(next_contact_by)s,
-                        current_next_action = %(current_next_action)s,
-                        customer_name = %(customer_name)s,
-                        customer_phone = %(customer_phone)s,
-                        customer_email = %(customer_email)s,
-                        policy_number = %(policy_number)s,
-                        contact_note = %(contact_note)s,
-                        updated_at = %(updated_at)s,
-                        closed_at = COALESCE(%(closed_at)s, closed_at),
-                        office_owner_org_id = COALESCE(
-                            NULLIF(TRIM(%(office_owner_patch)s), ''),
-                            office_owner_org_id
-                        ),
-                        case_ref = COALESCE(NULLIF(TRIM(case_ref), ''), %(case_ref)s),
-                        extra = %(extra)s
-                    WHERE record_id = %(record_id)s
-                    """,
-                    {
-                        "record_id": record_id,
-                        "client_id": _str(case.get("client_id")) or None,
-                        "issue_category": _str(case.get("issue_category")) or None,
-                        "title_summary": _title_summary(case) or None,
-                        "case_status": _str(case.get("case_status")) or "new",
-                        "lifecycle_status": _str(case.get("lifecycle_status")) or None,
-                        "waiting_on": _str(case.get("waiting_on")) or "none",
-                        "next_contact_by": _str(case.get("next_contact_by")),
-                        "current_next_action": (
-                            _str(case.get("office_broker_next_step"))
-                            or _str(case.get("broker_next_step"))
-                            or None
-                        ),
-                        "customer_name": _str(case.get("customer_name")),
-                        "customer_phone": _str(case.get("customer_phone")),
-                        "customer_email": _str(case.get("customer_email")),
-                        "policy_number": _str(case.get("policy_number")),
-                        "contact_note": _str(case.get("contact_note")),
-                        "updated_at": now_updated,
-                        "closed_at": _str(case.get("closed_at")) or None,
-                        "office_owner_patch": oid_incoming,
-                        "case_ref": case_ref,
-                        "extra": Json(extra),
-                    },
-                )
-                if cur.rowcount == 0:
-                    logger.warning(
-                        "UNIFIED_INTAKE_DB_OBS signal=PG_APPEND_NO_ROW case_id=%s",
-                        record_id,
-                    )
-                    return
-
-                for msg in messages:
-                    if not isinstance(msg, dict):
-                        continue
-                    ext_id = _str(msg.get("message_id"))
-                    text = _str(msg.get("text"))
-                    if not ext_id or not text:
-                        continue
-                    role = _str(msg.get("role"), "customer").lower()
-                    sender = "customer" if role == "customer" else "system"
-                    cur.execute(
-                        """
-                        INSERT INTO record_messages (
-                            record_id, external_message_id, sender_type, message_text,
-                            source_channel, raw_payload, sequence_num, created_at
-                        ) VALUES (
-                            %(record_id)s, %(external_message_id)s, %(sender_type)s, %(message_text)s,
-                            %(source_channel)s, %(raw_payload)s, %(sequence_num)s, %(created_at)s
-                        )
-                        ON CONFLICT (record_id, external_message_id) DO NOTHING
-                        """,
-                        {
-                            "record_id": record_id,
-                            "external_message_id": ext_id,
-                            "sender_type": sender,
-                            "message_text": text,
-                            "source_channel": "portal",
-                            "raw_payload": Json(msg),
-                            "sequence_num": int(msg.get("sequence") or 1),
-                            "created_at": _str(msg.get("created_at")) or now_created,
-                        },
-                    )
-
-                cur.execute(
-                    """
-                    INSERT INTO structured_record_data (
-                        record_id, structured_payload, quote_readiness, missing_fields_summary,
-                        extracted_at, updated_at
-                    ) VALUES (
-                        %(record_id)s, %(structured_payload)s, %(quote_readiness)s, %(missing_fields_summary)s,
-                        %(extracted_at)s, %(updated_at)s
-                    )
-                    ON CONFLICT (record_id) DO UPDATE SET
-                        structured_payload = EXCLUDED.structured_payload,
-                        quote_readiness = EXCLUDED.quote_readiness,
-                        missing_fields_summary = EXCLUDED.missing_fields_summary,
-                        extracted_at = EXCLUDED.extracted_at,
-                        updated_at = EXCLUDED.updated_at
-                    """,
-                    {
-                        "record_id": record_id,
-                        "structured_payload": Json(structured),
-                        "quote_readiness": _str(case.get("quote_ready_status")) or None,
-                        "missing_fields_summary": _missing_fields_summary(case),
-                        "extracted_at": now_updated,
-                        "updated_at": now_updated,
-                    },
-                )
-
-                cur.execute(
-                    """
-                    INSERT INTO state_history (
-                        record_id, from_status, to_status, triggered_by, reason, snapshot_note, created_at
-                    ) VALUES (
-                        %(record_id)s, %(from_status)s, %(to_status)s, %(triggered_by)s, %(reason)s, %(snapshot_note)s, %(created_at)s
-                    )
-                    """,
-                    {
-                        "record_id": record_id,
-                        "from_status": None,
-                        "to_status": _str(case.get("case_status")) or "new",
-                        "triggered_by": "system",
-                        "reason": "conversation_appended",
-                        "snapshot_note": _str(case.get("lifecycle_status")) or None,
-                        "created_at": now_updated,
-                    },
-                )
+                _persist_case_append_on_cursor(cur, case)
 
 
 def fetch_service_records(record_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -889,77 +895,12 @@ def _case_activity_from_state_history_rows(rows: list[Any]) -> list[dict[str, st
     return out[:_MAX_CASE_ACTIVITY]
 
 
-def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
-    """
-    Reconstruct a pilot case dict from Postgres mirror rows (dual-write shape).
-    Returns None if no service_records row exists for record_id.
-    """
-    rid = _str(record_id)
-    if not rid:
-        return None
-
-    with service_record_connection() as conn:
-        with conn.cursor() as cur:
-            _ensure_office_owner_org_schema(cur)
-            _ensure_case_ref_schema(cur)
-            cur.execute(
-                """
-                SELECT
-                    sr.record_id,
-                    sr.client_id,
-                    sr.issue_category,
-                    sr.title_summary,
-                    sr.case_status,
-                    sr.lifecycle_status,
-                    sr.waiting_on,
-                    sr.next_contact_by,
-                    sr.current_next_action,
-                    sr.customer_name,
-                    sr.customer_phone,
-                    sr.customer_email,
-                    sr.policy_number,
-                    sr.contact_note,
-                    sr.origin_session_id,
-                    sr.created_at,
-                    sr.updated_at,
-                    sr.office_owner_org_id,
-                    sr.extra,
-                    srd.structured_payload,
-                    srd.quote_readiness,
-                    sr.case_ref
-                FROM service_records sr
-                LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
-                WHERE sr.record_id = %s
-                """,
-                (rid,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return None
-
-            cur.execute(
-                """
-                SELECT external_message_id, sender_type, message_text, sequence_num, created_at, raw_payload
-                FROM record_messages
-                WHERE record_id = %s
-                ORDER BY sequence_num ASC, created_at ASC
-                """,
-                (rid,),
-            )
-            msg_rows = cur.fetchall()
-
-            cur.execute(
-                """
-                SELECT state_event_id, reason, to_status, snapshot_note, created_at
-                FROM state_history
-                WHERE record_id = %s
-                ORDER BY created_at DESC, state_event_id DESC
-                LIMIT %s
-                """,
-                (rid, _MAX_CASE_ACTIVITY),
-            )
-            state_rows = cur.fetchall()
-
+def _compose_full_case_from_pg_rows(
+    row: Any,
+    msg_rows: Any,
+    state_rows: Any,
+) -> dict[str, Any]:
+    """Hydrate a pilot case dict from service_records + related row tuples."""
     office_owner_col = row[17]
     extra = row[18] if isinstance(row[18], dict) else {}
     structured = row[19] if isinstance(row[19], dict) else {}
@@ -1020,7 +961,7 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
         case["quote_ready_status"] = ""
 
     case_messages: list[dict[str, Any]] = []
-    for mr in msg_rows:
+    for mr in msg_rows or []:
         rawp = mr[5]
         if isinstance(rawp, dict) and (rawp.get("text") or "").strip():
             case_messages.append(dict(rawp))
@@ -1047,6 +988,123 @@ def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
     case["source_text"] = _build_source_from_messages(case_messages)
 
     return case
+
+
+def _load_full_case_on_cursor(
+    cur: Any,
+    record_id: str,
+    *,
+    for_update: bool = False,
+) -> dict[str, Any] | None:
+    """Load full case on an open cursor; optional ``FOR UPDATE OF sr`` row lock."""
+    rid = _str(record_id)
+    if not rid:
+        return None
+    _ensure_office_owner_org_schema(cur)
+    _ensure_case_ref_schema(cur)
+    lock_sql = " FOR UPDATE OF sr" if for_update else ""
+    cur.execute(
+        f"""
+        SELECT
+            sr.record_id,
+            sr.client_id,
+            sr.issue_category,
+            sr.title_summary,
+            sr.case_status,
+            sr.lifecycle_status,
+            sr.waiting_on,
+            sr.next_contact_by,
+            sr.current_next_action,
+            sr.customer_name,
+            sr.customer_phone,
+            sr.customer_email,
+            sr.policy_number,
+            sr.contact_note,
+            sr.origin_session_id,
+            sr.created_at,
+            sr.updated_at,
+            sr.office_owner_org_id,
+            sr.extra,
+            srd.structured_payload,
+            srd.quote_readiness,
+            sr.case_ref
+        FROM service_records sr
+        LEFT JOIN structured_record_data srd ON srd.record_id = sr.record_id
+        WHERE sr.record_id = %s
+        {lock_sql}
+        """,
+        (rid,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+
+    cur.execute(
+        """
+        SELECT external_message_id, sender_type, message_text, sequence_num, created_at, raw_payload
+        FROM record_messages
+        WHERE record_id = %s
+        ORDER BY sequence_num ASC, created_at ASC
+        """,
+        (rid,),
+    )
+    msg_rows = cur.fetchall()
+
+    cur.execute(
+        """
+        SELECT state_event_id, reason, to_status, snapshot_note, created_at
+        FROM state_history
+        WHERE record_id = %s
+        ORDER BY created_at DESC, state_event_id DESC
+        LIMIT %s
+        """,
+        (rid, _MAX_CASE_ACTIVITY),
+    )
+    state_rows = cur.fetchall()
+    return _compose_full_case_from_pg_rows(row, msg_rows, state_rows)
+
+
+def load_full_case_from_postgres(record_id: str) -> dict[str, Any] | None:
+    """
+    Reconstruct a pilot case dict from Postgres mirror rows (dual-write shape).
+    Returns None if no service_records row exists for record_id.
+    """
+    rid = _str(record_id)
+    if not rid:
+        return None
+
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            return _load_full_case_on_cursor(cur, rid, for_update=False)
+
+
+def mutate_full_case_under_lock(
+    case_id: str,
+    mutator: Callable[[dict[str, Any]], tuple[Any, bool]],
+) -> Any | None:
+    """Atomically lock → re-read → mutate → optionally persist one case.
+
+    ``mutator(case)`` receives the authoritative case loaded under
+    ``SELECT ... FOR UPDATE`` and must return ``(result, should_persist)``.
+    Raises from ``mutator`` abort the transaction with no write.
+
+    Returns ``None`` when the case row does not exist.
+    """
+    rid = _str(case_id)
+    if not rid:
+        return None
+
+    with service_record_connection() as conn:
+        with conn.transaction():
+            with conn.cursor() as cur:
+                case = _load_full_case_on_cursor(cur, rid, for_update=True)
+                if case is None:
+                    return None
+                result, should_persist = mutator(case)
+                if should_persist:
+                    if not _persist_case_append_on_cursor(cur, case):
+                        return None
+                return result
 
 
 def count_service_records() -> int:

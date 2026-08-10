@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -2128,14 +2129,50 @@ class OfficeMaterialsAcceptError(ValueError):
         self.detail: dict[str, Any] = dict(detail) if isinstance(detail, dict) else {"error": self.code}
 
 
-def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
-    """Happy Path Loop 1 — broker confirms Cap2 Must Haves are office-ready.
+_OFFICE_ACCEPT_LOCKS: dict[str, threading.RLock] = {}
+_OFFICE_ACCEPT_LOCKS_GUARD = threading.Lock()
 
-    Stamps ``office_materials_accepted_at`` and appends one idempotent
-    ``broker_office_materials_accepted`` timeline event.
 
-    Does **not** call broker_done, Done Card, Close, or History.
-    Completeness gate: Cap2 Must Have gaps + no unresolved Request More.
+def _office_accept_lock_for(case_id: str) -> threading.RLock:
+    """Per-case in-process lock for JSON / non-PG accept serialization."""
+    with _OFFICE_ACCEPT_LOCKS_GUARD:
+        lock = _OFFICE_ACCEPT_LOCKS.get(case_id)
+        if lock is None:
+            lock = threading.RLock()
+            _OFFICE_ACCEPT_LOCKS[case_id] = lock
+        return lock
+
+
+def _slice1_projection_is_authoritative_for_office_accept(proj: dict[str, Any]) -> bool:
+    try:
+        if int(proj.get("aggregate_version") or 0) > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    open_req = proj.get("open_request")
+    if isinstance(open_req, dict) and (
+        open_req.get("request_id") or open_req.get("items") or open_req.get("active_item")
+    ):
+        return True
+    ws = str(proj.get("workflow_state") or "").strip().lower()
+    return ws in {
+        "broker_more_requested",
+        "customer_continuing",
+        "broker_review_ready",
+        "broker_reviewing",
+    }
+
+
+def _apply_office_materials_accept_to_case(
+    case: dict[str, Any],
+    *,
+    source: str = "workbench",
+) -> tuple[dict[str, Any], bool]:
+    """Validate + mutate an already-locked authoritative case dict.
+
+    Returns ``(result, should_persist)``. Does not open storage connections for
+    the case write — caller persists under the same lock/transaction.
+    Raises ``OfficeMaterialsAcceptError`` when business gates fail (no mutation).
     """
     from services.fiqa_api.inbox_triage.case_close import case_is_closed_history
     from services.fiqa_api.inbox_triage.p20_missing_information import (
@@ -2145,25 +2182,7 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
     )
     from services.fiqa_api.wecom.claim_state import SERVICE_LANE_CLAIM
 
-    cid = (case_id or "").strip()
-    if not cid:
-        return {
-            "outcome": "case_not_found",
-            "case": None,
-            "already_accepted": False,
-            "event_appended": False,
-        }
-
-    _require_case_storage_path()
-    case = _load_case_for_mutation(cid)
-    if case is None:
-        return {
-            "outcome": "case_not_found",
-            "case": None,
-            "already_accepted": False,
-            "event_appended": False,
-        }
-
+    cid = str(case.get("case_id") or "").strip()
     lane = str(case.get("service_lane") or "").strip().lower()
     if lane != SERVICE_LANE_CLAIM:
         raise OfficeMaterialsAcceptError(
@@ -2174,13 +2193,16 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
 
     already = str(case.get("office_materials_accepted_at") or "").strip()
     if already:
-        return {
-            "outcome": "office_materials_accepted",
-            "case": case,
-            "already_accepted": True,
-            "event_appended": False,
-            "office_materials_accepted_at": already,
-        }
+        return (
+            {
+                "outcome": "office_materials_accepted",
+                "case": case,
+                "already_accepted": True,
+                "event_appended": False,
+                "office_materials_accepted_at": already,
+            },
+            False,
+        )
 
     # Prefer live Cap2 checklist when available (same engine as Missing Information).
     try:
@@ -2212,26 +2234,9 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
     except Exception:
         live_projection = None
 
-    def _slice1_projection_is_authoritative(proj: dict[str, Any]) -> bool:
-        try:
-            if int(proj.get("aggregate_version") or 0) > 0:
-                return True
-        except (TypeError, ValueError):
-            pass
-        open_req = proj.get("open_request")
-        if isinstance(open_req, dict) and (
-            open_req.get("request_id") or open_req.get("items") or open_req.get("active_item")
-        ):
-            return True
-        ws = str(proj.get("workflow_state") or "").strip().lower()
-        return ws in {
-            "broker_more_requested",
-            "customer_continuing",
-            "broker_review_ready",
-            "broker_reviewing",
-        }
-
-    if isinstance(live_projection, dict) and _slice1_projection_is_authoritative(live_projection):
+    if isinstance(live_projection, dict) and _slice1_projection_is_authoritative_for_office_accept(
+        live_projection
+    ):
         case["p20_slice1_projection"] = live_projection
         case["slice1_projection"] = live_projection
         block_code, block_detail = office_materials_request_more_block(case)
@@ -2262,24 +2267,79 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
         case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
         event_appended = True
 
-    if not _persist_case_after_update(cid, case):
-        return {
-            "outcome": "case_not_found",
-            "case": None,
+    return (
+        {
+            "outcome": "office_materials_accepted",
+            "case": case,
             "already_accepted": False,
-            "event_appended": False,
-        }
+            "event_appended": event_appended,
+            "office_materials_accepted_at": now,
+        },
+        True,
+    )
 
-    refreshed = _load_case_for_mutation(cid) or case
-    return {
-        "outcome": "office_materials_accepted",
-        "case": refreshed,
+
+def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
+    """Happy Path Loop 1 — broker confirms Cap2 Must Haves are office-ready.
+
+    Stamps ``office_materials_accepted_at`` and appends one idempotent
+    ``broker_office_materials_accepted`` timeline event.
+
+    Does **not** call broker_done, Done Card, Close, or History.
+    Completeness gate: Cap2 Must Have gaps + no unresolved Request More.
+
+    Persistence contract (paid pilot / PG-primary):
+    BEGIN → FOR UPDATE lock → re-read → re-validate → stamp+timeline → COMMIT.
+    JSON/local path uses a per-case in-process lock with the same re-read order.
+    """
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    cid = (case_id or "").strip()
+    not_found = {
+        "outcome": "case_not_found",
+        "case": None,
         "already_accepted": False,
-        "event_appended": event_appended,
-        "office_materials_accepted_at": str(
-            refreshed.get("office_materials_accepted_at") or now
-        ).strip(),
+        "event_appended": False,
     }
+    if not cid:
+        return not_found
+
+    _require_case_storage_path()
+
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import mutate_full_case_under_lock
+
+        def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+            return _apply_office_materials_accept_to_case(case, source=source)
+
+        result = mutate_full_case_under_lock(cid, _mutator)
+        if result is None:
+            return not_found
+        # Optional JSON mirror outside the PG transaction (non-pilot dual path only).
+        if json_case_writes_enabled() and isinstance(result.get("case"), dict):
+            _replace_case_in_json_store(cid, result["case"])
+        return result
+
+    with _office_accept_lock_for(cid):
+        case = _load_case_for_mutation(cid)
+        if case is None:
+            return not_found
+        result, should_persist = _apply_office_materials_accept_to_case(case, source=source)
+        if should_persist:
+            if not _persist_case_after_update(cid, case):
+                return not_found
+            refreshed = _load_case_for_mutation(cid) or case
+            result = dict(result)
+            result["case"] = refreshed
+            result["office_materials_accepted_at"] = str(
+                refreshed.get("office_materials_accepted_at")
+                or result.get("office_materials_accepted_at")
+                or ""
+            ).strip()
+        return result
 
 
 def _claim_end_card_state(case: dict[str, Any]) -> dict[str, Any]:
