@@ -60,10 +60,22 @@ export type AccidentStoryProposalLike = {
   proposal_id?: string;
 };
 
+/** Customer-visible trust line — normal guided draft (no engineering terms). */
+export const GUIDED_TRUST_NOTE_NORMAL =
+  "AI已帮您整理，请确认后再提交。";
+
+/** Customer-visible trust line — AI fallback / manual path still usable. */
+export const GUIDED_TRUST_NOTE_FALLBACK =
+  "AI暂时无法完整整理，您仍可直接确认或手动补充。";
+
 export type GuidedUiState = {
   guidedPhase: GuidedPhase;
   guidedTitle: string;
   guidedDraftLabel: string;
+  /** Calm trust / fallback copy for the guided panel. */
+  guidedTrustNote: string;
+  /** True when proposal used_fallback — drives fallback trust copy only. */
+  guidedUsedFallback: boolean;
   guidedFactRows: GuidedFactRow[];
   guidedMissingMessage: string;
   guidedMissingCount: number;
@@ -87,6 +99,8 @@ const EMPTY_GUIDED: GuidedUiState = {
   guidedPhase: "describe",
   guidedTitle: "AI已帮您整理",
   guidedDraftLabel: "AI草稿，尚未确认",
+  guidedTrustNote: "",
+  guidedUsedFallback: false,
   guidedFactRows: [],
   guidedMissingMessage: "",
   guidedMissingCount: 0,
@@ -102,6 +116,11 @@ const EMPTY_GUIDED: GuidedUiState = {
   guidedShowAllFields: true,
   guidedShowConfirm: false,
 };
+
+/** Map backend used_fallback → calm customer trust copy (never shows reason/category). */
+export function resolveGuidedTrustNote(usedFallback: boolean): string {
+  return usedFallback ? GUIDED_TRUST_NOTE_FALLBACK : GUIDED_TRUST_NOTE_NORMAL;
+}
 
 export function emptyGuidedUiState(): GuidedUiState {
   return { ...EMPTY_GUIDED };
@@ -130,9 +149,13 @@ export function buildGuidedUiState(
   phase: GuidedPhase,
 ): GuidedUiState {
   if (!proposal) {
+    // No proposal → treat as fallback-capable manual path (intake still usable).
+    const fallbackNote = resolveGuidedTrustNote(true);
     return {
       ...emptyGuidedUiState(),
       guidedPhase: phase === "manual_all" ? "manual_all" : "describe",
+      guidedTrustNote: phase === "manual_all" ? fallbackNote : "",
+      guidedUsedFallback: phase === "manual_all",
       guidedShowAllFields: true,
       guidedHideStaticFields: false,
       guidedShowConfirm: false,
@@ -144,6 +167,7 @@ export function buildGuidedUiState(
     : [];
   const missingCount = Number(g.missing_count ?? fields.length) || 0;
   const actions = g.confirm_actions || {};
+  const usedFallback = Boolean(proposal.used_fallback);
 
   const showConfirm = phase === "confirm";
   const showAll = phase === "manual_all" || phase === "describe";
@@ -154,6 +178,8 @@ export function buildGuidedUiState(
     guidedPhase: phase,
     guidedTitle: String(g.title_zh || "AI已帮您整理"),
     guidedDraftLabel: String(g.draft_label_zh || "AI草稿，尚未确认"),
+    guidedTrustNote: resolveGuidedTrustNote(usedFallback),
+    guidedUsedFallback: usedFallback,
     guidedFactRows: Array.isArray(g.fact_rows) ? g.fact_rows.slice(0, 8) : [],
     guidedMissingMessage: String(
       g.missing_message_zh ||

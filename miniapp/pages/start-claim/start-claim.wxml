@@ -89,9 +89,13 @@
         </block>
 
         <!-- Step B: AI understanding panel -->
-        <view wx:if="{{guidedFactRows.length}}" class="guided-panel">
-          <view class="guided-panel-title">{{guidedTitle}}</view>
-          <view class="guided-draft-label">{{guidedDraftLabel}}</view>
+        <view wx:if="{{guidedFactRows.length || storyAssistNote}}" class="guided-panel">
+          <view class="guided-panel-title" wx:if="{{guidedFactRows.length}}">{{guidedTitle}}</view>
+          <view class="guided-draft-label" wx:if="{{guidedFactRows.length}}">{{guidedDraftLabel}}</view>
+          <view
+            wx:if="{{storyAssistNote}}"
+            class="guided-trust-note {{guidedUsedFallback ? 'guided-trust-note-fallback' : ''}}"
+          >{{storyAssistNote}}</view>
           <view wx:for="{{guidedFactRows}}" wx:key="key" class="guided-fact-row">
             <text class="guided-fact-label">{{item.label_zh}}</text>
             <text class="guided-fact-value guided-fact-{{item.status}}">{{item.value_zh}}</text>
@@ -234,24 +238,25 @@
               <view>受伤：{{injuryStatus === 'no' ? '没有受伤' : (injuryStatus === 'yes' ? '有人受伤' : (injuryStatus === 'unknown' ? '不确定' : '—'))}}</view>
             </view>
             <view wx:if="{{guidedConflictMessage}}" class="guided-conflict">{{guidedConflictMessage}}</view>
+            <!-- Exactly one primary CTA; edit / redescribe stay available as demoted text actions -->
             <button
               class="btn-primary guided-confirm-btn"
               hover-class="btn-primary-hover"
               bindtap="onConfirmAndSubmit"
               disabled="{{busy.submitting}}"
             >{{guidedAcceptLabel}}</button>
-            <button
-              class="btn-secondary"
-              hover-class="btn-secondary-hover"
-              bindtap="onEditFromConfirm"
-              disabled="{{busy.submitting}}"
-            >{{guidedEditLabel}}</button>
-            <button
-              class="btn-secondary"
-              hover-class="btn-secondary-hover"
-              bindtap="onRedescribe"
-              disabled="{{busy.submitting}}"
-            >{{guidedRedescribeLabel}}</button>
+            <view class="guided-confirm-secondary">
+              <view
+                class="guided-confirm-link"
+                hover-class="guided-confirm-link-hover"
+                bindtap="onEditFromConfirm"
+              >{{guidedEditLabel}}</view>
+              <view
+                class="guided-confirm-link"
+                hover-class="guided-confirm-link-hover"
+                bindtap="onRedescribe"
+              >{{guidedRedescribeLabel}}</view>
+            </view>
           </view>
         </block>
       </view>

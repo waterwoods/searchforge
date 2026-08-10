@@ -214,3 +214,36 @@
 .start-claim-page .guided-confirm-btn {
   margin-bottom: 12rpx;
 }
+
+.start-claim-page .guided-trust-note {
+  margin: 8rpx 0 12rpx;
+  font-size: 24rpx;
+  color: #4a5568;
+  line-height: 1.45;
+}
+
+.start-claim-page .guided-trust-note-fallback {
+  color: #9c4221;
+}
+
+.start-claim-page .guided-confirm-secondary {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 40rpx;
+  padding: 8rpx 0 4rpx;
+}
+
+.start-claim-page .guided-confirm-link {
+  font-size: 26rpx;
+  color: #718096;
+  text-decoration: underline;
+  padding: 12rpx 8rpx;
+  min-height: 44rpx;
+  line-height: 1.4;
+}
+
+.start-claim-page .guided-confirm-link-hover {
+  opacity: 0.7;
+}

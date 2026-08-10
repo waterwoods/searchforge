@@ -3,13 +3,25 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   allFollowupsSatisfied,
   buildGuidedUiState,
   emptyGuidedUiState,
+  GUIDED_TRUST_NOTE_FALLBACK,
+  GUIDED_TRUST_NOTE_NORMAL,
   resolveGuidedPhase,
+  resolveGuidedTrustNote,
   type AccidentStoryProposalLike,
 } from "../utils/guidedAccidentStory";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const startClaimWxml = readFileSync(
+  join(here, "../pages/start-claim/start-claim.wxml"),
+  "utf8",
+);
 
 const incompleteProposal: AccidentStoryProposalLike = {
   incident_summary: "追尾草稿",
@@ -112,5 +124,66 @@ describe("guidedAccidentStory", () => {
     const empty = emptyGuidedUiState();
     assert.equal(empty.guidedPhase, "describe");
     assert.equal(empty.guidedShowAllFields, true);
+  });
+
+  it("normal guided success shows calm trust note (not fallback)", () => {
+    assert.equal(resolveGuidedTrustNote(false), GUIDED_TRUST_NOTE_NORMAL);
+    const ui = buildGuidedUiState(incompleteProposal, "followup");
+    assert.equal(ui.guidedUsedFallback, false);
+    assert.equal(ui.guidedTrustNote, GUIDED_TRUST_NOTE_NORMAL);
+    assert.match(ui.guidedTrustNote, /请确认后再提交/);
+    assert.doesNotMatch(ui.guidedTrustNote, /fallback|category|timeout/i);
+  });
+
+  it("used_fallback shows customer fallback copy and does not block confirm", () => {
+    const fallbackProposal: AccidentStoryProposalLike = {
+      ...completeProposal,
+      used_fallback: true,
+      guided_view: {
+        ...completeProposal.guided_view,
+        missing_count: 0,
+        fact_rows: [
+          { key: "injury_status", label_zh: "受伤情况", value_zh: "没有受伤", status: "known" },
+        ],
+      },
+    };
+    assert.equal(resolveGuidedTrustNote(true), GUIDED_TRUST_NOTE_FALLBACK);
+    const ui = buildGuidedUiState(fallbackProposal, "confirm");
+    assert.equal(ui.guidedUsedFallback, true);
+    assert.equal(ui.guidedTrustNote, GUIDED_TRUST_NOTE_FALLBACK);
+    assert.match(ui.guidedTrustNote, /仍可直接确认或手动补充/);
+    assert.doesNotMatch(ui.guidedTrustNote, /fallback_reason|timeout|category/i);
+    // Fallback never blocks intake — confirm CTA and edit paths remain.
+    assert.equal(ui.guidedShowConfirm, true);
+    assert.equal(ui.guidedAcceptLabel, "信息正确，提交");
+    assert.equal(ui.guidedEditLabel, "修改");
+    assert.equal(ui.guidedRedescribeLabel, "重新描述");
+  });
+
+  it("null proposal manual_all still usable with fallback trust note", () => {
+    const ui = buildGuidedUiState(null, "manual_all");
+    assert.equal(ui.guidedUsedFallback, true);
+    assert.equal(ui.guidedTrustNote, GUIDED_TRUST_NOTE_FALLBACK);
+    assert.equal(ui.guidedShowAllFields, true);
+    assert.equal(ui.guidedShowConfirm, false);
+  });
+
+  it("Start Claim WXML renders trust note and one primary confirm CTA", () => {
+    assert.match(startClaimWxml, /storyAssistNote/);
+    assert.match(startClaimWxml, /guided-trust-note/);
+    assert.match(startClaimWxml, /guidedUsedFallback/);
+    const confirmStart = startClaimWxml.indexOf("<!-- Step D: confirmation review -->");
+    assert.ok(confirmStart > 0);
+    const confirmEnd = startClaimWxml.indexOf("errorMessage", confirmStart);
+    const confirmBlock = startClaimWxml.slice(confirmStart, confirmEnd);
+    // Exactly one primary button element (do not match hover-class="btn-primary-hover").
+    const primaryButtons = confirmBlock.match(/(?:^|\s)class="btn-primary(?:\s|")/gm) || [];
+    assert.equal(primaryButtons.length, 1);
+    assert.match(confirmBlock, /onConfirmAndSubmit/);
+    assert.match(confirmBlock, /guided-confirm-link/);
+    assert.match(confirmBlock, /onEditFromConfirm/);
+    assert.match(confirmBlock, /onRedescribe/);
+    // Secondary actions are text links, not competing buttons.
+    assert.doesNotMatch(confirmBlock, /btn-secondary/);
   });
 });

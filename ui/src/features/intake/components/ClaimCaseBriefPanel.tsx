@@ -1,5 +1,5 @@
 /**
- * P19H-3e-1 / P27-B2 — Claim conclusion panel for Workbench (one conclusion + one next action).
+ * P19H-3e-1 / P27-B2 — Claim case brief panel for Workbench (one summary + one next action).
  * Happy Path Loop 1 — Cap2 Must Have suggestion + 确认资料已齐 CTA.
  */
 import { Alert, Button, Card, Tag, Typography } from 'antd';
@@ -85,12 +85,12 @@ export function ClaimCaseBriefPanel({
     return (
       <Card
         size="small"
-        title="理赔结论"
+        title="案件摘要"
         style={{ marginBottom: 12 }}
         styles={{ body: { padding: '12px 16px' } }}
       >
         <Text type="secondary" style={{ fontSize: 12 }}>
-          理赔结论暂未生成
+          案件摘要暂未生成
         </Text>
       </Card>
     );
@@ -173,7 +173,7 @@ export function ClaimCaseBriefPanel({
   return (
     <Card
       size="small"
-      title="理赔结论"
+      title="案件摘要"
       style={{ marginBottom: 12 }}
       styles={{ body: { padding: '12px 16px' } }}
     >
@@ -182,6 +182,92 @@ export function ClaimCaseBriefPanel({
         <Tag color="blue" style={{ marginBottom: 12 }} data-testid="policy-context-evidence-label">
           {policyEvidenceLabel}
         </Tag>
+      ) : null}
+
+      {canAckSupplement ? (
+        <div
+          data-testid="supplement-review-ack-banner"
+          style={{
+            marginBottom: 12,
+            padding: '12px 14px',
+            background: '#fff7e6',
+            border: '1px solid #ffd591',
+            borderRadius: 8,
+          }}
+        >
+          <Text strong style={{ display: 'block', fontSize: 14, color: '#ad6800', marginBottom: 4 }}>
+            {CLAIM_PRIMARY_STATUS.waitingOfficeReview}
+          </Text>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 10 }}>
+            客户已提交补充资料。核对后继续下一步；不会结束案件。
+          </Text>
+          <Button
+            type="primary"
+            size="middle"
+            icon={<CheckCircleOutlined />}
+            loading={Boolean(acknowledgeSupplementReviewSaving)}
+            onClick={() => onAcknowledgeSupplementReview?.()}
+            block
+          >
+            已核对补充资料
+          </Button>
+        </div>
+      ) : null}
+      {canAccept ? (
+        <div
+          data-testid="office-materials-accept-banner"
+          style={{
+            marginBottom: 12,
+            padding: '12px 14px',
+            background: '#e6f4ff',
+            border: '1px solid #91caff',
+            borderRadius: 8,
+          }}
+        >
+          <Text strong style={{ display: 'block', fontSize: 14, color: '#0958d9', marginBottom: 4 }}>
+            {suggestion}
+          </Text>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 10 }}>
+            事故必填项已齐。确认后进入办公室处理；不会结束案件。
+          </Text>
+          <Button
+            type="primary"
+            size="middle"
+            icon={<CheckCircleOutlined />}
+            loading={Boolean(acceptOfficeMaterialsSaving)}
+            onClick={() => onAcceptOfficeMaterials?.()}
+            block
+          >
+            确认资料已齐
+          </Button>
+        </div>
+      ) : null}
+      {showOfficeProcessingBanner ? (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="资料已齐，等待办公室处理"
+        />
+      ) : null}
+
+      {/* Early scan: next action before dense facts / AI layers */}
+      {resolvedNext ? (
+        <div
+          data-testid="claim-brief-next-action"
+          style={{
+            marginBottom: 12,
+            padding: '10px 12px',
+            background: '#f0f5ff',
+            border: '1px solid #adc6ff',
+            borderRadius: 6,
+          }}
+        >
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+            下一步
+          </Text>
+          <Text style={{ fontSize: 14, fontWeight: 600, color: '#10239e' }}>{resolvedNext}</Text>
+        </div>
       ) : null}
 
       {brief.accident_story_assistant?.ai_involved ? (
@@ -272,73 +358,6 @@ export function ClaimCaseBriefPanel({
             </Text>
           ) : null}
         </div>
-      ) : null}
-
-      {canAckSupplement ? (
-        <div
-          data-testid="supplement-review-ack-banner"
-          style={{
-            marginBottom: 12,
-            padding: '12px 14px',
-            background: '#fff7e6',
-            border: '1px solid #ffd591',
-            borderRadius: 8,
-          }}
-        >
-          <Text strong style={{ display: 'block', fontSize: 14, color: '#ad6800', marginBottom: 4 }}>
-            {CLAIM_PRIMARY_STATUS.waitingOfficeReview}
-          </Text>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 10 }}>
-            客户已提交补充资料。核对后继续下一步；不会结束案件。
-          </Text>
-          <Button
-            type="primary"
-            size="middle"
-            icon={<CheckCircleOutlined />}
-            loading={Boolean(acknowledgeSupplementReviewSaving)}
-            onClick={() => onAcknowledgeSupplementReview?.()}
-            block
-          >
-            已核对补充资料
-          </Button>
-        </div>
-      ) : null}
-      {canAccept ? (
-        <div
-          data-testid="office-materials-accept-banner"
-          style={{
-            marginBottom: 12,
-            padding: '12px 14px',
-            background: '#e6f4ff',
-            border: '1px solid #91caff',
-            borderRadius: 8,
-          }}
-        >
-          <Text strong style={{ display: 'block', fontSize: 14, color: '#0958d9', marginBottom: 4 }}>
-            {suggestion}
-          </Text>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 10 }}>
-            事故必填项已齐。确认后进入办公室处理；不会结束案件。
-          </Text>
-          <Button
-            type="primary"
-            size="middle"
-            icon={<CheckCircleOutlined />}
-            loading={Boolean(acceptOfficeMaterialsSaving)}
-            onClick={() => onAcceptOfficeMaterials?.()}
-            block
-          >
-            确认资料已齐
-          </Button>
-        </div>
-      ) : null}
-      {showOfficeProcessingBanner ? (
-        <Alert
-          type="success"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="资料已齐，等待办公室处理"
-        />
       ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 12 }}>
@@ -456,23 +475,6 @@ export function ClaimCaseBriefPanel({
               </li>
             ))}
           </ul>
-        </div>
-      ) : null}
-
-      {resolvedNext ? (
-        <div
-          style={{
-            marginBottom: timelinePreview.length > 0 ? 12 : 4,
-            padding: '10px 12px',
-            background: '#f0f5ff',
-            border: '1px solid #adc6ff',
-            borderRadius: 6,
-          }}
-        >
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-            下一步
-          </Text>
-          <Text style={{ fontSize: 14, fontWeight: 600, color: '#10239e' }}>{resolvedNext}</Text>
         </div>
       ) : null}
 

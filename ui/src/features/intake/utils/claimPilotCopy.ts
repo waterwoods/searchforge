@@ -95,7 +95,7 @@ export function normalizeClaimPilotStatus(raw?: string | null): ClaimPilotStatus
 /** Request More — broker-facing Chinese office copy (labels / chips / toasts). */
 export const CLAIM_REQUEST_MORE_COPY = {
   panelTitle: '请客户补充',
-  panelSubtitle: '先看清理赔结论，再向客户发出一项补充请求。',
+  panelSubtitle: '先看清案件摘要，再向客户发出一项补充请求。',
   sendButton: '发出补充请求',
   copyLink: '复制链接',
   refreshStatus: '刷新进度',

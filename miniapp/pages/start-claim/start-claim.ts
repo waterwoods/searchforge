@@ -141,6 +141,8 @@ type PageData = {
   guidedPhase: GuidedPhase;
   guidedTitle: string;
   guidedDraftLabel: string;
+  guidedTrustNote: string;
+  guidedUsedFallback: boolean;
   guidedFactRows: GuidedUiState["guidedFactRows"];
   guidedMissingMessage: string;
   guidedMissingCount: number;
@@ -622,24 +624,26 @@ Page({
       this._storyProposal = null;
       this._guidedConfirmed = false;
       this._forceManualAll = false;
+      const cleared = emptyGuidedUiState();
       this.setData({
         storyAssistSummary: "",
         storyAssistQuestions: [],
         storyAssistNote: "",
-        ...emptyGuidedUiState(),
+        ...cleared,
       });
       return;
     }
     const proposal = await proposeAccidentStory(story);
     if (!proposal) {
-      // Fallback: keep manual form usable.
+      // Fallback: keep manual form usable (trust note explains calmly).
       this._storyProposal = null;
       this._forceManualAll = true;
+      const guided = buildGuidedUiState(null, "manual_all");
       this.setData({
         storyAssistSummary: "",
         storyAssistQuestions: [],
-        storyAssistNote: "",
-        ...buildGuidedUiState(null, "manual_all"),
+        storyAssistNote: guided.guidedTrustNote,
+        ...guided,
       });
       return;
     }
@@ -676,7 +680,7 @@ Page({
     this.setData({
       storyAssistSummary: String(proposal.incident_summary || "").trim(),
       storyAssistQuestions: questions,
-      storyAssistNote: "AI 整理草稿（请核对；未确认前不会当作正式事实）",
+      storyAssistNote: guided.guidedTrustNote,
       ...guided,
     });
   },
