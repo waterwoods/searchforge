@@ -21,4 +21,9 @@ export const config = {
    * Enable only in gitignored config.local.ts when Founder validates Cap 01–03.
    */
   smartClaimStartEnabled: false,
+  /**
+   * Voice-first Guided Intake V1 — large mic front door on Start Claim.
+   * Escape: ?mode=text|full|legacy or ?voice=0 keeps existing text/full form.
+   */
+  voiceFirstIntakeEnabled: true,
 };

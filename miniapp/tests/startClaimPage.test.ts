@@ -107,9 +107,13 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
     _divertedToHome: false,
     _gateInFlight: false,
     _navigatingAway: false,
-    _launchOptions: { entry: "form" },
+    _launchOptions: { entry: "form", mode: "text" },
     _smartPlan: null,
     _confirmSelections: {},
+    _storyProposal: null,
+    _guidedConfirmed: false,
+    _forceManualAll: false,
+    _voiceFirstFailure: null,
     _form: {
       description: "",
       accidentDatetime: "",
@@ -131,9 +135,11 @@ function createPageContext(page: CapturedPageOptions, overrides?: Record<string,
 async function openAuthorizedStartClaimForm(
   page: CapturedPageOptions,
   ctx: Record<string, any>,
+  launch: Record<string, string> = { entry: "form", mode: "text" },
 ): Promise<void> {
   installStartNewClaimContext();
-  await page.onLoad.call(ctx, { entry: "form" });
+  ctx._launchOptions = { ...launch };
+  await page.onLoad.call(ctx, launch);
   assert.equal(ctx.data.formAuthorized, true);
   assert.equal(ctx.data.contextPhase, "ready");
 }
@@ -162,6 +168,10 @@ test("start-claim wxml asks accident Must Have and never teaches VIN-first", () 
   assert.match(wxml, /onTapRecord/);
   assert.match(wxml, /showRecordBtn/);
   assert.match(wxml, /smart-claim-start-panel/);
+  assert.match(wxml, /showVoiceFrontDoor/);
+  assert.match(wxml, /说一下发生了什么|voiceFirstMicLabel/);
+  assert.match(wxml, /不方便录音|voiceFirstSecondaryText/);
+  assert.match(wxml, /完整表单|voiceFirstFullFormText/);
   assert.equal(wxml.includes("Coming soon"), false);
   assert.equal(wxml.includes("Coming Later"), false);
   assert.equal(wxml.includes("请填写 VIN"), false);

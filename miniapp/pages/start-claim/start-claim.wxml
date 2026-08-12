@@ -48,7 +48,46 @@
       bind:secondarytap="onSmartSecondaryTap"
     />
 
-    <block wx:if="{{smartUi.uiMode === 'legacy' || (smartUi.showAccidentForm && smartUi.canShowAccidentBlock)}}">
+    <!-- Voice-first Guided Intake V1 front door (additive; text/full remain available) -->
+    <block wx:if="{{showVoiceFrontDoor && (smartUi.uiMode === 'legacy' || (smartUi.showAccidentForm && smartUi.canShowAccidentBlock))}}">
+      <view class="card voice-first-card">
+        <view class="voice-first-title">{{voiceFirstTitle}}</view>
+        <view class="voice-first-status">{{voiceFirstStatus}}</view>
+        <view class="voice-first-mic-wrap">
+          <button
+            wx:if="{{!voiceFirstShowStop}}"
+            class="voice-first-mic"
+            hover-class="voice-first-mic-hover"
+            disabled="{{voiceFirstMicDisabled || busy.submitting}}"
+            bindtap="onTapRecord"
+          >录音</button>
+          <button
+            wx:if="{{voiceFirstShowStop}}"
+            class="voice-first-mic voice-first-mic-stop"
+            hover-class="voice-first-mic-hover"
+            bindtap="onTapStop"
+          >停止</button>
+        </view>
+        <view class="voice-first-mic-label">{{voiceFirstMicLabel}}</view>
+        <view
+          wx:if="{{voiceFirstPhase === 'processing_speech' || voiceFirstPhase === 'organizing'}}"
+          class="voice-first-progress"
+        >{{voiceFirstStatus}}</view>
+        <view
+          class="voice-first-secondary"
+          hover-class="voice-first-link-hover"
+          bindtap="onChooseTextInput"
+        >{{voiceFirstSecondaryText}}</view>
+        <view
+          class="voice-first-tertiary"
+          hover-class="voice-first-link-hover"
+          bindtap="onChooseFullForm"
+        >{{voiceFirstFullFormText}}</view>
+        <view class="safety-footer">{{shellSafetyCopy}}</view>
+      </view>
+    </block>
+
+    <block wx:elif="{{smartUi.uiMode === 'legacy' || (smartUi.showAccidentForm && smartUi.canShowAccidentBlock)}}">
       <view class="card">
         <view class="card-title">{{formTitle}}</view>
         <view class="card-subtitle">{{formSubtitle}}</view>

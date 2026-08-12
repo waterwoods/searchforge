@@ -188,10 +188,27 @@ def build_guided_customer_view(state: AccidentStoryState) -> dict[str, Any]:
     loc_zh, loc_status = (location, "known") if location else ("待确认", "pending")
     type_zh, type_status = (accident_type, "known") if accident_type else ("待确认", "pending")
 
+    summary = str(state.get("incident_summary") or "").strip()
+    if not summary:
+        summary = str(state.get("normalized_story") or raw or "").strip()
+        if len(summary) > 48:
+            summary = summary[:48] + "…"
+    what_zh, what_status = (summary, "known") if summary else ("待确认", "pending")
+
+    vehicles = [str(v).strip() for v in list(state.get("involved_vehicles") or []) if str(v).strip()]
+    parties = [str(p).strip() for p in list(state.get("involved_parties") or []) if str(p).strip()]
+    involved_bits = [*vehicles[:3], *parties[:2]]
+    if involved_bits:
+        involved_zh, involved_status = ("、".join(involved_bits), "known")
+    else:
+        involved_zh, involved_status = ("待确认", "pending")
+
     fact_rows = [
+        {"key": "what_happened", "label_zh": "发生了什么", "value_zh": what_zh, "status": what_status},
         {"key": "accident_type", "label_zh": "事故类型", "value_zh": type_zh, "status": type_status},
         {"key": "accident_datetime", "label_zh": "事故时间", "value_zh": time_zh, "status": time_status},
         {"key": "accident_location", "label_zh": "事故地点", "value_zh": loc_zh, "status": loc_status},
+        {"key": "involved", "label_zh": "涉及车辆/人员", "value_zh": involved_zh, "status": involved_status},
         {"key": "injury_status", "label_zh": "受伤情况", "value_zh": injury_zh, "status": injury_status},
     ]
 

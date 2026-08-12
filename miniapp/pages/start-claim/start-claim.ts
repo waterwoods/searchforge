@@ -84,6 +84,17 @@ import {
   type VoicePhase,
   type VoiceSession,
 } from "../../utils/voiceStoryInput";
+import {
+  classifyVoiceFirstFailure,
+  emptyVoiceFirstUi,
+  leaveVoiceFrontDoor,
+  resolveVoiceFrontDoor,
+  voiceFirstFailureCopy,
+  voiceFirstUiPatch,
+  type VoiceFirstFailureKind,
+  type VoiceFirstPhase,
+  type VoiceFrontDoor,
+} from "../../utils/voiceFirstIntake";
 
 type RecorderState = {
   recorder: WechatMiniprogram.RecorderManager | null;
@@ -157,6 +168,19 @@ type PageData = {
   guidedHideStaticFields: boolean;
   guidedShowAllFields: boolean;
   guidedShowConfirm: boolean;
+  /** Voice-first Guided Intake V1 front door (additive; escape via mode=text|full). */
+  frontDoor: VoiceFrontDoor;
+  showVoiceFrontDoor: boolean;
+  voiceFirstPhase: VoiceFirstPhase;
+  voiceFirstTitle: string;
+  voiceFirstMicLabel: string;
+  voiceFirstStatus: string;
+  voiceFirstSecondaryText: string;
+  voiceFirstFullFormText: string;
+  voiceFirstRetryText: string;
+  voiceFirstShowRetry: boolean;
+  voiceFirstShowStop: boolean;
+  voiceFirstMicDisabled: boolean;
   busy: {
     submitting: boolean;
     uploading: boolean;
@@ -185,11 +209,15 @@ Page({
   _storyProposal: null as AccidentStoryProposal | null,
   _guidedConfirmed: false,
   _forceManualAll: false,
+  _voiceFirstFailure: null as VoiceFirstFailureKind | null,
 
   data: {
     ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
     ...initialVoiceUiData(),
     ...emptyGuidedUiState(),
+    ...emptyVoiceFirstUi(
+      resolveVoiceFrontDoor({}, { enabled: Boolean(appConfig.voiceFirstIntakeEnabled) }),
+    ),
     brokerName: appConfig.brokerDisplayName || "陈总",
     shellSafetyCopy: START_CLAIM_SAFETY_COPY,
     formAuthorized: false,
@@ -355,13 +383,29 @@ Page({
         this._form = createEmptyCanonicalForm();
         this._smartPlan = null;
         this._confirmSelections = {};
+        this._storyProposal = null;
+        this._guidedConfirmed = false;
+        this._forceManualAll = false;
+        this._voiceFirstFailure = null;
+        const frontDoor = resolveVoiceFrontDoor(this._launchOptions, {
+          enabled: Boolean(appConfig.voiceFirstIntakeEnabled),
+        });
+        if (frontDoor === "full") {
+          this._forceManualAll = true;
+        }
         const validated = validateStartClaimForm({
           ...this._form,
           reachabilityKnown: true,
         });
+        const guidedSeed =
+          frontDoor === "full"
+            ? buildGuidedUiState(null, "manual_all")
+            : emptyGuidedUiState();
         this.setData({
           ...createEmptyStartClaimShell(START_CLAIM_MISSING_HINT),
           ...initialVoiceUiData(),
+          ...guidedSeed,
+          ...emptyVoiceFirstUi(frontDoor),
           canSubmit: validated.canSubmit,
           missingHint: validated.missingHint || START_CLAIM_MISSING_HINT,
           formAuthorized: true,
@@ -376,6 +420,9 @@ Page({
           formTitle: "告诉陈总发生了什么",
           formSubtitle:
             "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+          storyAssistSummary: "",
+          storyAssistQuestions: [],
+          storyAssistNote: guidedSeed.guidedTrustNote || "",
         });
         await this.loadSmartClaimStartPlan();
       } else {
@@ -560,6 +607,51 @@ Page({
     return this.authorizeFormEntry({ preserveDraft: false });
   },
 
+  /** Voice-first → existing text describe path (never a dead end). */
+  onChooseTextInput() {
+    if (this.data.busy.submitting || this.data.voicePhase === "transcribing") return;
+    this._voiceFirstFailure = null;
+    this._forceManualAll = false;
+    this.setData({
+      ...leaveVoiceFrontDoor("text"),
+      ...emptyGuidedUiState(),
+      storyAssistSummary: "",
+      storyAssistQuestions: [],
+      storyAssistNote: "",
+      formTitle: "告诉陈总发生了什么",
+      formSubtitle: "请用文字描述事故经过。也可稍后录音转文字。",
+    });
+  },
+
+  /** Voice-first → existing full Must-Have form (legacy path preserved). */
+  onChooseFullForm() {
+    if (this.data.busy.submitting || this.data.voicePhase === "transcribing") return;
+    this._voiceFirstFailure = null;
+    this._forceManualAll = true;
+    const guided = buildGuidedUiState(this._storyProposal, "manual_all");
+    this.setData({
+      ...leaveVoiceFrontDoor("full"),
+      ...guided,
+      storyAssistNote: guided.guidedTrustNote,
+      formTitle: "告诉陈总发生了什么",
+      formSubtitle: "请填写事故经过、时间、地点和是否受伤。",
+    });
+  },
+
+  _setVoiceFirstPhase(
+    phase: VoiceFirstPhase,
+    opts?: { failureKind?: VoiceFirstFailureKind | null; busy?: boolean },
+  ) {
+    if (opts?.failureKind) this._voiceFirstFailure = opts.failureKind;
+    if (phase !== "failed") this._voiceFirstFailure = null;
+    this.setData(
+      voiceFirstUiPatch(this.data.frontDoor as VoiceFrontDoor, phase, {
+        busy: opts?.busy || this.data.busy.submitting || this.data.busy.uploading,
+        failureKind: this._voiceFirstFailure,
+      }),
+    );
+  },
+
   /**
    * One canonical merge + one validator for CTA, missing hint, and submit.
    * Reads/writes `_form` synchronously so setData races cannot wipe siblings.
@@ -618,20 +710,25 @@ Page({
     void this._refreshStoryAssist();
   },
 
-  async _refreshStoryAssist() {
+  async _refreshStoryAssist(options?: { fromVoice?: boolean }) {
+    const fromVoice = Boolean(options?.fromVoice);
     const story = String(this._form.description || "").trim();
     if (story.length < 8) {
       this._storyProposal = null;
       this._guidedConfirmed = false;
-      this._forceManualAll = false;
-      const cleared = emptyGuidedUiState();
-      this.setData({
-        storyAssistSummary: "",
-        storyAssistQuestions: [],
-        storyAssistNote: "",
-        ...cleared,
-      });
+      if (!this._forceManualAll) {
+        const cleared = emptyGuidedUiState();
+        this.setData({
+          storyAssistSummary: "",
+          storyAssistQuestions: [],
+          storyAssistNote: "",
+          ...cleared,
+        });
+      }
       return;
+    }
+    if (fromVoice && this.data.showVoiceFrontDoor) {
+      this._setVoiceFirstPhase("organizing", { busy: true });
     }
     const proposal = await proposeAccidentStory(story);
     if (!proposal) {
@@ -639,11 +736,16 @@ Page({
       this._storyProposal = null;
       this._forceManualAll = true;
       const guided = buildGuidedUiState(null, "manual_all");
+      const leaveVoice = fromVoice || this.data.showVoiceFrontDoor
+        ? leaveVoiceFrontDoor("text")
+        : {};
       this.setData({
+        ...leaveVoice,
         storyAssistSummary: "",
         storyAssistQuestions: [],
-        storyAssistNote: guided.guidedTrustNote,
+        storyAssistNote: guided.guidedTrustNote || voiceFirstFailureCopy("ai_failed"),
         ...guided,
+        formSubtitle: "AI暂时无法完整整理，请直接补充关键信息后提交。",
       });
       return;
     }
@@ -677,11 +779,15 @@ Page({
     const questions = Array.isArray(proposal.followup_questions)
       ? proposal.followup_questions.map((q) => String(q || "").trim()).filter(Boolean).slice(0, 3)
       : [];
+    const leaveVoice =
+      fromVoice || this.data.showVoiceFrontDoor ? leaveVoiceFrontDoor("text") : {};
     this.setData({
+      ...leaveVoice,
       storyAssistSummary: String(proposal.incident_summary || "").trim(),
       storyAssistQuestions: questions,
       storyAssistNote: guided.guidedTrustNote,
       ...guided,
+      formSubtitle: "请核对 AI 整理结果；不确定的请补充后再确认提交。",
     });
   },
 
@@ -711,17 +817,37 @@ Page({
     this._storyProposal = null;
     this._guidedConfirmed = false;
     this._forceManualAll = false;
+    this._voiceFirstFailure = null;
     this._applyFormPatch({
       description: "",
       accidentDatetime: "",
       accidentLocation: "",
       injuryStatus: "",
     });
+    const preferVoice =
+      Boolean(appConfig.voiceFirstIntakeEnabled) &&
+      resolveVoiceFrontDoor(this._launchOptions, {
+        enabled: Boolean(appConfig.voiceFirstIntakeEnabled),
+      }) === "voice";
+    if (preferVoice) {
+      this.setData({
+        storyAssistSummary: "",
+        storyAssistQuestions: [],
+        storyAssistNote: "",
+        ...emptyGuidedUiState(),
+        ...emptyVoiceFirstUi("voice"),
+        ...initialVoiceUiData(),
+        formSubtitle:
+          "可录音转文字，也可直接打字。先说清楚事故情况即可。VIN、保险卡等证件资料，如需再补充会通知您。",
+      });
+      return;
+    }
     this.setData({
       storyAssistSummary: "",
       storyAssistQuestions: [],
       storyAssistNote: "",
       ...emptyGuidedUiState(),
+      ...leaveVoiceFrontDoor("text"),
     });
   },
 
@@ -760,10 +886,14 @@ Page({
 
   onTapRecord() {
     if (this.data.busy.submitting || this.data.voicePhase === "transcribing") return;
+    if (this.data.voiceFirstMicDisabled && this.data.showVoiceFrontDoor) return;
 
     const recorder = this._ensureRecorder();
     if (!recorder) {
       this._setVoicePhase("stt_failed", "当前环境无法录音，请直接打字填写。");
+      if (this.data.showVoiceFrontDoor) {
+        this._setVoiceFirstPhase("failed", { failureKind: "unsupported" });
+      }
       return;
     }
 
@@ -780,6 +910,9 @@ Page({
           confirmText: "知道了",
         });
         this._setVoicePhase("stt_failed", "未获得麦克风权限，请直接打字填写。");
+        if (this.data.showVoiceFrontDoor) {
+          this._setVoiceFirstPhase("failed", { failureKind: "mic_denied" });
+        }
       },
     });
   },
@@ -790,6 +923,9 @@ Page({
       recorderState(this).recorder?.stop();
     } catch {
       this._setVoicePhase("stt_failed", "停止录音失败，请直接打字填写。");
+      if (this.data.showVoiceFrontDoor) {
+        this._setVoiceFirstPhase("failed", { failureKind: "recording_failed" });
+      }
     }
   },
 
@@ -814,6 +950,9 @@ Page({
       recorder.onStart(() => {
         state.startedAt = Date.now();
         this._setVoicePhase("recording", "正在录音…说完后点停止");
+        if (this.data.showVoiceFrontDoor) {
+          this._setVoiceFirstPhase("recording");
+        }
       });
       recorder.onStop((res) => {
         void this._onRecordStop(res);
@@ -822,6 +961,9 @@ Page({
         this._setVoicePhase("stt_failed", "录音失败，请直接打字填写。", {
           busy: { ...this.data.busy, uploading: false },
         });
+        if (this.data.showVoiceFrontDoor) {
+          this._setVoiceFirstPhase("failed", { failureKind: "recording_failed" });
+        }
       });
       state.bound = true;
     }
@@ -830,12 +972,18 @@ Page({
 
   _startRecording(recorder: WechatMiniprogram.RecorderManager) {
     void emitStartClaimVoiceRecordStart();
-    console.info("[p28_voice_metric]", { event: "voice_record_start", surface: "start_claim" });
+    console.info("[p28_voice_metric]", {
+      event: "voice_record_start",
+      surface: this.data.showVoiceFrontDoor ? "voice_first" : "start_claim",
+    });
     this.setData({
       voiceHint: "正在录音…",
       voiceSession: null,
       ...voiceUiPatch("recording", this.data.busy),
     });
+    if (this.data.showVoiceFrontDoor) {
+      this._setVoiceFirstPhase("recording");
+    }
     try {
       recorder.start({
         duration: VOICE_MAX_RECORD_MS,
@@ -846,6 +994,9 @@ Page({
       });
     } catch {
       this._setVoicePhase("stt_failed", "无法开始录音，请直接打字填写。");
+      if (this.data.showVoiceFrontDoor) {
+        this._setVoiceFirstPhase("failed", { failureKind: "recording_failed" });
+      }
     }
   },
 
@@ -856,8 +1007,12 @@ Page({
       0,
       Number(res?.duration || 0) || (state.startedAt ? Date.now() - state.startedAt : 0),
     );
+    const fromVoiceDoor = Boolean(this.data.showVoiceFrontDoor);
     if (!tempFilePath) {
       this._setVoicePhase("stt_failed", "录音文件无效，请直接打字填写。");
+      if (fromVoiceDoor) {
+        this._setVoiceFirstPhase("failed", { failureKind: "recording_failed" });
+      }
       return;
     }
 
@@ -865,7 +1020,7 @@ Page({
     const fileExt = extMatch ? extMatch[1].toLowerCase() : "";
     logVoiceUploadDiagnostic({
       event: "record_stop",
-      surface: "start_claim",
+      surface: fromVoiceDoor ? "voice_first" : "start_claim",
       has_temp_path: Boolean(tempFilePath),
       path_ext: fileExt || "unknown",
       duration_ms: durationMs,
@@ -877,6 +1032,9 @@ Page({
       busy: { ...this.data.busy, uploading: true },
       ...voiceUiPatch("transcribing", this.data.busy),
     });
+    if (fromVoiceDoor) {
+      this._setVoiceFirstPhase("processing_speech", { busy: true });
+    }
 
     try {
       const draft = await transcribeStartClaimStoryAudio(tempFilePath, {
@@ -887,11 +1045,14 @@ Page({
         this._setVoicePhase("stt_failed", "没有识别出文字，请重录或直接打字填写。", {
           busy: { ...this.data.busy, uploading: false },
         });
+        if (fromVoiceDoor) {
+          this._setVoiceFirstPhase("failed", { failureKind: "empty_transcript" });
+        }
         return;
       }
       logVoiceUploadDiagnostic({
         event: "transcribe_ok",
-        surface: "start_claim",
+        surface: fromVoiceDoor ? "voice_first" : "start_claim",
         path_ext: fileExt || "unknown",
         duration_ms: durationMs,
         transcript_chars: text.length,
@@ -900,7 +1061,7 @@ Page({
       });
       this._applyFormPatch({ description: text });
       this.setData({
-        voiceHint: "已生成草稿，可修改后点提交。",
+        voiceHint: "已生成草稿，可修改后确认。",
         voiceSession: {
           rawTranscript: text,
           speechProvider: draft.speech_provider || "google_chirp",
@@ -910,12 +1071,12 @@ Page({
         busy: { ...this.data.busy, uploading: false },
         ...voiceUiPatch("draft", { submitting: this.data.busy.submitting }),
       });
-      void this._refreshStoryAssist();
+      await this._refreshStoryAssist({ fromVoice: fromVoiceDoor });
     } catch (err) {
       const apiErr = err instanceof ApiRequestError ? err : null;
       logVoiceUploadDiagnostic({
         event: "transcribe_fail",
-        surface: "start_claim",
+        surface: fromVoiceDoor ? "voice_first" : "start_claim",
         path_ext: fileExt || "unknown",
         duration_ms: durationMs,
         http_status: apiErr?.status || 0,
@@ -924,6 +1085,11 @@ Page({
       this._setVoicePhase("stt_failed", sttFailureCopy(err), {
         busy: { ...this.data.busy, uploading: false },
       });
+      if (fromVoiceDoor) {
+        this._setVoiceFirstPhase("failed", {
+          failureKind: classifyVoiceFirstFailure(err),
+        });
+      }
     }
   },
 

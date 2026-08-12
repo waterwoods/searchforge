@@ -180,7 +180,7 @@ export function buildGuidedUiState(
     guidedDraftLabel: String(g.draft_label_zh || "AI草稿，尚未确认"),
     guidedTrustNote: resolveGuidedTrustNote(usedFallback),
     guidedUsedFallback: usedFallback,
-    guidedFactRows: Array.isArray(g.fact_rows) ? g.fact_rows.slice(0, 8) : [],
+    guidedFactRows: Array.isArray(g.fact_rows) ? g.fact_rows.slice(0, 10) : [],
     guidedMissingMessage: String(
       g.missing_message_zh ||
         (missingCount > 0 ? `还需要确认 ${missingCount} 项` : "信息已齐，请确认"),
