@@ -30,6 +30,12 @@ def _case() -> dict:
 
 
 def _build_client(monkeypatch) -> tuple[TestClient, P20CaseIntakeCommandService, InMemoryIntakeStore]:
+    for name in (
+        "REQUEST_MORE_ASSISTANT_ENABLED",
+        "REQUEST_MORE_ASSISTANT_LLM",
+        "REQUEST_MORE_ASSISTANT_OFFICE_ALLOWLIST",
+    ):
+        monkeypatch.delenv(name, raising=False)
     store = InMemoryIntakeStore(cases={CASE_ID: _case()})
     service = P20CaseIntakeCommandService(store)
     app = FastAPI()

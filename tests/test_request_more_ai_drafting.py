@@ -7,6 +7,9 @@ rephrase it. Every test below protects one of those two boundaries.
 from __future__ import annotations
 
 import copy
+import json
+
+import pytest
 
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
     InMemoryIntakeStore,
@@ -37,6 +40,21 @@ from services.fiqa_api.inbox_triage.request_more_assistant.service import (
     ERROR_ACTIVE_REQUEST_MORE,
     draft_request_more,
 )
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_assistant_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flag posture is per-test, never inherited from the operator's shell."""
+    for name in (
+        "REQUEST_MORE_ASSISTANT_ENABLED",
+        "REQUEST_MORE_ASSISTANT_LLM",
+        "REQUEST_MORE_ASSISTANT_OFFICE_ALLOWLIST",
+        "REQUEST_MORE_ASSISTANT_DETERMINISTIC_FALLBACK",
+        "REQUEST_MORE_ASSISTANT_MODEL",
+        "REQUEST_MORE_ASSISTANT_TIMEOUT_SECONDS",
+        "REQUEST_MORE_ASSISTANT_MAX_RETRIES",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
 
 def _confirmed(value: str, *, source: str = "broker_command") -> dict[str, object]:
@@ -318,6 +336,107 @@ def test_draft_text_must_still_name_every_required_item():
     result = draft_request_more(case=case, checklist=checklist, llm_caller=caller)
     assert result["guardrail_outcome"] == "item_not_represented_in_text"
     assert result["used_fallback"] is True
+
+
+def test_intro_only_draft_is_rejected_when_the_list_is_left_out():
+    """QA defect: the model wrote a lead-in and left the items to the array."""
+    case = {
+        "case_id": "case_two_gaps",
+        "known_facts": {"vehicle_make": "Toyota", "vehicle_model": "Camry"},
+    }
+    checklist = _checklist_for(case, {"vehicle_information": _confirmed("2019 Toyota Camry")})
+
+    def caller(context: dict[str, object]) -> dict[str, object]:
+        return {
+            "draft_text": "尊敬的客户，为了完成您的索赔申请，请您提供以下缺失的信息：",
+            "items": [
+                {"field_key": item["field_key"], "label": item["customer_label"], "instructions": ""}
+                for item in context["items"]  # type: ignore[index]
+            ],
+        }
+
+    result = draft_request_more(case=case, checklist=checklist, llm_caller=caller)
+    assert result["used_fallback"] is True
+    assert result["guardrail_outcome"] == "item_not_represented_in_text"
+    # The broker still gets a complete, sendable message.
+    assert "VIN" in result["draft_text"]
+    assert "保险卡" in result["draft_text"]
+
+
+def test_observability_line_carries_bounded_metadata_and_no_customer_text(caplog):
+    case, checklist = _single_gap_setup()
+    secret_text = "您好，为了继续处理您的案件，还需要车辆 VIN，谢谢。"
+
+    def caller(_context: dict[str, object]) -> dict[str, object]:
+        return {
+            "draft_text": secret_text,
+            "items": [{"field_key": "vin", "label": "车辆 VIN", "instructions": "在行驶证上。"}],
+        }
+
+    with caplog.at_level("INFO"):
+        result = draft_request_more(case=case, checklist=checklist, llm_caller=caller)
+
+    line = next(r.getMessage() for r in caplog.records if "request_more_ai_draft" in r.getMessage())
+    payload = json.loads(line.split("request_more_ai_draft ", 1)[1])
+    assert payload["draft_used_ai"] is True
+    assert payload["used_fallback"] is False
+    assert payload["guardrail_outcome"] == "passed"
+    assert payload["missing_item_count"] == 1
+    assert isinstance(payload["latency_ms"], int)
+    # Operators can debug without reading customer content.
+    assert secret_text not in line
+    assert result["case_id"] not in line
+
+
+def test_blank_ai_instructions_keep_the_office_how_to_find_it_hint():
+    case, checklist = _single_gap_setup()
+
+    def caller(_context: dict[str, object]) -> dict[str, object]:
+        return {
+            "draft_text": "您好，为了继续处理您的案件，还需要车辆 VIN，谢谢。",
+            "items": [{"field_key": "vin", "label": "车辆 VIN", "instructions": "  "}],
+        }
+
+    result = draft_request_more(case=case, checklist=checklist, llm_caller=caller)
+    assert result["draft_used_ai"] is True
+    assert result["used_fallback"] is False
+    assert "17" in result["items"][0]["instructions"]
+
+
+def test_ai_instructions_are_kept_when_the_model_supplies_them():
+    case, checklist = _single_gap_setup()
+
+    def caller(_context: dict[str, object]) -> dict[str, object]:
+        return {
+            "draft_text": "您好，为了继续处理您的案件，还需要车辆 VIN，谢谢。",
+            "items": [
+                {"field_key": "vin", "label": "车辆 VIN", "instructions": "在行驶证上可以找到。"}
+            ],
+        }
+
+    result = draft_request_more(case=case, checklist=checklist, llm_caller=caller)
+    assert result["items"][0]["instructions"] == "在行驶证上可以找到。"
+
+
+def test_model_receives_the_office_template_as_the_baseline_to_improve():
+    """Without a baseline shape the model invents its own and drops the list."""
+    case = {
+        "case_id": "case_two_gaps",
+        "known_facts": {"vehicle_make": "Toyota", "vehicle_model": "Camry"},
+    }
+    checklist = _checklist_for(case, {"vehicle_information": _confirmed("2019 Toyota Camry")})
+    captured: dict[str, object] = {}
+
+    def caller(context: dict[str, object]) -> dict[str, object]:
+        captured.update(context)
+        return _good_caller(context)
+
+    draft_request_more(case=case, checklist=checklist, llm_caller=caller)
+
+    baseline = str(captured.get("office_template_draft") or "")
+    assert baseline.startswith("您好")
+    assert "车辆 VIN" in baseline
+    assert "保险卡照片" in baseline
 
 
 # 11 — open Request More.

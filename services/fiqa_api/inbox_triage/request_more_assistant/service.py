@@ -44,14 +44,19 @@ SCHEMA_VERSION = 1
 ERROR_ACTIVE_REQUEST_MORE = "active_request_more_exists"
 
 SYSTEM_PROMPT = (
-    "You write short Chinese follow-up messages for a California auto insurance "
-    "broker asking a customer to supply missing claim intake items. "
+    "You improve the wording of a Chinese follow-up message that a California auto "
+    "insurance broker sends to a customer to collect missing claim intake items. "
+    "You are given office_template_draft as the baseline; rewrite it so it reads "
+    "naturally, and keep its meaning. "
     "Return ONLY a JSON object: "
     '{"draft_text": string, "items": [{"field_key": string, "label": string, "instructions": string}]}. '
+    "draft_text MUST be the complete message the customer receives — an opening line, "
+    "a numbered list naming every requested item, and a short closing. Do not stop at "
+    "an introduction; the list belongs inside draft_text. "
     "Rules: use exactly the field_key values given, never add or drop an item; "
-    "write in Simplified Chinese, polite and concise, under 300 characters; "
-    "never mention coverage, liability, fault, payment, reimbursement or approval; "
-    "never state case facts that are not in the provided context; "
+    "Simplified Chinese, polite and concise, under 200 characters; plain and warm, "
+    "not marketing language; never mention coverage, liability, fault, payment, "
+    "reimbursement or approval; never state case facts outside the provided context; "
     "never include links, emails, phone numbers or long numbers."
 )
 
@@ -176,7 +181,9 @@ def draft_request_more(
         }
 
     template = build_template_draft(items)
-    context = build_safe_context(case=case, items=items)
+    context = build_safe_context(
+        case=case, items=items, office_template_draft=template["draft_text"]
+    )
 
     def _template_result(
         reason: str | None,
@@ -220,6 +227,7 @@ def draft_request_more(
     if validated is None or outcome != OUTCOME_PASSED:
         return _template_result("guardrail_rejected", outcome)
 
+    _backfill_blank_instructions(validated, template)
     provider = str((raw or {}).get("_provider") or "openai")[:32]
     model = str((raw or {}).get("_model") or llm_model())[:64]
     return _result(
@@ -235,6 +243,23 @@ def draft_request_more(
         model=model,
         latency_ms=_now_ms(started),
     )
+
+
+def _backfill_blank_instructions(
+    validated: dict[str, Any], template: dict[str, Any]
+) -> None:
+    """Keep the office "how to find it" hint when the model returns none.
+
+    The customer reads per-item instructions in the H5 task, so an AI draft must
+    never be less helpful there than the template it replaced.
+    """
+    template_by_key = {
+        str(item.get("field_key")): str(item.get("instructions") or "")
+        for item in template.get("items") or []
+    }
+    for item in validated.get("items") or []:
+        if not str(item.get("instructions") or "").strip():
+            item["instructions"] = template_by_key.get(str(item.get("field_key")), "")
 
 
 def _result(
@@ -271,18 +296,22 @@ def _result(
         "lifecycle_mutated": False,
     }
     # Bounded metadata only — no case facts, no customer text, no draft body.
+    # Rendered into the message because the app formatter drops `extra` fields.
     logger.info(
-        "request_more_ai_draft",
-        extra={
-            "case_id_present": bool(cid),
-            "missing_item_count": out["missing_item_count"],
-            "draft_used_ai": draft_used_ai,
-            "used_fallback": used_fallback,
-            "fallback_reason": fallback_reason,
-            "guardrail_outcome": guardrail_outcome,
-            "model_provider": provider,
-            "model_name": model,
-            "latency_ms": latency_ms,
-        },
+        "request_more_ai_draft %s",
+        json.dumps(
+            {
+                "case_id_present": bool(cid),
+                "missing_item_count": out["missing_item_count"],
+                "draft_used_ai": draft_used_ai,
+                "used_fallback": used_fallback,
+                "fallback_reason": fallback_reason,
+                "guardrail_outcome": guardrail_outcome,
+                "model_provider": provider,
+                "model_name": model,
+                "latency_ms": latency_ms,
+            },
+            sort_keys=True,
+        ),
     )
     return out

@@ -3029,6 +3029,9 @@ async def support_deployment_manifest(request: Request) -> dict[str, Any]:
     from services.fiqa_api.inbox_triage.accident_story_assistant.metrics import (
         summarize_durable_pilot_metrics,
     )
+    from services.fiqa_api.inbox_triage.request_more_assistant.flags import (
+        request_more_assistant_flags_public,
+    )
     persist = unified_intake_case_persistence_report()
     lineage = http_request_lineage(request)
     return {
@@ -3052,6 +3055,7 @@ async def support_deployment_manifest(request: Request) -> dict[str, Any]:
         "token_scope_registry": token_scope_registry_dict(),
         "accident_story_assistant": accident_story_flags_public(),
         "accident_story_pilot_metrics_window": summarize_durable_pilot_metrics(),
+        "request_more_assistant": request_more_assistant_flags_public(),
     }
 
 

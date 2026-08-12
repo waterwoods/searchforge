@@ -1,0 +1,221 @@
+{
+  "base_url": "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
+  "scenarios": {
+    "provider_error": {
+      "draft": {
+        "ok": true,
+        "schema_version": 1,
+        "case_id": "case_103e935bc1b7",
+        "drafting_available": true,
+        "missing_item_count": 1,
+        "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请方便时在这里补充上传，谢谢。",
+        "items": [
+          {
+            "field_key": "vin",
+            "item_type": "vin",
+            "label": "车辆 VIN",
+            "instructions": "VIN 是车辆识别码，共 17 位，通常在挡风玻璃左下角或驾驶座门框标签上。",
+            "request_mode": "request_missing",
+            "position": 1
+          }
+        ],
+        "language": "zh",
+        "authority": "office_template",
+        "draft_used_ai": false,
+        "used_fallback": true,
+        "fallback_reason": "provider_error:NotFoundError",
+        "guardrail_outcome": "not_evaluated",
+        "model_provider": "none",
+        "model_name": "deterministic_template_v1",
+        "latency_ms": 1712,
+        "lifecycle_mutated": false
+      },
+      "client_latency_ms": 1943
+    },
+    "assistant_disabled": {
+      "draft": {
+        "ok": true,
+        "schema_version": 1,
+        "case_id": "case_103e935bc1b7",
+        "drafting_available": true,
+        "missing_item_count": 1,
+        "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请方便时在这里补充上传，谢谢。",
+        "items": [
+          {
+            "field_key": "vin",
+            "item_type": "vin",
+            "label": "车辆 VIN",
+            "instructions": "VIN 是车辆识别码，共 17 位，通常在挡风玻璃左下角或驾驶座门框标签上。",
+            "request_mode": "request_missing",
+            "position": 1
+          }
+        ],
+        "language": "zh",
+        "authority": "office_template",
+        "draft_used_ai": false,
+        "used_fallback": true,
+        "fallback_reason": "assistant_disabled",
+        "guardrail_outcome": "not_evaluated",
+        "model_provider": "none",
+        "model_name": "deterministic_template_v1",
+        "latency_ms": 0,
+        "lifecycle_mutated": false
+      }
+    },
+    "llm_disabled": {
+      "draft": {
+        "ok": true,
+        "schema_version": 1,
+        "case_id": "case_103e935bc1b7",
+        "drafting_available": true,
+        "missing_item_count": 1,
+        "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请方便时在这里补充上传，谢谢。",
+        "items": [
+          {
+            "field_key": "vin",
+            "item_type": "vin",
+            "label": "车辆 VIN",
+            "instructions": "VIN 是车辆识别码，共 17 位，通常在挡风玻璃左下角或驾驶座门框标签上。",
+            "request_mode": "request_missing",
+            "position": 1
+          }
+        ],
+        "language": "zh",
+        "authority": "office_template",
+        "draft_used_ai": false,
+        "used_fallback": true,
+        "fallback_reason": "llm_disabled",
+        "guardrail_outcome": "not_evaluated",
+        "model_provider": "none",
+        "model_name": "deterministic_template_v1",
+        "latency_ms": 0,
+        "lifecycle_mutated": false
+      }
+    },
+    "after_restore": {
+      "draft": {
+        "ok": true,
+        "schema_version": 1,
+        "case_id": "case_103e935bc1b7",
+        "drafting_available": true,
+        "missing_item_count": 1,
+        "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请您方便时补充上传，谢谢您的配合。",
+        "items": [
+          {
+            "field_key": "vin",
+            "item_type": "vin",
+            "label": "车辆 VIN",
+            "instructions": "请您方便时补充上传",
+            "request_mode": "request_missing",
+            "position": 1
+          }
+        ],
+        "language": "zh",
+        "authority": "ai_draft",
+        "draft_used_ai": true,
+        "used_fallback": false,
+        "fallback_reason": null,
+        "guardrail_outcome": "passed",
+        "model_provider": "openai",
+        "model_name": "gpt-4o-mini",
+        "latency_ms": 2219,
+        "lifecycle_mutated": false
+      }
+    }
+  },
+  "restored_flags": {
+    "assistant_enabled": true,
+    "llm_drafting_enabled": true,
+    "llm_credentials_configured": true,
+    "deterministic_fallback_enabled": true,
+    "office_allowlist_configured": false,
+    "office_allowlist_count": 0,
+    "llm_timeout_seconds": 20.0,
+    "llm_max_retries": 1,
+    "emergency_disable_env": "REQUEST_MORE_ASSISTANT_LLM=0"
+  },
+  "checks": [
+    {
+      "check": "provider-error: QA revision picked up the broken model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "provider-error: request still succeeds",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "provider-error: fell back to office template",
+      "pass": true,
+      "detail": "provider_error:NotFoundError"
+    },
+    {
+      "check": "provider-error: reason is a model failure",
+      "pass": true,
+      "detail": "provider_error:NotFoundError"
+    },
+    {
+      "check": "provider-error: deterministic missing set intact",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "provider-error: broker still has sendable Chinese copy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "provider-error: broker is not blocked",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "kill-switch: QA reports assistant disabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "kill-switch: deterministic template returned",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "kill-switch: reason assistant_disabled",
+      "pass": true,
+      "detail": "assistant_disabled"
+    },
+    {
+      "check": "kill-switch: Request More still usable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "llm-off: QA reports llm drafting disabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "llm-off: template path, reason llm_disabled",
+      "pass": true,
+      "detail": "llm_disabled"
+    },
+    {
+      "check": "llm-off: broker still gets sendable copy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "restore: QA back on the real LLM path",
+      "pass": true,
+      "detail": "{\"assistant_enabled\": true, \"llm_drafting_enabled\": true, \"llm_credentials_configured\": true, \"deterministic_fallback_enabled\": true, \"office_allowlist_configured\": false, \"office_allowlist_count\": 0, \"llm_timeout_seconds\": 20.0, \"llm_max_retries\": 1, \"emergency_disable_env\": \"REQUEST_MORE_ASSISTANT"
+    },
+    {
+      "check": "restore: real AI drafting works again",
+      "pass": true,
+      "detail": "None"
+    }
+  ],
+  "pass_count": 16,
+  "fail_count": 0
+}

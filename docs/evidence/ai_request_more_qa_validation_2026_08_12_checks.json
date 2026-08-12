@@ -1,0 +1,501 @@
+{
+  "generated_at_utc": "2026-08-12T08:18:39Z",
+  "base_url": "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
+  "deployed_commit": "54a47a135",
+  "assistant_flags": {
+    "assistant_enabled": true,
+    "llm_drafting_enabled": true,
+    "llm_credentials_configured": true,
+    "deterministic_fallback_enabled": true,
+    "office_allowlist_configured": false,
+    "office_allowlist_count": 0,
+    "llm_timeout_seconds": 20.0,
+    "llm_max_retries": 1,
+    "emergency_disable_env": "REQUEST_MORE_ASSISTANT_LLM=0"
+  },
+  "case_a": {
+    "case_id": "case_2032f30bb827",
+    "draft": {
+      "ok": true,
+      "schema_version": 1,
+      "case_id": "case_2032f30bb827",
+      "drafting_available": true,
+      "missing_item_count": 1,
+      "draft_text": "您好！为了继续处理您的索赔，我们还需要您提供以下信息：\n1. 车辆 VIN\n请您方便时补充上传，谢谢！",
+      "items": [
+        {
+          "field_key": "vin",
+          "item_type": "vin",
+          "label": "车辆 VIN",
+          "instructions": "请您方便时补充上传",
+          "request_mode": "request_missing",
+          "position": 1
+        }
+      ],
+      "language": "zh",
+      "authority": "ai_draft",
+      "draft_used_ai": true,
+      "used_fallback": false,
+      "fallback_reason": null,
+      "guardrail_outcome": "passed",
+      "model_provider": "openai",
+      "model_name": "gpt-4o-mini",
+      "latency_ms": 1907,
+      "lifecycle_mutated": false
+    },
+    "client_latency_ms": 1946
+  },
+  "case_b": {
+    "case_id": "case_710fdf4aa181",
+    "draft": {
+      "ok": true,
+      "schema_version": 1,
+      "case_id": "case_710fdf4aa181",
+      "drafting_available": true,
+      "missing_item_count": 2,
+      "draft_text": "您好！为了继续处理您的索赔，我们还需要您提供以下信息：\n1. 车辆 VIN\n2. 保险卡照片\n请您方便时补充上传，谢谢！",
+      "items": [
+        {
+          "field_key": "vin",
+          "item_type": "vin",
+          "label": "车辆 VIN",
+          "instructions": "VIN 是车辆识别码，共 17 位，通常在挡风玻璃左下角或驾驶座门框标签上。",
+          "request_mode": "request_missing",
+          "position": 1
+        },
+        {
+          "field_key": "policy_or_insurance_card",
+          "item_type": "policy_or_insurance_card",
+          "label": "保险卡照片",
+          "instructions": "请拍摄保险卡正面，确保文字清晰可读。",
+          "request_mode": "request_missing",
+          "position": 2
+        }
+      ],
+      "language": "zh",
+      "authority": "ai_draft",
+      "draft_used_ai": true,
+      "used_fallback": false,
+      "fallback_reason": null,
+      "guardrail_outcome": "passed",
+      "model_provider": "openai",
+      "model_name": "gpt-4o-mini",
+      "latency_ms": 2350,
+      "lifecycle_mutated": false
+    },
+    "client_latency_ms": 2342
+  },
+  "case_c": {
+    "case_id": "case_5449f1ea53ec",
+    "draft": {
+      "ok": true,
+      "schema_version": 1,
+      "case_id": "case_5449f1ea53ec",
+      "drafting_available": false,
+      "missing_item_count": 0,
+      "items": [],
+      "draft_text": "",
+      "message": "无需补充",
+      "language": "zh",
+      "authority": "office_template",
+      "draft_used_ai": false,
+      "used_fallback": false,
+      "lifecycle_mutated": false
+    },
+    "client_latency_ms": 274
+  },
+  "case_a_template": {
+    "ok": true,
+    "schema_version": 1,
+    "case_id": "case_2032f30bb827",
+    "drafting_available": true,
+    "missing_item_count": 1,
+    "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请方便时在这里补充上传，谢谢。",
+    "items": [
+      {
+        "field_key": "vin",
+        "item_type": "vin",
+        "label": "车辆 VIN",
+        "instructions": "VIN 是车辆识别码，共 17 位，通常在挡风玻璃左下角或驾驶座门框标签上。",
+        "request_mode": "request_missing",
+        "position": 1
+      }
+    ],
+    "language": "zh",
+    "authority": "office_template",
+    "draft_used_ai": false,
+    "used_fallback": false,
+    "fallback_reason": null,
+    "guardrail_outcome": "not_evaluated",
+    "model_provider": "none",
+    "model_name": "deterministic_template_v1",
+    "latency_ms": 0,
+    "lifecycle_mutated": false
+  },
+  "send_proof": {
+    "request_id": "req_e7dfa7913487",
+    "draft_id": "draft_3ddcc33bbb92",
+    "retry_outcome": "replayed",
+    "assist_blocked": "active_request_more_exists"
+  },
+  "checks": [
+    {
+      "check": "QA: assistant enabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "QA: real LLM drafting enabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: deterministic missing set == ['vin']",
+      "pass": true,
+      "detail": "['vin']"
+    },
+    {
+      "check": "CASE A: real AI path used",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: used_fallback == false",
+      "pass": true,
+      "detail": "None"
+    },
+    {
+      "check": "CASE A: authority == ai_draft",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: guardrail passed",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: provider is a real model",
+      "pass": true,
+      "detail": "openai/gpt-4o-mini"
+    },
+    {
+      "check": "CASE A: draft names VIN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「保险卡」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「保单」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「事故时间」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「事故地点」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「受伤」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「伤者」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「照片」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: does not re-ask 「车型」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: items == ['vin']",
+      "pass": true,
+      "detail": "['vin']"
+    },
+    {
+      "check": "CASE A: no forbidden coverage/liability/payment language",
+      "pass": true,
+      "detail": "none"
+    },
+    {
+      "check": "CASE A: no unsupported detail (long digits / links / emails)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: length <= 400",
+      "pass": true,
+      "detail": "51"
+    },
+    {
+      "check": "CASE A: concise (<= 200 chars)",
+      "pass": true,
+      "detail": "51"
+    },
+    {
+      "check": "CASE A: polite Chinese opening/closing",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: vin instructions clean",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: drafting created no Request More",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: drafting created no request draft",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: aggregate_version unchanged",
+      "pass": true,
+      "detail": "8 -> 8"
+    },
+    {
+      "check": "CASE A: authoritative facts unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: checklist unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: lifecycle unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: no customer communication issued",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE A: response declares lifecycle_mutated=false",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: deterministic missing set == ['vin','policy_or_insurance_card']",
+      "pass": true,
+      "detail": "['vin', 'policy_or_insurance_card']"
+    },
+    {
+      "check": "CASE B: real AI path used",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: used_fallback == false",
+      "pass": true,
+      "detail": "None"
+    },
+    {
+      "check": "CASE B: draft names VIN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: draft names 保险卡/保单",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: does not re-ask 「事故时间」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: does not re-ask 「事故地点」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: does not re-ask 「受伤」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: does not re-ask 「伤者」",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: items == ['vin', 'policy_or_insurance_card']",
+      "pass": true,
+      "detail": "['vin', 'policy_or_insurance_card']"
+    },
+    {
+      "check": "CASE B: no forbidden coverage/liability/payment language",
+      "pass": true,
+      "detail": "none"
+    },
+    {
+      "check": "CASE B: no unsupported detail (long digits / links / emails)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: length <= 400",
+      "pass": true,
+      "detail": "60"
+    },
+    {
+      "check": "CASE B: concise (<= 200 chars)",
+      "pass": true,
+      "detail": "60"
+    },
+    {
+      "check": "CASE B: polite Chinese opening/closing",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: vin instructions clean",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE B: policy_or_insurance_card instructions clean",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE C: deterministic missing set empty",
+      "pass": true,
+      "detail": "[]"
+    },
+    {
+      "check": "CASE C: drafting unavailable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE C: message 无需补充",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE C: no AI call made",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE C: fast (no model latency)",
+      "pass": true,
+      "detail": "274ms"
+    },
+    {
+      "check": "CASE C: no Request More created",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "CASE C: version unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "TEMPLATE: authority == office_template",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "TEMPLATE: not marked as failure",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "TEMPLATE: same deterministic item set",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "TEMPLATE: usable Chinese copy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "SEND: broker-edited draft saved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "SEND: Request More created by existing command",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "SEND: exactly one requested item",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "check": "SEND: customer sees the broker-edited instruction",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "SEND: retry replays, no duplicate",
+      "pass": true,
+      "detail": "replayed"
+    },
+    {
+      "check": "SEND: retry returns the same request_id",
+      "pass": true,
+      "detail": "req_e7dfa7913487 vs req_e7dfa7913487"
+    },
+    {
+      "check": "SEND: still exactly one open Request More",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "SEND: drafting blocked while a Request More is open",
+      "pass": true,
+      "detail": "active_request_more_exists"
+    },
+    {
+      "check": "CASE A: vin keeps a how-to-find-it hint",
+      "pass": true,
+      "detail": "请您方便时补充上传"
+    },
+    {
+      "check": "CASE B: vin keeps a how-to-find-it hint",
+      "pass": true,
+      "detail": "VIN 是车辆识别码，共 17 位，通常在挡风玻璃左下角或驾驶座门框标签上。"
+    },
+    {
+      "check": "CASE B: policy_or_insurance_card keeps a how-to-find-it hint",
+      "pass": true,
+      "detail": "请拍摄保险卡正面，确保文字清晰可读。"
+    }
+  ],
+  "failed_checks": [],
+  "pass_count": 71,
+  "fail_count": 0
+}

@@ -102,12 +102,18 @@ def build_safe_context(
     case: dict[str, Any] | None,
     items: list[dict[str, Any]],
     language: str = LANGUAGE_ZH,
+    office_template_draft: str = "",
 ) -> dict[str, Any]:
-    """Bounded snapshot for the model. Never the whole Case, never PII."""
+    """Bounded snapshot for the model. Never the whole Case, never PII.
+
+    The office template travels with the request as the baseline to improve, so
+    the model rewrites a complete message instead of inventing its own shape.
+    """
     return {
         "language": language,
         "request_reason": "claim_intake_completion",
         "vehicle_summary": _sanitized_vehicle_summary(case),
+        "office_template_draft": office_template_draft,
         "items": [
             {
                 "field_key": item["field_key"],
