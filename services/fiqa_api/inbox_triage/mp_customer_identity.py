@@ -46,6 +46,18 @@ def mp_credentials_configured() -> bool:
 
 
 def mp_simulate_allowed() -> bool:
+    """Whether a ``sim:<openid>`` login code may mint a session.
+
+    Never on Production, whatever the env says. ``/api/h5/customer/session`` is
+    unauthenticated, so simulate lets any caller choose an identity and reach that
+    customer's Active Case and resume token. The deploy gate refuses the flag, but a
+    manual ``gcloud run services update --update-env-vars`` bypasses the gate entirely,
+    so the refusal has to also live here.
+    """
+    from services.fiqa_api.db.service_record_settings import is_production_deployment
+
+    if is_production_deployment():
+        return False
     v = (
         os.getenv("WECHAT_MP_ALLOW_SIMULATE")
         or os.getenv("WECHAT_BINDING_ALLOW_SIMULATE")

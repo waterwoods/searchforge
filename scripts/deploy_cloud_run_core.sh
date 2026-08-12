@@ -556,11 +556,23 @@ fi
 if [ -n "${WECHAT_APP_SECRET:-}" ]; then
     ENV_VARS+=("WECHAT_APP_SECRET=$WECHAT_APP_SECRET")
 fi
-# Mini Program jscode2session (Cloud QA / staging — never Production without review)
+# Mini Program jscode2session (Cloud QA / staging — never Production without review).
+# The AppID is not a secret. The AppSecret is: prefer a Secret Manager binding via
+# CLOUD_RUN_SECRET_WECHAT_MP_APP_SECRET so it never appears in `gcloud run services
+# describe` or a deploy shell history. Plaintext stays supported for existing QA.
 if [ -n "${WECHAT_MP_APP_ID:-}" ]; then
     ENV_VARS+=("WECHAT_MP_APP_ID=$WECHAT_MP_APP_ID")
 fi
-if [ -n "${WECHAT_MP_APP_SECRET:-}" ]; then
+if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ] && [ -n "${CLOUD_RUN_SECRET_WECHAT_MP_APP_SECRET:-}" ]; then
+    if [ -n "${WECHAT_MP_APP_SECRET:-}" ]; then
+        echo "❌ Error: WECHAT_MP_APP_SECRET is set in the env file while"
+        echo "   CLOUD_RUN_SECRET_WECHAT_MP_APP_SECRET requests a Secret Manager binding."
+        echo "   Cloud Run rejects the same key in both --set-env-vars and --set-secrets."
+        echo "   Remove the plaintext value and keep the secret binding."
+        exit 1
+    fi
+    echo "🔐 WECHAT_MP_APP_SECRET bound from Secret Manager: ${CLOUD_RUN_SECRET_WECHAT_MP_APP_SECRET}:latest"
+elif [ -n "${WECHAT_MP_APP_SECRET:-}" ]; then
     ENV_VARS+=("WECHAT_MP_APP_SECRET=$WECHAT_MP_APP_SECRET")
 fi
 if [ -n "${WECHAT_MP_ALLOW_SIMULATE:-}" ]; then
@@ -732,9 +744,13 @@ if [ "$CLOUD_RUN_USE_SECRET_MANAGER" = "1" ]; then
         echo "   Use fiqa-service-record-database-url-cloudsql-private for Production."
         exit 1
     fi
+    SECRET_BINDINGS="OPENAI_API_KEY=${SM_OPENAI}:latest,QDRANT_API_KEY=${SM_QDRANT}:latest,SERVICE_RECORD_DATABASE_URL=${SM_DB}:latest,H5_TASK_TOKEN_SECRET=${SM_H5}:latest"
+    if [ -n "${CLOUD_RUN_SECRET_WECHAT_MP_APP_SECRET:-}" ]; then
+        SECRET_BINDINGS="${SECRET_BINDINGS},WECHAT_MP_APP_SECRET=${CLOUD_RUN_SECRET_WECHAT_MP_APP_SECRET}:latest"
+    fi
     SECRET_EXTRA_ARGS=(
         --set-secrets
-        "OPENAI_API_KEY=${SM_OPENAI}:latest,QDRANT_API_KEY=${SM_QDRANT}:latest,SERVICE_RECORD_DATABASE_URL=${SM_DB}:latest,H5_TASK_TOKEN_SECRET=${SM_H5}:latest"
+        "$SECRET_BINDINGS"
     )
     echo "🔐 CLOUD_RUN_USE_SECRET_MANAGER=1: binding OPENAI_API_KEY, QDRANT_API_KEY, SERVICE_RECORD_DATABASE_URL, H5_TASK_TOKEN_SECRET from Secret Manager (no plaintext on describe)."
     echo "   SERVICE_RECORD_DATABASE_URL secret: ${SM_DB}:latest"

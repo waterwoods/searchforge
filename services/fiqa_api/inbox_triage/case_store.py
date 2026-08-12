@@ -2075,33 +2075,39 @@ def record_claim_evidence_slot_received(
     Persist explicit claim_attachment_slots received state (P19H-3c-3C).
 
     No schema migration — stored on case JSON document.
+
+    Atomic: the slot map and the activity list are patched into the case re-read
+    under the lock. This runs on the customer photo upload, immediately after the
+    locked attachment append, so it is the one remaining write on that path that can
+    race a broker working the same case — an unlocked read-modify-write here reverts
+    whatever the broker saved between this read and its persist.
     """
     from services.fiqa_api.inbox_triage.claim_evidence_slots import patch_claim_slot_received
 
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
     _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(case_id)
-    if normalized_case is None:
-        return None
-
     slot_norm = (slot or "").strip().lower()
-    patch_claim_slot_received(
-        normalized_case,
-        slot_norm,
-        attachment_id,
-        source_channel=source_channel,
-    )
-    timestamp = _utc_now_iso()
-    normalized_case["updated_at"] = timestamp
-    normalized_case["case_activity"] = [
-        _build_activity_entry(
-            "claim_evidence_slot_received",
-            f"Claim evidence slot received: {slot_norm}",
-        ),
-        *normalized_case.get("case_activity", []),
-    ][:MAX_CASE_ACTIVITY]
-    if not _persist_case_after_update(case_id, normalized_case):
-        return None
-    return normalized_case
+
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        patch_claim_slot_received(
+            case,
+            slot_norm,
+            attachment_id,
+            source_channel=source_channel,
+        )
+        case["updated_at"] = _utc_now_iso()
+        case["case_activity"] = [
+            _build_activity_entry(
+                "claim_evidence_slot_received",
+                f"Claim evidence slot received: {slot_norm}",
+            ),
+            *case.get("case_activity", []),
+        ][:MAX_CASE_ACTIVITY]
+        return case, True
+
+    return _mutate_case_under_case_lock(cid, _mutator)
 
 
 def record_claim_evidence_slot_skip(

@@ -279,7 +279,7 @@ def get_qdrant_client():
                         }
                         if QDRANT_API_KEY:
                             client_kwargs["api_key"] = QDRANT_API_KEY
-                            logger.info(f"[CLIENTS] Using API key authentication (key length: {len(QDRANT_API_KEY)})")
+                            logger.info("[CLIENTS] Using API key authentication")
                         else:
                             logger.warning(f"[CLIENTS] QDRANT_API_KEY not set - connection may fail if Qdrant Cloud requires authentication")
                         _qdrant_client = QdrantClient(**client_kwargs)
@@ -527,14 +527,9 @@ def get_openai_client() -> Optional[object]:
     """
     global _openai_client
     
-    # Debug logging for API key
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("[DEBUG] OPENAI_API_KEY not loaded from environment")
-        logger.warning("[DEBUG] OPENAI_API_KEY not loaded from environment")
-    else:
-        print(f"[DEBUG] OPENAI_API_KEY loaded: {api_key[:6]}...")
-        logger.info(f"[DEBUG] OPENAI_API_KEY loaded: {api_key[:6]}...")
+        logger.warning("[CLIENTS] OPENAI_API_KEY not configured")
     
     if not OPENAI_API_KEY:
         return None

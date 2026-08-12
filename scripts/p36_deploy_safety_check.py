@@ -36,6 +36,17 @@ QA_HARNESS_FLAGS = (
     "ENABLE_P26H_FIXTURE_RUNNER",
     "UNIFIED_INTAKE_QA_FIXTURE_SURFACE",
     "P20_SLICE1_REQUEST_MORE",
+    # Reaches Production today: it can reset and reseed real cases, gated only by
+    # the shared support key. Same blast radius as the fixture surface.
+    "ENABLE_GOLDEN_QA_LAUNCH",
+)
+
+# Identity-bypass flags. Simulate makes ``exchange_mp_code_for_openid`` accept any
+# ``sim:<openid>`` login code on an unauthenticated endpoint, so any caller can mint a
+# session for any customer and read their case. Never on a service a real customer reaches.
+PRODUCTION_FORBIDDEN_IDENTITY_FLAGS = (
+    "WECHAT_MP_ALLOW_SIMULATE",
+    "WECHAT_BINDING_ALLOW_SIMULATE",
 )
 
 DEPLOY_ENTRY_CLOUD_QA = "cloud_qa"
@@ -202,6 +213,14 @@ def check_deploy_safety(
                     f"move to {QA_ENV_FILE_NAME} / Cloud QA deploy)"
                 )
 
+        for flag in PRODUCTION_FORBIDDEN_IDENTITY_FLAGS:
+            if _truthy(env_map.get(flag)):
+                errors.append(
+                    f"Identity-bypass flag {flag}=ON is forbidden on Production "
+                    f"(SERVICE_NAME={service or PROD_SERVICE_NAME}): any caller could "
+                    f"mint a session for any customer via a sim: login code"
+                )
+
     # --- Explicit: Production service + any harness ---
     if targeting_prod_service:
         for flag in QA_HARNESS_FLAGS:
@@ -263,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         "CLOUD_RUN_SECRET_SERVICE_RECORD_DB",
         "SERVICE_RECORD_DATABASE_URL",
         *QA_HARNESS_FLAGS,
+        *PRODUCTION_FORBIDDEN_IDENTITY_FLAGS,
     ):
         if key in os.environ and os.environ.get(key) is not None:
             # Prefer process env when set (wrappers / operator exports).

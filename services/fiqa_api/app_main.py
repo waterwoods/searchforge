@@ -81,7 +81,7 @@ except ValueError:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_API_KEY:
-    logger.info(f"✅ OPENAI_API_KEY loaded: {OPENAI_API_KEY[:6]}**** (length={len(OPENAI_API_KEY)})")
+    logger.info("✅ OPENAI_API_KEY configured")
 else:
     logger.warning("⚠️  OPENAI_API_KEY not set - code_lookup will use fallback mode")
 

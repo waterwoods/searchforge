@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts.p36_deploy_safety_check import (
     PROD_DB_SECRET,
     PROD_SERVICE_NAME,
+    PRODUCTION_FORBIDDEN_IDENTITY_FLAGS,
     QA_DB_SECRET,
     QA_HARNESS_FLAGS,
     QA_SERVICE_NAME,
@@ -63,6 +64,38 @@ def test_production_rejects_qa_harness_flags():
         )
         assert errs, f"expected fail for {flag}"
         assert any(flag in e for e in errs)
+
+
+def test_production_rejects_golden_qa_launch():
+    """It can reset and reseed real pilot cases behind one shared support key."""
+    assert "ENABLE_GOLDEN_QA_LAUNCH" in QA_HARNESS_FLAGS
+    errs = check_deploy_safety(
+        deploy_entry="paid_pilot",
+        env_file=Path(".env.cloudrun"),
+        env=_prod_env(ENABLE_GOLDEN_QA_LAUNCH="1"),
+    )
+    assert any("ENABLE_GOLDEN_QA_LAUNCH" in e for e in errs)
+
+
+def test_production_rejects_identity_bypass_flags():
+    """Simulate lets any caller mint a session for any customer."""
+    for flag in PRODUCTION_FORBIDDEN_IDENTITY_FLAGS:
+        errs = check_deploy_safety(
+            deploy_entry="paid_pilot",
+            env_file=Path(".env.cloudrun"),
+            env=_prod_env(**{flag: "1"}),
+        )
+        assert errs, f"expected fail for {flag}"
+        assert any(flag in e for e in errs)
+
+
+def test_identity_bypass_flags_still_allowed_on_cloud_qa():
+    errs = check_deploy_safety(
+        deploy_entry="cloud_qa",
+        env_file=Path(".env.cloudrun.qa"),
+        env=_qa_env(**{flag: "1" for flag in PRODUCTION_FORBIDDEN_IDENTITY_FLAGS}),
+    )
+    assert errs == []
 
 
 def test_fiqa_api_with_harness_impossible():

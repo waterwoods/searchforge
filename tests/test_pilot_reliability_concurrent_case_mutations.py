@@ -37,6 +37,7 @@ from services.fiqa_api.inbox_triage.case_store import (
     get_case_by_id,
     mark_claim_broker_done,
     patch_case_known_facts,
+    record_claim_evidence_slot_received,
     save_case,
     update_case_h5_intake_state,
 )
@@ -332,6 +333,67 @@ def test_photo_upload_does_not_revert_concurrent_intake_state(widen_race_window)
     assert ((final or {}).get("h5_intake_state") or {}).get("submitted") is True
 
 
+def test_evidence_slot_receipt_does_not_revert_concurrent_broker_write(widen_race_window):
+    """One customer photo upload writes the attachment, then the slot receipt.
+
+    The slot receipt is the last write on that path, so if it is unlocked it is the
+    one that reverts whatever a broker saved in between.
+    """
+    cid = _claim_case()["case_id"]
+
+    def _slot_receipt() -> None:
+        record_claim_evidence_slot_received(
+            cid, slot="damage_photo", attachment_id="att_slot_race"
+        )
+
+    def _broker_fact() -> None:
+        patch_case_known_facts(cid, {"vin": "JH4KA7561PC008269"}, source="broker_confirmed")
+
+    _run_concurrently(_slot_receipt, _broker_fact)
+
+    final = get_case_by_id(cid)
+    slot = ((final or {}).get("claim_attachment_slots") or {}).get("damage_photo") or {}
+    assert slot.get("status") == "received"
+    assert (final or {}).get("known_facts", {}).get("vin") == "JH4KA7561PC008269"
+
+
+def test_concurrent_evidence_slot_receipts_keep_both_attachments(widen_race_window):
+    """Two photos landing in the same slot together — neither id may be dropped."""
+    cid = _claim_case()["case_id"]
+
+    def _receive(att_id: str) -> Callable[[], None]:
+        def _inner() -> None:
+            record_claim_evidence_slot_received(
+                cid, slot="damage_photo", attachment_id=att_id
+            )
+
+        return _inner
+
+    _run_concurrently(_receive("att_slot_a"), _receive("att_slot_b"))
+
+    final = get_case_by_id(cid)
+    slot = ((final or {}).get("claim_attachment_slots") or {}).get("damage_photo") or {}
+    assert sorted(slot.get("attachment_ids") or []) == ["att_slot_a", "att_slot_b"]
+
+
+def test_repeated_evidence_slot_receipt_is_idempotent(widen_race_window):
+    """A retried upload of the same attachment must not duplicate the slot id."""
+    cid = _claim_case()["case_id"]
+
+    _run_concurrently(
+        lambda: record_claim_evidence_slot_received(
+            cid, slot="damage_photo", attachment_id="att_slot_retry"
+        ),
+        lambda: record_claim_evidence_slot_received(
+            cid, slot="damage_photo", attachment_id="att_slot_retry"
+        ),
+    )
+
+    final = get_case_by_id(cid)
+    slot = ((final or {}).get("claim_attachment_slots") or {}).get("damage_photo") or {}
+    assert slot.get("attachment_ids") == ["att_slot_retry"]
+
+
 # --- 3. Duplicate / retry behaviour stays safe -----------------------------
 
 
@@ -616,6 +678,28 @@ def test_db_path_photo_append_mutates_locked_case(monkeypatch):
 
     assert order == ["lock_and_load", "mutated", "persist_under_same_txn"]
     assert _attachment_ids(locked) == ["att_only_in_db", "att_new"]
+
+
+def test_db_path_evidence_slot_receipt_mutates_locked_case(monkeypatch):
+    cid = _claim_case()["case_id"]
+    order: list[str] = []
+    # A slot id that only exists in the locked read must survive the receipt.
+    locked = _locked_claim_case(
+        cid,
+        claim_attachment_slots={
+            "damage_photo": {"status": "received", "attachment_ids": ["att_only_in_db"]}
+        },
+    )
+    _install_fake_lock(monkeypatch, locked, order)
+
+    record_claim_evidence_slot_received(cid, slot="damage_photo", attachment_id="att_new")
+
+    assert order == ["lock_and_load", "mutated", "persist_under_same_txn"]
+    assert locked["claim_attachment_slots"]["damage_photo"]["attachment_ids"] == [
+        "att_only_in_db",
+        "att_new",
+    ]
+    assert locked["customer_name"] == "FromLockedRead"
 
 
 def test_db_path_duplicate_upload_id_does_not_persist(monkeypatch):
