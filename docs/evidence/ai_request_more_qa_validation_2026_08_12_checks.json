@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-08-12T08:18:39Z",
+  "generated_at_utc": "2026-08-12T08:24:17Z",
   "base_url": "https://fiqa-api-qa-g7zatxrycq-uw.a.run.app",
-  "deployed_commit": "54a47a135",
+  "deployed_commit": "af1478687",
   "assistant_flags": {
     "assistant_enabled": true,
     "llm_drafting_enabled": true,
@@ -14,20 +14,20 @@
     "emergency_disable_env": "REQUEST_MORE_ASSISTANT_LLM=0"
   },
   "case_a": {
-    "case_id": "case_2032f30bb827",
+    "case_id": "case_ab00bf222874",
     "draft": {
       "ok": true,
       "schema_version": 1,
-      "case_id": "case_2032f30bb827",
+      "case_id": "case_ab00bf222874",
       "drafting_available": true,
       "missing_item_count": 1,
-      "draft_text": "您好！为了继续处理您的索赔，我们还需要您提供以下信息：\n1. 车辆 VIN\n请您方便时补充上传，谢谢！",
+      "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请您方便时补充上传，谢谢您的配合。",
       "items": [
         {
           "field_key": "vin",
           "item_type": "vin",
           "label": "车辆 VIN",
-          "instructions": "请您方便时补充上传",
+          "instructions": "请方便时补充上传",
           "request_mode": "request_missing",
           "position": 1
         }
@@ -40,20 +40,20 @@
       "guardrail_outcome": "passed",
       "model_provider": "openai",
       "model_name": "gpt-4o-mini",
-      "latency_ms": 1907,
+      "latency_ms": 1964,
       "lifecycle_mutated": false
     },
-    "client_latency_ms": 1946
+    "client_latency_ms": 2005
   },
   "case_b": {
-    "case_id": "case_710fdf4aa181",
+    "case_id": "case_0429a53ec535",
     "draft": {
       "ok": true,
       "schema_version": 1,
-      "case_id": "case_710fdf4aa181",
+      "case_id": "case_0429a53ec535",
       "drafting_available": true,
       "missing_item_count": 2,
-      "draft_text": "您好！为了继续处理您的索赔，我们还需要您提供以下信息：\n1. 车辆 VIN\n2. 保险卡照片\n请您方便时补充上传，谢谢！",
+      "draft_text": "您好！为了继续处理您的案件，我们还需要您提供以下信息：\n1. 车辆 VIN\n2. 保险卡照片\n请您方便时补充上传，谢谢！",
       "items": [
         {
           "field_key": "vin",
@@ -80,17 +80,17 @@
       "guardrail_outcome": "passed",
       "model_provider": "openai",
       "model_name": "gpt-4o-mini",
-      "latency_ms": 2350,
+      "latency_ms": 1248,
       "lifecycle_mutated": false
     },
-    "client_latency_ms": 2342
+    "client_latency_ms": 1318
   },
   "case_c": {
-    "case_id": "case_5449f1ea53ec",
+    "case_id": "case_34489dc9b8a4",
     "draft": {
       "ok": true,
       "schema_version": 1,
-      "case_id": "case_5449f1ea53ec",
+      "case_id": "case_34489dc9b8a4",
       "drafting_available": false,
       "missing_item_count": 0,
       "items": [],
@@ -102,12 +102,12 @@
       "used_fallback": false,
       "lifecycle_mutated": false
     },
-    "client_latency_ms": 274
+    "client_latency_ms": 248
   },
   "case_a_template": {
     "ok": true,
     "schema_version": 1,
-    "case_id": "case_2032f30bb827",
+    "case_id": "case_ab00bf222874",
     "drafting_available": true,
     "missing_item_count": 1,
     "draft_text": "您好，为了继续处理您的案件，目前还需要：\n1. 车辆 VIN\n请方便时在这里补充上传，谢谢。",
@@ -133,8 +133,8 @@
     "lifecycle_mutated": false
   },
   "send_proof": {
-    "request_id": "req_e7dfa7913487",
-    "draft_id": "draft_3ddcc33bbb92",
+    "request_id": "req_93a3ffcbf41d",
+    "draft_id": "draft_8c09f51e4c15",
     "retry_outcome": "replayed",
     "assist_blocked": "active_request_more_exists"
   },
@@ -242,12 +242,12 @@
     {
       "check": "CASE A: length <= 400",
       "pass": true,
-      "detail": "51"
+      "detail": "48"
     },
     {
       "check": "CASE A: concise (<= 200 chars)",
       "pass": true,
-      "detail": "51"
+      "detail": "48"
     },
     {
       "check": "CASE A: polite Chinese opening/closing",
@@ -407,7 +407,7 @@
     {
       "check": "CASE C: fast (no model latency)",
       "pass": true,
-      "detail": "274ms"
+      "detail": "248ms"
     },
     {
       "check": "CASE C: no Request More created",
@@ -467,7 +467,7 @@
     {
       "check": "SEND: retry returns the same request_id",
       "pass": true,
-      "detail": "req_e7dfa7913487 vs req_e7dfa7913487"
+      "detail": "req_93a3ffcbf41d vs req_93a3ffcbf41d"
     },
     {
       "check": "SEND: still exactly one open Request More",
@@ -482,7 +482,7 @@
     {
       "check": "CASE A: vin keeps a how-to-find-it hint",
       "pass": true,
-      "detail": "请您方便时补充上传"
+      "detail": "请方便时补充上传"
     },
     {
       "check": "CASE B: vin keeps a how-to-find-it hint",

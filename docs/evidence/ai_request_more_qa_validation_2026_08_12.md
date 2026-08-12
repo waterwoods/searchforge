@@ -5,9 +5,9 @@
 | Item | Value |
 |------|-------|
 | Branch | `strategy/founder-review-2026-08-05` |
-| Baseline commit under test | `54a47a1` (+ QA fixes in this evidence) |
+| Baseline commit under test | `54a47a1`; validated revision runs `af14786` |
 | QA service | `fiqa-api-qa` (`us-west1`, project `optimal-disk-472305-e2`) |
-| QA revision | `fiqa-api-qa-00077-wxl` @ 100% traffic |
+| QA revision | `fiqa-api-qa-00078-vjq` @ 100% traffic |
 | QA base URL | `https://fiqa-api-qa-g7zatxrycq-uw.a.run.app` |
 | Posture | product-only, `STRICT_PG_ONLY` on `caseiq-qa`, `intake_path_ready=true` |
 | Flags (QA only) | `REQUEST_MORE_ASSISTANT_ENABLED=1`, `REQUEST_MORE_ASSISTANT_LLM=1`, `REQUEST_MORE_ASSISTANT_TIMEOUT_SECONDS=20` |
