@@ -5,7 +5,31 @@
 
 ---
 
-## The one call
+## Step 0 — Ask for phone or 案件编号
+
+You do **not** need the case_id. Ask the customer for **手机号** or **案件编号 (CLM-####)**, then:
+
+```bash
+curl -s "$BASE_URL/api/inbox/support/case-lookup?phone=6265551234&include_diagnosis=true" \
+  -H "X-Unified-Intake-Support-Key: $UNIFIED_INTAKE_SUPPORT_API_KEY" \
+  -H "X-Org-Id: $OFFICE_ID" | jq
+```
+
+Swap the identifier as needed — exactly one per call:
+
+| You have | Use |
+|----------|-----|
+| 手机号 | `?phone=6265551234` |
+| 案件编号 | `?support_ref=CLM-0042` |
+| WeChat person link (`wx_…`) | `?person_link=wx_…` (a raw OpenID is refused on purpose) |
+
+- **One match** → `resolved_case_id` is filled and `support_diagnosis` comes back in the same call. You are done; read the four lines below.
+- **Several matches** → `ambiguous: true`, no diagnosis. Pick from `matches` (active first, then most recent) and continue with Step 1.
+- **No match** → `found: false`. Confirm the number/编号 with the customer; nothing was guessed.
+
+---
+
+## Step 1 — The one call (when you already have the case_id)
 
 ```bash
 curl -s "$BASE_URL/api/inbox/support/case-head/$CASE_ID" \
@@ -14,8 +38,8 @@ curl -s "$BASE_URL/api/inbox/support/case-head/$CASE_ID" \
 ```
 
 - `X-Unified-Intake-Support-Key` — only needed when the deployment configures one.
-- `X-Org-Id` — only needed when office ownership enforcement is on. Send the office that owns the case.
-- Read-only. Calling it never changes the case, never sends the customer anything.
+- `X-Org-Id` — only needed when office ownership enforcement is on. Send the office that owns the case. Under enforcement, lookup only ever returns your own office's cases.
+- Read-only. Neither call changes the case or sends the customer anything.
 
 ---
 
@@ -60,6 +84,6 @@ curl -s "$BASE_URL/api/inbox/support/case-head/$CASE_ID" \
 
 ---
 
-*Endpoint:* `GET /api/inbox/support/case-head/{case_id}`
-*Logic:* `services/fiqa_api/inbox_triage/support_case_diagnosis.py` (deterministic, no LLM)
-*Tests:* `tests/test_pilot_reliability_support_case_head.py`
+*Endpoints:* `GET /api/inbox/support/case-lookup` → `GET /api/inbox/support/case-head/{case_id}`
+*Logic:* `support_case_lookup.py` (identifier → case_id) and `support_case_diagnosis.py` (deterministic, no LLM)
+*Tests:* `tests/test_pilot_reliability_support_case_lookup.py`, `tests/test_pilot_reliability_support_case_head.py`

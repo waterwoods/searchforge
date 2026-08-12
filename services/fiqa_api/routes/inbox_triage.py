@@ -3076,6 +3076,86 @@ async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
     return out
 
 
+@router.get("/support/case-lookup")
+async def support_case_lookup(
+    request: Request,
+    phone: str | None = Query(default=None, max_length=32),
+    case_ref: str | None = Query(default=None, max_length=32),
+    support_ref: str | None = Query(default=None, max_length=32),
+    person_link: str | None = Query(default=None, max_length=128),
+    include_diagnosis: bool = Query(default=False),
+) -> dict[str, Any]:
+    """
+    Resolve one customer identifier to the case_id the support head already diagnoses.
+
+    Exactly one of ``phone``, ``case_ref`` (alias ``support_ref``), or ``person_link``.
+    A raw WeChat OpenID is rejected on purpose — pass the opaque ``wx_*`` person link.
+
+    Read-only: no command, binding, stamp, or timeline event is written here.
+    Matches are bounded and carry no phone, name, email, story text, or token.
+    Set ``include_diagnosis=true`` to get the full Fix 3 diagnosis when exactly one
+    case matches; the diagnosis itself always comes from ``support_case_diagnosis``.
+    """
+    assert_support_export_authorized(request)
+    from services.fiqa_api.inbox_triage.support_case_diagnosis import (
+        build_support_case_diagnosis,
+    )
+    from services.fiqa_api.inbox_triage.support_case_lookup import (
+        SupportLookupError,
+        lookup_support_cases,
+        resolve_identifier,
+    )
+    from services.fiqa_api.security.case_office_access import case_office_enforcement_enabled
+
+    req_org = client_asserted_office_id(request)
+    office_visible = None
+    if case_office_enforcement_enabled():
+        # Same posture as the single-case head: no asserted office, no search.
+        if not req_org:
+            raise HTTPException(status_code=403, detail="case_office_assertion_required_v1")
+        office_visible = functools.partial(_case_visible_for_support_office, req_org=req_org)
+
+    try:
+        kind, value = resolve_identifier(
+            phone=phone,
+            case_ref=case_ref or support_ref,
+            person_link=person_link,
+        )
+    except SupportLookupError as exc:
+        raise HTTPException(status_code=400, detail=exc.code) from exc
+
+    result = lookup_support_cases(
+        kind=kind,
+        value=value,
+        load_case=get_case_for_read,
+        office_visible=office_visible,
+    )
+
+    out: dict[str, Any] = {
+        "ok": True,
+        "support_export_manifest_version": SUPPORT_EXPORT_MANIFEST_VERSION,
+        "auth_posture": support_export_auth_posture_dict(),
+        "office_ownership": office_ownership_posture_dict(),
+        "request_lineage": {"request_trace_id": http_request_lineage(request).request_trace_id},
+        **result,
+    }
+    resolved = str(result.get("resolved_case_id") or "").strip()
+    if include_diagnosis and resolved:
+        case = get_case_for_read(resolved)
+        if case is not None:
+            out["support_diagnosis"] = build_support_case_diagnosis(case)
+    out["next_call"] = (
+        f"GET /api/inbox/support/case-head/{resolved}" if resolved else None
+    )
+    return out
+
+
+def _case_visible_for_support_office(case: dict[str, Any], *, req_org: str) -> bool:
+    from services.fiqa_api.security.case_office_access import case_visible_in_office_list
+
+    return case_visible_in_office_list(case, req_org)
+
+
 @router.get("/support/launch-golden-qa/status")
 async def support_launch_golden_qa_status(request: Request) -> dict[str, Any]:
     """P25 — Launch Golden QA status (no raw token). Support-gated internal tool."""

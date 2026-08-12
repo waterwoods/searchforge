@@ -598,6 +598,46 @@ def list_cases_for_phone_lookup(phone: str, *, client_id: str | None = None) -> 
     return out
 
 
+def find_case_id_for_case_ref(case_ref: str) -> str | None:
+    """
+    Resolve a human CLM-#### reference to one case_id (indexed PG path when enabled).
+
+    Read-only. Returns None for an unparseable ref or when nothing matches.
+    """
+    from services.fiqa_api.inbox_triage.case_ref import normalize_case_ref
+
+    ref = normalize_case_ref(case_ref)
+    if not ref:
+        return None
+
+    if is_production_mode() and not service_record_database_url():
+        logger.warning("JSON path should not be used in production (missing database URL) %s", _OBS)
+        return None
+
+    db_primary = db_primary_reads_enabled() and bool(service_record_database_url())
+    if db_primary:
+        try:
+            from services.fiqa_api.db.service_record_repository import find_record_id_by_case_ref
+
+            found = find_record_id_by_case_ref(ref)
+            if found:
+                return found
+        except Exception:
+            logger.exception("%s signal=PG_CASE_REF_LOOKUP_EXCEPTION", _OBS)
+
+    # JSON is the primary read when DB-primary is off (same rule as get_case_for_read);
+    # under DB-primary it is only a miss/error fallback.
+    if not db_primary or json_read_fallback_allowed():
+        for case in json_list_all_cases():
+            if normalize_case_ref(str(case.get("case_ref") or "")) != ref:
+                continue
+            cid = str(case.get("case_id") or "").strip()
+            if cid:
+                return cid
+
+    return None
+
+
 def list_recent_cases_for_binding(
     limit: int = 30,
     offset: int = 0,

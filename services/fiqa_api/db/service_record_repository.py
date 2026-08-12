@@ -159,6 +159,24 @@ def allocate_case_ref_number() -> int:
             return n
 
 
+def find_record_id_by_case_ref(case_ref: str) -> str | None:
+    """Resolve a human CLM-#### reference to its record_id (unique index, read-only)."""
+    ref = (case_ref or "").strip().upper()
+    if not ref:
+        return None
+    with service_record_connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_case_ref_schema(cur)
+            cur.execute(
+                "SELECT record_id FROM service_records WHERE UPPER(TRIM(case_ref)) = %s LIMIT 1",
+                (ref,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return str(row[0] or "").strip() or None
+
+
 def _office_owner_org_id_from_case(case: dict[str, Any]) -> str | None:
     raw = case.get("asserted_org_id")
     if raw is None:
