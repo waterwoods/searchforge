@@ -884,22 +884,30 @@ Page({
       wx.showToast({ title: "上传完成", icon: "success" });
     } catch (err) {
       clearSlowUploadTimer();
-      const msg =
-        err instanceof Error && err.message === "cancelled"
-          ? ""
-          : mapErrorMessage(err instanceof ApiRequestError ? err.code : "network_error");
-      if (msg) wx.showToast({ title: msg, icon: "none" });
+      const errMsg = err instanceof Error ? err.message : "";
+      const softCancel = errMsg === "cancelled" || errMsg === "privacy_denied";
+      const msg = softCancel
+        ? ""
+        : mapErrorMessage(err instanceof ApiRequestError ? err.code : "network_error");
+      if (errMsg === "privacy_denied") {
+        wx.showToast({ title: "未同意隐私授权，请稍后重试", icon: "none" });
+      } else if (msg) {
+        wx.showToast({ title: msg, icon: "none" });
+      }
       this.updateSlot(slot.key, {
         uploading: false,
         progress: 0,
-        error: msg || "上传失败",
+        error: softCancel ? "" : msg || "上传失败",
         canRetry: true,
         canRemove: true,
         localPath,
         uploadIntentId,
-        statusText: uploadStatusText({ phase: "failed" }),
+        statusText: softCancel
+          ? uploadStatusText({ phase: "idle" })
+          : uploadStatusText({ phase: "failed" }),
       });
       if (msg) this.setData({ uploadStage: "上传失败，请重试" });
+      else if (errMsg === "privacy_denied") this.setData({ uploadStage: "" });
       if (msg) {
         logPhotoTiming({
           event: "upload_measurement_failed",

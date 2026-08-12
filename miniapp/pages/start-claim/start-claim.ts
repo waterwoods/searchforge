@@ -85,6 +85,10 @@ import {
   type VoiceSession,
 } from "../../utils/voiceStoryInput";
 import {
+  ensureMicrophoneReady,
+  PRIVACY_DENIED_RECORD_HINT,
+} from "../../utils/privacyAuthorize";
+import {
   classifyVoiceFirstFailure,
   emptyVoiceFirstUi,
   leaveVoiceFrontDoor,
@@ -884,9 +888,10 @@ Page({
     });
   },
 
-  onTapRecord() {
+  async onTapRecord() {
     if (this.data.busy.submitting || this.data.voicePhase === "transcribing") return;
     if (this.data.voiceFirstMicDisabled && this.data.showVoiceFrontDoor) return;
+    if ((this as { _micGateBusy?: boolean })._micGateBusy) return;
 
     const recorder = this._ensureRecorder();
     if (!recorder) {
@@ -897,12 +902,18 @@ Page({
       return;
     }
 
-    wx.authorize({
-      scope: "scope.record",
-      success: () => {
-        this._startRecording(recorder);
-      },
-      fail: () => {
+    (this as { _micGateBusy?: boolean })._micGateBusy = true;
+    try {
+      const ready = await ensureMicrophoneReady();
+      if (!ready.ok) {
+        if (ready.reason === "privacy_busy") return;
+        if (ready.reason === "privacy_denied") {
+          this._setVoicePhase("stt_failed", PRIVACY_DENIED_RECORD_HINT);
+          if (this.data.showVoiceFrontDoor) {
+            this._setVoiceFirstPhase("failed", { failureKind: "privacy_denied" });
+          }
+          return;
+        }
         wx.showModal({
           title: "需要麦克风权限",
           content: "请允许录音后重试，或直接打字填写事故经过。",
@@ -913,8 +924,12 @@ Page({
         if (this.data.showVoiceFrontDoor) {
           this._setVoiceFirstPhase("failed", { failureKind: "mic_denied" });
         }
-      },
-    });
+        return;
+      }
+      this._startRecording(recorder);
+    } finally {
+      (this as { _micGateBusy?: boolean })._micGateBusy = false;
+    }
   },
 
   onTapStop() {

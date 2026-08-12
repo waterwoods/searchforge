@@ -200,7 +200,7 @@ describe("voiceFirstIntake Start Claim page wiring", () => {
     // Mic denied → stay on door with text fallback (no dead end).
     wx.authorize = (opts: { fail?: () => void }) => opts.fail?.();
     wx.showModal = () => {};
-    page.onTapRecord.call(voiceCtx);
+    await page.onTapRecord.call(voiceCtx);
     assert.equal(voiceCtx.data.showVoiceFrontDoor, true);
     assert.equal(voiceCtx.data.voiceFirstPhase, "failed");
     assert.match(String(voiceCtx.data.voiceFirstStatus || ""), /文字|表单/);
@@ -208,6 +208,34 @@ describe("voiceFirstIntake Start Claim page wiring", () => {
     page.onChooseTextInput.call(voiceCtx);
     assert.equal(voiceCtx.data.showVoiceFrontDoor, false);
     assert.equal(voiceCtx.data.frontDoor, "text");
+
+    // Privacy declined → no recording; text fallback remains.
+    const privacyCtx = mkCtx({ entry: "form" });
+    await page.onLoad.call(privacyCtx, { entry: "form" });
+    privacyCtx.data.description = "已有文字草稿";
+    wx.getPrivacySetting = (opts: { success?: (res: { needAuthorization: boolean }) => void }) => {
+      opts.success?.({ needAuthorization: true });
+    };
+    wx.showModal = (opts: { success?: (res: { confirm?: boolean }) => void }) => {
+      opts.success?.({ confirm: false });
+    };
+    let started = 0;
+    wx.getRecorderManager = () => ({
+      start: () => {
+        started += 1;
+      },
+      stop: () => undefined,
+      onStart: () => undefined,
+      onStop: () => undefined,
+      onError: () => undefined,
+    });
+    await page.onTapRecord.call(privacyCtx);
+    assert.equal(started, 0);
+    assert.equal(privacyCtx.data.description, "已有文字草稿");
+    assert.equal(privacyCtx.data.showVoiceFrontDoor, true);
+    assert.equal(privacyCtx.data.voiceFirstPhase, "failed");
+    assert.match(String(privacyCtx.data.voiceFirstStatus || ""), /隐私|文字/);
+    assert.match(String(privacyCtx.data.voiceFirstSecondaryText || ""), /不方便录音/);
 
     const textCtx = mkCtx({ entry: "form", mode: "text" });
     await page.onLoad.call(textCtx, { entry: "form", mode: "text" });

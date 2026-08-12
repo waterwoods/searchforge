@@ -18,6 +18,10 @@ import {
   type VoicePhase,
   type VoiceSession,
 } from "../../utils/voiceStoryInput";
+import {
+  ensureMicrophoneReady,
+  PRIVACY_DENIED_RECORD_HINT,
+} from "../../utils/privacyAuthorize";
 
 type RecorderState = {
   recorder: WechatMiniprogram.RecorderManager | null;
@@ -93,8 +97,9 @@ Page({
     void this.retryLoadTask();
   },
 
-  onTapRecord() {
+  async onTapRecord() {
     if (this.data.busy.saving || this.data.voicePhase === "transcribing") return;
+    if ((this as { _micGateBusy?: boolean })._micGateBusy) return;
     const token = this.requireToken();
     if (!token) return;
 
@@ -104,12 +109,15 @@ Page({
       return;
     }
 
-    wx.authorize({
-      scope: "scope.record",
-      success: () => {
-        this._startRecording(token, recorder);
-      },
-      fail: () => {
+    (this as { _micGateBusy?: boolean })._micGateBusy = true;
+    try {
+      const ready = await ensureMicrophoneReady();
+      if (!ready.ok) {
+        if (ready.reason === "privacy_busy") return;
+        if (ready.reason === "privacy_denied") {
+          this._setVoicePhase("stt_failed", PRIVACY_DENIED_RECORD_HINT);
+          return;
+        }
         wx.showModal({
           title: "需要麦克风权限",
           content: "请允许录音后重试，或直接打字填写事故经过。",
@@ -117,8 +125,12 @@ Page({
           confirmText: "知道了",
         });
         this._setVoicePhase("stt_failed", "未获得麦克风权限，请直接打字填写。");
-      },
-    });
+        return;
+      }
+      this._startRecording(token, recorder);
+    } finally {
+      (this as { _micGateBusy?: boolean })._micGateBusy = false;
+    }
   },
 
   onTapStop() {

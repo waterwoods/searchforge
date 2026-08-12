@@ -3,6 +3,11 @@
  * Voice / video intentionally not implemented (Lock 3).
  */
 
+import {
+  ensurePrivacyAuthorized,
+  PRIVACY_DENIED_MEDIA_HINT,
+} from "../utils/privacyAuthorize";
+
 export type ChoosePhotoResult = {
   tempFilePath: string;
   size: number;
@@ -85,7 +90,16 @@ function compressPhoto(filePath: string): Promise<string> {
   });
 }
 
-export function choosePhoto(): Promise<ChoosePhotoResult> {
+export async function choosePhoto(): Promise<ChoosePhotoResult> {
+  const privacy = await ensurePrivacyAuthorized("chooseMedia");
+  if (!privacy.ok) {
+    if (privacy.status === "busy") {
+      throw new Error("cancelled");
+    }
+    // Distinct from picker cancel — callers can show calm retry copy.
+    throw new Error("privacy_denied");
+  }
+
   return new Promise((resolve, reject) => {
     wx.chooseMedia({
       count: 1,
@@ -113,6 +127,11 @@ export function choosePhoto(): Promise<ChoosePhotoResult> {
       },
     });
   });
+}
+
+/** Calm Chinese hint when privacy consent blocked photo capture. */
+export function choosePhotoPrivacyDeniedHint(): string {
+  return PRIVACY_DENIED_MEDIA_HINT;
 }
 
 export async function preparePhotoForUpload(photo: ChoosePhotoResult): Promise<PreparedPhoto> {

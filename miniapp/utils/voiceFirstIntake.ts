@@ -16,6 +16,7 @@ export type VoiceFirstPhase =
   | "failed";
 
 export type VoiceFirstFailureKind =
+  | "privacy_denied"
   | "mic_denied"
   | "recording_failed"
   | "stt_failed"
@@ -39,6 +40,7 @@ export const VOICE_FIRST_STATUS_COPY: Record<VoiceFirstPhase, string> = {
 };
 
 export const VOICE_FIRST_FAILURE_COPY: Record<VoiceFirstFailureKind, string> = {
+  privacy_denied: "未同意隐私授权。不方便录音？请改用文字输入，或使用完整表单。",
   mic_denied: "未获得麦克风权限，请改用文字输入，或使用完整表单。",
   recording_failed: "录音失败，请重试，或改用文字输入。",
   stt_failed: "语音识别失败，请重试，或改用文字输入。",
@@ -141,6 +143,9 @@ export function classifyVoiceFirstFailure(err: unknown): VoiceFirstFailureKind {
   if (!err) return "stt_failed";
   if (typeof err === "string") {
     const s = err.toLowerCase();
+    if (s.includes("privacy")) {
+      return "privacy_denied";
+    }
     if (s.includes("mic") || s.includes("permission") || s.includes("authorize")) {
       return "mic_denied";
     }

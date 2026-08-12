@@ -789,9 +789,14 @@ Page({
         retryAvailable: false,
       });
       this.persistDraftSafe();
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "cancelled") return;
       this.safePageSetData({
-        validationMessage: "选择照片失败，请重试",
+        validationMessage:
+          msg === "privacy_denied"
+            ? "未同意隐私授权，无法选择照片。您可稍后重试。"
+            : "选择照片失败，请重试",
       });
     }
   },

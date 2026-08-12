@@ -202,7 +202,7 @@ test("start-claim voice controls are available without wiping typed description"
   (globalThis as Record<string, any>).wx.showModal = (opts: { content: string }) => {
     modals.push(opts);
   };
-  page.onTapRecord.call(ctx);
+  await page.onTapRecord.call(ctx);
   assert.equal(ctx.data.description, "先打字填写的事故经过内容。");
   assert.match(String(ctx.data.voiceHint || ""), /麦克风|打字/);
   assert.ok(modals.some((m) => /麦克风|打字/.test(m.content)));
