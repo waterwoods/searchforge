@@ -133,9 +133,13 @@ def empty_state(*, raw_story: str = "", command_id: str = "", idempotency_key: s
 
 
 def time_needs_refinement(time_text: str) -> bool:
-    """True when extracted time is only a bare relative day (still ask clock time)."""
+    """True when extracted time is absent, a placeholder, or a bare relative day."""
+    from services.fiqa_api.inbox_triage.accident_story_assistant.extractors import (
+        is_sentinel_text,
+    )
+
     t = str(time_text or "").strip().lower()
-    if not t:
+    if not t or is_sentinel_text(t):
         return True
     return t in {x.lower() for x in VAGUE_TIME_ONLY}
 
@@ -170,7 +174,11 @@ def build_guided_customer_view(state: AccidentStoryState) -> dict[str, Any]:
     conflicts = list(state.get("conflicts") or [])
 
     def _time_display() -> tuple[str, str]:
-        if not time_text:
+        from services.fiqa_api.inbox_triage.accident_story_assistant.extractors import (
+            is_sentinel_text,
+        )
+
+        if not time_text or is_sentinel_text(time_text):
             return "待确认", "pending"
         if time_needs_refinement(time_text) and "accident_datetime" in missing:
             return f"{time_text}，具体时间待确认", "partial"

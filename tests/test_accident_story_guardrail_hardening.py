@@ -41,12 +41,23 @@ def test_llm_no_without_evidence_forced_unknown():
     def evil_llm(_text: str) -> dict:
         return {"injury_status": "no", "accident_location_text": "San Jose"}
 
-    proposal = propose_from_story(raw_story="昨天被追尾。", llm_caller=evil_llm)
+    proposal = propose_from_story(raw_story="昨天在 San Jose 被追尾。", llm_caller=evil_llm)
     assert proposal["injury_status"] == "unknown"
     assert "injury_status" in (proposal.get("missing_required_facts") or [])
     assert INJURY_LLM_UNSUPPORTED in (proposal.get("warnings") or [])
-    # Useful non-injury LLM fields still merge.
+    # Useful non-injury LLM fields still merge when grounded in the story.
     assert "San Jose" in str(proposal.get("accident_location_text") or "")
+
+
+def test_llm_location_not_in_story_is_rejected():
+    """A place the customer never said must never reach the proposal."""
+
+    def hallucinating_llm(_text: str) -> dict:
+        return {"accident_location_text": "San Jose"}
+
+    proposal = propose_from_story(raw_story="昨天被追尾。", llm_caller=hallucinating_llm)
+    assert "San Jose" not in str(proposal.get("accident_location_text") or "")
+    assert "accident_location" in (proposal.get("missing_required_facts") or [])
 
 
 def test_llm_yes_without_evidence_forced_unknown():

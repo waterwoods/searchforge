@@ -22,7 +22,10 @@ from services.fiqa_api.inbox_triage.accident_story_assistant.extractors import (
     extract_location_text,
     extract_time_text,
     extract_vehicles,
+    is_grounded_in_source,
+    looks_like_location_narrative,
     normalize_story,
+    trim_location_narrative,
     validate_model_proposals,
 )
 from services.fiqa_api.inbox_triage.accident_story_assistant.guardrails import (
@@ -125,12 +128,41 @@ def node_extract_fact_proposals(state: AccidentStoryState) -> AccidentStoryState
                     out["warnings"] = list(
                         dict.fromkeys([*(out.get("warnings") or []), *inj_warns])
                     )
+            # The model may phrase a fact more cleanly than the rules, but only
+            # when every token is grounded in what the customer actually said.
+            # Deterministic output stays the fallback, never a narrative dump.
             for key in ("accident_time_text", "accident_location_text", "incident_summary"):
-                if merged.get(key) and not str(out.get(key) or "").strip():
-                    out[key] = merged[key]
+                candidate = str(merged.get(key) or "").strip()
+                if not candidate or not is_grounded_in_source(candidate, text):
+                    continue
+                if key == "accident_location_text" and looks_like_location_narrative(candidate):
+                    continue
+                out[key] = candidate
+            if str(out.get("accident_location_text") or "").strip() and looks_like_location_narrative(
+                str(out.get("accident_location_text"))
+            ):
+                out["accident_location_text"] = trim_location_narrative(
+                    str(out.get("accident_location_text"))
+                )
             if merged.get("involved_vehicles"):
+                grounded_vehicles = [
+                    v for v in merged["involved_vehicles"] if is_grounded_in_source(str(v), text)
+                ]
                 out["involved_vehicles"] = list(
-                    dict.fromkeys([*(out.get("involved_vehicles") or []), *merged["involved_vehicles"]])
+                    dict.fromkeys([*(out.get("involved_vehicles") or []), *grounded_vehicles])
+                )[:5]
+            if merged.get("involved_parties"):
+                out["involved_parties"] = list(
+                    dict.fromkeys(
+                        [
+                            *(out.get("involved_parties") or []),
+                            *[
+                                p
+                                for p in merged["involved_parties"]
+                                if is_grounded_in_source(str(p), text)
+                            ],
+                        ]
+                    )
                 )[:5]
             if merged.get("confidence_by_field"):
                 conf = dict(out.get("confidence_by_field") or {})
