@@ -12,7 +12,7 @@ import json
 import logging
 import os
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 from uuid import uuid4
@@ -152,6 +152,9 @@ class RequestDraft:
     created_at: str
     updated_at: str
     status: str = "draft"
+    # Bounded metadata about the AI draft this wording came from (digest, never
+    # text). Deliberately outside content_hash: provenance is not draft content.
+    ai_provenance: dict[str, Any] | None = None
 
 
 @dataclass
@@ -759,13 +762,19 @@ class P20CaseIntakeCommandService:
         items: list[dict[str, Any]],
         correlation_id: str | None = None,
         draft_id: str | None = None,
+        ai_draft: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        from services.fiqa_api.inbox_triage.request_more_assistant.edit_signal import (
+            normalize_ai_provenance,
+        )
+
         command_id = _normalize_command_id(command_id, "command_id")
         idempotency_key = _normalize_command_id(idempotency_key, "idempotency_key")
         broker_id = _normalize_command_id(broker_id, "broker_id")
         expected = _validate_expected_version(expected_case_version)
         normalized_items = _validate_draft_items(items)
         corr = (correlation_id or command_id).strip()[:128] or command_id
+        provenance = normalize_ai_provenance(ai_draft)
 
         def _handle(tx: IntakeTx, snapshot: IntakeSnapshot) -> dict[str, Any]:
             if isinstance(getattr(snapshot, "stored_outcome", None), dict):
@@ -824,10 +833,26 @@ class P20CaseIntakeCommandService:
                 prior.content_hash == content_hash
                 or _semantic_draft_items(prior.items) == _semantic_draft_items(stable_items)
             )
+            # A broker who edits by hand after asking the AI does not re-send the
+            # receipt; keep it so the edit is still measurable. A sent draft ends
+            # that cycle, so its provenance never leaks into the next request.
+            carried = (
+                prior.ai_provenance
+                if prior is not None and prior.status != "sent"
+                else None
+            )
+            effective_provenance = provenance or carried
+
             next_version = aggregate.aggregate_version
             event_ids: list[str] = []
             if unchanged and prior is not None:
                 draft = prior
+                if effective_provenance != prior.ai_provenance:
+                    # Provenance-only change: record it without a version bump.
+                    draft = replace(
+                        prior, ai_provenance=effective_provenance, updated_at=timestamp
+                    )
+                    tx.upsert_draft(draft)
             else:
                 next_version = aggregate.aggregate_version + 1
                 draft = RequestDraft(
@@ -840,6 +865,7 @@ class P20CaseIntakeCommandService:
                     created_at=(prior.created_at if prior else timestamp),
                     updated_at=timestamp,
                     status="draft",
+                    ai_provenance=effective_provenance,
                 )
                 event = {
                     "event_id": f"evt_{uuid4().hex[:16]}",
@@ -861,6 +887,10 @@ class P20CaseIntakeCommandService:
                         "item_count": len(draft.items),
                         "content_hash": content_hash,
                         "field_keys": [i.get("field_key") for i in draft.items],
+                        "ai_draft_adopted": bool(
+                            effective_provenance and effective_provenance.get("ai_used")
+                        ),
+                        "assist_id": (effective_provenance or {}).get("assist_id"),
                     },
                     "idempotency_key": idempotency_key,
                     "created_at": timestamp,

@@ -368,6 +368,20 @@ export type RequestMoreAiDraftItem = {
 };
 
 /** Draft-only wording help. Never a Request More, never a send. */
+/** Server-issued draft provenance. Echoed on save so the send can measure edits. */
+export type AiDraftReceipt = {
+    assist_id?: string | null;
+    draft_signature: string;
+    ai_used?: boolean;
+    used_fallback?: boolean;
+    fallback_reason?: string | null;
+    authority?: string | null;
+    guardrail_outcome?: string | null;
+    model_provider?: string | null;
+    model_name?: string | null;
+    missing_item_count?: number;
+};
+
 export type RequestMoreAiDraftResult = {
     ok: boolean;
     case_id?: string | null;
@@ -384,6 +398,7 @@ export type RequestMoreAiDraftResult = {
     fallback_reason?: string | null;
     guardrail_outcome?: string;
     lifecycle_mutated?: boolean;
+    ai_draft_receipt?: AiDraftReceipt | null;
 };
 
 export type CaseIntakeRequestDraft = {
@@ -580,6 +595,7 @@ export type SaveRequestDraftCommand = {
     items: CaseIntakeRequestDraftItem[];
     draft_id?: string;
     correlation_id?: string;
+    ai_draft?: AiDraftReceipt | null;
 };
 
 export type UpdateFactStatusCommand = {
@@ -1257,6 +1273,7 @@ export async function saveCaseRequestDraft(
             })),
             draft_id: command.draft_id,
             correlation_id: command.correlation_id,
+            ai_draft: command.ai_draft ?? undefined,
         },
     );
     return response.data;

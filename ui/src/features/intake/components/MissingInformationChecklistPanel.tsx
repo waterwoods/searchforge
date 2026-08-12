@@ -16,6 +16,7 @@ import {
   message,
 } from 'antd';
 import type {
+  AiDraftReceipt,
   CaseIntakeProjection,
   CaseIntakeRequestDraftItem,
   CustomerAccessCard,
@@ -546,6 +547,9 @@ export function MissingInformationChecklistPanel({
   const [aiDraftNotice, setAiDraftNotice] = useState<{ type: 'info' | 'warning'; text: string } | null>(
     null,
   );
+  // Provenance of the most recent draft the server produced. Echoed on save so
+  // the send can tell an untouched AI draft from one the broker rewrote.
+  const aiDraftReceiptRef = useRef<AiDraftReceipt | null>(null);
   const expectedVersion = projection?.aggregate_version ?? 0;
   const requestSent =
     Boolean(accessCard?.access_ready || accessCard?.request_sent)
@@ -747,6 +751,7 @@ export function MissingInformationChecklistPanel({
           expected_case_version: expected,
           items: started.items,
           draft_id: proj.request_draft?.draft_id,
+          ai_draft: aiDraftReceiptRef.current,
         });
         if (autosaveRef.current.isStale(started.generation)) {
           return { ok: false };
@@ -856,6 +861,7 @@ export function MissingInformationChecklistPanel({
         setAiDraftNotice({ type: 'info', text: CLAIM_REQUEST_MORE_COPY.aiDraftNothingMissing });
         return;
       }
+      aiDraftReceiptRef.current = result.ai_draft_receipt ?? null;
       const drafted = result.items || [];
       applyUserRowEdit((prev) =>
         prev.map((row) => {

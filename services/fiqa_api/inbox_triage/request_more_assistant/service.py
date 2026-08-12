@@ -13,6 +13,7 @@ import logging
 import re
 import time
 from typing import Any, Callable
+from uuid import uuid4
 
 from services.fiqa_api.inbox_triage.request_more_assistant.contract import (
     AUTHORITY_AI_DRAFT,
@@ -22,6 +23,9 @@ from services.fiqa_api.inbox_triage.request_more_assistant.contract import (
     build_safe_context,
     build_template_draft,
     derive_request_more_missing_items,
+)
+from services.fiqa_api.inbox_triage.request_more_assistant.edit_signal import (
+    build_draft_receipt,
 )
 from services.fiqa_api.inbox_triage.request_more_assistant.flags import (
     assistant_enabled,
@@ -276,6 +280,18 @@ def _result(
     model: str,
     latency_ms: int,
 ) -> dict[str, Any]:
+    receipt = build_draft_receipt(
+        assist_id=f"assist_{uuid4().hex[:16]}",
+        items=draft["items"],
+        draft_used_ai=draft_used_ai,
+        used_fallback=used_fallback,
+        fallback_reason=fallback_reason,
+        authority=authority,
+        guardrail_outcome=guardrail_outcome,
+        model_provider=provider,
+        model_name=model,
+        missing_item_count=len(items),
+    )
     out = {
         "ok": True,
         "schema_version": SCHEMA_VERSION,
@@ -294,6 +310,8 @@ def _result(
         "model_name": model,
         "latency_ms": latency_ms,
         "lifecycle_mutated": False,
+        # Echoed back on SaveRequestDraft so the send can measure broker edits.
+        "ai_draft_receipt": receipt,
     }
     # Bounded metadata only — no case facts, no customer text, no draft body.
     # Rendered into the message because the app formatter drops `extra` fields.
@@ -302,6 +320,7 @@ def _result(
         json.dumps(
             {
                 "case_id_present": bool(cid),
+                "assist_id": receipt["assist_id"],
                 "missing_item_count": out["missing_item_count"],
                 "draft_used_ai": draft_used_ai,
                 "used_fallback": used_fallback,

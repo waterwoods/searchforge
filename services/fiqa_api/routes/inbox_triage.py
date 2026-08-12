@@ -120,6 +120,7 @@ from services.fiqa_api.inbox_triage.case_lifecycle import _derive_case_lifecycle
 from services.fiqa_api.inbox_triage.p20_slice1_command_service import default_slice1_service
 from services.fiqa_api.inbox_triage.p20_case_intake_command_service import default_case_intake_service
 from services.fiqa_api.inbox_triage.p20_send_request_command_service import default_send_request_service
+from services.fiqa_api.inbox_triage.request_more_assistant.flags import resolve_pilot_office_id
 from services.fiqa_api.analytics.minimal_events import track_event
 from services.fiqa_api.analytics.funnel_events import append_session_analytics_event
 from services.fiqa_api.analytics.triage_funnel import (
@@ -820,6 +821,25 @@ class RequestDraftItemBody(BaseModel):
     draft_item_id: str | None = Field(default=None, max_length=128)
 
 
+class AiDraftReceiptBody(BaseModel):
+    """Server-issued draft provenance replayed by the broker client.
+
+    Every field originates from the drafting response; the client only echoes
+    it so the send can tell an unchanged AI draft from an edited one.
+    """
+
+    assist_id: str | None = Field(default=None, max_length=64)
+    draft_signature: str = Field(..., min_length=64, max_length=64)
+    ai_used: bool = Field(default=False)
+    used_fallback: bool = Field(default=False)
+    fallback_reason: str | None = Field(default=None, max_length=64)
+    authority: str | None = Field(default=None, max_length=32)
+    guardrail_outcome: str | None = Field(default=None, max_length=32)
+    model_provider: str | None = Field(default=None, max_length=32)
+    model_name: str | None = Field(default=None, max_length=64)
+    missing_item_count: int = Field(default=0, ge=0, le=999)
+
+
 class SaveRequestDraftBody(BaseModel):
     command_id: str = Field(..., min_length=8, max_length=128)
     idempotency_key: str = Field(..., min_length=8, max_length=128)
@@ -827,6 +847,7 @@ class SaveRequestDraftBody(BaseModel):
     items: list[RequestDraftItemBody] = Field(default_factory=list)
     draft_id: str | None = Field(default=None, max_length=128)
     correlation_id: str | None = Field(default=None, max_length=128)
+    ai_draft: AiDraftReceiptBody | None = Field(default=None)
 
 
 class RequestDraftAssistBody(BaseModel):
@@ -2253,6 +2274,7 @@ async def post_case_request_draft(
             items=[item.dict() for item in body.items],
             correlation_id=body.correlation_id,
             draft_id=body.draft_id,
+            ai_draft=body.ai_draft.dict() if body.ai_draft is not None else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
@@ -2313,7 +2335,7 @@ async def post_case_request_draft_assist(
         case=row,
         checklist=checklist,
         case_id=case_id,
-        office_id=client_asserted_office_id(http_request),
+        office_id=resolve_pilot_office_id(row, client_asserted_office_id(http_request)),
         open_request_more=open_request_more,
         prefer_template=prefer_template,
     )
@@ -3138,6 +3160,53 @@ async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
     if office_hint:
         out["support_office_hint_check"] = office_hint
     return out
+
+
+@router.get("/support/request-more-ai-signal/{case_id}")
+async def support_request_more_ai_signal(case_id: str, request: Request) -> dict[str, Any]:
+    """AI Request More pilot signal recorded for one case.
+
+    Reads the durable send events — no log archaeology, no analytics platform.
+    Returns digests and model metadata only; the draft wording never appears
+    here, so a support read can never become a copy of customer communication.
+    """
+    assert_support_export_authorized(request)
+    from services.fiqa_api.inbox_triage.request_more_assistant.edit_signal import (
+        extract_stored_send_signals,
+        summarize_send_signals,
+    )
+
+    cid = (case_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="case_id required")
+    case = get_case_for_read(cid)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(request, case)
+
+    try:
+        snapshot = default_send_request_service().store.read_snapshot(cid)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail="signal_read_unavailable") from exc
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="case not found")
+
+    events = list(getattr(snapshot, "latest_slice1_events", []) or []) + list(
+        getattr(snapshot, "latest_intake_events", []) or []
+    )
+    signals = extract_stored_send_signals(events)
+    draft = getattr(snapshot, "draft", None)
+    provenance = getattr(draft, "ai_provenance", None) if draft is not None else None
+    return {
+        "ok": True,
+        "case_id": cid,
+        "schema_version": 1,
+        "pilot_office_id": resolve_pilot_office_id(case, client_asserted_office_id(request)),
+        "draft_provenance": provenance if isinstance(provenance, dict) else None,
+        "draft_status": getattr(draft, "status", None) if draft is not None else None,
+        "send_signals": signals,
+        "summary": summarize_send_signals(signals),
+    }
 
 
 @router.get("/support/case-lookup")

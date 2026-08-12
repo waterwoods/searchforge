@@ -55,6 +55,35 @@ def office_allowed(office_id: str | None) -> bool:
     return bool(oid) and oid in allowed
 
 
+def resolve_pilot_office_id(
+    case: Any = None, client_asserted_office_id: str | None = None
+) -> str | None:
+    """Which office is asking, for allowlist purposes.
+
+    Persisted case ownership wins over the ``X-Org-Id`` header, which is a
+    client assertion and not identity. When neither is stamped — the Workbench
+    and QA harnesses do not send the header today — the deployment's own client
+    pack identifies the office, which is exactly right for a single-office
+    pilot and cannot be influenced by the caller.
+    """
+    row = case if isinstance(case, dict) else {}
+    for candidate in (
+        row.get("asserted_org_id"),
+        row.get("office_owner_org_id"),
+        row.get("client_id"),
+        client_asserted_office_id,
+    ):
+        text = str(candidate or "").strip()
+        if text:
+            return text[:256]
+    try:
+        from services.fiqa_api.security.case_client_access import resolve_server_client_id
+
+        return (resolve_server_client_id() or "").strip()[:256] or None
+    except Exception:  # noqa: BLE001 - allowlist must never break drafting
+        return None
+
+
 def llm_timeout_seconds() -> float:
     try:
         return max(0.5, min(float(os.getenv("REQUEST_MORE_ASSISTANT_TIMEOUT_SECONDS") or "8"), 30.0))

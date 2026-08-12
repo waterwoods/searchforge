@@ -7,6 +7,7 @@ customer submission (Capability 3B).
 
 from __future__ import annotations
 
+import json
 import logging
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -23,6 +24,9 @@ from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
     case_intake_feature_enabled,
 )
 from services.fiqa_api.inbox_triage.p20_missing_information import list_unsupported_send_item_labels
+from services.fiqa_api.inbox_triage.request_more_assistant.edit_signal import (
+    evaluate_send_signal,
+)
 from services.fiqa_api.inbox_triage.p20_customer_launch import (
     DEFAULT_ACCESS_TTL_SECONDS,
     CustomerLaunchTarget,
@@ -571,6 +575,17 @@ class P20SendRequestCommandService:
                 )
                 for index, item in enumerate(normalized_items)
             ]
+            # Observe the broker's decision; never influence it. Computed after
+            # the draft is final and before the one event that records the send.
+            ai_signal = evaluate_send_signal(
+                provenance=draft.ai_provenance,
+                sent_items=list(draft.items),
+                request_id=rid,
+                command_id=command_id,
+                source_draft_id=draft.draft_id,
+                source_draft_version=draft.draft_version,
+            )
+
             next_slice1_version = slice1_version + 1
             event = _event(
                 event_type=EVENT_REQUEST_SENT,
@@ -592,6 +607,7 @@ class P20SendRequestCommandService:
                     "items": [item.as_projection() for item in items],
                     "source_draft_id": draft.draft_id,
                     "source_draft_version": draft.draft_version,
+                    "ai_request_more": ai_signal,
                 },
                 timestamp=now,
             )
@@ -673,6 +689,7 @@ class P20SendRequestCommandService:
                 created_at=draft.created_at,
                 updated_at=now,
                 status="sent",
+                ai_provenance=draft.ai_provenance,
             )
             intake.admin_lifecycle = ADMIN_LIFECYCLE_ACTIVE
             intake.aggregate_version = next_intake_version
@@ -696,6 +713,7 @@ class P20SendRequestCommandService:
                     "request_id": rid,
                     "access_id": access.access_id,
                     "item_count": len(items),
+                    "ai_request_more": ai_signal,
                 },
                 "idempotency_key": idempotency_key,
                 "created_at": now,
@@ -724,8 +742,32 @@ class P20SendRequestCommandService:
             tx.upsert_intake_aggregate(intake)
             tx.insert_intake_events([intake_event])
 
+            # Bounded metadata only — digests, never customer-facing wording.
+            logger.info(
+                "request_more_ai_send_signal %s",
+                json.dumps(
+                    {
+                        key: ai_signal.get(key)
+                        for key in (
+                            "assist_id",
+                            "ai_used",
+                            "used_fallback",
+                            "fallback_reason",
+                            "draft_edited_before_send",
+                            "signal_reason",
+                            "model_provider",
+                            "model_name",
+                            "missing_item_count",
+                            "sent_item_count",
+                            "request_id",
+                        )
+                    },
+                    sort_keys=True,
+                ),
+            )
+
             # Never put raw token into durable outcome logs — card has launch_url only.
-            return _response(
+            response = _response(
                 outcome="accepted",
                 command_id=command_id,
                 correlation_id=corr,
@@ -735,6 +777,8 @@ class P20SendRequestCommandService:
                 slice1_projection=slice1_projection,
                 customer_access=access_card,
             )
+            response["ai_request_more"] = ai_signal
+            return response
 
         result = self.store.accept(
             case_id=case_id,

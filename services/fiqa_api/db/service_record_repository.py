@@ -2178,6 +2178,13 @@ def _ensure_case_intake_schema(cur: Any) -> None:
         ON claim_request_drafts (case_id, updated_at DESC)
         """
     )
+    # Migration 008 — digest + model metadata for the AI Request More pilot signal.
+    cur.execute(
+        """
+        ALTER TABLE claim_request_drafts
+        ADD COLUMN IF NOT EXISTS ai_provenance JSONB
+        """
+    )
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS claim_intake_events (
@@ -2329,7 +2336,7 @@ class _PostgresCaseIntakeStore:
         cur.execute(
             """
             SELECT draft_id, case_id, draft_version, status, items, content_hash,
-                   updated_by, created_at, updated_at
+                   updated_by, created_at, updated_at, ai_provenance
             FROM claim_request_drafts
             WHERE case_id = %s
             FOR UPDATE
@@ -2341,6 +2348,7 @@ class _PostgresCaseIntakeStore:
             return None
         d = dict(row)
         items = d.get("items") if isinstance(d.get("items"), list) else []
+        provenance = d.get("ai_provenance") if isinstance(d.get("ai_provenance"), dict) else None
         return RequestDraft(
             draft_id=str(d["draft_id"]),
             case_id=str(d["case_id"]),
@@ -2351,6 +2359,7 @@ class _PostgresCaseIntakeStore:
             created_at=_slice1_iso(d.get("created_at")),
             updated_at=_slice1_iso(d.get("updated_at")),
             status=str(d.get("status") or "draft"),
+            ai_provenance=provenance,
         )
 
     def _open_request_group(self, cur: Any, case_id: str) -> dict[str, Any] | None:
@@ -2622,12 +2631,13 @@ class _PostgresCaseIntakeStore:
             """
             INSERT INTO claim_request_drafts (
                 draft_id, case_id, draft_version, status, items, content_hash,
-                updated_by, created_at, updated_at
+                updated_by, created_at, updated_at, ai_provenance
             ) VALUES (
                 %(draft_id)s, %(case_id)s, %(draft_version)s, %(status)s, %(items)s, %(content_hash)s,
                 %(updated_by)s,
                 COALESCE(%(created_at)s::timestamptz, now()),
-                COALESCE(%(updated_at)s::timestamptz, now())
+                COALESCE(%(updated_at)s::timestamptz, now()),
+                %(ai_provenance)s
             )
             ON CONFLICT (case_id) DO UPDATE SET
                 draft_id = EXCLUDED.draft_id,
@@ -2636,7 +2646,8 @@ class _PostgresCaseIntakeStore:
                 items = EXCLUDED.items,
                 content_hash = EXCLUDED.content_hash,
                 updated_by = EXCLUDED.updated_by,
-                updated_at = EXCLUDED.updated_at
+                updated_at = EXCLUDED.updated_at,
+                ai_provenance = EXCLUDED.ai_provenance
             """,
             {
                 "draft_id": draft.draft_id,
@@ -2648,6 +2659,11 @@ class _PostgresCaseIntakeStore:
                 "updated_by": draft.updated_by,
                 "created_at": draft.created_at or None,
                 "updated_at": draft.updated_at or None,
+                "ai_provenance": (
+                    Json(draft.ai_provenance)
+                    if isinstance(getattr(draft, "ai_provenance", None), dict)
+                    else None
+                ),
             },
         )
 
