@@ -111,29 +111,33 @@ def test_enforce_injury_evidence_unit():
 # ---------------------------------------------------------------------------
 
 
+def _isolate_case_store_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake case store stands in for real storage — ignore ambient persistence env."""
+    monkeypatch.setattr(
+        "services.fiqa_api.inbox_triage.case_store._require_case_storage_path",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "services.fiqa_api.db.service_record_settings.db_primary_writes_enabled",
+        lambda: False,
+    )
+
+
 def _fake_case_persist(monkeypatch: pytest.MonkeyPatch, case_id: str) -> dict:
     bag: dict = {"case_id": case_id, "known_facts": {}, "known_fact_provenance": {}}
-
-    def patch_case_known_facts(cid, facts_patch, source="customer_confirmed", status="customer_confirmed"):
-        if cid != case_id:
-            return None
-        bag["known_facts"].update(facts_patch)
-        bag["source"] = source
-        bag["status"] = status
-        return dict(bag)
+    _isolate_case_store_flags(monkeypatch)
 
     def load(cid):
         return bag if cid == case_id else None
 
     def persist(cid, case):
+        if cid != case_id:
+            return False
         snapshot = dict(case)
         bag.clear()
         bag.update(snapshot)
+        return True
 
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.case_store.patch_case_known_facts",
-        patch_case_known_facts,
-    )
     monkeypatch.setattr(
         "services.fiqa_api.inbox_triage.case_store._load_case_for_mutation",
         load,
@@ -141,14 +145,6 @@ def _fake_case_persist(monkeypatch: pytest.MonkeyPatch, case_id: str) -> dict:
     monkeypatch.setattr(
         "services.fiqa_api.inbox_triage.case_store._persist_case_after_update",
         persist,
-    )
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.case_store.append_claim_timeline_event",
-        lambda *a, **k: None,
-    )
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.case_store.build_claim_timeline_event",
-        lambda **k: k,
     )
     return bag
 
@@ -364,29 +360,18 @@ def test_duplicate_confirm_does_not_double_write(monkeypatch: pytest.MonkeyPatch
     case_id = "case_dup_conf_1"
     writes = {"n": 0}
 
-    def patch_case_known_facts(cid, facts_patch, source="customer_confirmed", status="customer_confirmed"):
+    def persist(cid, case):
         writes["n"] += 1
-        return {"case_id": cid, "known_facts": dict(facts_patch)}
+        return True
 
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.case_store.patch_case_known_facts",
-        patch_case_known_facts,
-    )
+    _isolate_case_store_flags(monkeypatch)
     monkeypatch.setattr(
         "services.fiqa_api.inbox_triage.case_store._load_case_for_mutation",
         lambda cid: {"case_id": cid},
     )
     monkeypatch.setattr(
         "services.fiqa_api.inbox_triage.case_store._persist_case_after_update",
-        lambda *a, **k: None,
-    )
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.case_store.append_claim_timeline_event",
-        lambda *a, **k: None,
-    )
-    monkeypatch.setattr(
-        "services.fiqa_api.inbox_triage.case_store.build_claim_timeline_event",
-        lambda **k: k,
+        persist,
     )
 
     proposed = propose_accident_story(
@@ -404,4 +389,5 @@ def test_duplicate_confirm_does_not_double_write(monkeypatch: pytest.MonkeyPatch
     )
     assert confirm_accident_story(**kwargs)["outcome"] == "accepted"
     assert confirm_accident_story(**kwargs)["outcome"] == "replayed"
+    # Exactly one persist for facts + provenance + layers + timeline together.
     assert writes["n"] == 1

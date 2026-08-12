@@ -487,101 +487,74 @@ def confirm_accident_story(
         "injury_status": injury,
     }
 
+    # Provenance bag for Broker distinction — three explicit layers.
+    assistant_state = {
+        "schema_version": 1,
+        "proposal_version": int(base.get("proposal_version") or 1),
+        "proposal_id": server_proposal_id,
+        "last_confirmed_command_id": command_id,
+        "ai_involved": True,
+        "authority": "customer_confirmed",
+        "layers": {
+            "customer_raw": {
+                "label_zh": "客户原始描述",
+                "text": story[:2000],
+            },
+            "ai_draft": {
+                "label_zh": "AI整理草稿",
+                "incident_summary": str(base.get("incident_summary") or "")[:500],
+                "accident_time_text": str(base.get("accident_time_text") or "")[:120],
+                "accident_location_text": str(base.get("accident_location_text") or "")[:500],
+                "injury_status": str(base.get("injury_status") or "unknown"),
+                "followup_questions": questions_asked,
+                "used_fallback": bool(base.get("used_fallback")),
+                "authority": "ai_proposed",
+                "proposal_id": server_proposal_id,
+            },
+            "customer_confirmed": {
+                "label_zh": "客户已确认事实",
+                "incident_summary": summary[:500],
+                "accident_time_text": time_text[:120],
+                "accident_location_text": location[:500],
+                "injury_status": injury,
+                "edited_field_names": edited_names,
+                "customer_answers": customer_answers,
+                "authority": "customer_confirmed",
+            },
+        },
+        "raw_story": story[:2000],
+        "incident_summary": summary[:500],
+        "questions_asked": questions_asked,
+        "edited_field_names": edited_names,
+        "used_fallback": bool(base.get("used_fallback")),
+        "fallback_reason_category": fallback_reason_category(str(base.get("fallback_reason") or "")),
+        "tech": {
+            "model_provider": str(base.get("model_provider") or ""),
+            "model_name": str(base.get("model_name") or ""),
+        },
+    }
+
     try:
         from services.fiqa_api.inbox_triage.case_store import (
-            append_claim_timeline_event,
+            apply_customer_confirmed_accident_story,
             build_claim_timeline_event,
-            patch_case_known_facts,
         )
 
-        updated = patch_case_known_facts(
+        # Facts + provenance + layers + timeline land in one case update: a
+        # failure here can never persist facts without the provenance/layers
+        # that prove the customer confirmed them.
+        updated = apply_customer_confirmed_accident_story(
             cid,
-            facts_patch,
-            source="customer_confirmed",
-            status="customer_confirmed",
-        )
-        if updated is None:
-            err_nf = {"ok": False, "outcome": "rejected", "error_code": "case_not_found"}
-            put_idempotent_result(key, request_digest_value=digest, response=err_nf)
-            return err_nf
-
-        # Provenance bag for Broker distinction — three explicit layers.
-        try:
-            from services.fiqa_api.inbox_triage.case_store import (
-                _load_case_for_mutation,
-                _persist_case_after_update,
-            )
-
-            case = _load_case_for_mutation(cid)
-            if isinstance(case, dict):
-                provenance = (
-                    dict(case.get("known_fact_provenance") or {})
-                    if isinstance(case.get("known_fact_provenance"), dict)
-                    else {}
-                )
-                for fk in facts_patch:
-                    provenance[fk] = {
-                        "authority": "customer_confirmed",
-                        "prior_authority": "ai_proposed",
-                        "assistant": "accident_story_langgraph_v1",
-                        "command_id": command_id,
-                        "proposal_id": server_proposal_id,
-                    }
-                case["known_fact_provenance"] = provenance
-                case["accident_story_assistant"] = {
-                    "schema_version": 1,
-                    "proposal_version": int(base.get("proposal_version") or 1),
-                    "proposal_id": server_proposal_id,
-                    "last_confirmed_command_id": command_id,
-                    "ai_involved": True,
-                    "authority": "customer_confirmed",
-                    "layers": {
-                        "customer_raw": {
-                            "label_zh": "客户原始描述",
-                            "text": story[:2000],
-                        },
-                        "ai_draft": {
-                            "label_zh": "AI整理草稿",
-                            "incident_summary": str(base.get("incident_summary") or "")[:500],
-                            "accident_time_text": str(base.get("accident_time_text") or "")[:120],
-                            "accident_location_text": str(base.get("accident_location_text") or "")[:500],
-                            "injury_status": str(base.get("injury_status") or "unknown"),
-                            "followup_questions": questions_asked,
-                            "used_fallback": bool(base.get("used_fallback")),
-                            "authority": "ai_proposed",
-                            "proposal_id": server_proposal_id,
-                        },
-                        "customer_confirmed": {
-                            "label_zh": "客户已确认事实",
-                            "incident_summary": summary[:500],
-                            "accident_time_text": time_text[:120],
-                            "accident_location_text": location[:500],
-                            "injury_status": injury,
-                            "edited_field_names": edited_names,
-                            "customer_answers": customer_answers,
-                            "authority": "customer_confirmed",
-                        },
-                    },
-                    "raw_story": story[:2000],
-                    "incident_summary": summary[:500],
-                    "questions_asked": questions_asked,
-                    "edited_field_names": edited_names,
-                    "used_fallback": bool(base.get("used_fallback")),
-                    "fallback_reason_category": fallback_reason_category(
-                        str(base.get("fallback_reason") or "")
-                    ),
-                    "tech": {
-                        "model_provider": str(base.get("model_provider") or ""),
-                        "model_name": str(base.get("model_name") or ""),
-                    },
-                }
-                _persist_case_after_update(cid, case)
-        except Exception:
-            pass
-
-        append_claim_timeline_event(
-            cid,
-            build_claim_timeline_event(
+            facts_patch=facts_patch,
+            provenance_entry={
+                "authority": "customer_confirmed",
+                "prior_authority": "ai_proposed",
+                "assistant": "accident_story_langgraph_v1",
+                "command_id": command_id,
+                "proposal_id": server_proposal_id,
+            },
+            assistant_state=assistant_state,
+            timeline_event=build_claim_timeline_event(
                 event_type="customer_accident_story_confirmed",
                 source_channel="mini_program",
                 actor="customer",
@@ -597,6 +570,10 @@ def confirm_accident_story(
                 },
             ),
         )
+        if updated is None:
+            err_nf = {"ok": False, "outcome": "rejected", "error_code": "case_not_found"}
+            put_idempotent_result(key, request_digest_value=digest, response=err_nf)
+            return err_nf
     except Exception as exc:
         err_p = {
             "ok": False,

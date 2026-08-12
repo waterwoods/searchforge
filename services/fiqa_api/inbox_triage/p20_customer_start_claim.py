@@ -14,6 +14,7 @@ Production rejects anon-only create (durable identity required).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any
@@ -31,7 +32,21 @@ from services.fiqa_api.inbox_triage.p20_case_intake_command_service import (
 from services.fiqa_api.inbox_triage.p20_customer_launch import issue_customer_launch_token
 from services.fiqa_api.security.case_client_access import resolve_server_client_id
 
+logger = logging.getLogger(__name__)
+
 _SESSION_SAFE = re.compile(r"[^a-zA-Z0-9_.:-]+")
+
+# Bounded, customer-safe codes for post-CreateClaim enrichment that did not land.
+# CreateClaim itself stays authoritative and durable when any of these appear.
+WARNING_POLICY_CONTEXT_UNCONFIRMED = "policy_context_not_confirmed"
+WARNING_ACCIDENT_STORY_UNCONFIRMED = "accident_story_not_confirmed"
+WARNING_RESUME_TOKEN_UNAVAILABLE = "resume_token_unavailable"
+
+SIDE_EFFECT_STATUS_SKIPPED = "skipped"
+SIDE_EFFECT_STATUS_CONFIRMED = "confirmed"
+SIDE_EFFECT_STATUS_FAILED = "failed"
+
+_POLICY_CONTEXT_SUCCESS_OUTCOMES = ("accepted", "replayed", "already_confirmed")
 
 
 def resolve_customer_start_claim_office_id() -> str | None:
@@ -47,6 +62,14 @@ def normalize_customer_actor_identity(session_id: str | None) -> str:
     return "customer:mp:anonymous"
 
 
+def _add_warning(result: dict[str, Any], code: str) -> None:
+    """Record one bounded side-effect warning on the internal result."""
+    warnings = [str(w) for w in (result.get("side_effect_warnings") or []) if str(w).strip()]
+    if code not in warnings:
+        warnings.append(code)
+    result["side_effect_warnings"] = warnings
+
+
 def _attach_resume_token(result: dict[str, Any]) -> dict[str, Any]:
     """Issue opaque resume token bound to case_id (never expose bare case_id)."""
     outcome = str(result.get("outcome") or "").strip()
@@ -57,11 +80,14 @@ def _attach_resume_token(result: dict[str, Any]) -> dict[str, Any]:
         return result
     if result.get("resume_token"):
         return result
+    out = dict(result)
     try:
         launch = issue_customer_launch_token(case_id=case_id)
-    except Exception:
-        return result
-    out = dict(result)
+    except Exception as exc:
+        # Claim exists but the customer has no continuation handle — say so.
+        logger.warning("start_claim resume token unavailable case=%s: %s", case_id, exc)
+        _add_warning(out, WARNING_RESUME_TOKEN_UNAVAILABLE)
+        return out
     out["resume_token"] = launch.token
     out["resume_expires_at"] = launch.expires_at_iso
     return out
@@ -78,12 +104,58 @@ def customer_start_claim_response(result: dict[str, Any]) -> dict[str, Any]:
             expires = str(result.get("resume_expires_at") or "").strip()
             if expires:
                 body["resume_expires_at"] = expires
+        # Claim is durable, but enrichment did not fully land: never look more
+        # complete than the case really is.
+        warnings = [str(w) for w in (result.get("side_effect_warnings") or []) if str(w).strip()]
+        if warnings:
+            body["warnings"] = warnings
+            body["degraded"] = True
         return body
     return {
         "ok": False,
         "outcome": outcome or "rejected",
         "error_code": str(result.get("error_code") or "create_claim_failed"),
     }
+
+
+def _record_side_effect_failure_signal(
+    case_id: str,
+    *,
+    command_id: str,
+    warnings: list[str],
+    side_effects: dict[str, str],
+) -> None:
+    """Leave a durable, idempotent support signal on the case timeline.
+
+    Best effort: the honest response warnings and the log line stand on their own
+    if the case store is the thing that is broken.
+    """
+    try:
+        from services.fiqa_api.inbox_triage.case_store import (
+            append_claim_timeline_event,
+            build_claim_timeline_event,
+        )
+
+        append_claim_timeline_event(
+            case_id,
+            build_claim_timeline_event(
+                event_type="start_claim_side_effect_failed",
+                source_channel="mini_program",
+                actor="system",
+                message_id=f"start_claim_side_effect:{str(command_id or '').strip()}"[:200],
+                text="开案已成功保存，部分补充信息未写入，需人工检查",
+                metadata={
+                    "source": "customer_start_claim",
+                    "command_id": str(command_id or "").strip(),
+                    "warnings": list(warnings),
+                    "side_effects": dict(side_effects),
+                },
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "start_claim side effect signal not recorded case=%s: %s", case_id, exc
+        )
 
 
 def _resume_existing(case_id: str) -> dict[str, Any]:
@@ -253,9 +325,14 @@ def start_customer_claim(
     case_id = str(out.get("case_id") or "").strip()
     if case_id and str(out.get("outcome") or "") in ("accepted", "replayed"):
         bind_active_case(identity_key, case_id)
+        side_effects: dict[str, str] = {}
         # Stage 2 — persist known-customer policy context choice (idempotent).
         choice = str(policy_context_choice or "").strip()
-        if choice:
+        if not choice:
+            side_effects["policy_context"] = SIDE_EFFECT_STATUS_SKIPPED
+        else:
+            status = SIDE_EFFECT_STATUS_FAILED
+            failure = ""
             try:
                 from services.fiqa_api.inbox_triage.policy_context_confirm import (
                     confirm_policy_context_for_case,
@@ -284,7 +361,7 @@ def start_customer_claim(
                                 lookup = lookup_demo_invite_fixture(entry["mock_person_link_key"])
                     except Exception:
                         pass
-                confirm_policy_context_for_case(
+                confirmed = confirm_policy_context_for_case(
                     case_id,
                     lookup=lookup,
                     customer_choice=choice,
@@ -293,18 +370,36 @@ def start_customer_claim(
                     selected_vehicle_ref=selected_vehicle_ref,
                     selected_vehicle_summary=selected_vehicle_summary,
                 )
-            except Exception:
-                # Never fail Start Claim because confirm side-effect failed;
-                # customer can still upload insurance card (FALLBACK).
-                pass
+                outcome = str((confirmed or {}).get("outcome") or "").strip()
+                if outcome in _POLICY_CONTEXT_SUCCESS_OUTCOMES:
+                    status = SIDE_EFFECT_STATUS_CONFIRMED
+                else:
+                    failure = outcome or "unknown_outcome"
+            except Exception as exc:
+                failure = f"exception:{type(exc).__name__}"
+            if status != SIDE_EFFECT_STATUS_CONFIRMED:
+                # Never fail Start Claim because a confirm side-effect failed, but
+                # never look confirmed either: customer keeps the insurance-card
+                # upload fallback and the office can see the gap.
+                logger.warning(
+                    "start_claim policy_context side effect failed case=%s reason=%s",
+                    case_id,
+                    failure,
+                )
+                _add_warning(out, WARNING_POLICY_CONTEXT_UNCONFIRMED)
+            side_effects["policy_context"] = status
         # Guided intake — stamp customer-confirmed AI layers after CreateClaim.
-        if ai_story_confirmed:
+        if not ai_story_confirmed:
+            side_effects["accident_story"] = SIDE_EFFECT_STATUS_SKIPPED
+        else:
+            status = SIDE_EFFECT_STATUS_FAILED
+            failure = ""
             try:
                 from services.fiqa_api.inbox_triage.accident_story_assistant import (
                     confirm_accident_story,
                 )
 
-                confirm_accident_story(
+                story_result = confirm_accident_story(
                     case_id=case_id,
                     command_id=f"{command_id}:ai_story",
                     idempotency_key=f"{idempotency_key}:ai_story",
@@ -331,8 +426,35 @@ def start_customer_claim(
                         else None
                     ),
                 )
-            except Exception:
-                pass
+                story = story_result if isinstance(story_result, dict) else {}
+                if (
+                    bool(story.get("ok"))
+                    and str(story.get("outcome") or "") in ("accepted", "replayed")
+                    and str(story.get("authority") or "") == "customer_confirmed"
+                ):
+                    status = SIDE_EFFECT_STATUS_CONFIRMED
+                else:
+                    failure = str(story.get("error_code") or story.get("outcome") or "unknown_outcome")
+            except Exception as exc:
+                failure = f"exception:{type(exc).__name__}"
+            if status != SIDE_EFFECT_STATUS_CONFIRMED:
+                # The AI story stays a proposal: CreateClaim success must never
+                # promote it to customer-confirmed truth.
+                logger.warning(
+                    "start_claim accident_story side effect failed case=%s reason=%s",
+                    case_id,
+                    failure,
+                )
+                _add_warning(out, WARNING_ACCIDENT_STORY_UNCONFIRMED)
+            side_effects["accident_story"] = status
+        out["side_effects"] = side_effects
+        if out.get("side_effect_warnings"):
+            _record_side_effect_failure_signal(
+                case_id,
+                command_id=command_id,
+                warnings=[str(w) for w in out["side_effect_warnings"]],
+                side_effects=side_effects,
+            )
         try:
             from services.fiqa_api.inbox_triage.case_activity_events import (
                 record_customer_first_action,

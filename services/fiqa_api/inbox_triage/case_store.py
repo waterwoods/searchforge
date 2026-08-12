@@ -1562,6 +1562,34 @@ def _claim_timeline_is_duplicate(timeline: list[dict[str, Any]], event: dict[str
     return False
 
 
+def _apply_claim_timeline_event_to_case(case: dict[str, Any], event: dict[str, Any]) -> bool:
+    """Append one timeline event to an already-loaded claim case dict.
+
+    Returns True when the case dict changed (caller persists). Duplicate events
+    and non-claim lanes are no-ops.
+    """
+    if not _is_claim_service_lane(case):
+        return False
+    timeline = _claim_timeline_from_case(case)
+    normalized_event = build_claim_timeline_event(
+        event_type=str(event.get("event_type") or ""),
+        source_channel=str(event.get("source_channel") or "wecom"),
+        actor=str(event.get("actor") or "customer"),
+        message_id=event.get("message_id"),
+        attachment_id=event.get("attachment_id"),
+        text=event.get("text"),
+        metadata=event.get("metadata") if isinstance(event.get("metadata"), dict) else {},
+        created_at=str(event.get("created_at") or "").strip() or None,
+        event_id=str(event.get("event_id") or "").strip() or None,
+    )
+    if _claim_timeline_is_duplicate(timeline, normalized_event):
+        return False
+    timeline.append(normalized_event)
+    case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
+    case["updated_at"] = _utc_now_iso()
+    return True
+
+
 def append_claim_timeline_event(case_id: str, event: dict[str, Any]) -> dict[str, Any] | None:
     """
     Append one event to claim_timeline on an existing Claim case (JSONB/extra field).
@@ -1577,53 +1605,35 @@ def append_claim_timeline_event(case_id: str, event: dict[str, Any]) -> dict[str
     if normalized_case is None or not _is_claim_service_lane(normalized_case):
         return None
 
-    timeline = _claim_timeline_from_case(normalized_case)
-    normalized_event = build_claim_timeline_event(
-        event_type=str(event.get("event_type") or ""),
-        source_channel=str(event.get("source_channel") or "wecom"),
-        actor=str(event.get("actor") or "customer"),
-        message_id=event.get("message_id"),
-        attachment_id=event.get("attachment_id"),
-        text=event.get("text"),
-        metadata=event.get("metadata") if isinstance(event.get("metadata"), dict) else {},
-        created_at=str(event.get("created_at") or "").strip() or None,
-        event_id=str(event.get("event_id") or "").strip() or None,
-    )
-    if _claim_timeline_is_duplicate(timeline, normalized_event):
+    if not _apply_claim_timeline_event_to_case(normalized_case, event):
         return normalized_case
-
-    timeline.append(normalized_event)
-    normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
-    normalized_case["updated_at"] = _utc_now_iso()
     if not _persist_case_after_update(cid, normalized_case):
         return None
     return normalized_case
 
 
-def patch_case_known_facts(
-    case_id: str,
-    facts_patch: dict[str, str],
-    *,
-    source: str = "system_default",
-    status: str | None = None,
-    explicit_broker_action: bool = False,
-) -> dict[str, Any] | None:
-    """Merge facts through the centralized provenance precedence guard.
-
-    Unknown legacy provenance is treated as ``customer_task`` so advisory or
-    message-derived updates cannot silently replace an existing customer fact.
-    A broker-confirmed replacement requires an explicit, logged broker action.
-    """
-    cid = (case_id or "").strip()
-    if not cid or not facts_patch:
-        return None
+def _require_fact_source(source: str) -> str:
     source_norm = str(source or "").strip().lower()
     if source_norm not in _FACT_SOURCE_AUTHORITY:
         raise ValueError("unsupported_fact_source")
-    _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(cid)
-    if normalized_case is None:
-        return None
+    return source_norm
+
+
+def _apply_known_facts_patch_to_case(
+    normalized_case: dict[str, Any],
+    facts_patch: dict[str, str],
+    *,
+    source: str,
+    status: str | None = None,
+    explicit_broker_action: bool = False,
+) -> bool:
+    """Merge facts into an already-loaded case dict (no storage access).
+
+    Applies the centralized provenance precedence guard, records conflicts, and
+    appends conflict / broker-override timeline events. Returns True when the
+    case dict changed and the caller must persist it.
+    """
+    source_norm = _require_fact_source(source)
     existing = dict(normalized_case.get("known_facts") or {}) if isinstance(normalized_case.get("known_facts"), dict) else {}
     provenance = (
         dict(normalized_case.get("known_fact_provenance") or {})
@@ -1706,9 +1716,8 @@ def patch_case_known_facts(
             normalized_case["known_fact_conflicts"] = conflicts[-_MAX_KNOWN_FACT_CONFLICTS:]
             normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
             normalized_case["updated_at"] = _utc_now_iso()
-            if not _persist_case_after_update(cid, normalized_case):
-                return None
-        return normalized_case
+            return True
+        return False
     normalized_case["known_facts"] = existing
     normalized_case["known_fact_provenance"] = provenance
     if conflict_recorded:
@@ -1716,9 +1725,137 @@ def patch_case_known_facts(
     if timeline:
         normalized_case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
     normalized_case["updated_at"] = _utc_now_iso()
+    return True
+
+
+def patch_case_known_facts(
+    case_id: str,
+    facts_patch: dict[str, str],
+    *,
+    source: str = "system_default",
+    status: str | None = None,
+    explicit_broker_action: bool = False,
+) -> dict[str, Any] | None:
+    """Merge facts through the centralized provenance precedence guard.
+
+    Unknown legacy provenance is treated as ``customer_task`` so advisory or
+    message-derived updates cannot silently replace an existing customer fact.
+    A broker-confirmed replacement requires an explicit, logged broker action.
+    """
+    cid = (case_id or "").strip()
+    if not cid or not facts_patch:
+        return None
+    _require_fact_source(source)
+    _require_case_storage_path()
+    normalized_case = _load_case_for_mutation(cid)
+    if normalized_case is None:
+        return None
+    changed = _apply_known_facts_patch_to_case(
+        normalized_case,
+        facts_patch,
+        source=source,
+        status=status,
+        explicit_broker_action=explicit_broker_action,
+    )
+    if not changed:
+        return normalized_case
     if not _persist_case_after_update(cid, normalized_case):
         return None
     return normalized_case
+
+
+def _apply_customer_confirmed_accident_story_to_case(
+    case: dict[str, Any],
+    *,
+    facts_patch: dict[str, str],
+    provenance_entry: dict[str, Any],
+    assistant_state: dict[str, Any],
+    timeline_event: dict[str, Any] | None,
+) -> tuple[dict[str, Any], bool]:
+    """Mutate one already-loaded case with a full customer-confirmed story.
+
+    Confirmed facts, per-field provenance, the Accident Story layer bag, and the
+    confirmation timeline event are applied to the same dict so the caller can
+    persist them in a single write.
+    """
+    _apply_known_facts_patch_to_case(
+        case,
+        facts_patch,
+        source="customer_confirmed",
+        status="customer_confirmed",
+    )
+    provenance = (
+        dict(case.get("known_fact_provenance") or {})
+        if isinstance(case.get("known_fact_provenance"), dict)
+        else {}
+    )
+    for field in facts_patch:
+        current = provenance.get(field) if isinstance(provenance.get(field), dict) else {}
+        provenance[field] = {**current, **provenance_entry}
+    case["known_fact_provenance"] = provenance
+    case["accident_story_assistant"] = dict(assistant_state)
+    if isinstance(timeline_event, dict):
+        _apply_claim_timeline_event_to_case(case, timeline_event)
+    case["updated_at"] = _utc_now_iso()
+    return case, True
+
+
+def apply_customer_confirmed_accident_story(
+    case_id: str,
+    *,
+    facts_patch: dict[str, str],
+    provenance_entry: dict[str, Any],
+    assistant_state: dict[str, Any],
+    timeline_event: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Persist one customer-confirmed Accident Story as a single case update.
+
+    Facts and their provenance / layer metadata can never diverge: a failure
+    aborts the whole update instead of leaving confirmed facts without the
+    provenance that proves who confirmed them.
+
+    Postgres-primary: BEGIN → FOR UPDATE lock → re-read → mutate → COMMIT.
+    JSON/local: per-case in-process lock with the same re-read order.
+    Returns the updated case, or ``None`` when the case row does not exist.
+    """
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    cid = (case_id or "").strip()
+    if not cid or not facts_patch:
+        return None
+    _require_case_storage_path()
+
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        return _apply_customer_confirmed_accident_story_to_case(
+            case,
+            facts_patch=facts_patch,
+            provenance_entry=provenance_entry,
+            assistant_state=assistant_state,
+            timeline_event=timeline_event,
+        )
+
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import mutate_full_case_under_lock
+
+        updated = mutate_full_case_under_lock(cid, _mutator)
+        if updated is None:
+            return None
+        # Optional JSON mirror outside the PG transaction (non-pilot dual path only).
+        if json_case_writes_enabled():
+            _replace_case_in_json_store(cid, updated)
+        return updated
+
+    with _case_mutation_lock_for(cid):
+        case = _load_case_for_mutation(cid)
+        if case is None:
+            return None
+        updated, _should_persist = _mutator(case)
+        if not _persist_case_after_update(cid, updated):
+            return None
+        return updated
 
 
 def patch_known_fact_provenance(
@@ -2129,17 +2266,17 @@ class OfficeMaterialsAcceptError(ValueError):
         self.detail: dict[str, Any] = dict(detail) if isinstance(detail, dict) else {"error": self.code}
 
 
-_OFFICE_ACCEPT_LOCKS: dict[str, threading.RLock] = {}
-_OFFICE_ACCEPT_LOCKS_GUARD = threading.Lock()
+_CASE_MUTATION_LOCKS: dict[str, threading.RLock] = {}
+_CASE_MUTATION_LOCKS_GUARD = threading.Lock()
 
 
-def _office_accept_lock_for(case_id: str) -> threading.RLock:
-    """Per-case in-process lock for JSON / non-PG accept serialization."""
-    with _OFFICE_ACCEPT_LOCKS_GUARD:
-        lock = _OFFICE_ACCEPT_LOCKS.get(case_id)
+def _case_mutation_lock_for(case_id: str) -> threading.RLock:
+    """Per-case in-process lock for JSON / non-PG read-modify-write serialization."""
+    with _CASE_MUTATION_LOCKS_GUARD:
+        lock = _CASE_MUTATION_LOCKS.get(case_id)
         if lock is None:
             lock = threading.RLock()
-            _OFFICE_ACCEPT_LOCKS[case_id] = lock
+            _CASE_MUTATION_LOCKS[case_id] = lock
         return lock
 
 
@@ -2323,7 +2460,7 @@ def accept_office_materials(case_id: str, *, source: str = "workbench") -> dict[
             _replace_case_in_json_store(cid, result["case"])
         return result
 
-    with _office_accept_lock_for(cid):
+    with _case_mutation_lock_for(cid):
         case = _load_case_for_mutation(cid)
         if case is None:
             return not_found
