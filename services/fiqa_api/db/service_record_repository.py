@@ -2134,6 +2134,13 @@ def _ensure_request_draft_ai_provenance_schema(cur: Any) -> None:
     autocommit connection, because adding it to a caller's read-only
     transaction lets the close roll the column back while leaving the
     process-local READY flag stuck True — after which every draft write fails.
+
+    Must be called before the caller's transaction touches
+    ``claim_request_drafts``. ALTER TABLE needs ACCESS EXCLUSIVE, so a lock the
+    caller is already holding would make this connection wait on a transaction
+    that cannot proceed until we return. ``lock_timeout`` is the backstop: a
+    contended column add fails fast and retries on the next request instead of
+    hanging the service.
     """
 
     global _REQUEST_DRAFT_AI_PROVENANCE_READY
@@ -2155,6 +2162,18 @@ def _ensure_request_draft_ai_provenance_schema(cur: Any) -> None:
         _REQUEST_DRAFT_AI_PROVENANCE_READY = True
         return
 
+    cur.execute(
+        """
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'claim_request_drafts'
+        LIMIT 1
+        """
+    )
+    if not cur.fetchone():
+        # Fresh database: the CREATE TABLE below already declares the column.
+        return
+
     import psycopg
 
     url = service_record_database_url()
@@ -2163,6 +2182,7 @@ def _ensure_request_draft_ai_provenance_schema(cur: Any) -> None:
 
     with psycopg.connect(url, connect_timeout=3, autocommit=True) as ddl_conn:
         with ddl_conn.cursor() as ddl_cur:
+            ddl_cur.execute("SET lock_timeout = '4s'")
             ddl_cur.execute(
                 """
                 ALTER TABLE claim_request_drafts
@@ -2176,10 +2196,11 @@ def _ensure_request_draft_ai_provenance_schema(cur: Any) -> None:
 
 def _ensure_case_intake_schema(cur: Any) -> None:
     global _CASE_INTAKE_SCHEMA_READY
+    # First, before any statement below takes a lock on claim_request_drafts:
+    # additive columns are verified on every call because the table predates
+    # them, so the READY short-circuit would otherwise skip them forever.
+    _ensure_request_draft_ai_provenance_schema(cur)
     if _CASE_INTAKE_SCHEMA_READY:
-        # Additive columns are verified on every call: the table predates them,
-        # so the READY short-circuit would otherwise skip them forever.
-        _ensure_request_draft_ai_provenance_schema(cur)
         return
     cur.execute(
         """
@@ -2318,7 +2339,6 @@ def _ensure_case_intake_schema(cur: Any) -> None:
         WHERE case_id IS NOT NULL
         """
     )
-    _ensure_request_draft_ai_provenance_schema(cur)
     _CASE_INTAKE_SCHEMA_READY = True
 
 
