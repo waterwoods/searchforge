@@ -2999,12 +2999,19 @@ async def support_deployment_manifest(request: Request) -> dict[str, Any]:
 async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
     """
     Minimal persisted case metadata for L2 replay handoff (no message bodies / attachments).
+
+    Also carries the deterministic stuck-case diagnosis so support can answer
+    "where is this case stuck / what is the next action" without reading logs.
+    Read-only: no command, stamp, or timeline event is written here.
     """
     assert_support_export_authorized(request)
     from services.fiqa_api.deployment_profile import (
         intake_schema_epoch,
         is_unified_intake_product_only,
         operator_runtime_hints,
+    )
+    from services.fiqa_api.inbox_triage.support_case_diagnosis import (
+        build_support_case_diagnosis,
     )
     from services.fiqa_api.utils.gitinfo import get_git_sha
 
@@ -3014,6 +3021,7 @@ async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
     case = get_case_for_read(cid)
     if case is None:
         raise HTTPException(status_code=404, detail="case not found")
+    assert_case_office_access_allowed(request, case)
     sha, source = get_git_sha()
     lineage = http_request_lineage(request)
     req_org = client_asserted_office_id(request)
@@ -3045,16 +3053,23 @@ async def support_case_head(case_id: str, request: Request) -> dict[str, Any]:
         "client_ownership": client_ownership_posture_dict(),
         "case": {
             "case_id": case.get("case_id") or cid,
+            "case_ref": case.get("case_ref"),
             "status": case.get("status"),
+            "case_status": case.get("case_status"),
+            "waiting_on": case.get("waiting_on"),
             "created_at": case.get("created_at"),
             "updated_at": case.get("updated_at"),
             "workflow_state": case.get("workflow_state"),
+            "guided_workflow_state": case.get("guided_workflow_state"),
+            "claim_phase": case.get("claim_phase"),
+            "lifecycle_status": case.get("lifecycle_status"),
             "service_lane": case.get("service_lane"),
             "case_lifecycle": case.get("case_lifecycle"),
             "workbench_test": case.get("workbench_test"),
             "asserted_org_id": case.get("asserted_org_id"),
             "client_id": case.get("client_id"),
         },
+        "support_diagnosis": build_support_case_diagnosis(case),
     }
     if office_hint:
         out["support_office_hint_check"] = office_hint
