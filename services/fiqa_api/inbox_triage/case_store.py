@@ -19,7 +19,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from services.fiqa_api.inbox_triage.config_loader import get_case_message_labels
@@ -660,6 +660,63 @@ def _persist_case_after_update(case_id: str, updated_case: dict[str, Any]) -> bo
     except Exception:
         pass
     return True
+
+
+def _mutate_case_under_case_lock(
+    case_id: str,
+    mutator: Callable[[dict[str, Any]], tuple[Any, bool]],
+) -> Any | None:
+    """Run one read-modify-write against the authoritative case under a lock.
+
+    ``mutator(case)`` receives the case re-read *inside* the lock and returns
+    ``(result, should_persist)``; it must mutate ``case`` in place. A raise
+    aborts the whole update with no write.
+
+    Postgres-primary: BEGIN → FOR UPDATE → re-read → mutate → COMMIT.
+    JSON/local: per-case in-process lock with the same re-read order.
+
+    Without this, two writers that both loaded the same case each persist a
+    whole document built from their own stale read, and the later write erases
+    the earlier writer's sibling fields. Returns ``None`` when the case row does
+    not exist.
+    """
+    from services.fiqa_api.db.service_record_settings import (
+        db_primary_writes_enabled,
+        json_case_writes_enabled,
+    )
+
+    cid = (case_id or "").strip()
+    if not cid:
+        return None
+
+    if db_primary_writes_enabled():
+        from services.fiqa_api.db.service_record_repository import mutate_full_case_under_lock
+
+        persisted: dict[str, dict[str, Any]] = {}
+
+        def _capture(case: dict[str, Any]) -> tuple[Any, bool]:
+            result, should_persist = mutator(case)
+            if should_persist:
+                persisted["case"] = case
+            return result, should_persist
+
+        outcome = mutate_full_case_under_lock(cid, _capture)
+        if outcome is None:
+            return None
+        # Optional JSON mirror outside the PG transaction (non-pilot dual path only).
+        # Mirrors exactly what the transaction wrote, whatever shape the caller returns.
+        if json_case_writes_enabled() and persisted.get("case"):
+            _replace_case_in_json_store(cid, persisted["case"])
+        return outcome
+
+    with _case_mutation_lock_for(cid):
+        case = _load_case_for_mutation(cid)
+        if case is None:
+            return None
+        result, should_persist = mutator(case)
+        if should_persist and not _persist_case_after_update(cid, case):
+            return None
+        return result
 
 
 def _sort_recent(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1345,45 +1402,47 @@ def append_h5_gcs_attachment_metadata(
     Append H5 guided-task GCS attachment metadata to case JSON (P19D-2).
 
     Idempotent on h5_upload_id within the case.
+
+    Atomic: a phone can upload several photos at once, so both the idempotency
+    check and the append run against the attachment list re-read under the lock.
+    A stale append would silently discard the other photo the customer just sent.
     """
     _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(case_id)
-    if normalized_case is None:
-        return None
 
-    upload_id = str(attachment_meta.get("h5_upload_id") or "").strip()
-    attachments = list(normalized_case.get("case_attachments") or [])
-    max_attachments = (
-        MAX_CLAIM_EVIDENCE_ATTACHMENTS
-        if str(attachment_meta.get("flow") or "").strip() == "claim_evidence_pack"
-        else MAX_ATTACHMENTS_PER_CASE
-    )
-    if upload_id:
-        for att in attachments:
-            if (
-                isinstance(att, dict)
-                and att.get("source") == "h5_task"
-                and att.get("h5_upload_id") == upload_id
-            ):
-                return normalized_case
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        upload_id = str(attachment_meta.get("h5_upload_id") or "").strip()
+        attachments = list(case.get("case_attachments") or [])
+        max_attachments = (
+            MAX_CLAIM_EVIDENCE_ATTACHMENTS
+            if str(attachment_meta.get("flow") or "").strip() == "claim_evidence_pack"
+            else MAX_ATTACHMENTS_PER_CASE
+        )
+        if upload_id:
+            for att in attachments:
+                if (
+                    isinstance(att, dict)
+                    and att.get("source") == "h5_task"
+                    and att.get("h5_upload_id") == upload_id
+                ):
+                    return case, False
 
-    if len(attachments) >= max_attachments:
-        raise ValueError(f"Case already has maximum {max_attachments} attachments")
+        if len(attachments) >= max_attachments:
+            raise ValueError(f"Case already has maximum {max_attachments} attachments")
 
-    timestamp = _utc_now_iso()
-    att_record = dict(attachment_meta)
-    att_record.setdefault("created_at", timestamp)
-    attachments.append(att_record)
-    normalized_case["case_attachments"] = attachments[:max_attachments]
-    slot = att_record.get("slot_assignment") or "guided_upload"
-    normalized_case["updated_at"] = timestamp
-    normalized_case["case_activity"] = [
-        _build_activity_entry("h5_task_attached", f"H5 task upload: {slot}"),
-        *normalized_case.get("case_activity", []),
-    ][:MAX_CASE_ACTIVITY]
-    if not _persist_case_after_update(case_id, normalized_case):
-        return None
-    return normalized_case
+        timestamp = _utc_now_iso()
+        att_record = dict(attachment_meta)
+        att_record.setdefault("created_at", timestamp)
+        attachments.append(att_record)
+        case["case_attachments"] = attachments[:max_attachments]
+        slot = att_record.get("slot_assignment") or "guided_upload"
+        case["updated_at"] = timestamp
+        case["case_activity"] = [
+            _build_activity_entry("h5_task_attached", f"H5 task upload: {slot}"),
+            *case.get("case_activity", []),
+        ][:MAX_CASE_ACTIVITY]
+        return case, True
+
+    return _mutate_case_under_case_lock(case_id, _mutator)
 
 
 def mutate_claim_evidence_gallery(
@@ -1596,20 +1655,23 @@ def append_claim_timeline_event(case_id: str, event: dict[str, Any]) -> dict[str
 
     Idempotent on message_id, customer_photo attachment_id, basics_complete, claim_started.
     No-op for non-claim cases. Max 50 events.
+
+    Atomic: the duplicate check runs against the timeline re-read under the lock,
+    so a concurrent writer's event can neither be dropped nor duplicated.
     """
     cid = (case_id or "").strip()
     if not cid:
         return None
     _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(cid)
-    if normalized_case is None or not _is_claim_service_lane(normalized_case):
-        return None
 
-    if not _apply_claim_timeline_event_to_case(normalized_case, event):
-        return normalized_case
-    if not _persist_case_after_update(cid, normalized_case):
-        return None
-    return normalized_case
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any] | None, bool]:
+        if not _is_claim_service_lane(case):
+            return None, False
+        if not _apply_claim_timeline_event_to_case(case, event):
+            return case, False
+        return case, True
+
+    return _mutate_case_under_case_lock(cid, _mutator)
 
 
 def _require_fact_source(source: str) -> str:
@@ -1741,27 +1803,28 @@ def patch_case_known_facts(
     Unknown legacy provenance is treated as ``customer_task`` so advisory or
     message-derived updates cannot silently replace an existing customer fact.
     A broker-confirmed replacement requires an explicit, logged broker action.
+
+    Atomic: the precedence guard runs against facts re-read under the lock, so a
+    concurrent writer's fact cannot be evaluated against — or overwritten by — a
+    stale ``known_facts`` snapshot.
     """
     cid = (case_id or "").strip()
     if not cid or not facts_patch:
         return None
     _require_fact_source(source)
     _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(cid)
-    if normalized_case is None:
-        return None
-    changed = _apply_known_facts_patch_to_case(
-        normalized_case,
-        facts_patch,
-        source=source,
-        status=status,
-        explicit_broker_action=explicit_broker_action,
-    )
-    if not changed:
-        return normalized_case
-    if not _persist_case_after_update(cid, normalized_case):
-        return None
-    return normalized_case
+
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        changed = _apply_known_facts_patch_to_case(
+            case,
+            facts_patch,
+            source=source,
+            status=status,
+            explicit_broker_action=explicit_broker_action,
+        )
+        return case, changed
+
+    return _mutate_case_under_case_lock(cid, _mutator)
 
 
 def _apply_customer_confirmed_accident_story_to_case(
@@ -1891,52 +1954,59 @@ def patch_known_fact_provenance(
 
 
 def append_case_collected_fields(case_id: str, field_names: list[str]) -> dict[str, Any] | None:
-    """Merge field names into case collected_fields (H5 structured intake)."""
+    """Merge field names into case collected_fields (H5 structured intake).
+
+    Atomic: merges into the list re-read under the lock so two customer steps
+    completing together cannot drop one another's fields.
+    """
     cid = (case_id or "").strip()
     if not cid or not field_names:
         return None
     _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(cid)
-    if normalized_case is None:
-        return None
-    existing = [str(x) for x in (normalized_case.get("collected_fields") or []) if str(x).strip()]
-    seen = {x.lower() for x in existing}
-    changed = False
-    for raw in field_names:
-        name = str(raw or "").strip()
-        if not name:
-            continue
-        key = name.lower()
-        if key in seen:
-            continue
-        existing.append(name)
-        seen.add(key)
-        changed = True
-    if not changed:
-        return normalized_case
-    normalized_case["collected_fields"] = existing
-    normalized_case["updated_at"] = _utc_now_iso()
-    if not _persist_case_after_update(cid, normalized_case):
-        return None
-    return normalized_case
+
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        existing = [str(x) for x in (case.get("collected_fields") or []) if str(x).strip()]
+        seen = {x.lower() for x in existing}
+        changed = False
+        for raw in field_names:
+            name = str(raw or "").strip()
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            existing.append(name)
+            seen.add(key)
+            changed = True
+        if not changed:
+            return case, False
+        case["collected_fields"] = existing
+        case["updated_at"] = _utc_now_iso()
+        return case, True
+
+    return _mutate_case_under_case_lock(cid, _mutator)
 
 
 def update_case_h5_intake_state(case_id: str, state_patch: dict[str, Any]) -> dict[str, Any] | None:
-    """Merge h5_intake_state JSON on case document (no schema migration)."""
+    """Merge h5_intake_state JSON on case document (no schema migration).
+
+    Atomic: merges into the state re-read under the lock. This bag carries the
+    submit flag, the field dedup keys, and ``task_revision``, so a stale merge
+    here can resurrect an unsubmitted form or replay a deduplicated step.
+    """
     cid = (case_id or "").strip()
     if not cid or not state_patch:
         return None
     _require_case_storage_path()
-    normalized_case = _load_case_for_mutation(cid)
-    if normalized_case is None:
-        return None
-    existing = dict(normalized_case.get("h5_intake_state") or {})
-    existing.update(state_patch)
-    normalized_case["h5_intake_state"] = existing
-    normalized_case["updated_at"] = _utc_now_iso()
-    if not _persist_case_after_update(cid, normalized_case):
-        return None
-    return normalized_case
+
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        existing = dict(case.get("h5_intake_state") or {})
+        existing.update(state_patch)
+        case["h5_intake_state"] = existing
+        case["updated_at"] = _utc_now_iso()
+        return case, True
+
+    return _mutate_case_under_case_lock(cid, _mutator)
 
 
 def add_case_risk_flag(
@@ -2520,45 +2590,22 @@ def record_claim_end_card_status(
     return normalized_case
 
 
-def mark_claim_broker_done(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
-    """
-    P19H-3f-2 — Broker/office confirms Claim record phase complete.
+def _apply_claim_broker_done_to_case(
+    case: dict[str, Any],
+    *,
+    source: str,
+) -> tuple[dict[str, Any], bool]:
+    """Re-validate the lane and done-gate, then stamp broker_done on one case dict.
 
-    Sets claim_phase=broker_done, appends broker_done timeline event, sends True End Card
-    once. Idempotent — second call does not duplicate timeline or resend End Card.
+    Raises :class:`ClaimBrokerDoneError` for a blocked lane so the caller's
+    transaction aborts with no write.
     """
     from services.fiqa_api.inbox_triage.intake_service_lanes import SERVICE_LANE_WECOM_MEDIA_INTAKE
-    from services.fiqa_api.wecom.claim_end_card import try_send_claim_end_card
     from services.fiqa_api.wecom.claim_state import (
         CLAIM_PHASE_BROKER_DONE,
         SERVICE_LANE_CLAIM,
         build_claim_phase_transition_patch,
     )
-    from services.fiqa_api.wecom.reply import build_claim_end_card_reply
-
-    cid = (case_id or "").strip()
-    preview = build_claim_end_card_reply()
-    if not cid:
-        return {
-            "outcome": "case_not_found",
-            "case": None,
-            "already_done": False,
-            "end_card_sent": False,
-            "end_card_preview": preview,
-            "send_skipped": True,
-        }
-
-    _require_case_storage_path()
-    case = _load_case_for_mutation(cid)
-    if case is None:
-        return {
-            "outcome": "case_not_found",
-            "case": None,
-            "already_done": False,
-            "end_card_sent": False,
-            "end_card_preview": preview,
-            "send_skipped": True,
-        }
 
     lane = str(case.get("service_lane") or "").strip().lower()
     if lane == SERVICE_LANE_WECOM_MEDIA_INTAKE:
@@ -2566,20 +2613,18 @@ def mark_claim_broker_done(case_id: str, *, source: str = "workbench") -> dict[s
     if lane != SERVICE_LANE_CLAIM:
         raise ClaimBrokerDoneError(f"broker_done_blocked_not_claim_lane:{lane or 'unknown'}")
 
-    already_done = _claim_broker_done_already(case)
-    if already_done:
-        return {
-            "outcome": "broker_done",
-            "case": case,
-            "already_done": True,
-            "end_card_sent": bool(_claim_end_card_state(case).get("end_card_sent_at")),
-            "end_card_preview": preview,
-            "send_skipped": True,
-        }
+    if _claim_broker_done_already(case):
+        return (
+            {
+                "case": case,
+                "already_done": True,
+                "end_card_already_sent": bool(_claim_end_card_state(case).get("end_card_sent_at")),
+            },
+            False,
+        )
 
     now = _utc_now_iso()
-    patch = build_claim_phase_transition_patch(target_phase=CLAIM_PHASE_BROKER_DONE)
-    case.update(patch)
+    case.update(build_claim_phase_transition_patch(target_phase=CLAIM_PHASE_BROKER_DONE))
     end_state = _claim_end_card_state(case)
     end_state["broker_done_at"] = now
     end_state["broker_done_source"] = (source or "workbench").strip() or "workbench"
@@ -2599,18 +2644,59 @@ def mark_claim_broker_done(case_id: str, *, source: str = "workbench") -> dict[s
         timeline.append(broker_event)
         case["claim_timeline"] = timeline[-MAX_CLAIM_TIMELINE_EVENTS:]
 
-    if not _persist_case_after_update(cid, case):
+    return {"case": case, "already_done": False, "end_card_already_sent": False}, True
+
+
+def mark_claim_broker_done(case_id: str, *, source: str = "workbench") -> dict[str, Any]:
+    """
+    P19H-3f-2 — Broker/office confirms Claim record phase complete.
+
+    Sets claim_phase=broker_done, appends broker_done timeline event, sends True End Card
+    once. Idempotent — second call does not duplicate timeline or resend End Card.
+
+    Persistence contract (paid pilot / PG-primary):
+    BEGIN → FOR UPDATE lock → re-read → re-validate → stamp+timeline → COMMIT.
+    The done-gate is re-checked under the lock, so two concurrent clicks cannot
+    both pass it and send the customer two End Cards. The End Card send stays
+    outside the transaction — it is a network call, not case truth.
+    """
+    from services.fiqa_api.wecom.claim_end_card import try_send_claim_end_card
+    from services.fiqa_api.wecom.reply import build_claim_end_card_reply
+
+    cid = (case_id or "").strip()
+    preview = build_claim_end_card_reply()
+    not_found = {
+        "outcome": "case_not_found",
+        "case": None,
+        "already_done": False,
+        "end_card_sent": False,
+        "end_card_preview": preview,
+        "send_skipped": True,
+    }
+    if not cid:
+        return not_found
+
+    _require_case_storage_path()
+
+    def _mutator(case: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        return _apply_claim_broker_done_to_case(case, source=source)
+
+    result = _mutate_case_under_case_lock(cid, _mutator)
+    if result is None:
+        return not_found
+
+    if result["already_done"]:
         return {
-            "outcome": "case_not_found",
-            "case": None,
-            "already_done": False,
-            "end_card_sent": False,
+            "outcome": "broker_done",
+            "case": result["case"],
+            "already_done": True,
+            "end_card_sent": bool(result["end_card_already_sent"]),
             "end_card_preview": preview,
             "send_skipped": True,
         }
 
     send_result = try_send_claim_end_card(cid)
-    refreshed = _load_case_for_mutation(cid) or case
+    refreshed = _load_case_for_mutation(cid) or result["case"]
     return {
         "outcome": "broker_done",
         "case": refreshed,
