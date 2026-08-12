@@ -2124,9 +2124,62 @@ def make_slice1_postgres_store() -> _PostgresSlice1Store:
 _CASE_INTAKE_SCHEMA_READY = False
 
 
+_REQUEST_DRAFT_AI_PROVENANCE_READY = False
+
+
+def _ensure_request_draft_ai_provenance_schema(cur: Any) -> None:
+    """Migration 008 — ``claim_request_drafts.ai_provenance`` (AI pilot signal).
+
+    Same shape as ``_ensure_case_ref_schema``: DDL runs on a dedicated
+    autocommit connection, because adding it to a caller's read-only
+    transaction lets the close roll the column back while leaving the
+    process-local READY flag stuck True — after which every draft write fails.
+    """
+
+    global _REQUEST_DRAFT_AI_PROVENANCE_READY
+    if _REQUEST_DRAFT_AI_PROVENANCE_READY:
+        return
+
+    # Cheap truth check — never trust READY alone after a rolled-back DDL txn.
+    cur.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'claim_request_drafts'
+          AND column_name = 'ai_provenance'
+        LIMIT 1
+        """
+    )
+    if cur.fetchone():
+        _REQUEST_DRAFT_AI_PROVENANCE_READY = True
+        return
+
+    import psycopg
+
+    url = service_record_database_url()
+    if not url:
+        raise RuntimeError("no service record database URL configured")
+
+    with psycopg.connect(url, connect_timeout=3, autocommit=True) as ddl_conn:
+        with ddl_conn.cursor() as ddl_cur:
+            ddl_cur.execute(
+                """
+                ALTER TABLE claim_request_drafts
+                ADD COLUMN IF NOT EXISTS ai_provenance JSONB
+                """
+            )
+
+    _REQUEST_DRAFT_AI_PROVENANCE_READY = True
+    logger.info("claim_request_drafts ai_provenance schema verified (IFF add)")
+
+
 def _ensure_case_intake_schema(cur: Any) -> None:
     global _CASE_INTAKE_SCHEMA_READY
     if _CASE_INTAKE_SCHEMA_READY:
+        # Additive columns are verified on every call: the table predates them,
+        # so the READY short-circuit would otherwise skip them forever.
+        _ensure_request_draft_ai_provenance_schema(cur)
         return
     cur.execute(
         """
@@ -2168,7 +2221,8 @@ def _ensure_case_intake_schema(cur: Any) -> None:
             content_hash TEXT NOT NULL,
             updated_by TEXT NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            ai_provenance JSONB
         )
         """
     )
@@ -2176,13 +2230,6 @@ def _ensure_case_intake_schema(cur: Any) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_claim_request_drafts_case_updated
         ON claim_request_drafts (case_id, updated_at DESC)
-        """
-    )
-    # Migration 008 — digest + model metadata for the AI Request More pilot signal.
-    cur.execute(
-        """
-        ALTER TABLE claim_request_drafts
-        ADD COLUMN IF NOT EXISTS ai_provenance JSONB
         """
     )
     cur.execute(
@@ -2271,6 +2318,7 @@ def _ensure_case_intake_schema(cur: Any) -> None:
         WHERE case_id IS NOT NULL
         """
     )
+    _ensure_request_draft_ai_provenance_schema(cur)
     _CASE_INTAKE_SCHEMA_READY = True
 
 
