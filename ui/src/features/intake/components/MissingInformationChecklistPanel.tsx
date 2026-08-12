@@ -24,6 +24,7 @@ import type {
 } from '@/api/inboxTriage';
 import {
   Slice1RequestMoreError,
+  requestMoreAiDraft,
   saveCaseRequestDraft,
   sendCaseRequest,
 } from '@/api/inboxTriage';
@@ -540,6 +541,11 @@ export function MissingInformationChecklistPanel({
     typeof projection?.aggregate_version === 'number' ? projection.aggregate_version : null,
   );
   const [statusRefreshing, setStatusRefreshing] = useState(false);
+  const [aiDrafting, setAiDrafting] = useState(false);
+  const [aiDraftText, setAiDraftText] = useState<string>('');
+  const [aiDraftNotice, setAiDraftNotice] = useState<{ type: 'info' | 'warning'; text: string } | null>(
+    null,
+  );
   const expectedVersion = projection?.aggregate_version ?? 0;
   const requestSent =
     Boolean(accessCard?.access_ready || accessCard?.request_sent)
@@ -650,6 +656,15 @@ export function MissingInformationChecklistPanel({
   const unsupportedInSavedDraft = useMemo(
     () => unsupportedDraftItemLabels(projection?.request_draft?.items),
     [projection?.request_draft?.draft_version, projection?.request_draft?.items],
+  );
+
+  // Deterministic missing set — the server owns this; the panel only displays it.
+  const deterministicMissingItems = useMemo(
+    () =>
+      (projection?.missing_information_checklist || []).filter(
+        (item) => item.suggested_for_request && isMvpSendableItemType(item.item_type),
+      ),
+    [projection?.missing_information_checklist],
   );
 
   if (!projection) return null;
@@ -816,6 +831,56 @@ export function MissingInformationChecklistPanel({
     syncPhase(phase);
     if (armTimer) armAutosaveTimer();
     else clearAutosaveTimer();
+  };
+
+  /**
+   * Drafting help only: the server decides which items are still missing, the
+   * broker still edits and still presses「发出补充请求」.
+   */
+  const handleAiDraft = async (preferTemplate = false) => {
+    if (requestSent || aiDrafting) return;
+    setAiDrafting(true);
+    setAiDraftNotice(null);
+    try {
+      const result = await requestMoreAiDraft(caseRecord.case_id, undefined, preferTemplate);
+      if (!result.ok) {
+        setAiDraftText('');
+        setAiDraftNotice({
+          type: 'warning',
+          text: result.message || CLAIM_REQUEST_MORE_COPY.aiDraftBlockedOpenRequest,
+        });
+        return;
+      }
+      if (!result.drafting_available) {
+        setAiDraftText('');
+        setAiDraftNotice({ type: 'info', text: CLAIM_REQUEST_MORE_COPY.aiDraftNothingMissing });
+        return;
+      }
+      const drafted = result.items || [];
+      applyUserRowEdit((prev) =>
+        prev.map((row) => {
+          const item = drafted.find((i) => i.field_key === row.field_key);
+          if (!item) return row;
+          return {
+            ...row,
+            selected: true,
+            label: item.label || row.label,
+            instructions: item.instructions || row.instructions,
+          };
+        }),
+      );
+      setAiDraftText(result.draft_text || '');
+      setAiDraftNotice({
+        type: result.used_fallback ? 'warning' : 'info',
+        text: result.used_fallback
+          ? CLAIM_REQUEST_MORE_COPY.aiDraftFallbackApplied
+          : CLAIM_REQUEST_MORE_COPY.aiDraftApplied,
+      });
+    } catch {
+      setAiDraftNotice({ type: 'warning', text: CLAIM_REQUEST_MORE_COPY.aiDraftFailed });
+    } finally {
+      setAiDrafting(false);
+    }
   };
 
   const flushAutosave = async (): Promise<{ ok: boolean; draftId?: string; aggregateVersion?: number }> => {
@@ -1044,6 +1109,13 @@ export function MissingInformationChecklistPanel({
                     )}
                   </Text>
                 ) : null}
+                {deterministicMissingItems.length > 0 ? (
+                  <Text strong style={{ fontSize: 13 }}>
+                    {CLAIM_REQUEST_MORE_COPY.aiDraftMissingCount(deterministicMissingItems.length)}
+                    {'：'}
+                    {deterministicMissingItems.map((i) => i.customer_label || i.label).join(' · ')}
+                  </Text>
+                ) : null}
               </Space>
             );
           })()}
@@ -1054,6 +1126,50 @@ export function MissingInformationChecklistPanel({
               style={{ marginBottom: 8 }}
               message={formatUnsupportedSendItems(unsupportedInSavedDraft)}
               description={CLAIM_REQUEST_MORE_COPY.vinOnlyHint}
+            />
+          ) : null}
+          <Space wrap style={{ marginBottom: 10 }}>
+            <Button
+              onClick={() => void handleAiDraft(false)}
+              loading={aiDrafting}
+              disabled={aiDrafting || deterministicMissingItems.length === 0}
+            >
+              {aiDraftText
+                ? CLAIM_REQUEST_MORE_COPY.aiDraftRegenerate
+                : CLAIM_REQUEST_MORE_COPY.aiDraftButton}
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => void handleAiDraft(true)}
+              disabled={aiDrafting || deterministicMissingItems.length === 0}
+            >
+              {CLAIM_REQUEST_MORE_COPY.aiDraftUseTemplate}
+            </Button>
+          </Space>
+          {aiDraftNotice ? (
+            <Alert
+              type={aiDraftNotice.type}
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={aiDraftNotice.text}
+            />
+          ) : null}
+          {aiDraftText ? (
+            <Alert
+              type="info"
+              style={{ marginBottom: 10 }}
+              message={CLAIM_REQUEST_MORE_COPY.aiDraftPreviewTitle}
+              description={
+                <>
+                  <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 4 }}>
+                    {aiDraftText}
+                  </Paragraph>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {CLAIM_REQUEST_MORE_COPY.aiDraftReviewHint}
+                  </Text>
+                </>
+              }
             />
           ) : null}
           <Space direction="vertical" style={{ width: '100%' }} size={10}>

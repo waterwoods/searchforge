@@ -829,6 +829,15 @@ class SaveRequestDraftBody(BaseModel):
     correlation_id: str | None = Field(default=None, max_length=128)
 
 
+class RequestDraftAssistBody(BaseModel):
+    """AI drafting is read-only: no case fact may be supplied by the client."""
+
+    correlation_id: str | None = Field(default=None, max_length=128)
+    prefer_template: bool = Field(
+        default=False, description="Broker chose the office template over AI wording"
+    )
+
+
 class SendRequestBody(BaseModel):
     command_id: str = Field(..., min_length=8, max_length=128)
     idempotency_key: str = Field(..., min_length=8, max_length=128)
@@ -2257,6 +2266,57 @@ async def post_case_request_draft(
     if outcome == "conflict":
         raise HTTPException(status_code=409, detail=result)
     raise HTTPException(status_code=422, detail=result)
+
+
+@router.post("/cases/{case_id}/request-draft-assist")
+async def post_case_request_draft_assist(
+    case_id: str,
+    http_request: Request,
+    body: RequestDraftAssistBody | None = None,
+) -> dict[str, Any]:
+    """AI Request More drafting: wording only for the deterministic missing set.
+
+    Read-only. Creates no Request More, mutates no Case truth, sends nothing —
+    the broker still confirms through SaveRequestDraft + SendRequest.
+    """
+    row = get_case_for_read(case_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"case not found: {case_id}")
+    assert_case_office_access_allowed(http_request, row)
+    prefer_template = bool(body.prefer_template) if body is not None else False
+
+    checklist: list[dict[str, Any]] = []
+    open_request_more: Any = None
+    try:
+        projection = default_case_intake_service().fetch_projection(case_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Request More assist projection failed for case %s: %s", case_id, exc)
+        projection = None
+    if isinstance(projection, dict):
+        raw_checklist = projection.get("missing_information_checklist")
+        if isinstance(raw_checklist, list):
+            checklist = [item for item in raw_checklist if isinstance(item, dict)]
+        open_request_more = projection.get("open_request_more")
+    else:
+        from services.fiqa_api.inbox_triage.p20_missing_information import (
+            derive_missing_information_checklist,
+        )
+
+        stored_facts = row.get("fact_records") if isinstance(row.get("fact_records"), dict) else None
+        checklist = derive_missing_information_checklist(stored_facts, case=row)
+
+    from services.fiqa_api.inbox_triage.request_more_assistant.service import (
+        draft_request_more,
+    )
+
+    return draft_request_more(
+        case=row,
+        checklist=checklist,
+        case_id=case_id,
+        office_id=client_asserted_office_id(http_request),
+        open_request_more=open_request_more,
+        prefer_template=prefer_template,
+    )
 
 
 @router.post("/cases/{case_id}/send-request")

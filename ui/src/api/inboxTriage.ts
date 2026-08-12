@@ -358,6 +358,34 @@ export type CaseIntakeRequestDraftItem = {
     selected?: boolean;
 };
 
+export type RequestMoreAiDraftItem = {
+    field_key: string;
+    item_type: string;
+    label: string;
+    instructions: string;
+    request_mode: string;
+    position: number;
+};
+
+/** Draft-only wording help. Never a Request More, never a send. */
+export type RequestMoreAiDraftResult = {
+    ok: boolean;
+    case_id?: string | null;
+    error_code?: string;
+    message?: string;
+    drafting_available?: boolean;
+    missing_item_count?: number;
+    draft_text?: string;
+    items?: RequestMoreAiDraftItem[];
+    language?: string;
+    authority?: 'ai_draft' | 'office_template';
+    draft_used_ai?: boolean;
+    used_fallback?: boolean;
+    fallback_reason?: string | null;
+    guardrail_outcome?: string;
+    lifecycle_mutated?: boolean;
+};
+
 export type CaseIntakeRequestDraft = {
     draft_id: string;
     draft_version: number;
@@ -1230,6 +1258,18 @@ export async function saveCaseRequestDraft(
             draft_id: command.draft_id,
             correlation_id: command.correlation_id,
         },
+    );
+    return response.data;
+}
+
+export async function requestMoreAiDraft(
+    caseId: string,
+    correlationId?: string,
+    preferTemplate = false,
+): Promise<RequestMoreAiDraftResult> {
+    const response = await request.post<RequestMoreAiDraftResult>(
+        `/api/inbox/cases/${encodeURIComponent(caseId)}/request-draft-assist`,
+        { correlation_id: correlationId, prefer_template: preferTemplate },
     );
     return response.data;
 }
