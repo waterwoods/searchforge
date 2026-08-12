@@ -1,6 +1,6 @@
 # Voice-first Guided Intake V1
 
-**Status:** additive Mini Program front door (not a replacement architecture)  
+**Status:** additive Mini Program front door (not a replacement architecture)
 **Objective:** Let a customer speak the accident story first, then reuse Accident Story / Start Claim.
 
 ## Principle
