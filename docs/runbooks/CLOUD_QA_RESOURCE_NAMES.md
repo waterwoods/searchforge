@@ -207,6 +207,8 @@ If Vercel Preview origins call `fiqa-api-qa`, ensure `ALLOWED_ORIGINS` on **fiqa
 
 - Deploy entry map: [`DEPLOY_TRUTH_MAP.md`](./DEPLOY_TRUTH_MAP.md)
 - Production deploy playbook: [`DEPLOYMENT_PLAYBOOK.md`](./DEPLOYMENT_PLAYBOOK.md)
+- Case Builder DB recovery (PITR / backup clone — never overwrite live): [`CASE_BUILDER_DATABASE_RECOVERY.md`](./CASE_BUILDER_DATABASE_RECOVERY.md)
+- Pre-pilot data-safety audit (2026-08-16): [`docs/founder/PRE_PILOT_DATA_SAFETY_DR_AUDIT_2026-08-16.md`](../founder/PRE_PILOT_DATA_SAFETY_DR_AUDIT_2026-08-16.md)
 - Environment strategy (local vs cloud boundaries): [`docs/p18_11_environment_strategy_and_dev_rules.md`](../p18_11_environment_strategy_and_dev_rules.md)
 - P36 T4 provision evidence: [`docs/evidence/p36_t4_cloud_qa_provision_2026_07_21.md`](../evidence/p36_t4_cloud_qa_provision_2026_07_21.md)
 - P36 T5 client retarget evidence: [`docs/evidence/p36_t5_founder_qa_client_retarget_2026_07_21.md`](../evidence/p36_t5_founder_qa_client_retarget_2026_07_21.md)
